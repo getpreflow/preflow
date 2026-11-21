@@ -123,6 +123,10 @@ final class Notifier
      * it goes to the item's onFailure, else to the logger, else to error_log (without addresses).
      * True when it was sent.
      *
+     * For queues only: it sends whatever the render's policy is (a preview's or an audit's
+     * included), because the queue has already decided that the item may go out. Code that wants
+     * to send uses send() or sendLater(), which follow the policy.
+     *
      * @since 0.81.0
      */
     public function deliver(Deferred $item): bool

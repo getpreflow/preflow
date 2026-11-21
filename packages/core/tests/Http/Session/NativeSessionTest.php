@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Core\Tests\Http\Session;
 
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Http\Session\NativeSession;
 use Preflow\Core\Http\Session\FlashType;
@@ -13,9 +14,7 @@ final class NativeSessionTest extends TestCase
 {
     use ChecksFrameBalance;
 
-    /**
-     * @runInSeparateProcess
-     */
+    #[RunInSeparateProcess]
     public function test_start_and_get_set(): void
     {
         $session = new NativeSession();
@@ -29,9 +28,7 @@ final class NativeSessionTest extends TestCase
         $this->assertSame('default', $session->get('missing', 'default'));
     }
 
-    /**
-     * @runInSeparateProcess
-     */
+    #[RunInSeparateProcess]
     public function test_has_and_remove(): void
     {
         $session = new NativeSession();
@@ -45,9 +42,7 @@ final class NativeSessionTest extends TestCase
         $this->assertNull($session->get('key'));
     }
 
-    /**
-     * @runInSeparateProcess
-     */
+    #[RunInSeparateProcess]
     public function test_regenerate_changes_id_but_keeps_data(): void
     {
         $session = new NativeSession();
@@ -62,9 +57,7 @@ final class NativeSessionTest extends TestCase
         $this->assertSame('admin', $session->get('role'));
     }
 
-    /**
-     * @runInSeparateProcess
-     */
+    #[RunInSeparateProcess]
     public function test_invalidate_clears_data_and_changes_id(): void
     {
         $session = new NativeSession();
@@ -80,9 +73,7 @@ final class NativeSessionTest extends TestCase
         $this->assertFalse($session->has('secret'));
     }
 
-    /**
-     * @runInSeparateProcess
-     */
+    #[RunInSeparateProcess]
     public function test_flash_data_readable_in_same_request(): void
     {
         $session = new NativeSession();
@@ -95,9 +86,7 @@ final class NativeSessionTest extends TestCase
         $this->assertSame('nope', $session->getFlash('missing', 'nope'));
     }
 
-    /**
-     * @runInSeparateProcess
-     */
+    #[RunInSeparateProcess]
     public function test_typed_flash_helpers_set_and_retrieve(): void
     {
         $session = new NativeSession();
@@ -114,9 +103,7 @@ final class NativeSessionTest extends TestCase
         $this->assertSame('Be careful.', $session->getFlash('warning'));
     }
 
-    /**
-     * @runInSeparateProcess
-     */
+    #[RunInSeparateProcess]
     public function test_get_flashes_returns_all_standard_types(): void
     {
         $session = new NativeSession();
@@ -137,9 +124,7 @@ final class NativeSessionTest extends TestCase
         ], $flashes);
     }
 
-    /**
-     * @runInSeparateProcess
-     */
+    #[RunInSeparateProcess]
     public function test_get_flashes_omits_unset_types(): void
     {
         $session = new NativeSession();

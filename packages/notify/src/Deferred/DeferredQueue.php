@@ -33,7 +33,12 @@ interface DeferredQueue
      */
     public function push(Deferred $item): void;
 
-    /** Sends what is queued and may go out now. */
+    /**
+     * Sends what is queued and may go out now. Notifier::flushDeferred() counts what deliver()
+     * sent meanwhile; a durable queue (one that hands the items to a worker instead of sending
+     * them here) makes it return 0. Callers that report "not sent" on 0 (rbac's staff command)
+     * must be adapted when such a queue is added.
+     */
     public function flush(): void;
 
     /**

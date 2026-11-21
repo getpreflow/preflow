@@ -47,6 +47,11 @@ $app->handle(WebApplication::withContext(static fn (RenderContext $ctx) => $ctx-
 user in the same way: the frame `handle()` opens has them as its viewer from the start, before the
 first middleware runs. All three build on core's `Application::withDerivedContext()`.
 
+A request given a context that captures or discards (`->capturing()`, `->discarding()`, a role
+view) sends nothing, and what it captured is dropped when its frame ends: `handle()` returns only
+the response. To look at what a render would have sent, render it with `Application::render()`,
+whose `RenderResult` lists it (`captured`, `wouldSend()`).
+
 ## Frame balance (0.81)
 
 `Preflow\Testing\FrameBalanceExtension` checks after every test that no render frame was left
@@ -59,6 +64,30 @@ from `phpunit.xml`:
     <bootstrap class="Preflow\Testing\FrameBalanceExtension"/>
 </extensions>
 ```
+
+PHPUnit starts no extension in a child process, so a test class that runs tests in separate
+processes (`#[RunInSeparateProcess]`, `#[RunTestsInSeparateProcesses]`) uses the trait
+`Preflow\Testing\ChecksFrameBalance` instead: it makes the same check after each test, in the
+test's own process.
+
+```php
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
+use PHPUnit\Framework\TestCase;
+use Preflow\Testing\ChecksFrameBalance;
+
+final class SessionPageTest extends TestCase
+{
+    use ChecksFrameBalance;
+
+    #[RunInSeparateProcess]
+    public function test_the_page_starts_a_session(): void { /* … */ }
+}
+```
+
+Code that sets a user, a locale or the read mode the 0.81 way needs an open frame. A unit test
+that calls such code directly opens one: `Contexts::run(ContextFactory::forTest(), fn () => …)`.
+`AuthManager::setUser()`, `LocaleMiddleware::process()`, `PdfRenderer`, `MembersView::render()`
+and console commands that read the context throw `NoRenderContext` outside every render.
 
 ## ComponentTestCase
 

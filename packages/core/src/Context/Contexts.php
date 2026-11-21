@@ -293,6 +293,9 @@ final class Contexts
     /**
      * Closes every frame, forgets every onEnter() hook and turns debug mode off. Deprecations
      * keep their own reset(): which call sites warned is per process, not per render.
+     * The hooks it forgets include the ones packages register at boot (PART_HOOK,
+     * AnonymousGlobals::HOOK): a long-running worker that calls it must boot the application
+     * again, or register those hooks again, before its next render.
      *
      * @internal tests only
      */

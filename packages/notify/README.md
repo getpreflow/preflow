@@ -239,7 +239,10 @@ notify's own `InMemoryQueue` when none is given), and the queue's `policy()` (`d
 `capture`) also decides whether `send()` delivers. Each queued message reaches the queue as a
 `Preflow\Notify\Deferred\Deferred` value: the `Message`, its channel, the `onFailure` closure and a
 one-line summary. A queue sends it with `Notifier::deliver($item)`, so a durable queue (a cron worker
-that sends later) can store the message itself.
+that sends later) can store the message itself. `deliver()` is for queues only: it sends whatever the
+current render's policy is, since the queue already decided the item may go. With a durable queue,
+`flushDeferred()` returns 0 (nothing was sent in this process); code that reads 0 as "not sent", such
+as rbac's `staff:create` message, has to be adapted when such a queue is added.
 
 The `Mailer` renders a mail's HTML part inside a `Preflow\Notify\Mail\ComposeScope` (its fourth
 argument; `DirectCompose` renders where it is called) for the content's language. `MailContent::$lang`

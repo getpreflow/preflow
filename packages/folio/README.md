@@ -1258,6 +1258,37 @@ Both copy buttons (here and in the list's row menu) use `Folio.copyLater(textPro
 way (a `ClipboardItem`, which Safari needs), falls back to `writeText`, and resolves `true` or
 `false`. Extensions that copy what a request returns can use it too.
 
+**Whole-page preview and View as (0.81).** Preview and Split show the record's real page: its route,
+the layout, the navigation, the SEO tags and the components, rendered from the autosaved working
+copies as a visitor will see it once they are published
+(`GET {prefix}/preview/page/{type}/{id}?locale=&as=`, permission `{type}.edit`). Folio only builds
+the call; the render is core's `Application::preview()`, which an app without Folio can call too
+(see "Render context" in the core README).
+
+- The page renders in a frame of its own, as an anonymous visitor (or the role chosen under **View
+  as**). It never writes data and never sends mail: the bar's **What this page would do** lists
+  what it would send and write instead.
+- **View as** offers "Visitor (not signed in)" and, for editors who hold `site.view_as` ("View the
+  site as a role", group Site, declared by `preflow/rbac`), every member and staff role, stronger
+  ones included. The editor sees the page as that role would, without signing in as anyone. Without
+  rbac only the visitor is offered. On a site that already uses rbac, Roles shows `site.view_as`
+  as a new permission after the upgrade: admins hold it through `*`; give it to the other roles
+  that should preview as a role.
+- Drafts of every type are visible to every editor who may edit that type, and to holders of a
+  share-preview link.
+- The page's interactive parts (component actions, lazy parts, its own htmx calls and htmx-boosted
+  forms) follow the preview through a signed preview token that expires after 15 minutes: they
+  render as the preview, and a write under the token is refused ("This preview does not change
+  data."). Plain links and forms without htmx open the live site, which the bar says.
+- Without a usable app key (shorter than 32 bytes, or a known example key) there are no preview
+  tokens. Production does not boot with such a key; in debug mode the preview switches the
+  interactive parts off and says why ("Interactive parts are switched off in this preview…").
+- A page that redirects (its login, a moved address) shows where it would go instead of leaving
+  the preview. A page whose own policy forbids frames is explained in the frame, with a link that
+  opens it in a tab of its own.
+- In debug mode the devtools toolbar adds the admin's CSP nonce to the previewed page, so the
+  browser reports one (report-only) CSP violation there. Debug only; production is unaffected.
+
 Keys: **⌘S** / **Ctrl+S** saves the draft (also while typing; the browser's save dialog does not
 open), **⌘↵** / **Ctrl+Enter** publishes (where Publish is there), **Esc** closes the side panel on a
 phone, **?** lists them.

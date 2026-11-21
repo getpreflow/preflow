@@ -50,6 +50,12 @@ use PHPUnit\Framework\TestCase;
  * a revoked permission or role). In every package's psr-4 source roots except core's, a file that
  * names PreviewToken may not call ->verify( on any line.
  *
+ * write.accounting-allowlisted: an 'accounting' write runs under every write policy (Allow, Skip
+ * and Refuse: a preview or an audit counts it too), so each one is listed in ACCOUNTING_WRITES with
+ * its reason. In every package's psr-4 source roots, a code line that passes `accounting:` (other
+ * than `false`), names the operation 'accounting', or calls ->hit( or ->incrementIn( with a
+ * trailing literal `true` must be listed; a listed line that no longer exists fails too.
+ *
  * architecture.no-ambient-state: package code reads who is looking, the locale, the read mode and
  * the time from the render context (Contexts::current()), not from state that belongs to the
  * process or the request. Every package's psr-4 source roots are scanned (every *.php file, the
@@ -105,6 +111,24 @@ final class ArchitectureGuardsTest extends TestCase
      * @var array<string, list<string>>
      */
     private const PENDING_DRIVER_CHECKS = [];
+
+    /**
+     * The writes that count under every write policy (write.accounting-allowlisted): file (relative
+     * to packages/) => trimmed line => reason. Each entry must still match a line.
+     *
+     * @var array<string, array<string, string>>
+     */
+    private const ACCOUNTING_WRITES = [
+        'core/src/Context/Writes.php' => [
+            "if (\$policy === WritePolicy::Allow || \$operation === 'accounting') {" => 'the policy itself: an accounting write is allowed and never reported',
+        ],
+        'data/src/DataManager.php' => [
+            "if (!Writes::allowed(\$def->storage, \$def->table, (string) \$id, \$accounting ? 'accounting' : 'increment')) {" => 'incrementIn() passes its caller\'s flag on (Throttle::hit() passes its own); the callers are the other entries',
+        ],
+        'ai/src/Limits/AiLimits.php' => [
+            "\$hits = \$this->throttle->hit(self::purpose(\$action), \$client, \$limit['per'], accounting: true);" => 'the per-person AI limit: the AI call it lets through really happens in a preview or an audit too, so it must be counted there',
+        ],
+    ];
 
     /** A context in an expression: Contexts::current()/peek(), or a variable or property named …context or …ctx. */
     private const CONTEXT_EXPRESSION = '(?:\\\\?(?:\w+\\\\)*Contexts::(?:current|peek)\(\)|\$[\w>-]*?(?:[cC]ontext|ctx)\b(?!\s*\[))';
@@ -226,6 +250,93 @@ final class ArchitectureGuardsTest extends TestCase
         $this->assertSame([], self::previewVerifyHits("<?php\nuse Preflow\\Core\\Context\\Preview\\PreviewToken;\n\$claims = \$this->tokens->admit(\$token, \$sid, \$ctx, \$gate);\n"));
         $this->assertSame([], self::previewVerifyHits("<?php\n\$ok = \$csrf->verify(\$token);\n"), 'a file that does not name PreviewToken');
         $this->assertSame([], self::previewVerifyHits("<?php\nuse Preflow\\Core\\Context\\Preview\\PreviewToken;\n// \$tokens->verify() skips the gate\n"), 'a comment');
+    }
+
+    public function test_write_accounting_allowlisted(): void
+    {
+        $found = [];
+        $unlisted = [];
+        foreach (glob(self::packages() . '/*/composer.json') ?: [] as $composerFile) {
+            $dir = dirname($composerFile);
+            $composer = json_decode((string) file_get_contents($composerFile), true, flags: JSON_THROW_ON_ERROR);
+            $roots = array_values((array) ($composer['autoload']['psr-4'] ?? []));
+            foreach ($roots === [] ? ['src/'] : $roots as $root) {
+                foreach ((array) $root as $path) {
+                    $sourceDir = $dir . '/' . rtrim($path, '/');
+                    if (!is_dir($sourceDir)) {
+                        continue;
+                    }
+                    foreach ($this->files($sourceDir) as $file) {
+                        if (!str_ends_with($file, '.php')) {
+                            continue;
+                        }
+                        $relative = $this->relative($file);
+                        foreach (self::accountingHits((string) file_get_contents($file)) as $n => $line) {
+                            if (isset(self::ACCOUNTING_WRITES[$relative][$line])) {
+                                $found[$relative][$line] = true;
+                            } else {
+                                $unlisted[] = $relative . ':' . $n . ': ' . $line;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        $stale = [];
+        foreach (self::ACCOUNTING_WRITES as $file => $lines) {
+            foreach (array_keys($lines) as $line) {
+                if (!isset($found[$file][$line])) {
+                    $stale[] = $file . ': ' . $line;
+                }
+            }
+        }
+        $this->assertSame([], $unlisted, 'an accounting write runs in previews and audits too: list it in ACCOUNTING_WRITES with its reason');
+        $this->assertSame([], $stale, 'these ACCOUNTING_WRITES entries match no line: remove them');
+    }
+
+    public function test_write_accounting_allowlisted_catches_each_spelling(): void
+    {
+        $caught = [
+            '$this->throttle->hit($purpose, $client, 60, accounting: true);',
+            '$dm->incrementIn($def, $id, \'n\', 1, [], accounting: $count);',
+            '$dm->incrementIn($def, $id, \'n\', 1, [], null, true);',
+            '$this->throttle->hit($purpose, $client, 60, true);',
+            'Writes::allowed(\'ai\', \'usage\', null, \'accounting\');',
+            'Writes::allowed("ai", "usage", null, "accounting");',
+        ];
+        foreach ($caught as $line) {
+            $this->assertSame([2 => $line], self::accountingHits("<?php\n" . $line . "\n"), "caught: {$line}");
+        }
+        $harmless = [
+            '$this->throttle->hit($purpose, $client, 60);',
+            '$this->throttle->hit($purpose, $client, 60, accounting: false);',
+            '$dm->incrementIn($def, $id, \'n\', 1, [], null, $accounting);',
+            ' * \'accounting\' writes run under every policy',
+            '$x = 1; // accounting: true',
+            '$ok = $this->check(true);',
+        ];
+        foreach ($harmless as $line) {
+            $this->assertSame([], self::accountingHits("<?php\n" . $line . "\n"), "harmless: {$line}");
+        }
+    }
+
+    /** @return array<int, string> line number => trimmed line of each accounting write in $source (write.accounting-allowlisted) */
+    private static function accountingHits(string $source): array
+    {
+        $hits = [];
+        foreach (explode("\n", $source) as $n => $line) {
+            $trimmed = ltrim($line);
+            if ($trimmed === '' || str_starts_with($trimmed, '*') || str_starts_with($trimmed, '/*') || str_starts_with($trimmed, '//')) {
+                continue;
+            }
+            $code = self::withoutComments($line);
+            if (preg_match('/\baccounting:\s*(?!false\b)\S|[\'"]accounting[\'"]|->(?:hit|incrementIn)\(.*,\s*true\s*\)/', $code) === 1) {
+                $hits[$n + 1] = trim($line);
+            }
+        }
+
+        return $hits;
     }
 
     /** @return array<int, string> line number => trimmed line of each ->verify( call in a file that names PreviewToken */

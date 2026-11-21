@@ -247,6 +247,136 @@ public function boot(Container $container): void
 Admin routes added later in this way go in front of a catch-all with
 `RouteCollection::insertBefore($anchor, $entries)` (preflow/routing).
 
+### Render context (0.81)
+
+Every render runs under one immutable `Preflow\Core\Context\RenderContext`: who is looking, in
+which language, what it may read, write and send, and what time it is. What a render collects
+lives in a `RenderFrame` of its own, so nothing one render collects reaches another. An internal
+render (the SEO audit, GEO's Markdown, a page-cache rebuild or verify, a preview, a mail, a PDF)
+gets its own context and frame and cannot see the visitor who asked for it.
+
+**The values** (each a public property; derive a changed copy with the methods):
+
+| Value | What | Derive |
+|---|---|---|
+| `viewer` (`Viewer`) | who is looking: anonymous, signed-in identities per guard, or a role view | `asVisitor()`, `as(Viewer)`, `asRole(RoleView)` |
+| `locale`, `surface` (`Surface`) | the content language; public texts or the admin's (its UI locale, overrides on or off) | `in('de')`, `public()`, `admin('de', overrides: true)` |
+| `reads` (`ReadMode`) | published content or working copies | `published()`, `workingCopies()` |
+| `purpose` (`Purpose`) | Visit, Fragment, Audit, Geo, Rebuild, Verify, Preview, Console, Job, Mail, Pdf, Test | `because(Purpose::Audit)` |
+| `outbox` (`OutboxPolicy`) | mail and other queued effects: Deliver, Discard or Capture | `delivering()`, `discarding()`, `capturing()` |
+| `writes` (`WritePolicy`) | data writes: Allow, Skip (skipped and reported) or Refuse (`WritesRefused`, answered 403) | `skippingWrites()`, `refusingWrites()` |
+| `site` (`Site`), `clock` (PSR-20), `now` | the origin and locales; the clock and the time the context was made | `at($dateTime)` (frozen), `withClock($clock)` |
+| `request` (`?RequestContext`) | the request part (path, method, the locale prefix its URL carried) | `for($request)`, `prefixed('/de')` |
+| `extensions` (`Facet`s) | a package's own values (a preview grant, say), part of `memoKey()` | `with($facet)`, `without($class)`, `get($class)` |
+
+`memoKey()` is the context as a cache key (locale, read mode, viewer, surface and facets): key a
+memo by it and two renders that would see different data never share an entry.
+
+**Where a context starts.** `Application::handle()`/`run()` build one per request
+(`RenderContext::fromRequest()`), the console one per command (`RenderContext::console()`),
+`Application::render()` takes the one you give it, `RenderContext::internal(Purpose, $site, $clock,
+$path)` builds a visitor's for an internal render, and tests use `ContextFactory::forTest()`
+(preflow/testing).
+
+**Reading it.** `Contexts::current()` is the context of the render that runs now; outside every
+render it throws `NoRenderContext`. `Contexts::clock()` is its clock. `Contexts::peek()` returns
+null outside a render, for the few services that have a documented answer there (a shutdown
+function, a script without a frame). Read the context when you need it: a service never keeps one
+in a property (the architecture guard enforces it), and superglobals are not part of the contract
+(`Contexts::current()->request`). Logging a context: `json_encode()`, `serialize()` and
+`var_dump()` give a form without secrets; `var_export()` and an `(array)` cast reach the request
+(cookies included) and are not safe.
+
+**Changing it:**
+
+| Call | What |
+|---|---|
+| `Contexts::run($ctx, fn () => …)` | a new frame under `$ctx` (what the edges and `render()` use) |
+| `Contexts::part($ctx, fn () => …)` | a new frame whose output is part of the caller's (a PDF shown in a page, an in-process sub-request). `RenderFrame::partOf()` names the caller's frame, so what belongs to the output as a whole (page-cache recording, the CSP nonce) joins it from a `Contexts::onEnter()` hook; a collector of your own registers its hook. Throws `NoRenderContext` outside a render |
+| `Contexts::narrow(fn ($c) => $c->in('de'))` | the rest of the current frame (the locale middleware, sign-in) |
+| `Contexts::within($ctx, fn () => …)` | the same frame under `$ctx` until `fn` returns, also when it throws |
+
+A context whose viewer is a role view always keeps writes at Skip and mail at Capture: no later
+derivation can loosen it, and `within()` cannot start one (render it with `render()` instead).
+In a tight loop over languages, reuse one context per language
+(`$byLocale[$l] ??= Contexts::current()->in($l)`): building a context costs about a microsecond.
+
+**The frame.** Assets, SEO meta, GEO capture, page-cache tags, the CSP nonce, queued cookies and
+mail, after-response work and response headers (`ResponseHeaderHints`, template function
+`response_header()`) live in the current `RenderFrame`. A package keeps per-render state in a frame
+slot: `Contexts::frame()->slot(MyState::class, fn () => new MyState())`.
+`Contexts::reset()` (tests only) closes every frame and forgets every hook packages registered at
+boot, so a long-running worker that calls it boots the app again before the next render.
+
+**Rendering for yourself: `Application::render($ctx, $request): RenderResult`.** Renders the request
+through the whole app (middleware, routing, layout) under `$ctx`, in a frame of its own; the frame
+around it is untouched. `RenderResult` has the `response`, what was `captured` instead of sent
+(`wouldSend('notify')`), the `skippedWrites` (`wouldWrite()`) and the `failure` when the response is
+the error page.
+
+**Writes and the outbox.** Every `DataManager` write asks `Writes::allowed()` first. Under Skip the
+write is recorded and the method returns as if it had written (`insert()` returns, `insertIgnoring()`
+gives true, a transaction runs its closure), so the code around it takes the path a real visit takes.
+Under Refuse it throws `WritesRefused` (403 "This preview does not change data."); log-kind writes
+(redirect hits) are skipped instead. Writes that account for real spending (AI usage and limits)
+run under every policy. Code that writes elsewhere (files, another service) asks first:
+`if (Writes::allowed('my-store', 'exports', $id, 'file')) { … }`, or reads `Writes::policy()` without
+recording anything. Mail goes through notify, which follows the outbox policy: under Capture it is
+listed in the result, under Discard dropped, and a visitor's request sends what it queued after the
+response (also when it failed).
+
+**View as a role.** `$ctx->asRole(new RoleView('member', ['gold']))` renders as someone with those
+roles, without an account: nobody is signed in as a real user, writes are skipped and mail is
+captured. Permission checks ask the resolver's optional `Preflow\Auth\Access\AllowsRoles` (rbac and
+roles implement it); a resolver without it grants a role view nothing.
+
+**Whole-page preview: `Application::preview($from, $path, $locale, ?RoleView $as = null,
+?$staffRequest = null, array $requires = [])`.** A GET of `$path` through the whole app, as an
+anonymous visitor (or `$as`) on the public surface in `$locale`, reading working copies, with writes
+skipped and mail captured, purpose Preview (the page cache neither serves nor stores it). Answer
+with the result's own response: its CSP holds the nonce of its inline scripts. With
+`$staffRequest` (the signed-in staff member's request, with a session) and `$requires` (the
+permissions you checked them for; with `$as`, `PreviewGate::VIEW_AS` = `site.view_as` among them),
+the page's later requests get a preview token (below) and render as the preview too.
+
+**Without Folio.** A site's own admin, or a script, renders a page as a role and previews working
+copies with core calls only:
+
+```php
+use Nyholm\Psr7\ServerRequest;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Purpose;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\RoleView;
+use Preflow\Core\Context\SystemClock;
+
+// A script has no request: give it a frame. In a controller the request's frame is there already.
+Contexts::run(RenderContext::console($app->site(), new SystemClock()), function () use ($app): void {
+    // /pricing as a member with the role "gold" would see it, published content
+    $request = new ServerRequest('GET', rtrim($app->site()->origin, '/') . '/pricing');
+    $asGold = Contexts::current()
+        ->asRole(new RoleView('member', ['gold']))
+        ->public()->in('en')
+        ->because(Purpose::Preview)
+        ->for($request)->prefixed('');
+    $result = $app->render($asGold, $request);
+    echo $result->response->getStatusCode(), ' would write ', $result->wouldWrite(), "\n";
+
+    // the same page with the working copies, as it will look once they are published
+    $preview = $app->preview(Contexts::current(), '/pricing', 'en');
+    echo $preview->wouldSend('notify'), " mails it would send\n";
+});
+
+// In your admin's controller (a staff member signed in, checked for page.edit and site.view_as):
+$result = $app->preview(Contexts::current(), '/pricing', 'en', new RoleView('member', ['gold']),
+    staffRequest: $request, requires: ['page.edit', 'site.view_as']);
+return $result->response;
+```
+
+**Upgrading from 0.80**: the deprecated setters (`Translator::setLocale()`, `AuthManager::setUser()`,
+`LiveContent::showWorkingCopies()`, …) change the current frame only and say so once per call site;
+use `narrow()` for "from here on" and `within()` for set-and-restore. The ROADMAP lists every change.
+
 ### JsonBodyMiddleware
 
 Automatically decodes `application/json` request bodies into `getParsedBody()`. No manual `json_decode` needed in controllers.
@@ -1123,6 +1253,22 @@ appear in web server access logs. It is worthless without the issuer's session. 
 both an `app.key` and a session store accept each other's tokens. Each one checks permissions with
 its own rules, so give every site its own key. A CDN that caches regardless of `Cache-Control` must
 bypass requests with the `X-Preflow-Preview` header or the `_preview` parameter.
+
+What else to know:
+
+- The preview frame is same-origin and not sandboxed (a sandbox would cut it off from the session the
+  token is bound to). A script on the previewed page, the site's own or a third party's, can read
+  the token; it is useless without the editor's session, which such a script runs in already.
+- Component URLs carry the token in their query string, so web server access logs and error
+  reporters that record URLs can hold tokens. They expire with the 15-minute lifetime.
+- Pages the page cache serves or stores, and public pages while tokens are on, answer with
+  `Vary: X-Preflow-Preview`, so a shared cache never serves a previewed answer to a visitor. Some
+  CDNs (Akamai-style) do not cache a page whose `Vary` names more than `Accept-Encoding`; behind
+  such a CDN, bypass the cache for requests that carry the token and let it ignore
+  `X-Preflow-Preview` in `Vary` for all others (answers under a token are `private, no-store`).
+- An htmx app that turns `selfRequestsOnly` off lets htmx send the header to other hosts; the token
+  is still useless there without the session.
+- A language switch through htmx inside a previewed page sets the editor's own language preference.
 
 ### Boot manifest (`preflow optimize`)
 

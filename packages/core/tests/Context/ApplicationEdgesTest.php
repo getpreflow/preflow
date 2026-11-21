@@ -713,6 +713,38 @@ final class ApplicationEdgesTest extends TestCase
         $this->assertCount(1, $app->container()->get(TransportFactory::class)->get('mail')->sent());
     }
 
+    /**
+     * Both sides of handle()'s "does this request send?": a plain request delivers the mail it
+     * queued; the same request given a context that captures (Application::withDerivedContext())
+     * sends nothing and does not throw (before 0.81's sends() check it threw in deliverQueued()).
+     */
+    #[RunInSeparateProcess]
+    public function test_handle_sends_nothing_for_a_context_that_captures_and_delivers_otherwise(): void
+    {
+        $this->notify();
+        $app = $this->app();
+        EdgeRoutes::$routes['/welcome'] = static function (ServerRequestInterface $r, Container $c): ResponseInterface {
+            $c->get(Notifier::class)->sendLater(new Email('member@site.test', 'Welcome', 'Your account is ready.'));
+
+            return new Response(200, [], 'queued');
+        };
+        $sent = static fn (): int => count($app->container()->get(TransportFactory::class)->get('mail')->sent());
+
+        $response = $app->handle(new ServerRequest('GET', 'https://site.test/welcome'));
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame(1, $sent(), 'a plain request delivers what it queued');
+
+        $capturing = Application::withDerivedContext(
+            new ServerRequest('GET', 'https://site.test/welcome'),
+            static fn (RenderContext $ctx): RenderContext => $ctx->capturing(),
+        );
+        $response = $app->handle($capturing);
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('queued', (string) $response->getBody());
+        $this->assertSame(1, $sent(), 'a request given a capturing context sends nothing');
+        $this->assertSame(0, Contexts::depth());
+    }
+
     /** When handle() itself fails, what its frame queued is still sent once, before the exception goes on. */
     #[RunInSeparateProcess]
     public function test_a_request_that_throws_still_sends_what_it_queued(): void

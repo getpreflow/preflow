@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Roles\Tests;
 
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\Access\Access;
 use Preflow\Auth\Tests\Fixtures\TestUser;
@@ -65,9 +66,7 @@ final class RolesIntegrationTest extends TestCase
         return $app;
     }
 
-    /**
-     * @runInSeparateProcess
-     */
+    #[RunInSeparateProcess]
     public function test_an_editor_is_answered_from_config_roles(): void
     {
         $app = $this->app();
@@ -80,9 +79,7 @@ final class RolesIntegrationTest extends TestCase
         });
     }
 
-    /**
-     * @runInSeparateProcess
-     */
+    #[RunInSeparateProcess]
     public function test_without_a_roles_file_staff_keep_allow_all(): void
     {
         $app = $this->app(withRoles: false);

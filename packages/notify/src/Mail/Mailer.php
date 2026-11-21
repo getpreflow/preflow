@@ -18,7 +18,9 @@ use Preflow\Notify\TransportException;
  * The Notifier is a Notifier, or a Closure that returns the one to use: called at each send, so a
  * Notifier bound after the Mailer was built (a provider's, a test's) is the one the mail goes to
  * and the one whose flushDeferred() sends what sendLater() queued. Core passes a Closure that
- * reads the container.
+ * reads the container. A Notifier bound after boot must be built with the app's DeferredQueue
+ * (the container's), or its mail skips the current render's outbox: a preview or an audit would
+ * send it.
  *
  * The HTML part is rendered inside the ComposeScope (since 0.81.0) for the content's language
  * (when it has none, the scope's: the current render's locale with core, else 'en'); the layout
