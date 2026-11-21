@@ -361,6 +361,12 @@ final readonly class RenderContext implements \JsonSerializable
      */
     public function memoKey(): string
     {
+        return MemoKeys::of($this);
+    }
+
+    /** memoKey() computed (MemoKeys keeps it per context). @internal MemoKeys */
+    public function computeMemoKey(): string
+    {
         $parts = [$this->locale, $this->reads->key(), $this->viewer->key(), $this->surface->key()];
         $extensions = $this->extensions;
         ksort($extensions, SORT_STRING);
@@ -470,16 +476,34 @@ final readonly class RenderContext implements \JsonSerializable
      */
     private function copy(mixed ...$changes): self
     {
-        $fields = array_replace(get_object_vars($this), $changes);
-        if ($fields['viewer']->isSynthetic()) {
-            if ($fields['writes'] === WritePolicy::Allow) {
-                $fields['writes'] = WritePolicy::Skip;
+        // Field by field (no get_object_vars() + array_replace(): a derivation runs on every
+        // narrow() and within()); a field not named keeps its value, a named null included.
+        $viewer = $changes['viewer'] ?? $this->viewer;
+        $writes = $changes['writes'] ?? $this->writes;
+        $outbox = $changes['outbox'] ?? $this->outbox;
+        if ($viewer->isSynthetic()) {
+            if ($writes === WritePolicy::Allow) {
+                $writes = WritePolicy::Skip;
             }
-            if ($fields['outbox'] === OutboxPolicy::Deliver) {
-                $fields['outbox'] = OutboxPolicy::Capture;
+            if ($outbox === OutboxPolicy::Deliver) {
+                $outbox = OutboxPolicy::Capture;
             }
         }
 
-        return new self(...$fields);
+        return new self(
+            array_key_exists('request', $changes) ? $changes['request'] : $this->request,
+            $changes['purpose'] ?? $this->purpose,
+            $viewer,
+            $changes['locale'] ?? $this->locale,
+            $changes['surface'] ?? $this->surface,
+            $changes['reads'] ?? $this->reads,
+            $changes['site'] ?? $this->site,
+            $changes['clock'] ?? $this->clock,
+            $changes['now'] ?? $this->now,
+            $outbox,
+            $writes,
+            $changes['extensions'] ?? $this->extensions,
+            $changes['frozen'] ?? $this->frozen,
+        );
     }
 }

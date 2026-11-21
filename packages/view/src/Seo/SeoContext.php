@@ -168,10 +168,6 @@ final class SeoContext
     /** The current render frame's state; the own one outside every render. */
     private function state(): SeoMeta
     {
-        if (Contexts::depth() === 0) {
-            return $this->own;
-        }
-
-        return Contexts::frame()->slot(SeoMeta::class, static fn (): SeoMeta => new SeoMeta());
+        return Contexts::slot(SeoMeta::class, static fn (): SeoMeta => new SeoMeta()) ?? $this->own;
     }
 }

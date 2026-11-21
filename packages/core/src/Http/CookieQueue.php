@@ -127,10 +127,10 @@ final class CookieQueue
     /** The queue the calls work on: the current frame's for a frame-bound queue, else this one. */
     private function target(): self
     {
-        if (!$this->frameBound || Contexts::depth() === 0) {
+        if (!$this->frameBound) {
             return $this;
         }
 
-        return Contexts::frame()->slot(self::class, static fn (): self => new self());
+        return Contexts::slot(self::class, static fn (): self => new self()) ?? $this;
     }
 }

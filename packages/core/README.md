@@ -304,7 +304,9 @@ In a tight loop over languages, reuse one context per language
 **The frame.** Assets, SEO meta, GEO capture, page-cache tags, the CSP nonce, queued cookies and
 mail, after-response work and response headers (`ResponseHeaderHints`, template function
 `response_header()`) live in the current `RenderFrame`. A package keeps per-render state in a frame
-slot: `Contexts::frame()->slot(MyState::class, fn () => new MyState())`.
+slot: `Contexts::frame()->slot(MyState::class, fn () => new MyState())`, or
+`Contexts::slot(MyState::class, fn () => new MyState()) ?? $this->own` for a service that keeps its
+own state outside every render (`Contexts::slot()` is null there).
 `Contexts::reset()` (tests only) closes every frame and forgets every hook packages registered at
 boot, so a long-running worker that calls it boots the app again before the next render.
 

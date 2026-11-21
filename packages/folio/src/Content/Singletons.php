@@ -37,10 +37,10 @@ final class Singletons
                 ? $this->richText->fields($values, $record->getType()->fields)
                 : $values;
         };
-        if (Contexts::depth() === 0) {
+        $memo = self::memo();
+        if ($memo === null) {
             return $values();
         }
-        $memo = self::memo();
         $key = 'singleton-values:' . $type . '|' . Contexts::current()->memoKey();
         if (!isset($memo->entries[$key])) {
             $memo->entries[$key] = [$values(), []];
@@ -54,10 +54,10 @@ final class Singletons
         $read = fn (): ?DynamicRecord => $this->catalog->get($type)?->singleton === true
             ? ($this->live !== null ? $this->live->find($type, $type) : $this->dm->findType($type, $type))
             : null;
-        if (Contexts::depth() === 0) {
+        $memo = self::memo();
+        if ($memo === null) {
             return $read();
         }
-        $memo = self::memo();
         $key = 'singletons:' . $type . '|' . Contexts::current()->memoKey();
         if (!isset($memo->entries[$key])) {
             $memo->entries[$key] = $this->dm->captureReads($read);
@@ -69,8 +69,9 @@ final class Singletons
         return $memo->entries[$key][0];
     }
 
-    private static function memo(): ContentMemo
+    /** The current frame's memo; null outside every render (not memoized there). */
+    private static function memo(): ?ContentMemo
     {
-        return Contexts::frame()->slot(ContentMemo::class, static fn (): ContentMemo => new ContentMemo());
+        return Contexts::slot(ContentMemo::class, static fn (): ContentMemo => new ContentMemo());
     }
 }

@@ -45,9 +45,7 @@ final class DependencyRecorder
     /** The current frame's recordings, or the recorder's own outside every frame. */
     private function state(): RecordingState
     {
-        return Contexts::depth() === 0
-            ? $this->own
-            : Contexts::frame()->slot(RecordingState::class, static fn (): RecordingState => new RecordingState());
+        return Contexts::slot(RecordingState::class, static fn (): RecordingState => new RecordingState()) ?? $this->own;
     }
 
     /**

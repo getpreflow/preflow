@@ -30,6 +30,9 @@ final class AssetCollector
 
     private bool $frameBound = true;
 
+    /** @var (\Closure(): AssetRegistry)|null builds a frame's registry; made once, not on every read */
+    private ?\Closure $registryMaker = null;
+
     public function __construct(
         private readonly NonceGenerator $nonceGenerator,
         private readonly bool $isProd = false,
@@ -477,11 +480,12 @@ final class AssetCollector
      */
     private function registry(): AssetRegistry
     {
-        if (!$this->frameBound || Contexts::depth() === 0) {
+        if (!$this->frameBound) {
             return $this->own;
         }
 
-        return Contexts::frame()->slot(AssetRegistry::class, fn (): AssetRegistry => (Contexts::depth() === 1 ? $this->own : ($this->booted ?? $this->own))->registered());
+        return Contexts::slot(AssetRegistry::class, $this->registryMaker ??= fn (): AssetRegistry => (Contexts::depth() === 1 ? $this->own : ($this->booted ?? $this->own))->registered())
+            ?? $this->own;
     }
 
     public function hasCss(): bool

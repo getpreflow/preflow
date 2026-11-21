@@ -34,10 +34,10 @@ final class Collections
         }
 
         $read = fn (): array => $this->read($type, $listing);
-        if (Contexts::depth() === 0) {
+        $memo = Contexts::slot(ContentMemo::class, static fn (): ContentMemo => new ContentMemo());
+        if ($memo === null) {
             return $read();
         }
-        $memo = Contexts::frame()->slot(ContentMemo::class, static fn (): ContentMemo => new ContentMemo());
         $key = 'collections:' . $type . '|' . Contexts::current()->memoKey();
         if (!isset($memo->entries[$key])) {
             $memo->entries[$key] = $this->live->data()->captureReads($read);

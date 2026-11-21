@@ -74,9 +74,7 @@ final class PageCache
     /** The current frame's page and refusal, or the cache's own outside every frame. */
     private function rendering(): CacheRenderState
     {
-        return Contexts::depth() === 0
-            ? $this->own
-            : Contexts::frame()->slot(CacheRenderState::class, static fn (): CacheRenderState => new CacheRenderState());
+        return Contexts::slot(CacheRenderState::class, static fn (): CacheRenderState => new CacheRenderState()) ?? $this->own;
     }
 
     /** @var \Closure(): float */

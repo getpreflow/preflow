@@ -19,6 +19,7 @@ interface Facet
     /**
      * A stable string of what this facet changes in the data a render reads. It must be UTF-8
      * text (it goes into memo keys and log lines; RenderContext::jsonSerialize() hexes one that is not).
+     * The same facet object always gives the same string: a context computes its memoKey() once.
      */
     public function memoKey(): string;
 }

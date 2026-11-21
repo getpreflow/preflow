@@ -463,7 +463,18 @@ final class Translator
      */
     private function lookup(string $key, ?string $locale): ?string
     {
-        [$current, $overrides, $memo] = $this->current();
+        // current() without its array: this runs for every t().
+        $ctx = Contexts::peek();
+        if ($ctx === null) {
+            $memo = null;
+            $current = $this->locale;
+            $overrides = $this->overridesOn;
+        } else {
+            $surface = $ctx->surface;
+            $current = $surface->admin ? (string) $surface->uiLocale : $ctx->locale;
+            $overrides = $surface->overrides;
+            $memo = $this->memos[$overrides ? $current . "\x01" : $current] ??= new CatalogueMemo($current, $overrides);
+        }
         $locale ??= $current;
         $memoKey = $locale . "\0" . $key;
         if ($memo !== null && array_key_exists($memoKey, $memo->texts)) {

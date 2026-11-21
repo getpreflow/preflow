@@ -275,6 +275,37 @@ final class RenderContextTest extends TestCase
         $this->assertFalse($rebuild->delivering()->isStorable(), 'a rebuild never sends');
     }
 
+    /** memoKey() is computed once per context (MemoKeys) and stays what a fresh computation gives. */
+    public function test_memo_key_is_kept_per_context_and_equals_a_fresh_computation(): void
+    {
+        $base = self::visit()->with(new VariantFacet('b', true));
+        $first = $base->memoKey();
+        $this->assertSame($first, $base->memoKey());
+        $this->assertSame($base->computeMemoKey(), $first);
+        $de = $base->in('de');
+        $this->assertNotSame($first, $de->memoKey(), 'a derivation gets its own key');
+        $this->assertSame($de->computeMemoKey(), $de->memoKey());
+    }
+
+    /** A derivation changes only the field it names; a role view stays at Skip and Capture. */
+    public function test_a_derivation_keeps_every_other_field(): void
+    {
+        $base = self::visit()->with(new VariantFacet('b', true))->at(new \DateTimeImmutable('2026-02-03T04:05:06Z'))->workingCopies();
+        $de = $base->in('de');
+        foreach (['request', 'purpose', 'viewer', 'surface', 'reads', 'site', 'clock', 'now', 'outbox', 'writes', 'extensions'] as $field) {
+            $this->assertSame($base->{$field}, $de->{$field}, $field);
+        }
+        $this->assertTrue($de->isFrozen());
+        $this->assertSame('de', $de->locale);
+        $this->assertNull($base->forRecipient('de')->request, 'a named null is kept');
+
+        $role = $base->asRole(new RoleView('member', ['gold']));
+        $this->assertSame(WritePolicy::Skip, $role->writes);
+        $this->assertSame(OutboxPolicy::Capture, $role->outbox);
+        $this->assertSame(WritePolicy::Skip, $role->delivering()->in('fr')->writes);
+        $this->assertSame(OutboxPolicy::Capture, $role->delivering()->outbox);
+    }
+
     public function test_memo_key_differs_by_locale_reads_viewer_surface_and_facets(): void
     {
         $base = self::visit();

@@ -138,10 +138,10 @@ final class ResponseHeaderHints
     /** The hints the calls work on: the current frame's for frame-bound hints, else these. */
     private function target(): self
     {
-        if (!$this->frameBound || Contexts::depth() === 0) {
+        if (!$this->frameBound) {
             return $this;
         }
 
-        return Contexts::frame()->slot(self::class, static fn (): self => new self());
+        return Contexts::slot(self::class, static fn (): self => new self()) ?? $this;
     }
 }

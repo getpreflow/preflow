@@ -193,6 +193,11 @@ return [
             'private static array $reported = [];' => 'call sites that already reported a deprecation: once per process by design',
         ],
     ],
+    'core/src/Context/MemoKeys.php' => [
+        'static-state' => [
+            'private static ?\\WeakMap $keys = null;' => 'each context\'s memoKey(), computed once: a context is immutable, so its key never changes; keyed by the context and gone with it, so nothing reaches another render',
+        ],
+    ],
     'core/src/Context/Preview/PreviewToken.php' => [
         'static-state' => [
             'private static ?\\WeakMap $keys = null;' => 'each signer\'s derived key, held outside its object so no dump, var_export or (array) cast shows it; keyed by the signer, gone with it, the same for every render',

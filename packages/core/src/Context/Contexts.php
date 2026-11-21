@@ -284,6 +284,22 @@ final class Contexts
         return self::$top ?? throw self::missing('frame');
     }
 
+    /**
+     * The current frame's slot $key, made with $make on its first use in that frame (as
+     * RenderFrame::slot()); null outside every render. One call for the frame-bound services that
+     * keep state per render (assets, SEO meta, cookies, memos) and have their own outside one.
+     *
+     * @since 0.81.0
+     * @template T of object
+     * @param class-string<T> $key
+     * @param \Closure(): T $make
+     * @return T|null
+     */
+    public static function slot(string $key, \Closure $make): ?object
+    {
+        return self::$top?->slot($key, $make);
+    }
+
     /** How many frames are open (0 outside every render). */
     public static function depth(): int
     {
@@ -451,13 +467,15 @@ final class Contexts
      */
     private static function admit(RenderFrame $frame, RenderContext $next, string $method): void
     {
-        if ($frame->context->viewer->isSynthetic() && !$next->viewer->isSynthetic()) {
+        $was = $frame->context->viewer->isSynthetic();
+        $will = $next->viewer->isSynthetic();
+        if ($was && !$will) {
             throw new \LogicException("Contexts::{$method}() cannot leave the role view this frame renders as (view as role): a render as someone else opens its own frame with Contexts::run().");
         }
-        if ($method === 'within' && $next->viewer->isSynthetic() && !$frame->context->viewer->isSynthetic()) {
+        if ($method === 'within' && $will && !$was) {
             throw new \LogicException('Contexts::within() cannot start a role view (view as role): what the stretch queued would be sent with the frame. Render as a role with Contexts::run() (Application::render()).');
         }
-        if ($next->viewer->isSynthetic() && !$frame->context->viewer->isSynthetic() && $frame->outbox()->pending() !== [0, 0]) {
+        if ($will && !$was && $frame->outbox()->pending() !== [0, 0]) {
             // What the frame queued before is real (the admin's own mail): a role view would only capture it.
             throw new \LogicException("Contexts::{$method}() cannot turn a frame that already queued mail or after-response work into a role view (view as role): it would be captured and never sent. Render as a role with Contexts::run() (Application::render()).");
         }

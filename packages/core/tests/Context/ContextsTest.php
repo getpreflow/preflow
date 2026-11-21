@@ -49,6 +49,28 @@ final class ContextsTest extends TestCase
         Contexts::frame();
     }
 
+    /** Contexts::slot(): null outside every render; inside, the current frame's slot, made once per frame. */
+    public function test_slot_is_the_current_frames_and_null_outside(): void
+    {
+        $made = 0;
+        $make = static function () use (&$made): \ArrayObject {
+            $made++;
+
+            return new \ArrayObject();
+        };
+        $this->assertNull(Contexts::slot(\ArrayObject::class, $make));
+        Contexts::run(self::ctx('/'), function () use ($make, &$made): void {
+            $outer = Contexts::slot(\ArrayObject::class, $make);
+            $this->assertSame($outer, Contexts::slot(\ArrayObject::class, $make));
+            $this->assertSame($outer, Contexts::frame()->slot(\ArrayObject::class, $make));
+            Contexts::run(self::ctx('/'), function () use ($make, $outer): void {
+                $this->assertNotSame($outer, Contexts::slot(\ArrayObject::class, $make), 'a frame has its own');
+            });
+            $this->assertSame($outer, Contexts::slot(\ArrayObject::class, $make));
+        });
+        $this->assertSame(2, $made);
+    }
+
     public function test_run_nests_and_returns_to_the_outer_context(): void
     {
         $a = self::ctx('/a');
