@@ -60,6 +60,9 @@ final class WeakAppKeyBootTest extends TestCase
         } catch (WeakAppKey $e) {
             $this->assertStringContainsString($problem, $e->getMessage());
             $this->assertStringContainsString('php preflow key:generate', $e->getMessage(), 'it names the fix');
+            $this->assertStringContainsString("php -r 'echo bin2hex(random_bytes(32)), PHP_EOL;'", $e->getMessage(), 'and one without devtools');
+            $this->assertStringContainsString('cache:clear pages', $e->getMessage(), 'stored pages carry placeholders signed with the old key');
+            $this->assertStringNotContainsString('signed out', $e->getMessage(), 'sessions do not depend on the key');
             if (trim($key) !== '') {
                 $this->assertStringNotContainsString(trim($key), str_replace('app.key is a public example key', '', $e->getMessage()), 'never the key itself');
             }

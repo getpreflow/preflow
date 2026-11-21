@@ -180,8 +180,11 @@ stored record once more (by id) to name the changed fields.
 ## Reading what is live
 
 - **`LiveContent`** reads records for rendering: the snapshots of a publishing type on public pages,
-  so drafts never reach the site. `showWorkingCopies()` switches one request to the working copies
-  (an admin, its preview, a share preview). `find($type, $id)`, `query($type)`.
+  so drafts never reach the site. It reads what the current render context asks for: a render
+  under `RenderContext::workingCopies()` (an admin, its preview, a share preview) reads the working
+  copies. To switch the rest of a request: `Contexts::narrow(fn ($c) => $c->workingCopies())`; for a
+  stretch only: `Contexts::within(Contexts::current()->workingCopies(), fn () => …)`.
+  `showWorkingCopies()` is deprecated since 0.81 (removed in 0.83). `find($type, $id)`, `query($type)`.
 - **`PublishedModels`** does the same for a model class, as read-only objects of the class:
   `find(Job::class, $id)`, `query(Job::class)`. Saving one throws.
 
@@ -211,8 +214,8 @@ Both commands need `preflow/devtools`; the package lists them in its `composer.j
 `PreviewLinks` signs a token for one record: `create($type, $id, $nonce)` and `verify($token)` (a
 `PreviewTarget`, or null when it is forged, malformed or expired). The nonce is the record's
 `_share_token`; changing it revokes every link. Links are signed with `app.key` and are off
-(`enabled()` false) while the key is empty or still the default. A page that verifies a token turns
-on `LiveContent::showWorkingCopies()` for that request.
+(`enabled()` false) while the key is empty or still the default. A page that verifies a token reads
+the working copies for the rest of that request: `Contexts::narrow(fn ($c) => $c->workingCopies())`.
 
 ## Configuration
 

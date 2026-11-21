@@ -806,7 +806,8 @@ nothing behind:
   the admin).
 - It writes no data. Every write (`save()`, `insert()`, counters, raw SQL writes) is skipped and
   listed: the report shows them per page (`RenderedPage::$skippedWrites`, "this page writes on a
-  GET"), and the code around a skipped write goes on as if it had written. No not-found entry, no
+  GET"), and the code around a skipped write goes on as if it had written (`save()`, `insert()` and
+  `update()` return normally; raw `execute()` returns 0, a counter returns its stored value). No not-found entry, no
   redirect hit, no image variant (a variant that is allowed but not yet made answers 404 with
   `X-Preflow-Variant: pending`, which the audit counts as fine), no session file.
 - It sends no mail: `sendLater()`, `send()` and `Mailer::send()` are all dropped (before 0.81

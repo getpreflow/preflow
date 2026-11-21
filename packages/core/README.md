@@ -170,21 +170,16 @@ final class AuthMiddleware implements MiddlewareInterface
 $app->addMiddleware(new AuthMiddleware());
 ```
 
-A request the app makes of itself (the SEO audit rendering a page) carries the attribute
-`preflow.internal_render`; `Preflow\Core\Http\InternalRender::is($request)` reads it. Middleware that records
-visits, counts hits or queues side effects should skip them for such a request. Since 0.54.
-
-Every internal render (GEO's Markdown views and `llms-full.txt`, the SEO audit's pages, page cache rebuilds)
-runs in core's anonymous render scope: the request context names the rendered page, nobody is signed in,
-the session is hidden, the translator starts in the site's default locale with overrides off (since 0.75: an
-audit step run from a German admin interface rendered the pages in German on a site without a locale
-middleware), and the translator state and users are put back afterwards. Since 0.74 mail the page
-queues with `Notifier::sendLater()` during it is dropped (`Notifier::discardingQueued()`), so the request
-that flushes the queue afterwards sends only its own mail; `send()` still sends at once. Since 0.75 the
-request's queued cookies are set aside for the render (`CookieQueue::isolated()`), so a remember-me token
-rotated or a signed-in marker set by the request that runs an audit step still reaches its response. The audit's pages
-(also a step run from Folio inside an admin's request) and rebuilds also see PHP's superglobals as an
-anonymous visitor's (`AnonymousGlobals`).
+A render the app makes of itself (the SEO audit, GEO's Markdown views and `llms-full.txt`, page-cache
+rebuilds and verify renders, previews) is an internal render: since 0.81 it runs through
+`Application::render()` in a render frame and a context of its own (see "Render context" below).
+It renders as an anonymous visitor (nobody signed in, no session, no visitor cookies or
+superglobals, the site's default locale, the public texts, published content), writes no data (each
+write is skipped and listed), sends no mail (`sendLater()`, `send()` and `Mailer::send()` alike), and
+cannot see or take what the request around it queued or collected. Middleware that has a side
+effect outside the data layer (a call to another service, a file) asks
+`Contexts::current()->purpose->leavesNoTrace()`; `InternalRender::is($request)` (since 0.54) gives the
+same answer.
 
 ### Application bootstrap
 
@@ -319,6 +314,8 @@ the error page.
 **Writes and the outbox.** Every `DataManager` write asks `Writes::allowed()` first. Under Skip the
 write is recorded and the method returns as if it had written (`insert()` returns, `insertIgnoring()`
 gives true, a transaction runs its closure), so the code around it takes the path a real visit takes.
+Three are not "as if written": raw `execute()` returns 0, `incrementIn()` returns the stored, unincremented
+value, and a delete returns nothing.
 Under Refuse it throws `WritesRefused` (403 "This preview does not change data."); log-kind writes
 (redirect hits) are skipped instead. Writes that account for real spending (AI usage and limits)
 run under every policy. Code that writes elsewhere (files, another service) asks first:
@@ -1238,7 +1235,9 @@ user, admits such a request and renders it as the preview, in a frame of its own
 preview: the same role or anonymous visitor, the same language, and drafts or the published state.
 It is signed with a key derived from `app.key`, so it is off unless the key is at least 32 bytes and
 not a public example. In production a web app does not start with such a weak key at all
-(`WeakAppKey`: run `php preflow key:generate`, then deploy again; console commands still run, so the
+(`WeakAppKey`, a 500 with the message in the PHP error log: run `php preflow key:generate`, or without
+preflow/devtools set `APP_KEY` to the output of `php -r 'echo bin2hex(random_bytes(32)), PHP_EOL;'`,
+clear the page cache, then deploy again; console commands still run, so the
 key can be fixed). In debug mode the app starts and says once what is off; a whole-page preview then
 switches its interactive parts off (clicks, forms and htmx requests in the frame are stopped, and the
 preview bar says why) instead of letting them run on the live site. It is bound to the issuer's session, so signing out, signing in or another

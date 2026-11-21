@@ -12,6 +12,7 @@ declare(strict_types=1);
  *     --in-process          all renders in this process, after one boot (see below)
  *     --header='Name: v'    a request header (repeatable)
  *     --cookie=name=value   a request cookie (repeatable)
+ *     --session=name        the cookie that holds the native session id (set by --sign-in itself)
  *     --sign-in=/path       first GET this form, then POST it back with its hidden fields, the
  *                           --field values and the cookies it set; the cookies it ends with go
  *                           with every timed request
@@ -31,7 +32,12 @@ declare(strict_types=1);
  * Classes: Preflow\* and the libraries this checkout installs come from this checkout's vendor/;
  * the app's own namespaces (its composer.json autoload) and the libraries only the app installs
  * come from the app. Point the app at a copy of its data (database, storage) when the page might
- * write: the bench renders as a visitor would.
+ * write: the bench renders as a visitor would. In per-process mode this process boots the app too
+ * (for --sign-in and the app's URL), so the app's storage sees one boot more than the timed ones.
+ *
+ * A native session (session_start()) takes its id from the SAPI's cookies, which a CLI process
+ * does not have, and not from $_COOKIE set in PHP: with --session the id from that cookie is
+ * handed to session_id() before each request.
  */
 
 if (PHP_SAPI !== 'cli') {
@@ -41,7 +47,7 @@ if (PHP_SAPI !== 'cli') {
 $positional = [];
 $options = [
     'runs' => '50', 'warmup' => '5', 'in-process' => false, 'header' => [], 'cookie' => [], 'field' => [],
-    'sign-in' => null, 'json' => false, 'body' => false, 'child' => false,
+    'sign-in' => null, 'json' => false, 'body' => false, 'child' => false, 'session' => null,
 ];
 foreach (array_slice($argv, 1) as $arg) {
     if (preg_match('/^--([a-z-]+)(?:=(.*))?$/s', $arg, $m) === 1) {
@@ -58,8 +64,8 @@ foreach (array_slice($argv, 1) as $arg) {
         $positional[] = $arg;
     }
 }
-if (count($positional) !== 2) {
-    fwrite(STDERR, "Usage: php -d opcache.enable_cli=1 tools/bench-render.php <app-base-path> <path> [--runs=50] [--warmup=5] [--in-process] [--header='Name: value'] [--cookie=name=value] [--sign-in=/path --field=name=value] [--json] [--body]\n");
+if (count($positional) !== 2 || (int) $options['runs'] < 1 || (int) $options['warmup'] < 0) {
+    fwrite(STDERR, "Usage: php -d opcache.enable_cli=1 tools/bench-render.php <app-base-path> <path> [--runs=50] [--warmup=5] [--in-process] [--header='Name: value'] [--cookie=name=value] [--session=name] [--sign-in=/path --field=name=value] [--json] [--body]\n");
     exit(2);
 }
 [$basePath, $path] = $positional;
@@ -90,14 +96,17 @@ $bootMs = (hrtime(true) - $bootStart) / 1e6;
 
 $factory = new Nyholm\Psr7\Factory\Psr17Factory();
 $origin = rtrim((string) ($app->config()->get('app.url') ?? 'http://localhost'), '/');
-$request = static function (string $method, string $target, array $body = []) use ($factory, $origin, &$cookies, $headers): Psr\Http\Message\ServerRequestInterface {
+$session = is_string($options['session']) ? $options['session'] : null;
+$request = static function (string $method, string $target, array $body = []) use ($factory, $origin, &$cookies, $headers, &$session): Psr\Http\Message\ServerRequestInterface {
     $uri = $origin . $target;
     $request = $factory->createServerRequest($method, $uri, ['REQUEST_METHOD' => $method, 'REQUEST_URI' => $target, 'HTTP_HOST' => parse_url($uri, PHP_URL_HOST)]);
     foreach ($headers as $name => $value) {
         $request = $request->withHeader($name, $value);
     }
-    // A native session (session_start()) reads its id from $_COOKIE, as under PHP-FPM.
     $_COOKIE = $cookies;
+    if (is_string($session) && isset($cookies[$session]) && session_status() !== PHP_SESSION_ACTIVE) {
+        session_id($cookies[$session]);
+    }
     if ($cookies !== []) {
         $request = $request->withCookieParams($cookies)
             ->withHeader('Cookie', implode('; ', array_map(static fn ($k, $v) => $k . '=' . $v, array_keys($cookies), $cookies)));
@@ -156,9 +165,12 @@ if (is_string($options['sign-in'])) {
     $signedIn = $app->handle($request('POST', $options['sign-in'], $fields));
     $keep($signedIn);
     // A native session's cookie is sent by PHP, not put on the response: keep its id too.
-    if (session_status() === PHP_SESSION_ACTIVE) {
-        $cookies[session_name()] = session_id();
-        session_write_close();
+    if (session_id() !== '') {
+        $session = session_name();
+        $cookies[$session] = session_id();
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
     }
     if ($signedIn->getStatusCode() >= 400) {
         fwrite(STDERR, "Sign-in answered {$signedIn->getStatusCode()}\n");
@@ -191,13 +203,19 @@ for ($i = 0; $i < $total; $i++) {
         foreach ($options['header'] as $line) {
             $command[] = '--header=' . $line;
         }
+        if ($session !== null) {
+            $command[] = '--session=' . $session;
+        }
         if ($status === null && $options['body'] === true) {
             $command[] = '--body';
         }
-        $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        // stderr goes to a file: a child that writes a lot there (notices, a dump) cannot block on a full pipe.
+        $errFile = tempnam(sys_get_temp_dir(), 'bench-err');
+        $process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['file', $errFile, 'w']], $pipes);
         $out = stream_get_contents($pipes[1]);
-        $err = stream_get_contents($pipes[2]);
         proc_close($process);
+        $err = (string) file_get_contents($errFile);
+        @unlink($errFile);
         $child = json_decode(trim((string) strrchr("\n" . trim((string) $out), "\n")), true);
         if (!is_array($child)) {
             fwrite(STDERR, "Render {$i} failed:\n{$out}{$err}\n");

@@ -1274,8 +1274,10 @@ the call; the render is core's `Application::preview()`, which an app without Fo
   rbac only the visitor is offered. On a site that already uses rbac, Roles shows `site.view_as`
   as a new permission after the upgrade: admins hold it through `*`; give it to the other roles
   that should preview as a role.
-- Drafts of every type are visible to every editor who may edit that type, and to holders of a
-  share-preview link.
+- Drafts of every type are visible to every editor and to every holder of a share-preview link. A
+  preview token has no path or type scope: an editor who can open a preview at all (any type's edit
+  permission) sees the working copies of every type on the previewed page and its follow-up
+  requests.
 - The page's interactive parts (component actions, lazy parts, its own htmx calls and htmx-boosted
   forms) follow the preview through a signed preview token that expires after 15 minutes: they
   render as the preview, and a write under the token is refused ("This preview does not change

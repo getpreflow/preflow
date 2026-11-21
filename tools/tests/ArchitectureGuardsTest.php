@@ -53,8 +53,11 @@ use PHPUnit\Framework\TestCase;
  * write.accounting-allowlisted: an 'accounting' write runs under every write policy (Allow, Skip
  * and Refuse: a preview or an audit counts it too), so each one is listed in ACCOUNTING_WRITES with
  * its reason. In every package's psr-4 source roots, a code line that passes `accounting:` (other
- * than `false`), names the operation 'accounting', or calls ->hit( or ->incrementIn( with a
- * trailing literal `true` must be listed; a listed line that no longer exists fails too.
+ * than `false`) or names the operation 'accounting', and a ->hit( or ->incrementIn( call whose
+ * accounting argument (the 4th / 7th) is a literal `true` (read with the tokenizer, also over
+ * several lines), must be listed; a listed line that no longer exists fails too. A write that
+ * accounts for spending outside DataManager (the AI usage log) names itself with
+ * Writes::allowed(…, 'accounting'), so it is listed too.
  *
  * architecture.no-ambient-state: package code reads who is looking, the locale, the read mode and
  * the time from the render context (Contexts::current()), not from state that belongs to the
@@ -124,6 +127,9 @@ final class ArchitectureGuardsTest extends TestCase
         ],
         'data/src/DataManager.php' => [
             "if (!Writes::allowed(\$def->storage, \$def->table, (string) \$id, \$accounting ? 'accounting' : 'increment')) {" => 'incrementIn() passes its caller\'s flag on (Throttle::hit() passes its own); the callers are the other entries',
+        ],
+        'ai/src/Usage/FileUsageLog.php' => [
+            "if (!Writes::allowed('ai', 'usage', null, 'accounting')) {" => 'the AI usage log: every call and its cost really happened, in a preview or an audit too, so its line is written under every policy',
         ],
         'ai/src/Limits/AiLimits.php' => [
             "\$hits = \$this->throttle->hit(self::purpose(\$action), \$client, \$limit['per'], accounting: true);" => 'the per-person AI limit: the AI call it lets through really happens in a preview or an audit too, so it must be counted there',
@@ -304,10 +310,17 @@ final class ArchitectureGuardsTest extends TestCase
             '$this->throttle->hit($purpose, $client, 60, true);',
             'Writes::allowed(\'ai\', \'usage\', null, \'accounting\');',
             'Writes::allowed("ai", "usage", null, "accounting");',
+            '$this->throttle->hit($purpose, $client, 60, true,);',
+            '$this->throttle?->hit($purpose, $client, 60, TRUE);',
         ];
         foreach ($caught as $line) {
             $this->assertSame([2 => $line], self::accountingHits("<?php\n" . $line . "\n"), "caught: {$line}");
         }
+        $this->assertSame(
+            [2 => '$hits = $this->dm->incrementIn('],
+            self::accountingHits("<?php\n\$hits = \$this->dm->incrementIn(\n    \$def,\n    \$id,\n    'hits',\n    1,\n    ['a' => [1, 2]],\n    new CounterReset('w', 1, []),\n    true,\n);\n"),
+            'a call over several lines, its true on a line of its own',
+        );
         $harmless = [
             '$this->throttle->hit($purpose, $client, 60);',
             '$this->throttle->hit($purpose, $client, 60, accounting: false);',
@@ -315,26 +328,72 @@ final class ArchitectureGuardsTest extends TestCase
             ' * \'accounting\' writes run under every policy',
             '$x = 1; // accounting: true',
             '$ok = $this->check(true);',
+            '$this->throttle->hit($purpose, $client, true);',
+            '$this->throttle->hit($purpose, $client, 60, $this->hits(true));',
+            '$dm->incrementIn($def, $id, \'n\', 1, [], true, $accounting);',
         ];
         foreach ($harmless as $line) {
             $this->assertSame([], self::accountingHits("<?php\n" . $line . "\n"), "harmless: {$line}");
         }
     }
 
-    /** @return array<int, string> line number => trimmed line of each accounting write in $source (write.accounting-allowlisted) */
+    /**
+     * Each accounting write in $source (write.accounting-allowlisted): a line that passes
+     * `accounting:` with anything but `false` or names the operation 'accounting', and every
+     * ->hit( / ->incrementIn( call whose accounting argument (4th / 7th) is a literal `true`, read
+     * with the tokenizer, so a call spread over lines or with a trailing comma counts too (it is
+     * reported at the line of the method name).
+     *
+     * @return array<int, string> line number => trimmed line
+     */
     private static function accountingHits(string $source): array
     {
+        $lines = explode("\n", $source);
         $hits = [];
-        foreach (explode("\n", $source) as $n => $line) {
+        foreach ($lines as $n => $line) {
             $trimmed = ltrim($line);
             if ($trimmed === '' || str_starts_with($trimmed, '*') || str_starts_with($trimmed, '/*') || str_starts_with($trimmed, '//')) {
                 continue;
             }
-            $code = self::withoutComments($line);
-            if (preg_match('/\baccounting:\s*(?!false\b)\S|[\'"]accounting[\'"]|->(?:hit|incrementIn)\(.*,\s*true\s*\)/', $code) === 1) {
+            if (preg_match('/\baccounting:\s*(?!false\b)\S|[\'"]accounting[\'"]/', self::withoutComments($line)) === 1) {
                 $hits[$n + 1] = trim($line);
             }
         }
+
+        $position = ['hit' => 3, 'incrementIn' => 6];
+        $tokens = array_values(array_filter(
+            \PhpToken::tokenize($source),
+            static fn (\PhpToken $t): bool => !$t->is([T_WHITESPACE, T_COMMENT, T_DOC_COMMENT]),
+        ));
+        foreach ($tokens as $i => $token) {
+            if (!$token->is(T_STRING) || !isset($position[$token->text])
+                || !($tokens[$i - 1] ?? null)?->is([T_OBJECT_OPERATOR, T_NULLSAFE_OBJECT_OPERATOR])
+                || ($tokens[$i + 1] ?? null)?->text !== '(') {
+                continue;
+            }
+            $args = [[]];
+            $depth = 0;
+            for ($j = $i + 2; $j < count($tokens); $j++) {
+                $text = $tokens[$j]->text;
+                if (in_array($text, ['(', '[', '{'], true) || $tokens[$j]->is([T_CURLY_OPEN, T_DOLLAR_OPEN_CURLY_BRACES])) {
+                    $depth++;
+                } elseif (in_array($text, [')', ']', '}'], true)) {
+                    if ($depth === 0) {
+                        break;
+                    }
+                    $depth--;
+                } elseif ($text === ',' && $depth === 0) {
+                    $args[] = [];
+                    continue;
+                }
+                $args[array_key_last($args)][] = $tokens[$j];
+            }
+            $argument = $args[$position[$token->text]] ?? [];
+            if (count($argument) === 1 && strtolower($argument[0]->text) === 'true') {
+                $hits[$token->line] = trim($lines[$token->line - 1]);
+            }
+        }
+        ksort($hits);
 
         return $hits;
     }

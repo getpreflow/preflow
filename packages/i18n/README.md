@@ -83,10 +83,22 @@ $translator = new Translator(
 $translator->get('blog.title');                          // "My Blog"
 $translator->get('blog.published', ['date' => '2026-01-01']); // "Published on 2026-01-01"
 $translator->choice('blog.post_count', 5);              // "5 posts"
-$translator->setLocale('de');
-$translator->getLocale();                               // "de"
 $translator->get('blog.title', [], 'fr');               // in another locale, the current one unchanged
 ```
+
+Inside a render the translator speaks the render context's language. To change it for the rest of
+the request (the locale middleware does this), or for one stretch:
+
+```php
+use Preflow\Core\Context\Contexts;
+
+Contexts::narrow(fn ($ctx) => $ctx->in('de'));                    // from here on
+$title = Contexts::within(Contexts::current()->in('fr'), fn () => $translator->get('blog.title'));
+$translator->getLocale();                                          // "de"
+```
+
+`setLocale()` is deprecated since 0.81 (removed in 0.83): inside a render it changes the current
+frame only, outside every render (a script, a unit test) the translator's own default.
 
 Parameters are replaced one after the other in the order they are passed. In one text, don't use
 a parameter whose name is the start of another (`:to` next to `:total`): `:to` would also replace
