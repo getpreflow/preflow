@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Blocks;
 
 use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Data\Locales;
 
@@ -31,6 +32,8 @@ final class DefaultBlockLocale implements ContextBlockLocale
      */
     public function get(): string
     {
+        Deprecations::once('Preflow\Blocks\DefaultBlockLocale::get() is deprecated since 0.81 and is removed in 0.83; use DefaultBlockLocale::localeOf(Contexts::current()).');
+
         return $this->localeOf(Contexts::current());
     }
 

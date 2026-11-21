@@ -111,4 +111,35 @@ final class ValidationContextTest extends TestCase
             array_values(array_unique($messages)),
         );
     }
+
+    /** Inside a render useTranslator() sets the translator for its frame only; a nested render starts from the factory's own. */
+    public function test_use_translator_in_a_render_ends_with_its_frame(): void
+    {
+        $factory = new ValidatorFactory(new RuleFactory());
+        $translator = self::translator();
+        set_error_handler(static fn (): bool => true, E_USER_DEPRECATED);
+        try {
+            $seen = Contexts::run(self::visit()->in('de'), static function () use ($factory, $translator): array {
+                $seen = [self::required($factory)];
+                $previous = $factory->useTranslator($translator);
+                $seen[] = self::required($factory);
+                $seen[] = Contexts::run(self::visit()->in('de'), static fn (): array => self::required($factory));
+                $seen[] = $factory->useTranslator(null) === $translator && $previous === null ? ['returned'] : ['wrong'];
+
+                return $seen;
+            });
+            $after = Contexts::run(self::visit()->in('de'), static fn (): array => self::required($factory));
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertSame([
+            ['This field is required.'],
+            ['Dieses Feld ist erforderlich.'],
+            ['This field is required.'],
+            ['returned'],
+        ], $seen, 'none, then the frame\'s, a nested render without it; useTranslator() returns the frame\'s');
+        $this->assertSame(['This field is required.'], $after, 'the next render starts without it');
+        $this->assertSame(['This field is required.'], self::required($factory), 'and so do validators outside every render');
+    }
 }

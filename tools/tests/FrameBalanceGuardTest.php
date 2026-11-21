@@ -24,6 +24,9 @@ final class FrameBalanceGuardTest extends TestCase
         'packages/notify/tests/NotifyWithoutCoreTest.php' => 'notify\'s suite runs without core and preflow/testing (its split repository), and this test checks that no core class loads',
     ];
 
+    /** A trait use in a class body naming ChecksFrameBalance, alone or in a list (`use A, ChecksFrameBalance;`, `use ChecksFrameBalance, B { … }`). */
+    private const string USES = '/^\s*use\s+(?:\\\\?[\w\\\\]+\s*,\s*)*(?:\\\\?Preflow\\\\Testing\\\\)?ChecksFrameBalance\s*(?:,\s*\\\\?[\w\\\\]+\s*)*[;{]/m';
+
     private const string ISOLATED = '/#\[\\\\?(?:PHPUnit\\\\Framework\\\\Attributes\\\\)?RunInSeparateProcess\]|#\[\\\\?(?:PHPUnit\\\\Framework\\\\Attributes\\\\)?RunTestsInSeparateProcesses\]|@runInSeparateProcess\b|@runTestsInSeparateProcesses\b/';
 
     public function test_isolated_test_classes_check_the_frame_balance(): void
@@ -55,6 +58,28 @@ final class FrameBalanceGuardTest extends TestCase
         $this->assertSame([], $missing, "These test classes run tests in a separate process but do not use Preflow\\Testing\\ChecksFrameBalance:\n" . implode("\n", $missing));
         $stale = array_values(array_diff(array_keys(self::ALLOWED), array_keys($allowedHits)));
         $this->assertSame([], $stale, 'ALLOWED entries that no longer match: remove them');
+    }
+
+    /** The trait counts alone, first, last or in the middle of a list of traits, and with a conflict block. */
+    public function test_the_trait_counts_in_a_list_of_traits(): void
+    {
+        $uses = [];
+        foreach ([
+            'use ChecksFrameBalance;',
+            'use \\Preflow\\Testing\\ChecksFrameBalance;',
+            'use PublishingScaffold, ChecksFrameBalance;',
+            'use ChecksFrameBalance, PublishingScaffold;',
+            'use A, \\Preflow\\Testing\\ChecksFrameBalance, B;',
+            'use ChecksFrameBalance, A { A::x insteadof B; }',
+            'use PublishingScaffold;',
+            'use NotChecksFrameBalance;',
+            'use ChecksFrameBalanceToo;',
+        ] as $line) {
+            $classes = self::classes("<?php\nfinal class T extends TestCase\n{\n    {$line}\n}\n");
+            $uses[$line] = $classes[0]['uses'];
+        }
+
+        $this->assertSame([true, true, true, true, true, true, false, false, false], array_values($uses), (string) json_encode($uses));
     }
 
     /** @return list<string> */
@@ -96,7 +121,7 @@ final class FrameBalanceGuardTest extends TestCase
                 'name' => $m[2][$i][0],
                 'parent' => $parent,
                 'isolated' => preg_match(self::ISOLATED, $head . $body) === 1,
-                'uses' => preg_match('/^\s*use\s+(?:\\\\?Preflow\\\\Testing\\\\)?ChecksFrameBalance\s*;/m', $body) === 1,
+                'uses' => preg_match(self::USES, $body) === 1,
             ];
         }
 

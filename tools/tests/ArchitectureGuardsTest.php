@@ -67,7 +67,8 @@ use PHPUnit\Framework\TestCase;
  *    InternalRender::mark, the engine global 'interface_locale', RenderScopes::add, and isolate()
  *    or isolated() on LiveContent, the PageCache and the CookieQueue. Those last are recognised by
  *    their receiver (the class, or a variable or property named after it: $live, $pageCache,
- *    ->cache, $cookieQueue), since the memos' isolate() stays;
+ *    ->cache, $cookieQueue), since the memos' isolate() stays. Also Application::holdMailForFlush(),
+ *    a test seam that holds a request's mail for the next flush: never called from package code;
  *  - static-state: a static property or static variable (state shared by every render);
  *  - context-property: a property or promoted parameter typed RenderContext (services read
  *    Contexts::current(), they don't keep a copy);
@@ -122,7 +123,7 @@ final class ArchitectureGuardsTest extends TestCase
             . '|\bnew\s+\\\\?DateTime(?:Immutable)?\b(?!\s*\()'
             . '|\bnew\s+\\\\?DateTime(?:Immutable)?\(\s*(?:\)|[\'"]now[\'"]|\'[-+]\d|\'-\'\s*\.|\'[^\']*\bago\''
             . '|\'(?:today|tomorrow|yesterday|midnight|noon|first |last |next |this ))/i',
-        'setter' => '/->(?:setLocale|setUser|addUser|showWorkingCopies|useOverrides|useTranslator|setCurrent|discardingQueued)\('
+        'setter' => '/->(?:setLocale|setUser|addUser|showWorkingCopies|useOverrides|useTranslator|setCurrent|discardingQueued|holdMailForFlush)\('
             . '|\bContentLocale::set\b|\b(?:FolioText::use|InternalRender::mark)\('
             . '|[cC]ontentLocale\??->set\(|->set\(\$?locale\s*\)'
             . '|->addGlobal\(\s*[\'"]interface_locale[\'"]'
@@ -785,6 +786,7 @@ final class ArchitectureGuardsTest extends TestCase
                 '$pageCache->isolate($published);',
                 '$response = $this->cache->isolated(fn () => $handler->handle($request));',
                 '$container->get(\\Preflow\\View\\Geo\\RenderScopes::class)->add(',
+                '$this->app->holdMailForFlush();',
             ],
             'static-state' => [
                 'private static array $cache = [];',

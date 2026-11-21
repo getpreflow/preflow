@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Media;
 
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\RenderContext;
 
 /**
@@ -25,9 +27,18 @@ final class ConfigLocaleProvider implements ContextLocaleProvider
         return $ctx->locale !== '' ? $ctx->locale : $this->appLocale;
     }
 
-    /** @deprecated 0.81, removed in 0.83 inside a render: localeOf(Contexts::current()) */
+    /**
+     * The translator's locale, else the app locale. Inside a render it reports its deprecation
+     * (once per call site); outside every render it is how ImageTag finds the alt-text language,
+     * without a notice.
+     *
+     * @deprecated 0.81, removed in 0.83 inside a render: localeOf(Contexts::current())
+     */
     public function current(): string
     {
+        if (Contexts::depth() > 0) {
+            Deprecations::once('Preflow\Media\ConfigLocaleProvider::current() is deprecated since 0.81 and is removed in 0.83; use ConfigLocaleProvider::localeOf(Contexts::current()).');
+        }
         $locale = ($this->translatorLocale)();
 
         return is_string($locale) && $locale !== '' ? $locale : $this->appLocale;
