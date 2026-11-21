@@ -39,7 +39,7 @@ final class LiveDirectiveTest extends TestCase
         mkdir($this->dir . '/cache', 0777, true);
         $this->cache = new PageCache();
         $this->recorder = new DependencyRecorder();
-        $this->live = new LiveParts(new LivePlaceholder('live-test-key'), $this->cache, $this->recorder, function (string $m): void {
+        $this->live = new LiveParts(new LivePlaceholder('live-test-key-0123456789abcdef0123456789'), $this->cache, $this->recorder, function (string $m): void {
             $this->logged[] = $m;
         });
         $this->engine = $this->engine();
@@ -61,7 +61,7 @@ final class LiveDirectiveTest extends TestCase
         $stored = $this->storing(fn (): string => $this->engine->render('page', $context));
         $this->assertStringNotContainsString('[7', $stored, 'not rendered while storing');
         $this->assertSame(1, preg_match('/^<main>outer\|(<!--pc:l:[A-Za-z0-9_-]+:[0-9a-f]{32}-->)<\/main>$/', $stored, $m));
-        $found = (new LivePlaceholder('live-test-key'))->find($stored)[$m[1]] ?? null;
+        $found = (new LivePlaceholder('live-test-key-0123456789abcdef0123456789'))->find($stored)[$m[1]] ?? null;
         $this->assertSame('blade', $found[0] ?? null);
         $this->assertSame(['n' => 'page', 'i' => 0, 'w' => ['number' => 7]], array_diff_key($found[1] ?? [], ['h' => true]));
 
@@ -96,9 +96,9 @@ final class LiveDirectiveTest extends TestCase
     {
         $this->template('page.blade.php', "@live LIVE @endlive");
         $stored = $this->storing(fn (): string => $this->engine->render('page'));
-        $recipe = (new LivePlaceholder('live-test-key'))->find($stored)[$stored][1];
+        $recipe = (new LivePlaceholder('live-test-key-0123456789abcdef0123456789'))->find($stored)[$stored][1];
         file_put_contents($this->dir . '/upload.txt', '@live UPLOADED @endlive');
-        $sign = new LivePlaceholder('live-test-key');
+        $sign = new LivePlaceholder('live-test-key-0123456789abcdef0123456789');
         $markers = [
             $sign->make('blade', ['n' => 'page', 'i' => 0, 'h' => str_repeat('a', 32), 'w' => []]),     // no such body
             $sign->make('blade', ['n' => $this->dir . '/upload.txt', 'i' => 0, 'h' => hash('xxh128', ' UPLOADED '), 'w' => []]),

@@ -441,6 +441,33 @@ final class RenderContextTest extends TestCase
         return new Site('https://example.test', ['en', 'de'], 'en', new LocaleUrls(['en', 'de'], 'en'));
     }
 
+    /** without() removes only the facet of that class; nothing else of the context changes, and it can never loosen it. */
+    public function test_without_removes_only_that_facet(): void
+    {
+        $plain = self::visit()->with(new VariantFacet('a', true));
+        $this->assertSame($plain, $plain->without(UnsafeFacet::class), 'without the facet: the same instance');
+
+        $ctx = self::visit()->at(new \DateTimeImmutable('2026-01-01T00:00:00Z'))->asRole(new RoleView('member', ['gold']))
+            ->refusingWrites()->capturing()->workingCopies()
+            ->with(new VariantFacet('a', true))->with(new VariantFacet2('x', false));
+        $without = $ctx->without(VariantFacet2::class);
+
+        $this->assertNotSame($ctx, $without);
+        $this->assertNotNull($ctx->get(VariantFacet2::class), 'the original keeps it');
+        $this->assertNull($without->get(VariantFacet2::class));
+        $this->assertSame('a', $without->get(VariantFacet::class)?->variant, 'other facets are kept');
+        $this->assertEquals($ctx->viewer, $without->viewer);
+        $this->assertSame([WritePolicy::Refuse, OutboxPolicy::Capture], [$without->writes, $without->outbox]);
+        $this->assertSame([$ctx->clock, $ctx->now, true], [$without->clock, $without->now, $without->isFrozen()]);
+        $this->assertSame([$ctx->locale, $ctx->reads->key(), $ctx->purpose], [$without->locale, $without->reads->key(), $without->purpose]);
+
+        // isPublicDefault() follows the facets that are left.
+        $visitor = self::visit()->with(new VariantFacet('a', true))->with(new VariantFacet2('x', false));
+        $this->assertFalse($visitor->isPublicDefault());
+        $this->assertTrue($visitor->without(VariantFacet2::class)->isPublicDefault());
+        $this->assertFalse($visitor->without(VariantFacet::class)->isPublicDefault());
+    }
+
     private static function visit(): RenderContext
     {
         return RenderContext::fromRequest(new ServerRequest('GET', '/a'), self::site(), new SystemClock());
@@ -553,5 +580,21 @@ final class HeaderProtocol implements HypermediaProtocol
     public function pageNonce(ServerRequestInterface $request): ?string
     {
         return null;
+    }
+}
+
+/** A second facet class, to remove one of two. */
+final readonly class VariantFacet2 implements Facet
+{
+    public function __construct(public string $variant, private bool $publicDefault) {}
+
+    public function isPublicDefault(): bool
+    {
+        return $this->publicDefault;
+    }
+
+    public function memoKey(): string
+    {
+        return 'variant2=' . $this->variant;
     }
 }

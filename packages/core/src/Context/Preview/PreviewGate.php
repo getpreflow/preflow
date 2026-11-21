@@ -19,6 +19,12 @@ use Preflow\Core\Context\RoleView;
 interface PreviewGate
 {
     /**
+     * The permission to view the site as a role. A role view's token always requires it
+     * (PreviewToken::issue() refuses one that does not), so allows() re-checks it at every use.
+     */
+    public const string VIEW_AS = 'site.view_as';
+
+    /**
      * Whether $ctx's viewer holds every one of $permissions (false for none, or for an anonymous
      * or synthetic viewer).
      *
@@ -26,6 +32,9 @@ interface PreviewGate
      */
     public function allows(RenderContext $ctx, array $permissions): bool;
 
-    /** Whether $ctx's viewer may still view the site as $view (view as role). */
+    /**
+     * Whether $ctx's viewer may still view the site as $view by their roles (view as role).
+     * Whether they may view as roles at all is VIEW_AS, which the token requires and allows() checks.
+     */
     public function mayViewAs(RenderContext $ctx, RoleView $view): bool;
 }

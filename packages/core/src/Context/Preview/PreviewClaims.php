@@ -27,6 +27,7 @@ final readonly class PreviewClaims
      * @param string $locale the content locale
      * @param bool $workingCopies reads working copies (else the published state)
      * @param string $issuer the auth id of the staff member it was issued to
+     * @param string $issuerGuard the guard that staff member was signed in with
      * @param list<string> $requires the permissions the issuer was checked for, re-checked at each use
      * @param int $expires Unix time it expires at
      * @param string $jti its id (32 hex characters), for logs only
@@ -37,6 +38,7 @@ final readonly class PreviewClaims
         public string $locale,
         public bool $workingCopies,
         public string $issuer,
+        public string $issuerGuard,
         public array $requires,
         public int $expires,
         public string $jti,
@@ -63,7 +65,7 @@ final readonly class PreviewClaims
     public function __serialize(): array
     {
         return [
-            'role' => $this->role, 'locale' => $this->locale, 'workingCopies' => $this->workingCopies, 'issuer' => $this->issuer,
+            'role' => $this->role, 'locale' => $this->locale, 'workingCopies' => $this->workingCopies, 'issuer' => $this->issuer, 'issuerGuard' => $this->issuerGuard,
             'requires' => $this->requires, 'expires' => $this->expires, 'jti' => $this->jti,
         ];
     }
@@ -75,6 +77,7 @@ final readonly class PreviewClaims
         $this->locale = $data['locale'];
         $this->workingCopies = $data['workingCopies'];
         $this->issuer = $data['issuer'];
+        $this->issuerGuard = $data['issuerGuard'];
         $this->requires = $data['requires'];
         $this->expires = $data['expires'];
         $this->jti = $data['jti'];

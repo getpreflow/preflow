@@ -74,7 +74,7 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->store = new PageStore($this->root, 'aaaaaaaaaaaaaaaa');
         $this->recorder = new DependencyRecorder();
         $this->cache = new PageCache(recorder: $this->recorder);
-        $this->values = new PerRequestValues('test-secret');
+        $this->values = new PerRequestValues('test-secret-0123456789abcdef0123456789');
         // Earlier tests in this process may leave a $_SESSION; a cacheable request has none (verify checks).
         $this->sessionBefore = $_SESSION ?? null;
         unset($_SESSION);
@@ -252,7 +252,7 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame('stream', $export->getHeaderLine('X-Page-Cache-Skip'));
         $this->assertSame('a,b,c', (string) $export->getBody(), 'the visitor still gets the whole body');
 
-        foreach (['', StatelessCsrfToken::DEFAULT_KEY] as $key) {
+        foreach (['', StatelessCsrfToken::DEFAULT_KEY, 'short-secret'] as $key) {
             $this->values = new PerRequestValues($key);
             $skip = $this->middleware()->process($this->get('/k' . strlen($key)), $this->handler(fn () => $this->html('x')))->getHeaderLine('X-Page-Cache-Skip');
             $this->assertSame('app-key', $skip, "key '{$key}'");
@@ -403,7 +403,7 @@ final class PageCacheMiddlewareTest extends TestCase
 
     public function test_per_request_values_handle_json_short_values_and_forged_placeholders(): void
     {
-        $values = new PerRequestValues('secret');
+        $values = new PerRequestValues('secret-0123456789abcdef0123456789');
         $nonce = 'ab/cd+ef==';
         $values->register('nonce', static function () use (&$nonce): string {
             return $nonce;
@@ -421,7 +421,7 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame('<script nonce="zz/yy+xx==">{"n":"zz\/yy+xx=="}</script> 1 <!--pc:v:nonce:0000000000000000-->', $filled, 'an unsigned placeholder in the text is not filled');
 
         // Another app key signs other placeholders.
-        $other = new PerRequestValues('another-secret');
+        $other = new PerRequestValues('another-secret-0123456789abcdef0123456789');
         $other->register('nonce', static fn (): string => 'leaked-value');
         $this->assertStringNotContainsString('leaked-value', $other->fill($stored));
     }
@@ -756,7 +756,7 @@ final class PageCacheMiddlewareTest extends TestCase
 
     public function test_live_parts_are_filled_for_each_visitor_on_the_miss_and_on_hits(): void
     {
-        $live = new \Preflow\Core\PageCache\LiveParts(new \Preflow\Core\PageCache\LivePlaceholder('test-secret'), $this->cache, $this->recorder);
+        $live = new \Preflow\Core\PageCache\LiveParts(new \Preflow\Core\PageCache\LivePlaceholder('test-secret-0123456789abcdef0123456789'), $this->cache, $this->recorder);
         $visitor = '';
         $live->register('greeting', function (array $recipe) use (&$visitor): string {
             $this->recorder->record('default:visitor#' . $visitor); // not the page's
@@ -930,7 +930,7 @@ final class PageCacheMiddlewareTest extends TestCase
 
     public function test_live_placeholders_are_filled_into_html_only(): void
     {
-        $live = new \Preflow\Core\PageCache\LiveParts(new \Preflow\Core\PageCache\LivePlaceholder('test-secret'), $this->cache, $this->recorder);
+        $live = new \Preflow\Core\PageCache\LiveParts(new \Preflow\Core\PageCache\LivePlaceholder('test-secret-0123456789abcdef0123456789'), $this->cache, $this->recorder);
         $live->register('greeting', static fn (): string => "<b>\"hi\"\n</b>");
         $mw = $this->middleware(live: $live);
         $json = $this->handler(fn (): ResponseInterface => new Response(200, ['Content-Type' => 'application/json'], (string) json_encode(['html' => $live->placeholder('greeting', [])])));
@@ -943,7 +943,7 @@ final class PageCacheMiddlewareTest extends TestCase
 
     public function test_a_response_without_content_type_is_html_for_live_parts(): void
     {
-        $live = new \Preflow\Core\PageCache\LiveParts(new \Preflow\Core\PageCache\LivePlaceholder('test-secret'), $this->cache, $this->recorder);
+        $live = new \Preflow\Core\PageCache\LiveParts(new \Preflow\Core\PageCache\LivePlaceholder('test-secret-0123456789abcdef0123456789'), $this->cache, $this->recorder);
         $live->register('greeting', static fn (): string => '<b>hi</b>');
         $mw = $this->middleware(live: $live);
         // PHP sends text/html for a response that names no type.

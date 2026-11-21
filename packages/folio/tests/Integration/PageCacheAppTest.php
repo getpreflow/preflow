@@ -26,7 +26,7 @@ final class PageCacheAppTest extends TestCase
     {
         $this->scaffoldPublishing();
         putenv('APP_DEBUG');
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-page-cache-test-key-0123', 'url' => 'https://site.test'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-page-cache-test-key-0123-0123456789abcdef0123456789', 'url' => 'https://site.test'];\n");
         $this->write('config/page_cache.php', "<?php\nreturn ['enabled' => true, 'explain' => true, 'verify' => 'always'];\n");
         $this->write('resources/folio/frontend/post.twig', '<html><body><h1>{{ record.title }}</h1></body></html>');
         // The category list: a page of the site listing the published posts.
@@ -500,10 +500,10 @@ final class PageCacheAppTest extends TestCase
         $this->write('app/pages/secret.twig', '<p>{% live %}TOP SECRET{% endlive %}</p>{% block plain %}PLAIN BLOCK{{ w|default("") }}{% endblock %}');
         $this->write('storage/upload.txt', '{% live %}UPLOADED {{ 7 * 7 }}{% endlive %}');
         $recipe = ['t' => 'secret.twig', 'b' => '__live_1', 'w' => []];
-        $forged = (new \Preflow\Core\PageCache\LivePlaceholder('a key the visitor guessed'))->make('twig', $recipe);
+        $forged = (new \Preflow\Core\PageCache\LivePlaceholder('a key the visitor guessed-0123456789abcdef0123456789'))->make('twig', $recipe);
         $edited = (string) preg_replace('/:[0-9a-f]{32}-->/', ':' . str_repeat('0', 32) . '-->', $forged);
         // Signed with the app's own key (say the key leaked), but naming nothing declared live:
-        $appKey = new \Preflow\Core\PageCache\LivePlaceholder('folio-page-cache-test-key-0123');
+        $appKey = new \Preflow\Core\PageCache\LivePlaceholder('folio-page-cache-test-key-0123-0123456789abcdef0123456789');
         $undeclared = [
             $appKey->make('twig', ['t' => 'nowhere.twig', 'b' => '__live_1', 'w' => []]),
             $appKey->make('twig', ['t' => 'secret.twig', 'b' => 'plain', 'w' => ['w' => '<script>x</script>']]),

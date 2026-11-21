@@ -19,6 +19,7 @@ use Preflow\Core\Context\Preview\PreviewTokenRejected;
 use Preflow\Core\Context\Purpose;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\RoleView;
+use Preflow\Core\Context\Viewer;
 use Preflow\Core\Context\WritePolicy;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Core\Identity;
@@ -36,6 +37,8 @@ final class PreviewTokenTest extends TestCase
 
     private const SESSION = 'session-id-of-the-editor-0001';
 
+    private const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
     protected function setUp(): void
     {
         Contexts::reset();
@@ -51,7 +54,7 @@ final class PreviewTokenTest extends TestCase
         $role = new RoleView('member', ['gold', 'basic']);
         $token = $this->issue($this->previewContext()->in('de')->asRole($role), requires: ['page.edit', 'site.view_as']);
 
-        $claims = $this->tokens()->verify($token, self::SESSION, $this->editor(), $this->now());
+        $claims = $this->tokens()->verify($token, self::SESSION, $this->viewer(), $this->now());
 
         $this->assertEquals($role, $claims->role);
         $this->assertSame('de', $claims->locale);
@@ -62,7 +65,7 @@ final class PreviewTokenTest extends TestCase
         $this->assertMatchesRegularExpression('/^[0-9a-f]{32}$/', $claims->jti);
 
         // A visitor's view of the published state.
-        $plain = $this->tokens()->verify($this->issue($this->previewContext()->published()), self::SESSION, $this->editor(), $this->now());
+        $plain = $this->tokens()->verify($this->issue($this->previewContext()->published()), self::SESSION, $this->viewer(), $this->now());
         $this->assertNull($plain->role);
         $this->assertFalse($plain->workingCopies);
         $this->assertNotSame($claims->jti, $plain->jti, 'each token has its own id');
@@ -83,11 +86,11 @@ final class PreviewTokenTest extends TestCase
             $this->sign($payload, self::SESSION, hash_hmac('sha256', 'preflow/component-token/v1', self::KEY, true)),
         ];
         foreach ($forgeries as $i => $forged) {
-            $this->assertRejected('signature', fn () => $this->tokens()->verify($forged, self::SESSION, $this->editor(), $this->now()), "forgery {$i}");
+            $this->assertRejected('signature', fn () => $this->tokens()->verify($forged, self::SESSION, $this->viewer(), $this->now()), "forgery {$i}");
         }
 
         // The test's own signer is the format: with the derived key, the same payload passes.
-        $this->assertSame('editor-1', $this->tokens()->verify($this->sign($payload, self::SESSION, self::derive(self::KEY)), self::SESSION, $this->editor(), $this->now())->issuer);
+        $this->assertSame('editor-1', $this->tokens()->verify($this->sign($payload, self::SESSION, self::derive(self::KEY)), self::SESSION, $this->viewer(), $this->now())->issuer);
     }
 
     /**
@@ -104,7 +107,7 @@ final class PreviewTokenTest extends TestCase
 
         $tampered = $v . '.' . self::b64((string) json_encode($tamper($claims), JSON_UNESCAPED_SLASHES)) . '.' . $sig . '.' . $bind;
 
-        $this->assertRejected('signature', fn () => $this->tokens()->verify($tampered, self::SESSION, $this->editor(), $this->now()));
+        $this->assertRejected('signature', fn () => $this->tokens()->verify($tampered, self::SESSION, $this->viewer(), $this->now()));
     }
 
     /** @return iterable<string, array{\Closure(array<string, mixed>): array<string, mixed>}> */
@@ -114,7 +117,8 @@ final class PreviewTokenTest extends TestCase
         yield 'r: role dropped' => [static fn (array $c): array => ['r' => null] + $c];
         yield 'l: locale' => [static fn (array $c): array => ['l' => 'fr'] + $c];
         yield 'w: reads' => [static fn (array $c): array => ['w' => false] + $c];
-        yield 'i: issuer' => [static fn (array $c): array => ['i' => 'admin-1'] + $c];
+        yield 'i: issuer' => [static fn (array $c): array => ['i' => ['staff', 'admin-1']] + $c];
+        yield 'i: guard' => [static fn (array $c): array => ['i' => ['web', $c['i'][1]]] + $c];
         yield 'q: requires' => [static fn (array $c): array => ['q' => ['page.view']] + $c];
         yield 'e: expiry' => [static fn (array $c): array => ['e' => $c['e'] + 86400] + $c];
         yield 'j: id' => [static fn (array $c): array => ['j' => str_repeat('0', 32)] + $c];
@@ -125,8 +129,8 @@ final class PreviewTokenTest extends TestCase
     {
         $token = $this->issue($this->previewContext());
 
-        $this->assertRejected('session', fn () => $this->tokens()->verify($token, 'session-id-of-another-browser', $this->editor(), $this->now()));
-        $this->assertRejected('session', fn () => $this->tokens()->verify($token, '', $this->editor(), $this->now()), 'no session at all');
+        $this->assertRejected('session', fn () => $this->tokens()->verify($token, 'session-id-of-another-browser', $this->viewer(), $this->now()));
+        $this->assertRejected('session', fn () => $this->tokens()->verify($token, '', $this->viewer(), $this->now()), 'no session at all');
     }
 
     /** T4 (Review Focus 3): sign-out and sign-in regenerate the session id, so the token dies with it. */
@@ -134,12 +138,12 @@ final class PreviewTokenTest extends TestCase
     {
         $session = new ArraySession();
         $session->start();
-        $token = Contexts::run(ContextFactory::forTest(), fn (): string => $this->tokens()->issue($this->previewContext(), $session->getId(), $this->editor(), ['page.edit']));
-        $this->assertSame('editor-1', $this->tokens()->verify($token, $session->getId(), $this->editor(), $this->now())->issuer, 'valid in the session it was issued in');
+        $token = Contexts::run(ContextFactory::forTest(), fn (): string => $this->tokens()->issue($this->previewContext(), $session->getId(), 'staff', $this->editor(), ['page.edit']));
+        $this->assertSame('editor-1', $this->tokens()->verify($token, $session->getId(), $this->viewer(), $this->now())->issuer, 'valid in the session it was issued in');
 
         $session->regenerate(); // what signing out and in again does
 
-        $this->assertRejected('session', fn () => $this->tokens()->verify($token, $session->getId(), $this->editor(), $this->now()));
+        $this->assertRejected('session', fn () => $this->tokens()->verify($token, $session->getId(), $this->viewer(), $this->now()));
     }
 
     /** T5: exp comes from the context clock; one second after it, the token is dead. */
@@ -148,22 +152,22 @@ final class PreviewTokenTest extends TestCase
         $token = $this->issue($this->previewContext(), ttl: 60);
         $exp = $this->now()->getTimestamp() + 60;
 
-        $this->assertSame($exp, $this->tokens()->verify($token, self::SESSION, $this->editor(), $this->now()->setTimestamp($exp - 1))->expires);
-        $this->assertRejected('expired', fn () => $this->tokens()->verify($token, self::SESSION, $this->editor(), $this->now()->setTimestamp($exp + 1)));
-        $this->assertRejected('expired', fn () => $this->tokens()->verify($token, self::SESSION, $this->editor(), $this->now()->setTimestamp($exp)), 'not at exp itself either');
+        $this->assertSame($exp, $this->tokens()->verify($token, self::SESSION, $this->viewer(), $this->now()->setTimestamp($exp - 1))->expires);
+        $this->assertRejected('expired', fn () => $this->tokens()->verify($token, self::SESSION, $this->viewer(), $this->now()->setTimestamp($exp + 1)));
+        $this->assertRejected('expired', fn () => $this->tokens()->verify($token, self::SESSION, $this->viewer(), $this->now()->setTimestamp($exp)), 'not at exp itself either');
     }
 
     /** T5: a TTL is clamped to MAX_TTL; none below one second is issued. */
     public function test_ttl_is_clamped(): void
     {
-        $claims = $this->tokens()->verify($this->issue($this->previewContext(), ttl: 86400), self::SESSION, $this->editor(), $this->now());
+        $claims = $this->tokens()->verify($this->issue($this->previewContext(), ttl: 86400), self::SESSION, $this->viewer(), $this->now());
         $this->assertSame(PreviewToken::MAX_TTL, $claims->expires - $this->now()->getTimestamp());
         $this->assertSame(3600, PreviewToken::MAX_TTL);
         $this->assertSame(900, PreviewToken::TTL);
 
         // A token claiming more than MAX_TTL (a clock set back, a key shared with a lax issuer) is not taken.
         $token = $this->issue($this->previewContext());
-        $this->assertRejected('expired', fn () => $this->tokens()->verify($token, self::SESSION, $this->editor(), $this->now()->modify('-1 hour')));
+        $this->assertRejected('expired', fn () => $this->tokens()->verify($token, self::SESSION, $this->viewer(), $this->now()->modify('-1 hour')));
 
         $this->expectException(\InvalidArgumentException::class);
         $this->issue($this->previewContext(), ttl: 0);
@@ -174,16 +178,23 @@ final class PreviewTokenTest extends TestCase
     {
         $token = $this->issue($this->previewContext());
 
-        $this->assertRejected('identity', fn () => $this->tokens()->verify($token, self::SESSION, new IdentityId('member-7'), $this->now()));
-        $this->assertRejected('identity', fn () => $this->tokens()->verify($token, self::SESSION, null, $this->now()), 'signed out');
-        $this->assertRejected('identity', fn () => $this->tokens()->verify($token, self::SESSION, (new RoleView('staff', ['editor']))->identity(), $this->now()), 'a role view is nobody');
+        $viewer = static fn (array $identities, ?string $primary = null): Viewer => new Viewer($identities, $primary);
+        $this->assertRejected('identity', fn () => $this->tokens()->verify($token, self::SESSION, $viewer(['staff' => new IdentityId('member-7')]), $this->now()), 'another staff member');
+        $this->assertRejected('identity', fn () => $this->tokens()->verify($token, self::SESSION, $viewer(['web' => new IdentityId('editor-1')]), $this->now()), 'the same id under another guard');
+        $this->assertRejected('identity', fn () => $this->tokens()->verify($token, self::SESSION, Viewer::anonymous(), $this->now()), 'signed out');
+        $this->assertRejected('identity', fn () => $this->tokens()->verify($token, self::SESSION, Viewer::synthetic(new RoleView('staff', ['editor'])), $this->now()), 'a role view is nobody');
+
+        // M7: a member signed in beside the issuing staff member (the member's guard first) does not stop it.
+        $both = $viewer(['web' => new IdentityId('member-7'), 'staff' => new IdentityId('editor-1')], 'web');
+        $claims = $this->tokens()->verify($token, self::SESSION, $both, $this->now());
+        $this->assertSame(['editor-1', 'staff'], [$claims->issuer, $claims->issuerGuard]);
     }
 
     /** T11: size cap, fixed prefix, strict base64url, strict JSON with exact keys and types. */
     public function test_oversized_and_malformed_tokens_are_rejected(): void
     {
         $valid = $this->issue($this->previewContext());
-        $verify = fn (string $token) => fn () => $this->tokens()->verify($token, self::SESSION, $this->editor(), $this->now());
+        $verify = fn (string $token) => fn () => $this->tokens()->verify($token, self::SESSION, $this->viewer(), $this->now());
 
         $this->assertRejected('malformed', $verify(str_pad($valid, 2049, 'A')), '2049 bytes');
         $this->assertRejected('malformed', $verify('v2.x.y'), 'another version');
@@ -195,8 +206,8 @@ final class PreviewTokenTest extends TestCase
         $this->assertRejected('malformed', $verify(" {$valid}"), 'whitespace');
 
         // Payloads that pass the signature (signed here with the derived key) but break the schema.
-        $good = ['r' => null, 'l' => 'en', 'w' => true, 'i' => 'editor-1', 'q' => ['page.edit'], 'e' => $this->now()->getTimestamp() + 60, 'j' => str_repeat('a', 32)];
-        $this->assertSame('editor-1', $this->tokens()->verify($this->signed($good), self::SESSION, $this->editor(), $this->now())->issuer, 'the schema itself passes');
+        $good = ['r' => null, 'l' => 'en', 'w' => true, 'i' => ['staff', 'editor-1'], 'q' => ['page.edit'], 'e' => $this->now()->getTimestamp() + 60, 'j' => str_repeat('a', 32)];
+        $this->assertSame('editor-1', $this->tokens()->verify($this->signed($good), self::SESSION, $this->viewer(), $this->now())->issuer, 'the schema itself passes');
         $bad = [
             'extra key' => $good + ['x' => 1],
             'missing key' => array_diff_key($good, ['j' => true]),
@@ -211,9 +222,13 @@ final class PreviewTokenTest extends TestCase
             'l: not a locale' => ['l' => 'en"><script>'] + $good,
             'w: a string' => ['w' => 'true'] + $good,
             'w: an int' => ['w' => 1] + $good,
-            'i: an int' => ['i' => 7] + $good,
-            'i: empty' => ['i' => ''] + $good,
-            'i: synthetic' => ['i' => 'preflow:synthetic:staff:admin'] + $good,
+            'i: a bare id' => ['i' => 'editor-1'] + $good,
+            'i: an int' => ['i' => ['staff', 7]] + $good,
+            'i: empty id' => ['i' => ['staff', '']] + $good,
+            'i: empty guard' => ['i' => ['', 'editor-1']] + $good,
+            'i: three parts' => ['i' => ['staff', 'editor-1', 'x']] + $good,
+            'i: synthetic' => ['i' => ['staff', 'preflow:synthetic:staff:admin']] + $good,
+            'r: a role view without view-as' => ['r' => ['member', ['gold']]] + $good,
             'q: empty' => ['q' => []] + $good,
             'q: a string' => ['q' => 'page.edit'] + $good,
             'q: a number in it' => ['q' => [7]] + $good,
@@ -225,38 +240,78 @@ final class PreviewTokenTest extends TestCase
         foreach ($bad as $case => $claims) {
             $this->assertRejected('malformed', $verify($this->signed($claims)), $case);
         }
+        // M5: a MAC in the other's place, a bind from another token of the same session, a payload
+        // whose base64url is valid but not canonical (non-zero trailing bits), signed correctly.
+        [, $payload, $sig, $bind] = explode('.', $valid);
+        $this->assertRejected('signature', $verify("v1.{$payload}.{$bind}.{$sig}"), 'swapped MACs');
+        [, , , $otherBind] = explode('.', $this->issue($this->previewContext()));
+        $this->assertRejected('session', $verify("v1.{$payload}.{$sig}.{$otherBind}"), 'a bind of another token, same session');
+        [, $otherPayload, $otherSig] = explode('.', $this->issue($this->previewContext()));
+        $this->assertRejected('signature', $verify("v1.{$payload}.{$otherSig}.{$bind}"), 'a sig of another token');
+        $canonical = self::b64((string) json_encode($good, JSON_UNESCAPED_SLASHES));
+        $this->assertNotSame(0, strlen($canonical) % 4, 'the payload has trailing bits to set');
+        $last = strpos(self::ALPHABET, $canonical[-1]);
+        $loose = substr($canonical, 0, -1) . self::ALPHABET[$last + 1];
+        $this->assertSame(self::unb64($canonical), self::unb64($loose), 'both decode to the same bytes');
+        $this->assertRejected('malformed', $verify($this->sign($loose, self::SESSION, self::derive(self::KEY))), 'non-canonical base64url');
+
         foreach (['not json' => 'nope', 'a deep nest' => str_repeat('[', 64) . str_repeat(']', 64), 'json null' => 'null', 'json number' => '7'] as $case => $json) {
             $payload = self::b64($json);
             $this->assertRejected('malformed', $verify($this->sign($payload, self::SESSION, self::derive(self::KEY))), $case);
         }
     }
 
+    /** I1: issue() and verify() share one limit: every token issue() returns verifies; past it, issue() refuses. */
+    public function test_issue_never_mints_a_token_verify_rejects(): void
+    {
+        $issued = 0;
+        for ($n = 1; $n <= 400; $n++) {
+            $roles = array_map(static fn (int $i): string => sprintf('role-%03d', $i), range(1, $n));
+            try {
+                $token = $this->issue($this->previewContext()->asRole(new RoleView('staff', $roles)), requires: ['page.edit', 'site.view_as']);
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString((string) PreviewToken::MAX_LENGTH, $e->getMessage());
+                break;
+            }
+            $this->assertLessThanOrEqual(PreviewToken::MAX_LENGTH, strlen($token));
+            $this->assertCount($n, $this->tokens()->verify($token, self::SESSION, $this->viewer(), $this->now())->role?->roles ?? [], "{$n} roles");
+            $issued = $n;
+        }
+        $this->assertGreaterThan(119, $issued, 'the 119-role token of the review is issued and verifies');
+        $this->assertLessThan(400, $issued, 'issue() refuses before 400 roles');
+    }
+
     /** T1: no tokens with an empty or a public app key; each use is refused as 'disabled'. */
     public function test_tokens_are_disabled_without_a_real_app_key(): void
     {
         $valid = $this->issue($this->previewContext());
-        foreach (['', 'preflow-default-key-change-me!!', 'change-this-to-a-random-32-char-string!'] as $key) {
+        $weak = ['', ' ', 'a', 'short', str_repeat('k', 31), 'preflow-default-key-change-me!!', "preflow-default-key-change-me!!\n",
+            'change-this-to-a-random-32-char-string!', "  change-this-to-a-random-32-char-string!\t"];
+        foreach ($weak as $key) {
             $tokens = new PreviewToken($key);
             $this->assertFalse($tokens->enabled());
-            $this->assertRejected('disabled', fn () => $tokens->verify($valid, self::SESSION, $this->editor(), $this->now()));
+            $this->assertRejected('disabled', fn () => $tokens->verify($valid, self::SESSION, $this->viewer(), $this->now()));
             // Not even a token a holder of that public key made.
             $mine = $this->sign(explode('.', $valid)[1], self::SESSION, self::derive($key));
-            $this->assertRejected('disabled', fn () => $tokens->verify($mine, self::SESSION, $this->editor(), $this->now()));
+            $this->assertRejected('disabled', fn () => $tokens->verify($mine, self::SESSION, $this->viewer(), $this->now()));
             try {
-                Contexts::run(ContextFactory::forTest(), fn (): string => $tokens->issue($this->previewContext(), self::SESSION, $this->editor(), ['page.edit']));
+                Contexts::run(ContextFactory::forTest(), fn (): string => $tokens->issue($this->previewContext(), self::SESSION, 'staff', $this->editor(), ['page.edit']));
                 $this->fail('issued with a public key');
             } catch (\LogicException $e) {
-                $this->assertStringNotContainsString($key === '' ? 'never-matches' : $key, $e->getMessage());
+                if (strlen(trim($key)) >= 8) {
+                    $this->assertStringNotContainsString(trim($key), $e->getMessage(), 'the key is never in a message');
+                }
             }
         }
         $this->assertTrue($this->tokens()->enabled());
+        $this->assertTrue((new PreviewToken(str_repeat('k', 32)))->enabled(), '32 bytes sign');
     }
 
     public function test_claims_apply_builds_a_refusing_capturing_fragment_context(): void
     {
         $role = new RoleView('member', ['gold']);
-        $token = $this->issue($this->previewContext()->in('de')->asRole($role));
-        $claims = $this->tokens()->verify($token, self::SESSION, $this->editor(), $this->now());
+        $token = $this->issue($this->previewContext()->in('de')->asRole($role), requires: ['page.edit', 'site.view_as']);
+        $claims = $this->tokens()->verify($token, self::SESSION, $this->viewer(), $this->now());
 
         // The follow-up request: the editor's own visit context, signed in, delivering and writing.
         $request = ContextFactory::forTest()->because(Purpose::Visit)->as(new \Preflow\Core\Context\Viewer(['staff' => $this->editor()], 'staff'))->admin('en');
@@ -275,7 +330,7 @@ final class PreviewTokenTest extends TestCase
         $this->assertFalse($ctx->isStorable());
 
         // Without a role: an anonymous visitor; published reads when the token says so.
-        $plain = $this->tokens()->verify($this->issue($this->previewContext()->published()), self::SESSION, $this->editor(), $this->now())->apply($request);
+        $plain = $this->tokens()->verify($this->issue($this->previewContext()->published()), self::SESSION, $this->viewer(), $this->now())->apply($request);
         $this->assertTrue($plain->viewer->isAnonymous());
         $this->assertFalse($plain->reads->readsWorkingCopies());
         $this->assertSame('en', $plain->locale);
@@ -287,7 +342,7 @@ final class PreviewTokenTest extends TestCase
     public function test_the_token_never_contains_the_session_id_or_key(): void
     {
         $tokens = $this->tokens();
-        $token = $this->issue($this->previewContext()->asRole(new RoleView('staff', ['editor'])));
+        $token = $this->issue($this->previewContext()->asRole(new RoleView('staff', ['editor'])), requires: ['page.edit', 'site.view_as']);
         $decoded = implode('|', array_map(static fn (string $part): string => self::unb64($part), array_slice(explode('.', $token), 1)));
         foreach ([self::SESSION, hash('sha256', self::SESSION), self::KEY, self::derive(self::KEY), bin2hex(self::derive(self::KEY))] as $secret) {
             $this->assertStringNotContainsString($secret, $token);
@@ -295,8 +350,13 @@ final class PreviewTokenTest extends TestCase
         }
 
         // The signer itself: no key in a dump, never serialized.
-        $this->assertStringNotContainsString(self::KEY, print_r($tokens, true));
-        $this->assertStringNotContainsString(bin2hex(self::derive(self::KEY)), bin2hex(print_r($tokens, true)));
+        $derived = self::derive(self::KEY);
+        foreach (['print_r' => print_r($tokens, true), 'var_dump' => self::dump($tokens), 'var_export' => var_export($tokens, true),
+            '(array)' => print_r((array) $tokens, true), '(array) dumped' => self::dump((array) $tokens), 'get_object_vars' => self::dump(\Closure::bind(static fn (PreviewToken $t): array => get_object_vars($t), null, PreviewToken::class)($tokens))] as $how => $shown) {
+            $this->assertStringNotContainsString(self::KEY, $shown, $how);
+            $this->assertStringNotContainsString($derived, $shown, $how);
+            $this->assertStringNotContainsString(bin2hex($derived), bin2hex($shown), $how);
+        }
         try {
             serialize($tokens);
             $this->fail('a signer was serialized');
@@ -305,7 +365,7 @@ final class PreviewTokenTest extends TestCase
 
         // A rejection names its reason, never the token.
         try {
-            $tokens->verify($token, 'another-session', $this->editor(), $this->now());
+            $tokens->verify($token, 'another-session', $this->viewer(), $this->now());
             $this->fail('accepted from another session');
         } catch (PreviewTokenRejected $e) {
             $this->assertStringNotContainsString(explode('.', $token)[1], $e->getMessage());
@@ -313,7 +373,7 @@ final class PreviewTokenTest extends TestCase
         }
 
         // The claims and a granted context keep the token for re-emitting it, but never show it.
-        $claims = $tokens->verify($token, self::SESSION, $this->editor(), $this->now());
+        $claims = $tokens->verify($token, self::SESSION, $this->viewer(), $this->now());
         $ctx = $claims->apply(ContextFactory::forTest());
         $mac = explode('.', $token)[2];
         foreach (['claims dump' => print_r($claims, true), 'context dump' => print_r($ctx, true), 'context json' => (string) json_encode($ctx),
@@ -351,7 +411,7 @@ final class PreviewTokenTest extends TestCase
 
         $token = $granted->get(PreviewGrant::class)?->token();
         $this->assertIsString($token);
-        $claims = $this->tokens()->verify($token, $session->getId(), $this->editor(), $this->now());
+        $claims = $this->tokens()->verify($token, $session->getId(), $this->viewer(), $this->now());
         $this->assertSame('editor-1', $claims->issuer);
         $this->assertSame('de', $claims->locale);
         $this->assertSame(['page.edit'], $claims->requires);
@@ -379,8 +439,11 @@ final class PreviewTokenTest extends TestCase
             'no requirement' => fn (): string => $this->issue($this->previewContext(), requires: []),
             'a real viewer' => fn (): string => $this->issue($this->previewContext()->as(new \Preflow\Core\Context\Viewer(['staff' => $this->editor()], 'staff'))),
             'reads as of a date' => fn (): string => $this->issue($this->previewContext()->asOf(new \DateTimeImmutable('2025-01-01'))),
-            'a synthetic issuer' => fn (): string => Contexts::run(ContextFactory::forTest(), fn (): string => $this->tokens()->issue($this->previewContext(), self::SESSION, (new RoleView('staff', ['a']))->identity(), ['page.edit'])),
-            'no session' => fn (): string => Contexts::run(ContextFactory::forTest(), fn (): string => $this->tokens()->issue($this->previewContext(), '', $this->editor(), ['page.edit'])),
+            'a frozen time' => fn (): string => $this->issue($this->previewContext()->at(new \DateTimeImmutable('2025-01-01'))),
+            'a role view without view-as' => fn (): string => $this->issue($this->previewContext()->asRole(new RoleView('member', ['gold'])), requires: ['page.edit']),
+            'no guard' => fn (): string => Contexts::run(ContextFactory::forTest(), fn (): string => $this->tokens()->issue($this->previewContext(), self::SESSION, '', $this->editor(), ['page.edit'])),
+            'a synthetic issuer' => fn (): string => Contexts::run(ContextFactory::forTest(), fn (): string => $this->tokens()->issue($this->previewContext(), self::SESSION, 'staff', (new RoleView('staff', ['a']))->identity(), ['page.edit'])),
+            'no session' => fn (): string => Contexts::run(ContextFactory::forTest(), fn (): string => $this->tokens()->issue($this->previewContext(), '', 'staff', $this->editor(), ['page.edit'])),
         ];
         foreach ($cases as $case => $issue) {
             try {
@@ -440,6 +503,13 @@ final class PreviewTokenTest extends TestCase
         $this->assertRejected('identity', fn () => Contexts::run($other, fn (): PreviewClaims => $this->tokens()->admit($token, self::SESSION, Contexts::current(), $gate)));
         $this->assertSame([], $gate->asked);
 
+        // M7: a member signed in beside the staff issuer (member first) is admitted, and the gate is
+        // asked as the issuer: the same identities with the issuer's guard as the primary one.
+        $gate->asked = [];
+        $both = ContextFactory::forTest()->as(new Viewer(['web' => new IdentityId('member-7'), 'staff' => $this->editor()], 'web'));
+        $this->assertEquals($role, Contexts::run($both, fn (): PreviewClaims => $this->tokens()->admit($token, self::SESSION, Contexts::current(), $gate))->role);
+        $this->assertSame(['allows:page.edit,site.view_as@id:staff:editor-1;id:web:member-7@staff', 'viewAs:editor@id:staff:editor-1;id:web:member-7@staff'], $gate->asked);
+
         // And its clock is the render's: past the expiry, the token is dead.
         $late = $current->withClock(new \Preflow\Core\Context\FrozenClock($this->now()->modify('+901 seconds')));
         $this->assertRejected('expired', fn () => Contexts::run($late, fn (): PreviewClaims => $this->tokens()->admit($token, self::SESSION, Contexts::current(), $gate)));
@@ -467,6 +537,12 @@ final class PreviewTokenTest extends TestCase
         return new IdentityId('editor-1');
     }
 
+    /** The editor signed in with the staff guard. */
+    private function viewer(): Viewer
+    {
+        return new Viewer(['staff' => $this->editor()], 'staff');
+    }
+
     private function now(): \DateTimeImmutable
     {
         return new \DateTimeImmutable(ContextFactory::NOW);
@@ -481,7 +557,7 @@ final class PreviewTokenTest extends TestCase
     /** @param list<string> $requires */
     private function issue(RenderContext $ctx, array $requires = ['page.edit'], int $ttl = PreviewToken::TTL): string
     {
-        return Contexts::run(ContextFactory::forTest(), fn (): string => $this->tokens()->issue($ctx, self::SESSION, $this->editor(), $requires, $ttl));
+        return Contexts::run(ContextFactory::forTest(), fn (): string => $this->tokens()->issue($ctx, self::SESSION, 'staff', $this->editor(), $requires, $ttl));
     }
 
     private function assertRejected(string $reason, \Closure $verify, string $message = ''): void
@@ -516,6 +592,14 @@ final class PreviewTokenTest extends TestCase
         return $signed
             . '.' . self::b64(hash_hmac('sha256', $signed, $key, true))
             . '.' . self::b64(hash_hmac('sha256', $signed . '.' . hash('sha256', $session), $key, true));
+    }
+
+    private static function dump(mixed $value): string
+    {
+        ob_start();
+        var_dump($value);
+
+        return (string) ob_get_clean();
     }
 
     private static function b64(string $bytes): string

@@ -32,7 +32,7 @@ final class AccessPreviewGateTest extends TestCase
     private const SESSION = 'editor-session-id-0001';
 
     /** @var array<string, list<string>> role => the permissions it grants (staff) */
-    private array $grants = ['editor' => ['page.edit', 'page.view', 'site.view_as'], 'viewer' => ['page.view']];
+    private array $grants = ['editor' => ['page.edit', 'page.view', 'site.view_as'], 'viewer' => ['page.view', 'site.view_as']];
 
     private AuthManager $auth;
 
@@ -46,7 +46,7 @@ final class AccessPreviewGateTest extends TestCase
             $registry->declare($name);
         }
         $this->auth = new AuthManager([], 'staff');
-        $this->access = new Access($this->auth, $registry, true, ['staff' => 'staff']);
+        $this->access = new Access($this->auth, $registry, true, ['staff' => 'staff', 'web' => 'members']);
         $grants = &$this->grants;
         $this->access->setResolver(new class ($grants) implements PermissionResolver, AllowsRoles {
             /** @param array<string, list<string>> $grants */
@@ -94,10 +94,48 @@ final class AccessPreviewGateTest extends TestCase
     public function test_a_role_view_the_editor_may_no_longer_take_rejects_the_token(): void
     {
         $role = new RoleView('staff', ['editor']);
-        $token = $this->issue(['page.view'], $role);
+        $token = $this->issue(['page.view', 'site.view_as'], $role);
         $this->assertEquals($role, $this->admit($token)->role);
 
         $this->assertRejected('permission', fn () => $this->admit($token, roles: ['viewer']));
+    }
+
+    /**
+     * I2: a role view's token requires the view-as permission, so taking it away ends the role view
+     * at the next request, even though the editor may still view as the role by their roles.
+     */
+    public function test_revoking_view_as_ends_a_role_view_token(): void
+    {
+        $role = new RoleView('member', ['gold']);
+        $token = $this->issue(['page.view', 'site.view_as'], $role);
+        $this->assertEquals($role, $this->admit($token)->role);
+
+        $this->grants['editor'] = ['page.edit', 'page.view']; // site.view_as revoked
+
+        $this->assertRejected('permission', fn () => $this->admit($token));
+
+        // And no role-view token is issued without it.
+        $this->expectException(\InvalidArgumentException::class);
+        $this->issue(['page.view'], $role);
+    }
+
+    /**
+     * M7: an editor also signed in as a member, whose member guard comes first on public pages, is
+     * admitted: the identity is compared and the permissions asked on the staff guard it was issued with.
+     */
+    public function test_a_two_guard_editor_is_admitted_on_a_public_path(): void
+    {
+        $token = $this->issue(['page.edit']);
+
+        $claims = Contexts::run(ContextFactory::forTest(), function () use ($token): PreviewClaims {
+            Contexts::narrow(static fn ($ctx) => $ctx->as(AuthManager::viewerOf(['web' => new TestUser('m-7'), 'staff' => new TestUser('ed', roles: ['editor'])], 'web')));
+            $this->assertSame('m-7', $this->access->user()?->getAuthId(), 'the member is the primary user here');
+            $this->assertFalse($this->access->can('page.edit'), 'who may not edit');
+
+            return (new PreviewToken(self::KEY))->admit($token, self::SESSION, Contexts::current(), new AccessPreviewGate($this->access));
+        });
+
+        $this->assertSame(['ed', 'staff'], [$claims->issuer, $claims->issuerGuard]);
     }
 
     /** It answers for the request's real viewer only: nobody and a role view get nothing, nor does an empty check. */
@@ -150,7 +188,7 @@ final class AccessPreviewGateTest extends TestCase
             @$this->auth->setUser(new TestUser('ed', roles: ['editor']), 'staff');
             $preview = ContextFactory::forTest()->asVisitor()->workingCopies()->because(Purpose::Preview);
 
-            return (new PreviewToken(self::KEY))->issue($role === null ? $preview : $preview->asRole($role), self::SESSION, Contexts::current()->viewer->primary(), $requires);
+            return (new PreviewToken(self::KEY))->issue($role === null ? $preview : $preview->asRole($role), self::SESSION, 'staff', Contexts::current()->viewer->primary(), $requires);
         });
     }
 

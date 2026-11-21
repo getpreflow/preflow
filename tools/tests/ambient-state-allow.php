@@ -187,6 +187,11 @@ return [
             'private static array $reported = [];' => 'call sites that already reported a deprecation: once per process by design',
         ],
     ],
+    'core/src/Context/Preview/PreviewToken.php' => [
+        'static-state' => [
+            'private static ?\\WeakMap $keys = null;' => 'each signer\'s derived key, held outside its object so no dump, var_export or (array) cast shows it; keyed by the signer, gone with it, the same for every render',
+        ],
+    ],
     'core/src/Config/ParsedJsonFiles.php' => [
         'static-state' => [
             'private static array $files = [];' => 'parsed JSON config files by path and modification time',

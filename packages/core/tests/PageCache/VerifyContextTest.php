@@ -242,7 +242,7 @@ final class VerifyContextTest extends TestCase
             store: static fn (): PageStore => $store,
             cache: $cache,
             recorder: new DependencyRecorder(),
-            values: new PerRequestValues('verify-context-secret'),
+            values: new PerRequestValues('verify-context-secret-0123456789abcdef0123456789'),
             marker: new EnabledMarker($root),
             clearAll: static function () use ($source): void {
                 $source->clear();

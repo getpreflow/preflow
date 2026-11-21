@@ -45,6 +45,11 @@ use PHPUnit\Framework\TestCase;
  * version after it is published, so this runs before every release. Methods are not covered (their
  * @since sits on the method); the per-package ComposerConstraintsTest names those.
  *
+ * preview.admit-only: outside packages/core/src, a preview token is checked with
+ * PreviewToken::admit() only, never verify() (which skips the PreviewGate, so a token would outlive
+ * a revoked permission or role). In every package's psr-4 source roots except core's, a file that
+ * names PreviewToken may not call ->verify( on any line.
+ *
  * architecture.no-ambient-state: package code reads who is looking, the locale, the read mode and
  * the time from the render context (Contexts::current()), not from state that belongs to the
  * process or the request. Every package's psr-4 source roots are scanned (every *.php file, the
@@ -178,6 +183,65 @@ final class ArchitectureGuardsTest extends TestCase
         $this->assertArrayHasKey('members', $scanned, 'suggesting Folio does not exempt a package');
         $this->assertArrayHasKey('starter', $scanned, 'the starters are scanned by their app/ source');
         $this->assertSame([], $hits, 'core packages must not name Preflow\\Folio');
+    }
+
+    public function test_preview_admit_only(): void
+    {
+        $hits = [];
+        $scanned = [];
+        foreach (glob(self::packages() . '/*/composer.json') ?: [] as $composerFile) {
+            $dir = dirname($composerFile);
+            if (basename($dir) === 'core') {
+                continue;
+            }
+            $composer = json_decode((string) file_get_contents($composerFile), true, flags: JSON_THROW_ON_ERROR);
+            $roots = array_values((array) ($composer['autoload']['psr-4'] ?? []));
+            foreach ($roots === [] ? ['src/'] : $roots as $root) {
+                foreach ((array) $root as $path) {
+                    $sourceDir = $dir . '/' . rtrim($path, '/');
+                    if (!is_dir($sourceDir)) {
+                        continue;
+                    }
+                    $scanned[basename($dir)] = true;
+                    foreach ($this->files($sourceDir) as $file) {
+                        if (str_ends_with($file, '.php')) {
+                            foreach (self::previewVerifyHits((string) file_get_contents($file)) as $n => $line) {
+                                $hits[] = $this->relative($file) . ':' . $n . ': ' . $line;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        $this->assertArrayHasKey('auth', $scanned);
+        $this->assertArrayHasKey('folio', $scanned);
+        $this->assertSame([], $hits, 'outside core, a preview token is checked with PreviewToken::admit(), never verify() (it skips the gate)');
+    }
+
+    public function test_preview_admit_only_catches_verify(): void
+    {
+        $this->assertSame([3 => '$claims = $this->tokens->verify($token, $sid, $viewer, $now);'], self::previewVerifyHits("<?php\nuse Preflow\\Core\\Context\\Preview\\PreviewToken;\n\$claims = \$this->tokens->verify(\$token, \$sid, \$viewer, \$now);\n"));
+        $this->assertSame([], self::previewVerifyHits("<?php\nuse Preflow\\Core\\Context\\Preview\\PreviewToken;\n\$claims = \$this->tokens->admit(\$token, \$sid, \$ctx, \$gate);\n"));
+        $this->assertSame([], self::previewVerifyHits("<?php\n\$ok = \$csrf->verify(\$token);\n"), 'a file that does not name PreviewToken');
+        $this->assertSame([], self::previewVerifyHits("<?php\nuse Preflow\\Core\\Context\\Preview\\PreviewToken;\n// \$tokens->verify() skips the gate\n"), 'a comment');
+    }
+
+    /** @return array<int, string> line number => trimmed line of each ->verify( call in a file that names PreviewToken */
+    private static function previewVerifyHits(string $source): array
+    {
+        if (!str_contains($source, 'PreviewToken')) {
+            return [];
+        }
+        $hits = [];
+        foreach (explode("\n", $source) as $n => $line) {
+            $code = self::withoutComments($line);
+            if (preg_match('/->verify\(/', $code) === 1) {
+                $hits[$n + 1] = trim($line);
+            }
+        }
+
+        return $hits;
     }
 
     public function test_mail_no_folio_name(): void

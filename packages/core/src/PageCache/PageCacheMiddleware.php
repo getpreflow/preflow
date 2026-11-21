@@ -71,7 +71,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  * - `restore` / `kind`: the render is not of the kind the key stands for: a full page's key
  *   rendered for a hypermedia client's request (a history restore, which may be served the full
  *   page but is never stored), or a fragment's key without one;
- * - `app-key`: app.key is empty or the public default, so placeholders could be forged;
+ * - `app-key`: app.key fails AppKey::canSign() (empty, shorter than 32 bytes, or public), so placeholders could be forged;
  * - `stream`: the body can't be read twice (a streamed export);
  * - `set-cookie`: the response sets a cookie (a header, or a native one through header());
  * - `session`: the session was started during the request;
