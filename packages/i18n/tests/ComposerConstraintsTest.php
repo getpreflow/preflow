@@ -7,7 +7,8 @@ namespace Preflow\I18n\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Since 0.83: core 0.83.0 (Application builds LocaleMiddleware without the translator, which 0.83 no longer takes);
+ * Since 0.83: folio 0.83.0 (conflict only, folio is not a dependency: Folio 0.82 calls the removed MachineServiceProvider::hasTranslator()
+ * and catches AiUnavailable, which the translator no longer throws); core 0.83.0 (Application builds LocaleMiddleware without the translator, which 0.83 no longer takes);
  * testing 0.83.0 (the isolation contract before 0.83 calls the removed setLocale() and useOverrides()).
  * Since 0.81: core 0.81.0 (the render context: Contexts, RenderContext and its request part's localePrefix, which the
  * translator reads and LocaleMiddleware narrows; Deprecations for the setLocale(), useOverrides() and urlPrefix() shims).
@@ -27,7 +28,7 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(['preflow/ai' => '<0.78', 'preflow/core' => '<0.83.0', 'preflow/testing' => '<0.83.0'], $composer['conflict'] ?? null);
+        $this->assertSame(['preflow/ai' => '<0.78', 'preflow/core' => '<0.83.0', 'preflow/folio' => '<0.83.0', 'preflow/testing' => '<0.83.0'], $composer['conflict'] ?? null);
         $this->assertSame('^0.83.0 || @dev', $composer['require']['preflow/core'] ?? null);
         $this->assertArrayNotHasKey('preflow/ai', $composer['require']);
         $this->assertArrayHasKey('preflow/ai', $composer['suggest'] ?? []);

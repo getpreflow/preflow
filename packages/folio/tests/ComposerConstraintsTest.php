@@ -11,6 +11,7 @@ use PHPUnit\Framework\TestCase;
  * with localeOf(), which ContentLocaleProvider implements); i18n 0.83.0 (Machine\TranslatorAvailability and
  * TranslatorUnavailable, which Folio's machine translation uses).
  * Since 0.82.0: core 0.82.0 (Http\ContentSecurityPolicy, with which the whole-page preview reads the page's frame-ancestors).
+ * Since 0.83.0: auth 0.83.0 (PermissionRegistry::disabled(), which the roles editor keeps disabled grants with).
  * Since 0.81.0: core 0.81.0 (Context\Writes, which ReviewIndexUpdater asks before it writes the review index, so a
  * preview or a view as a role leaves the index as it is); blocks 0.81.0 (ContextBlockLocale, which ContentLocale
  * implements); media 0.81.0 (ContextLocaleProvider, which ContentLocaleProvider implements).
@@ -85,7 +86,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/ai' => '<0.78', 'preflow/auth' => '<0.81.0', 'preflow/blocks' => '<0.83.0', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.82.0', 'preflow/data' => '<0.78', 'preflow/devtools' => '<0.77', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.83.0', 'preflow/media' => '<0.83.0', 'preflow/members' => '<0.77', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.81.0', 'preflow/rbac' => '<0.81.0', 'preflow/routing' => '<0.78.2', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
+            ['preflow/ai' => '<0.78', 'preflow/auth' => '<0.83.0', 'preflow/blocks' => '<0.83.0', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.82.0', 'preflow/data' => '<0.78', 'preflow/devtools' => '<0.77', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.83.0', 'preflow/media' => '<0.83.0', 'preflow/members' => '<0.77', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.81.0', 'preflow/rbac' => '<0.81.0', 'preflow/routing' => '<0.78.2', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; ai, members, codes and rbac are suggested, not required.

@@ -12,7 +12,7 @@ use Preflow\Data\Locales;
 use Preflow\Folio\Content\ContentLocale;
 use Preflow\Testing\ContextFactory;
 
-/** The content locale is the render's locale (since 0.81); blocks ask it with the context (ContextBlockLocale). */
+/** The content locale is the render's locale (since 0.81); blocks ask it with the context (`BlockLocale::localeOf()`). */
 final class ContentLocaleTest extends TestCase
 {
     protected function tearDown(): void

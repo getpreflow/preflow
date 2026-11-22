@@ -235,3 +235,10 @@
 .rbac-chip:has(input:focus-visible) { box-shadow: var(--focus-ring); }
 .rbac-chip.is-new { border-color: var(--c-warning); }
 .rbac-chip .rbac-fresh-badge, .rbac-fresh-mark .rbac-fresh-badge { margin-left: 2px; }
+
+/* Stored grants of disabled permissions (kept, posted again): muted, no bullets, the reason beside the name. */
+.rbac-unavailable { margin: 0 0 14px; color: var(--c-text-muted); font-size: 12.5px; line-height: 1.45; }
+.rbac-unavailable p { margin: 0 0 6px; }
+.rbac-unavailable ul { margin: 0; padding: 0; list-style: none; }
+.rbac-unavailable li { display: flex; flex-wrap: wrap; gap: 2px 10px; padding: 3px 0; }
+.rbac-unavailable code { color: var(--c-text); }
