@@ -536,6 +536,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - **Changed:** every HTML answer says `Vary` for the hypermedia client's request headers (htmx: `HX-Request`, `HX-Target`, `HX-History-Restore-Request`), added by `SecurityHeadersMiddleware` through `HypermediaProtocols::varying()`. Names already present are kept, `Vary: *`, non-HTML answers and setups without a client are left alone. The page cache already keys on these names, so cached pages still store.
     - **Changed:** `RenderContext::memoKey()` includes a frozen time, so memos of `at()` contexts are keyed per date.
     - **New:** `Activity\LastChanges` (optional `ActivityLog` capability, implemented by `StoredActivityLog`).
+    - **New:** `Http\Vary::add($response, ...$names)`, the one `Vary` merge: names already there stay, each name is listed once (case-insensitive), several lines become one, `Vary: *` is left alone. `varying()`, the preview token's and CORS's Vary use it, and so do i18n's `LocaleMiddleware` (which no longer repeats `Cookie` or `Accept-Language` a page already names) and view's Geo middleware; both need core 0.84.
   - **publishing:**
     - **Changed:** `Publisher::META`, the system keys that never count as content, includes `_updated_at`. A working copy and its published snapshot each keep their own change date.
     - **New:** `PublishedTimeSource`, registered as a `ChangeDateSource`: the backfill dates a record by its published time.

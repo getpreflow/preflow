@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Core\Http\Hypermedia;
 
+use Preflow\Core\Http\Vary;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -115,22 +116,11 @@ final class HypermediaProtocols
      */
     public function varying(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
     {
-        $names = [];
-        foreach (explode(',', $response->getHeaderLine('Vary')) as $name) {
-            $name = trim($name);
-            if ($name !== '') {
-                $names[strtolower($name)] = $name;
-            }
-        }
-        $vary = $this->varyHeaders();
-        if (isset($names['*']) || $vary === [] || !str_starts_with(strtolower(trim($response->getHeaderLine('Content-Type'))), 'text/html')) {
+        if (!str_starts_with(strtolower(trim($response->getHeaderLine('Content-Type'))), 'text/html')) {
             return $response;
         }
-        foreach ($vary as $name) {
-            $names[strtolower($name)] ??= $name;
-        }
 
-        return $response->withHeader('Vary', implode(', ', $names));
+        return Vary::add($response, ...$this->varyHeaders());
     }
 
     /** @return list<string> every client's nonceHeaders(), each name once (case-insensitive) */

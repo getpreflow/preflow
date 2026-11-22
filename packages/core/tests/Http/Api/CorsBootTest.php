@@ -180,7 +180,7 @@ final class CorsBootTest extends TestCase
         $this->assertSame((string) $first->getBody(), (string) $second->getBody());
         $this->assertSame($b, $second->getHeaderLine('Access-Control-Allow-Origin'));
         // The page cache's own Vary (a preview's token header, since 0.81) and CORS's Origin.
-        $this->assertSame(['X-Preflow-Preview', 'Origin'], $second->getHeader('Vary'));
+        $this->assertSame('X-Preflow-Preview, Origin', $second->getHeaderLine('Vary'));
 
         // The stored copy holds no CORS header, or another origin would get it.
         $config = $app->container()->get(PageCacheConfig::class);

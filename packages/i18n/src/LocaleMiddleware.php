@@ -11,6 +11,7 @@ use Preflow\Core\Http\IsHttps;
 use Preflow\Core\Http\LocaleUrls;
 use Preflow\Core\Http\NonPublicPaths;
 use Preflow\Core\Http\SafeReturnPath;
+use Preflow\Core\Http\Vary;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -137,7 +138,7 @@ final class LocaleMiddleware implements MiddlewareInterface
         $response = $handler->handle($strippedRequest);
 
         if ($vary) {
-            $response = $response->withAddedHeader('Vary', 'Accept-Language, Cookie');
+            $response = Vary::add($response, 'Accept-Language', 'Cookie');
         }
 
         // Remember the locale in a cookie only when enabled (off by default with the
