@@ -120,7 +120,11 @@ final class AddressPreviewTest extends TestCase
             '\\/elsewhere.test', 'javascript:alert(1)', 'mailto:someone@site.test', 'data:text/html,x', ' //elsewhere.test', "/acc\nount", '/account?x=1', '/account#top',
             '/folio/post', '/folio', '/--component/x', '', '/../..',
             // Encoded, the same: an encoded admin segment, dot segment, backslash or control character.
-            '/%66olio/post', '/de/%66olio', '/%2e%2e', '/%5Celsewhere.test', '/acc%0Aount'] as $bad) {
+            '/%66olio/post', '/de/%66olio', '/%2e%2e', '/%5Celsewhere.test', '/acc%0Aount',
+            // An encoded slash or backslash inside a segment, any case: never a hidden host or a walk into the admin.
+            '/%2F%2Felsewhere.test', '/..%2Ffolio', '/%2Ffolio', '/x/..%2f..%2ffolio', '/%2e%2e%2ffolio', '/a%5cb', '/a%5Cb',
+            // Double encoding is refused, not decoded a second time; nor invalid UTF-8 (an overlong slash).
+            '/%252F%252Felsewhere.test', '/%252e%252e/folio', '/%C0%AF%C0%AFelsewhere.test'] as $bad) {
             $answer = $this->send('GET', '/folio/preview/address/page?path=' . rawurlencode($bad));
             $this->assertSame(400, $answer->getStatusCode(), var_export($bad, true));
             $this->assertStringContainsString('Not an address of this site', (string) $answer->getBody(), var_export($bad, true));
@@ -143,16 +147,16 @@ final class AddressPreviewTest extends TestCase
         $this->assertSame(403, $this->send('GET', '/folio/preview/address')->getStatusCode(), 'and the screen');
         $this->assertSame(200, $this->send('GET', '/folio/preview/page/post/p1?as=member:gold')->getStatusCode(), 'the record preview stays');
         $form = (string) $this->send('GET', '/folio/post/p1/edit')->getBody();
-        $this->assertStringNotContainsString('/folio/preview/address', $form, 'no way to the screen');
-
-        $this->assertStringNotContainsString('href="/folio/preview/address"', $form, 'no Settings → View as');
+        $this->assertStringNotContainsString('/folio/preview/address', $form, 'no Settings → View as, no address field in the preview bar');
+        $this->assertStringNotContainsString('data-preview-address', $form);
 
         $this->signIn('addresses@site.test');
         $this->assertSame(403, $this->send('GET', '/folio/preview/address/page?path=%2Faccount&as=member:gold')->getStatusCode(), 'site.view_as_address without site.view_as');
         $this->assertSame(403, $this->send('GET', '/folio/preview/address')->getStatusCode());
-        // What it cannot open it is not offered: no Settings → View as (also not in the ⌘K screens), no eye icon.
+        // What it cannot open it is not offered: no Settings → View as (also not in the ⌘K screens), no address field.
         $form = (string) $this->send('GET', '/folio/post/p1/edit')->getBody();
-        $this->assertStringNotContainsString('/folio/preview/address', $form, 'neither the sidebar item nor the editor\'s link');
+        $this->assertStringNotContainsString('/folio/preview/address', $form, 'neither the sidebar item nor the preview bar\'s address field');
+        $this->assertStringNotContainsString('data-preview-address', $form);
 
         $this->signIn('writer@site.test');
         $this->assertSame(403, $this->send('GET', '/folio/preview/address/page?path=%2Faccount')->getStatusCode());
@@ -207,7 +211,13 @@ final class AddressPreviewTest extends TestCase
 
         // The record's editor opens it at the record's address; the sidebar lists it.
         $form = (string) $this->send('GET', '/folio/post/p1/edit')->getBody();
-        $this->assertStringContainsString('href="/folio/preview/address?path=%2Fhello"', $form);
+        // The preview bar's address field: the record's address, sent with the bar's View as choice (the select
+        // belongs to the field's form), opening the address preview in a tab of its own.
+        $this->assertSame(1, preg_match('#<form class="folio-preview-address" id="folio-preview-address" method="get" action="/folio/preview/address" target="_blank" data-preview-address>(.*?)</form>#s', $form, $field), 'the address field in the preview bar');
+        $this->assertStringContainsString('<input type="text" name="path" value="/hello"', $field[1]);
+        $this->assertStringContainsString('aria-label="View another address as a role"', $field[1]);
+        $this->assertStringNotContainsString('#ui-eye', $field[1], 'not the Preview switch\'s icon');
+        $this->assertStringContainsString('<select data-preview-as name="as" form="folio-preview-address">', $form, 'the bar\'s current role goes with it');
         $this->assertStringContainsString('href="/folio/preview/address"', $form, 'Settings → View as');
 
         $this->assertSame(['label' => 'View any address as a role', 'group' => 'Site'], $this->session->container()->get(PermissionRegistry::class)->all()['site.view_as_address'] ?? null, 'Folio declares it, beside site.view_as');

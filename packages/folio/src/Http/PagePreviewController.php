@@ -139,18 +139,13 @@ final class PagePreviewController
                 $error = FolioText::get('folio.preview.address_refused', ['address' => is_string($typed) ? $typed : '']);
             }
         }
-        $groups = [];
-        foreach ($this->viewAs->options() as $option) {
-            $groups[$option['group']] ??= ['label' => $option['group'], 'options' => []];
-            $groups[$option['group']]['options'][] = ['value' => $option['value'], 'label' => $option['label']];
-        }
         $frame = $path === null ? null : $this->prefix . '/preview/address/page?path=' . rawurlencode($path) . ($as !== '' ? '&as=' . rawurlencode($as) : '');
 
         return new \Nyholm\Psr7\Response(200, ['Content-Type' => 'text/html; charset=UTF-8', 'Cache-Control' => 'no-store'], $this->engine->render('@folio/admin/preview/address.twig', [
             'prefix' => $this->prefix,
             'path' => $path !== null ? rawurldecode($path) : (is_string($typed) ? $typed : ''),
             'as' => $as,
-            'view_as' => array_values($groups),
+            'view_as' => $this->viewAs->groups(),
             'error' => $error,
             'frame' => $frame,
         ]));
@@ -211,12 +206,16 @@ final class PagePreviewController
      * "/%C3%BCber-uns", as the request asks for it): '/' first (added to a path typed without it,
      * as the field shows it), dot and empty segments resolved ('/a//b/../c' is '/a/c', also when
      * encoded), a trailing slash only where the site's locale root has one. What it leads to is
-     * checked decoded, so an encoded segment ("/%66olio") is never a way into the admin.
+     * checked decoded, so an encoded segment ("/%66olio") is never a way into the admin. A segment
+     * is decoded once and must then be one plain segment: an encoded slash or backslash ("%2F",
+     * "%5c"), a second layer of encoding ("%252F") or invalid UTF-8 is refused, so the path means the
+     * same to a router or front server that decodes it. Core's SafeReturnPath does not fit here: it
+     * accepts or refuses a redirect target as given, this normalises what an editor typed.
      *
      * @throws \InvalidArgumentException for anything else: not a string, empty, a scheme ("https:",
      *         "javascript:"), a host ("//host", "\\host"), a backslash or control character (also
-     *         encoded), a query or fragment, a path above the root, or one under the admin's or
-     *         another non-public prefix
+     *         encoded), an encoded slash, double encoding, invalid UTF-8, a query or fragment, a path
+     *         above the root, or one under the admin's or another non-public prefix
      */
     private function sitePath(mixed $typed): string
     {
@@ -228,6 +227,11 @@ final class PagePreviewController
         $names = [];
         foreach (explode('/', $typed) as $segment) {
             $name = rawurldecode($segment);
+            // A segment is one segment: no encoded slash or backslash in it (a router or front server that
+            // decodes them would read another path), no second layer of encoding, valid UTF-8 only.
+            if (strpbrk($name, '/\\') !== false || preg_match('/%[0-9A-Fa-f]{2}/', $name) === 1 || preg_match('//u', $name) !== 1) {
+                throw new \InvalidArgumentException('Not one path segment.');
+            }
             if ($name === '' || $name === '.') {
                 continue;
             }

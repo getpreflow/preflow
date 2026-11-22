@@ -3609,6 +3609,9 @@ a.folio-asset-use-row:hover { background: var(--c-row-hover); color: var(--c-tex
 .folio-preview-as { display: inline-flex; flex: none; align-items: center; gap: 6px; color: var(--c-text-muted); font-size: 12px; }
 .folio-preview-as[hidden] { display: none; }
 .folio-preview-as select { height: 30px; min-height: 30px; max-width: 200px; padding-block: 0; font-size: 12px; }
+/* The preview bar's address field (any address as a role, opens the address screen in a tab of its own). */
+.folio-preview-address { display: inline-flex; flex: 0 1 220px; min-width: 120px; align-items: center; gap: 4px; }
+.folio-preview-address > input { flex: 1; min-width: 0; height: 30px; min-height: 30px; padding-block: 0; font-family: var(--font-mono); font-size: 12px; }
 /* Settings → View as (address.twig): the address, View as and Show in a row, the page's frame below. */
 .folio-address-preview { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0 16px; }
 .folio-address-preview > .form-group { flex: 1 1 14rem; min-width: 0; }

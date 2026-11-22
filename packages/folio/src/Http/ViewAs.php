@@ -98,6 +98,24 @@ final class ViewAs
     }
 
     /**
+     * options() grouped as a select shows them: each group's label ('' for the visitor) with its
+     * options, in the order options() gives.
+     *
+     * @since 0.83.0
+     * @return list<array{label: string, options: list<array{value: string, label: string}>}>
+     */
+    public function groups(): array
+    {
+        $groups = [];
+        foreach ($this->options() as $option) {
+            $groups[$option['group']] ??= ['label' => $option['group'], 'options' => []];
+            $groups[$option['group']]['options'][] = ['value' => $option['value'], 'label' => $option['label']];
+        }
+
+        return array_values($groups);
+    }
+
+    /**
      * The role view $value names, when the editor may view as roles; null for '' (an anonymous
      * visitor). Only that one role is checked: it must be a role the resolver lists for its
      * population.
