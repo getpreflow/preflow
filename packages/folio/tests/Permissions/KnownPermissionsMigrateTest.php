@@ -47,6 +47,6 @@ final class KnownPermissionsMigrateTest extends TestCase
         }
         $this->assertSame([], $lines['folio.permissions']);
         $this->assertSame([], $steps['folio.permissions']());
-        $this->assertSame(['redirects.manage'], $app->container()->get(KnownPermissions::class)->fresh(), 'the list itself works');
+        $this->assertSame([], $app->container()->get(KnownPermissions::class)->fresh(), 'the list itself works; a new install announces nothing');
     }
 }

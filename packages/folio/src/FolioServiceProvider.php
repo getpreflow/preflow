@@ -322,6 +322,10 @@ final class FolioServiceProvider extends ServiceProvider
             $container->singleton(\Preflow\Folio\Permissions\KnownPermissions::class, static fn (Container $c) => new \Preflow\Folio\Permissions\KnownPermissions(
                 $c->get(DataManager::class),
                 $c->get(\Preflow\Auth\Access\Access::class)->registry(),
+                // An upgrade is a site that had its role store (rbac) before Folio first looked.
+                static fn (): bool => class_exists(\Preflow\Rbac\RoleStore::class)
+                    && $c->bound(\Preflow\Rbac\RoleStore::class)
+                    && $c->get(\Preflow\Rbac\RoleStore::class)->installed(),
             ));
             $container->get(\Preflow\Data\Migration\MigrationRegistry::class)->afterMigrate(
                 'folio.permissions',

@@ -23,17 +23,23 @@ final class KnownPermissions
     public const string TABLE = 'folio_known_permissions';
 
     /**
-     * Announced even on the first run, when every other declared permission becomes known
-     * silently: permissions that came shortly before this list (0.53) and that roles with an
-     * explicit permission list never received. `redirects.manage` came with 0.52.
+     * Announced even on the first run of an upgraded site, when every other declared permission
+     * becomes known silently: permissions that came shortly before this list (0.53) and that roles
+     * with an explicit permission list never received. `redirects.manage` came with 0.52. A new
+     * install (no role store before) announces none of them: there are no older roles to miss them.
      */
     public const array ANNOUNCE_ON_FIRST_RUN = ['redirects.manage'];
 
     private static ?TypeDefinition $definition = null;
 
+    /**
+     * @param (\Closure(): bool)|null $hadRoleStore asked on the first run only: whether the site had
+     *        a role store before (an upgrade). Without it the site counts as new.
+     */
     public function __construct(
         private readonly DataManager $dm,
         private readonly PermissionRegistry $registry,
+        private readonly ?\Closure $hadRoleStore = null,
     ) {}
 
     public static function definition(): TypeDefinition
@@ -52,8 +58,9 @@ final class KnownPermissions
     /**
      * The enabled declared permissions not known yet, sorted. Disabled ones (a switched-off
      * extension) are never fresh; they become fresh once enabled. On an empty list, first
-     * records every enabled permission except ANNOUNCE_ON_FIRST_RUN as known (the baseline),
-     * so an existing site is not flooded with everything it already has.
+     * records every enabled permission as known (the baseline), so an existing site is not
+     * flooded with everything it already has; on a site that had a role store before, except
+     * ANNOUNCE_ON_FIRST_RUN.
      *
      * Throws where the table does not exist yet (a site not migrated); nothing is written then.
      *
@@ -64,7 +71,8 @@ final class KnownPermissions
         $enabled = $this->enabled();
         $known = $this->known();
         if ($known === []) {
-            $baseline = array_values(array_diff($enabled, self::ANNOUNCE_ON_FIRST_RUN));
+            $announce = $this->hadRoleStore !== null && ($this->hadRoleStore)() ? self::ANNOUNCE_ON_FIRST_RUN : [];
+            $baseline = array_values(array_diff($enabled, $announce));
             $this->baseline($baseline);
             $known = $baseline;
         }

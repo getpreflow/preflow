@@ -211,8 +211,9 @@ delete or unpublish (see [Redirects](#redirects)).
 Folio keeps the list of permissions this site has seen (`Preflow\Folio\Permissions\KnownPermissions`,
 table `folio_known_permissions`, since 0.53; created by `preflow migrate` or `folio:extensions:apply`
 on SQL storage, JSON storage needs neither). The first time it is
-read, every enabled permission becomes known silently, except `redirects.manage`: it came with 0.52,
-shortly before the list (0.53), and roles with an explicit permission list never received it. After that, each new one counts as new until someone dismisses
+read, every enabled permission becomes known silently. On a site that had its role store before (an
+upgrade) `redirects.manage` is the exception: it came with 0.52, shortly before the list (0.53), and
+roles with an explicit permission list never received it. A new install announces nothing (since 0.84.0). After that, each new one counts as new until someone dismisses
 it or adds it to a role. A permission of a switched-off extension is new only once the extension is
 switched on. With `preflow/rbac`, `preflow migrate` prints the new ones ("New permissions to
 review in Settings → Roles: …") without marking them known; without it, it prints nothing. With `preflow/rbac` the notice, the sidebar count and the

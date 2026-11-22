@@ -437,9 +437,18 @@ final class NewPermissionsTest extends TestCase
     #[RunInSeparateProcess]
     public function test_migrate_lists_the_new_permissions_where_rbac_shows_them(): void
     {
+        $this->managerSetup(); // an upgrade: the site had its roles before Folio first looked
         $steps = $this->container()->get(\Preflow\Data\Migration\MigrationRegistry::class)->steps();
 
         $this->assertSame(['New permissions to review in Settings → Roles: redirects.manage (Redirects)'], $steps['folio.permissions']());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_migrate_announces_nothing_on_a_new_install_without_roles(): void
+    {
+        $steps = $this->container()->get(\Preflow\Data\Migration\MigrationRegistry::class)->steps();
+
+        $this->assertSame([], $steps['folio.permissions']());
     }
 
     #[RunInSeparateProcess]
