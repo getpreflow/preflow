@@ -18,6 +18,7 @@ use Preflow\Core\Context\Purpose;
 use Preflow\Core\Context\ReadMode;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\SystemClock;
+use Preflow\Core\Context\Viewer;
 use Preflow\Core\Debug\DebugCollector;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Core\PageCache\PageCache;
@@ -113,9 +114,9 @@ final class InternalRendersTest extends TestCase
         InternalRoutes::$routes['/admin/step'] = static function (ServerRequestInterface $r, Container $c): ResponseInterface {
             // An admin request: signed in, its interface in German.
             $auth = $c->get(AuthManager::class);
-            $auth->setUser((new ConfigUserProvider([['id' => 'member', 'email' => 'member@site.test', 'password_hash' => '']]))->findById('member@site.test'), 'session');
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['session' => (new ConfigUserProvider([['id' => 'member', 'email' => 'member@site.test', 'password_hash' => '']]))->findById('member@site.test')], 'session')));
             $translator = $c->get(Translator::class);
-            $translator->setLocale('de');
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->in('de'));
 
             $page = $c->get(PageRenderer::class)->render('/');
 

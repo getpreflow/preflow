@@ -135,7 +135,7 @@ final class ContextHelpersTest extends TestCase
         }
     }
 
-    /** A role view stays one: actingAs() does not sign a user in over it, as AuthManager::setUser() does not. */
+    /** A role view stays one: actingAs() does not sign a user in over it. */
     #[RunInSeparateProcess]
     public function test_acting_as_keeps_a_role_view(): void
     {

@@ -334,8 +334,8 @@ final class JobRunnerTest extends TestCase
 
         try {
             $runner->step($job->id);
-            $this->fail('AiUnavailable expected');
-        } catch (AiUnavailable) {
+            $this->fail('TranslatorUnavailable expected');
+        } catch (\Preflow\I18n\Machine\TranslatorUnavailable) {
         }
 
         $saved = $store->get($job->id);
@@ -395,8 +395,8 @@ final class JobRunnerTest extends TestCase
         $runner->step($job->id);
         try {
             $runner->step($job->id);
-            $this->fail('AiUnavailable expected');
-        } catch (AiUnavailable) {
+            $this->fail('TranslatorUnavailable expected');
+        } catch (\Preflow\I18n\Machine\TranslatorUnavailable) {
         }
         $this->assertSame('no key', $store->get($job->id)->message);
 

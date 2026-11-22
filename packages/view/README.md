@@ -815,11 +815,9 @@ nothing behind:
 - No debug toolbar is added, and the request that runs the step keeps its own assets, nonce,
   cookies, mail and debug collector.
 
-Before 0.81 a package that kept request state added a wrapper with `RenderScopes::add()` (view's
-`Geo\RenderScopes`). Every internal render now has its own frame and context, so that is no longer
-needed: `RenderScopes::add()` is deprecated since 0.81 and removed in 0.83 (a scope added with it
-still runs around each internal render, inside its frame). Keep such state in a frame slot
-(`Contexts::frame()->slot()`), or key a memo with `RenderContext::memoKey()`.
+Every internal render has its own frame and context, so a package that keeps request state needs
+no wrapper around it (`Geo\RenderScopes`, deprecated since 0.81, is removed in 0.83). Keep such
+state in a frame slot (`Contexts::frame()->slot()`), or key a memo with `RenderContext::memoKey()`.
 
 Site code that should skip a side effect that is no data write (a file, a call to another service)
 asks the context:

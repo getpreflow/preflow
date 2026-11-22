@@ -1,0 +1,24 @@
+{% extends "@folio/admin/_layout.twig" %}
+{# Settings → View as (PagePreviewController::addressScreen, 0.83.0): any address of the site, also an app's own
+   page that is no record (/account), as a role or a visitor. A plain GET form (no script): the address, View as,
+   Show; the frame below loads the address preview (the record preview's frame, bar, token and outbox). An address
+   that is not one of the site's pages is explained beside the field, and no frame is shown. #}
+{% block title %}Folio — {{ t('folio.preview.address_title') }}{% endblock %}
+{% block page_title %}{{ t('folio.preview.address_title') }}{% endblock %}
+{% block subtitle %}{{ t('folio.preview.address_intro') }}{% endblock %}
+{% block content %}
+    <form class="folio-form folio-address-preview" method="get" action="{{ prefix }}/preview/address">
+        <div class="form-group{% if error %} has-error{% endif %}">
+            <label class="form-label" for="folio-address-preview-path">{{ t('folio.preview.address') }}</label>
+            <input type="text" id="folio-address-preview-path" name="path" value="{{ path }}" placeholder="/account" autocomplete="off" spellcheck="false" required aria-describedby="folio-address-preview-help"{% if error %} aria-invalid="true"{% endif %}>
+            <small class="form-help" id="folio-address-preview-help">{{ t('folio.preview.address_help') }}</small>
+            {% if error %}<div class="form-error">{{ error }}</div>{% endif %}
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="folio-address-preview-as">{{ t('folio.preview.view_as') }}</label>
+            <select id="folio-address-preview-as" name="as">{% for group in view_as %}{% if group.label %}<optgroup label="{{ group.label }}">{% endif %}{% for option in group.options %}<option value="{{ option.value }}"{% if option.value == as %} selected{% endif %}>{{ option.label }}</option>{% endfor %}{% if group.label %}</optgroup>{% endif %}{% endfor %}</select>
+        </div>
+        <div class="folio-address-preview-actions"><button type="submit" class="btn btn-primary">{{ t('folio.preview.address_show') }}</button></div>
+    </form>
+    {% if frame %}<iframe class="folio-preview-frame folio-page-frame folio-address-preview-frame" src="{{ frame }}" title="{{ t('folio.preview.address_frame', {address: path}) }}"></iframe>{% endif %}
+{% endblock %}

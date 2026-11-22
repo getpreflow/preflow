@@ -28,7 +28,7 @@ final class MissingAiTranslator implements MachineTranslator
     }
 
     /** @throws TranslationFailed always, with MESSAGE */
-    public function translate(string $text, string $to, ?\Preflow\Ai\Tuning $tuning = null, ?string $from = null, TextFormat $format = TextFormat::Plain): string
+    public function translate(string $text, string $to, ?TranslationTuning $tuning = null, ?string $from = null, TextFormat $format = TextFormat::Plain): string
     {
         throw new TranslationFailed(self::MESSAGE);
     }

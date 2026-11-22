@@ -14,6 +14,9 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Auth\Access\Access;
 use Preflow\Auth\AuthManager;
 use Preflow\Core\Application;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\Viewer;
 use Preflow\Core\Tests\Fixtures\HeaderGuard;
 use Preflow\Core\Tests\Fixtures\PipelineCounter\PipelineCounter;
 use Preflow\Htmx\ComponentToken;
@@ -215,7 +218,7 @@ final class AuthGuardsBootTest extends TestCase
     {
         \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
             $auth = new AuthManager(['staff' => new HeaderGuard(new \Preflow\Auth\ConfigUserProvider([])), 'members' => new HeaderGuard(new \Preflow\Auth\ConfigUserProvider([['email' => 'm@site.test', 'password_hash' => '']]))], 'staff');
-            $auth->setUser(new \Preflow\Auth\ArrayUser('m@site.test', 'm@site.test', '', []), 'members');
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['members' => new \Preflow\Auth\ArrayUser('m@site.test', 'm@site.test', '', [])], 'members')));
             $handler = new class implements \Psr\Http\Server\RequestHandlerInterface {
                 public function handle(\Psr\Http\Message\ServerRequestInterface $r): \Psr\Http\Message\ResponseInterface { return new \Nyholm\Psr7\Response(204); }
             };

@@ -35,6 +35,18 @@ final class PermissionRegistry
         return $this->disabled[$name] ?? null;
     }
 
+    /**
+     * Every disabled permission with its reason. A disabled name need not be declared: role editors use
+     * this to keep (and show as unavailable) what a role still grants, instead of dropping it.
+     *
+     * @since 0.83.0
+     * @return array<string, string> name => reason
+     */
+    public function disabled(): array
+    {
+        return $this->disabled;
+    }
+
     /** A family, e.g. "page.*" of a content type; declare its members with declare(). */
     public function declarePattern(string $pattern): void
     {

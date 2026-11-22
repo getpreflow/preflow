@@ -42,6 +42,7 @@ return [
         'everything' => 'Allow everything',
         'everything_hint' => 'Every permission, including those of future extensions. Admins only.',
         'unknown' => 'Unknown, removed on save: :names',
+        'unavailable' => 'Switched off, grants are kept:',
         'type' => 'Type',
         'all' => 'All',
         'none' => 'No :verb permission for :type',

@@ -228,8 +228,9 @@ it runs, `sendLater()` drops its message: it is not queued, not sent even with `
 - Calls nest; the state is put back when `$work` throws.
 - What was queued before stays queued and is sent as usual: only the messages queued inside are dropped.
 
-With preflow/core it is deprecated since 0.81 (removed in 0.83): render under a discarding render context
-instead (`Application::render()` or `Contexts::run()` with `RenderContext::discarding()`).
+It is for notify on its own. With preflow/core it was deprecated in 0.81 and is removed in 0.83 inside a
+render (core's queue throws a `LogicException` there): render under a discarding render context instead
+(`Application::render()` or `Contexts::run()` with `RenderContext::discarding()`).
 
 ### The queue and the compose scope (since 0.81)
 

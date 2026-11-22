@@ -38,6 +38,7 @@ return [
         'everything' => 'Tout autoriser',
         'everything_hint' => 'Toutes les autorisations, y compris celles des futures extensions. Réservé aux admins.',
         'unknown' => 'Inconnues, retirées à l’enregistrement : :names',
+        'unavailable' => 'Désactivées, les droits sont conservés :',
         'type' => 'Type',
         'all' => 'Toutes',
         'none' => 'Pas d’autorisation « :verb » pour :type',

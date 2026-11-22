@@ -66,6 +66,7 @@ return [
         'translations' => 'Übersetzungen',
         'redirects' => 'Weiterleitungen',
         'seo_audit' => 'SEO-Prüfung',
+        'view_as' => 'Ansehen als',
     ],
     'permissions' => [
         'names' => [
@@ -73,7 +74,7 @@ return [
             'translations' => ['edit' => 'Übersetzungen'],
             'seo' => ['audit' => 'SEO-Prüfung', 'audit_run' => 'SEO-Prüfung ausführen'],
             'ai' => ['translate' => 'KI-Übersetzung verwenden', 'draft' => 'Entwürfe mit KI schreiben', 'settings' => 'KI-Einstellungen'],
-            'site' => ['view_as' => 'Website als Rolle ansehen'],
+            'site' => ['view_as' => 'Website als Rolle ansehen', 'view_as_address' => 'Jede Adresse als Rolle ansehen'],
         ],
         'verbs' => ['view' => 'Ansehen', 'create' => 'Erstellen', 'edit' => 'Bearbeiten', 'publish' => 'Veröffentlichen', 'delete' => 'Löschen', 'upload' => 'Hochladen'],
         'groups' => ['folio' => 'Folio', 'assets' => 'Medien', 'ai' => 'KI', 'site' => 'Website'],
@@ -303,6 +304,14 @@ return [
         'open_tab' => 'Vorschau in neuem Tab öffnen',
         'parts_locked' => 'Interaktive Teile sind in dieser Vorschau ausgeschaltet: Der App-Schlüssel der Website kann keine Vorschau signieren (er braucht mindestens 32 Zeichen).',
         'locked_click' => 'In dieser Vorschau ausgeschaltet.',
+        'other_address' => 'Eine andere Adresse als Rolle ansehen',
+        'address_title' => 'Ansehen als',
+        'address_intro' => 'Jede Seite der Website, auch eine ohne Eintrag, so wie eine Rolle oder ein Besucher sie sieht, mit den Arbeitskopien.',
+        'address' => 'Adresse',
+        'address_help' => 'Ein Pfad dieser Website, etwa /account oder /de/kontakt.',
+        'address_show' => 'Anzeigen',
+        'address_frame' => 'Vorschau von :address',
+        'address_refused' => 'Keine Adresse dieser Website: :address',
     ],
     'share_preview' => [
         'notice' => 'Vorschau eines Entwurfs. Formulare auf dieser Seite senden an die öffentliche Website.',

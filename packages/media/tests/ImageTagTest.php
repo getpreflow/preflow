@@ -65,9 +65,34 @@ final class ImageTagTest extends TestCase
         $this->lib->update($other->id, ['alt' => ['en' => 'Sky']]);
 
         $this->locale->set('de');
-        $this->assertStringContainsString('alt="Meer"', $this->tag()->render($asset->id));
-        $this->assertStringContainsString('alt="Sky"', $this->tag()->render($other->id));
-        $this->assertStringContainsString('alt="Override &amp; more"', $this->tag()->render($asset->id, null, ['alt' => 'Override & more']));
+        $site = new \Preflow\Core\Context\Site('https://site.test', ['en', 'de'], 'en');
+        $ctx = \Preflow\Core\Context\RenderContext::fromRequest(new \Nyholm\Psr7\ServerRequest('GET', '/'), $site, new \Preflow\Core\Context\SystemClock());
+        \Preflow\Core\Context\Contexts::run($ctx, function () use ($asset, $other): void {
+            $this->assertStringContainsString('alt="Meer"', $this->tag()->render($asset->id));
+            $this->assertStringContainsString('alt="Sky"', $this->tag()->render($other->id));
+            $this->assertStringContainsString('alt="Override &amp; more"', $this->tag()->render($asset->id, null, ['alt' => 'Override & more']));
+        });
+    }
+
+    /** Outside every render the provider's default() answers; localeOf() is never asked. */
+    public function test_outside_a_render_alt_uses_the_default_locale(): void
+    {
+        $asset = $this->lib->upload($this->upload($this->png(100, 50), 'a.png'), null);
+        $this->lib->update($asset->id, ['alt' => ['en' => 'Sea', 'de' => 'Meer']]);
+        $provider = new class implements \Preflow\Media\LocaleProvider {
+            public function localeOf(\Preflow\Core\Context\RenderContext $ctx): string
+            {
+                throw new \LogicException('localeOf() must not be asked outside a render');
+            }
+
+            public function default(): string
+            {
+                return 'de';
+            }
+        };
+        $tag = new ImageTag($this->lib, $provider, [], $this->css, '/folio/_uploads');
+
+        $this->assertStringContainsString('alt="Meer"', $tag->render($asset->id));
     }
 
     public function test_focal_point_class_not_style(): void
@@ -255,14 +280,9 @@ final class ImageTagTest extends TestCase
     {
         $asset = $this->lib->upload($this->upload($this->png(100, 50), 'a.png'), null);
         $this->lib->update($asset->id, ['alt' => ['en' => 'Sea', 'de' => 'Meer']]);
-        $provider = new class implements \Preflow\Media\ContextLocaleProvider {
+        $provider = new class implements \Preflow\Media\LocaleProvider {
             /** @var list<string> */
             public array $asked = [];
-
-            public function current(): string
-            {
-                return 'en';
-            }
 
             public function localeOf(\Preflow\Core\Context\RenderContext $ctx): string
             {

@@ -14,7 +14,6 @@ use Preflow\Core\Container\ServiceProvider;
 use Preflow\Core\Context\CapturedItem;
 use Preflow\Core\Context\OutboxChannel;
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\Purpose;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\RoleView;
@@ -150,40 +149,29 @@ final class NotifyBridgeTest extends TestCase
         $this->assertSame(['now@site.test', 'composed@site.test', 'later@site.test'], $this->sentTo($app));
     }
 
-    /** With core, Notifier::discardingQueued() is a deprecated shim over the frame: the discard holds for its stretch only. */
+    /** With core, Notifier::discardingQueued() is gone inside a render (0.83): the render's context decides what it sends. */
     #[RunInSeparateProcess]
-    public function test_discarding_queued_is_a_deprecated_shim_with_core(): void
+    public function test_discarding_queued_is_removed_inside_a_render_with_core(): void
     {
         $app = $this->app();
         $notifier = $app->container()->get(Notifier::class);
-        Deprecations::reset();
-        $notices = [];
-        set_error_handler(static function (int $no, string $message) use (&$notices): bool {
-            $notices[] = $message;
-
-            return true;
-        }, E_USER_DEPRECATED);
 
         try {
-            Contexts::run(RenderContext::console($app->site(), new SystemClock()), static function () use ($notifier): void {
-                foreach (['a', 'b'] as $name) {
-                    $result = $notifier->discardingQueued(static function () use ($notifier, $name): string {
-                        $notifier->sendLater(new Email('dropped-' . $name . '@site.test', 'S', 'T'));
-                        $notifier->send(new Email('dropped-now-' . $name . '@site.test', 'S', 'T'));
-
-                        return 'rendered';
-                    });
-                    \assert($result === 'rendered');
-                }
-                $notifier->sendLater(new Email('kept@site.test', 'S', 'T'));
-                Contexts::deliverQueued();
-            });
-        } finally {
-            restore_error_handler();
+            Contexts::run(RenderContext::console($app->site(), new SystemClock()), static fn (): string => $notifier->discardingQueued(static fn (): string => 'rendered'));
+            $this->fail('discardingQueued() inside a render must be refused');
+        } catch (\LogicException $e) {
+            $this->assertStringContainsString('RenderContext::discarding()', $e->getMessage());
         }
 
-        $this->assertSame(['kept@site.test'], $this->sentTo($app));
-        $this->assertSame(['Preflow\Notify\Notifier::discardingQueued() is deprecated since 0.81 and is removed in 0.83; use Application::render() or Contexts::run() with RenderContext::discarding().'], $notices);
+        // Outside every render there is no frame: notify's own queue drops what the work queues.
+        $result = $notifier->discardingQueued(static function () use ($notifier): string {
+            $notifier->sendLater(new Email('dropped@site.test', 'S', 'T'));
+
+            return 'ran';
+        });
+        $notifier->flushDeferred();
+        $this->assertSame('ran', $result);
+        $this->assertSame([], $this->sentTo($app));
     }
 
     /** The layout prints current_locale(): a mail to a reader of 'fr', composed in an admin request in 'de', is in 'fr'; the frame stays 'de'. */

@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace Preflow\I18n\Tests;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\Site;
+use Preflow\Core\Context\SystemClock;
 use Preflow\I18n\Labels;
 use Preflow\I18n\Tests\Support\TempLang;
 use Preflow\I18n\TranslationOverrides;
@@ -52,9 +56,8 @@ final class LabelsTest extends TestCase
                 return $locale === 'fr' && $key === 'site.types.app.label' ? 'Mes applis' : null;
             }
         });
-        $t->useOverrides(true);
 
-        $this->assertSame('Mes applis', Labels::resolve($t, 'site.types.app.label', 'Apps'));
+        Contexts::run(RenderContext::console(new Site('https://site.test', ['en', 'de', 'fr'], 'en'), new SystemClock())->admin('fr'), fn () => $this->assertSame('Mes applis', Labels::resolve($t, 'site.types.app.label', 'Apps')));
     }
 
     public function test_resolve_map_beats_a_key_in_another_locale(): void

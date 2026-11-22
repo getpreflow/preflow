@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Transfer;
 
+use Preflow\Core\Context\Writes;
+use Preflow\Core\Context\WritesRefused;
 use Preflow\Data\DataManager;
 use Preflow\Data\PartialCommit;
 use Preflow\Data\Query;
@@ -74,6 +76,8 @@ final class Importer
      */
     public function apply(ImportPlan $plan): void
     {
+        // Asked before any record or file is written, so a refusal leaves nothing half-applied.
+        self::assertFilesAllowed($plan);
         $this->applyRecords($plan);
 
         $roots = $this->set->fileRoots();
@@ -108,8 +112,11 @@ final class Importer
                 if ($diff['added'] === [] && $diff['changed'] === [] && $diff['removed'] === []) {
                     continue;
                 }
-                $changed[] = $table;
                 $def = $tables[$table];
+                // The records go straight through the drivers, so the write policy is asked here,
+                // before anything is written: a preview or a view as a role changes no content.
+                self::assertWritesAllowed($def->storage, $table, $diff);
+                $changed[] = $table;
                 $rows = [];
                 foreach ([...$diff['added'], ...$diff['changed']] as $id) {
                     $row = json_decode((string) file_get_contents("{$plan->dir}/data/{$table}/{$id}.json"), true, 512, JSON_THROW_ON_ERROR);
@@ -188,6 +195,54 @@ final class Importer
             }
         }
         $this->set->imported($changed);
+    }
+
+    /**
+     * Asks the write policy ('file' writes) for each file root the plan changes.
+     *
+     * @throws TransferException naming the root, code RECORDS_UNCHANGED (nothing is written yet)
+     */
+    private static function assertFilesAllowed(ImportPlan $plan): void
+    {
+        foreach ($plan->files as $root => $diff) {
+            if ($diff['added'] === [] && $diff['changed'] === [] && $diff['removed'] === []) {
+                continue;
+            }
+            try {
+                $allowed = Writes::allowed('files', (string) $root, null, 'file');
+            } catch (WritesRefused) {
+                $allowed = false;
+            }
+            if (!$allowed) {
+                throw new TransferException("{$root}: the write policy of this request does not allow changing files.", self::RECORDS_UNCHANGED);
+            }
+        }
+    }
+
+    /**
+     * Asks the render's write policy (Writes::allowed()) for each kind of write the table's
+     * diff makes. A policy that skips or refuses it refuses the whole import: a half-applied
+     * import would leave mixed content.
+     *
+     * @param array{added: list<string>, changed: list<string>, removed: list<string>} $diff
+     * @throws TransferException naming the table
+     */
+    private static function assertWritesAllowed(string $storage, string $table, array $diff): void
+    {
+        $operations = array_filter([
+            'save' => [...$diff['added'], ...$diff['changed']] !== [],
+            'delete' => [...$diff['removed'], ...$diff['changed']] !== [],
+        ]);
+        foreach (array_keys($operations) as $operation) {
+            try {
+                $allowed = Writes::allowed($storage, $table, null, $operation);
+            } catch (WritesRefused) {
+                $allowed = false;
+            }
+            if (!$allowed) {
+                throw new TransferException("{$table}: the write policy of this request does not allow changing records.");
+            }
+        }
     }
 
     /**

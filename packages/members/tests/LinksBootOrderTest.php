@@ -47,9 +47,7 @@ final class LinksBootOrderTest extends TestCase
     {
         $container = $this->app()->container();
         $translator = $container->get(Translator::class);
-        $translator->setLocale('de');
-
-        $this->assertSame('Anmelden', $translator->get('members.login.title'));
+        $this->assertSame('Anmelden', $translator->get('members.login.title', [], 'de'));
     }
 }
 

@@ -9,14 +9,10 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\RoleView;
-use Preflow\Core\Context\Site;
 use Preflow\Core\Http\RequestLimits;
-use Preflow\Data\Locales;
 use Preflow\Folio\Content\Collections;
-use Preflow\Folio\Content\ContentLocale;
 use Preflow\Folio\FolioText;
 use Preflow\Folio\Http\AdminAuthMiddleware;
 use Preflow\Folio\Http\AdminNav;
@@ -61,7 +57,6 @@ final class FolioContextTest extends TestCase
     protected function setUp(): void
     {
         Contexts::reset();
-        Deprecations::reset();
         ContextProbeProvider::$seen = ContextProbeProvider::$after = [];
         ContextProbeProvider::$write = ContextProbeProvider::$fail = ContextProbeProvider::$mail = false;
         $this->scaffoldPublishing();
@@ -93,7 +88,6 @@ final class FolioContextTest extends TestCase
         spl_autoload_unregister($this->autoload);
         FolioText::translatorFrom(null);
         Contexts::reset();
-        Deprecations::reset();
         $this->removeScaffold();
     }
 
@@ -300,40 +294,6 @@ final class FolioContextTest extends TestCase
         $this->assertStringContainsString('<html lang="fr">', (string) $admin->getBody(), 'the admin\'s interface language');
     }
 
-    public function test_content_locale_set_is_a_deprecated_shim_bound_to_its_frame(): void
-    {
-        $locale = new ContentLocale(new Locales(['en', 'de'], 'en'));
-        $site = new Site('http://localhost', ['en', 'de'], 'en');
-
-        $outside = self::deprecations(static fn () => $locale->set('de'));
-        $this->assertSame('en', $locale->get(), 'outside every render nothing is kept: the default');
-        $this->assertSame(['Preflow\Folio\Content\ContentLocale::set() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->in($locale)).'], $outside);
-
-        Contexts::run(ContextFactory::forTest($site), function () use ($locale, $site): void {
-            $this->assertSame('en', $locale->get());
-            $locale->set('de');
-            $this->assertSame('de', $locale->get());
-            $this->assertSame('de', Contexts::current()->locale, 'it narrowed the frame');
-
-            Contexts::run(ContextFactory::forTest($site)->in('de'), function () use ($locale): void {
-                $locale->set('en');
-                $this->assertSame('en', $locale->get(), 'the inner frame narrowed');
-            });
-            $this->assertSame('de', $locale->get(), 'the inner frame\'s set() ended with it');
-
-            $locale->set('xx');
-            $this->assertSame('en', $locale->get(), 'not a content locale: the default');
-            $this->assertSame('en', Contexts::within(Contexts::current(), static function () use ($locale): string {
-                $locale->set('de');
-
-                return 'en';
-            }));
-            $this->assertSame('en', $locale->get(), 'within() puts the context back');
-        });
-
-        $this->assertSame('en', $locale->get(), 'the frame is gone');
-    }
-
     #[RunInSeparateProcess]
     public function test_collections_memo_follows_the_context(): void
     {
@@ -370,10 +330,6 @@ final class FolioContextTest extends TestCase
                 $this->assertSame($translator, FolioText::translator(), 'the app\'s translator');
             });
             $this->assertNotSame($translator, FolioText::translator(), 'the stretch ended');
-
-            $previous = FolioText::use($translator);
-            $this->assertTrue(Contexts::current()->surface->admin, 'use() is a shim that narrows the frame');
-            $this->assertNotSame($translator, $previous);
         });
         $this->assertSame('Save', FolioText::get('folio.common.save'));
     }
@@ -388,7 +344,7 @@ final class FolioContextTest extends TestCase
         $f = new Psr17Factory();
 
         // A real htmx POST (an audit step) and the sign-in page (no AdminAuthMiddleware), handled inside a role view's frame
-        // (view as role): refused, not a 500 from the setUser() shim, and nothing ran.
+        // (view as role): refused, and nothing ran.
         $step = Contexts::run($asRole, static fn (): ResponseInterface => $app->handle($f->createServerRequest('POST', '/folio/seo-audit/step')
             ->withHeader('HX-Request', 'true')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([])));
         $login = Contexts::run($asRole, static fn (): ResponseInterface => $app->handle($f->createServerRequest('GET', '/folio/login')));
@@ -612,29 +568,5 @@ final class FolioContextTest extends TestCase
         }
 
         return $this->session->handle($req);
-    }
-
-    /**
-     * Runs $fn and returns the E_USER_DEPRECATED messages it raised.
-     *
-     * @return list<string>
-     */
-    private static function deprecations(\Closure $fn): array
-    {
-        $messages = [];
-        set_error_handler(static function (int $no, string $message) use (&$messages): bool {
-            if ($no === E_USER_DEPRECATED) {
-                $messages[] = $message;
-            }
-
-            return true;
-        });
-        try {
-            $fn();
-        } finally {
-            restore_error_handler();
-        }
-
-        return $messages;
     }
 }

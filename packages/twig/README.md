@@ -136,9 +136,11 @@ count) is a live part of a cached page (preflow/core's page cache):
   component's renders its live blocks in place and keeps the page from being stored. That
   includes a component with its own `getTemplatePath()` (a file other than `ShortName.twig`
   next to the class): since 0.82.0 it refuses the page instead of filling from the default file.
-- Templates compiled by 0.82 call `LiveExtension::part()`. `LiveExtension::live()`, which
-  templates compiled by 0.81 call, is deprecated (removed in 0.83) and reports once per call
-  site; clear the Twig cache after upgrading so every template is compiled again.
+- Compiled templates call `LiveExtension::part()` (since 0.82). `LiveExtension::live()`, which
+  templates compiled by 0.81 called, is removed in 0.83: a template compiled before 0.82 fails
+  with an undefined method. Upgrading from 0.81, clear the compiled templates
+  (`php preflow cache:clear twig`); core keeps them in a folder keyed by composer's installed.json,
+  so a `composer install` that rewrites it starts a fresh folder too.
 - Print the tag's output as it is: captured into `{% set %}` and printed escaped, or passed
   through `|striptags` or `|slice`, the placeholder is broken and the part is missing.
 

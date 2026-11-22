@@ -563,14 +563,6 @@ final class MarkdownViewTest extends TestCase
     public function test_each_render_gets_its_own_locale_and_the_request_keeps_its_own(): void
     {
         $app = $this->app();
-        $seen = [];
-        $app->container()->get(\Preflow\View\Geo\RenderScopes::class)->add(
-            function (\Psr\Http\Message\ServerRequestInterface $sub, \Closure $next) use (&$seen): \Psr\Http\Message\ResponseInterface {
-                $seen[] = $sub->getUri()->getPath();
-
-                return $next();
-            },
-        );
 
         // The outer request: a German page, so its frame (since 0.81 the translator reads it) is in German.
         $outer = (new Psr17Factory())->createServerRequest('GET', 'http://localhost/de/about');
@@ -604,8 +596,6 @@ final class MarkdownViewTest extends TestCase
         $this->assertNotNull($during);
         $this->assertSame('/de/about', $during->path);
         $this->assertSame($during, $after, 'the outer request\'s context is back after the renders');
-        // Scopes packages add (Folio's content locale) wrap every render.
-        $this->assertSame(['/de/', '/'], $seen);
     }
 
     #[RunInSeparateProcess]

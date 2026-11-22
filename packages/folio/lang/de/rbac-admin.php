@@ -38,6 +38,7 @@ return [
         'everything' => 'Alles erlauben',
         'everything_hint' => 'Jede Berechtigung, auch die künftiger Erweiterungen. Nur für Admins.',
         'unknown' => 'Unbekannt, wird beim Speichern entfernt: :names',
+        'unavailable' => 'Ausgeschaltet, Berechtigungen bleiben erhalten:',
         'type' => 'Typ',
         'all' => 'Alle',
         'none' => 'Keine Berechtigung „:verb“ für :type',

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
-use Preflow\Ai\AiUnavailable;
 use Preflow\Ai\Limits\AiLimitReached;
 use Preflow\Ai\Limits\AiLimits;
 use Preflow\Ai\Limits\AiLimitsMisconfigured;
@@ -28,6 +27,7 @@ use Preflow\I18n\Machine\Scope;
 use Preflow\I18n\Machine\TextSources;
 use Preflow\I18n\Machine\TranslationUnit;
 use Preflow\I18n\Machine\TranslationWorker;
+use Preflow\I18n\Machine\TranslatorUnavailable;
 use Preflow\I18n\Machine\UnitStatus;
 use Preflow\Media\MediaLibrary;
 use Preflow\Media\Translation\AltTextSource;
@@ -223,7 +223,7 @@ final class AiTranslateController
             LongRequest::allow($request, self::TIME_LIMIT);
             try {
                 $job = $this->runner->step($job->id, 1);
-            } catch (AiUnavailable) {
+            } catch (TranslatorUnavailable) {
                 $job = $this->jobs->get($job->id) ?? $job; // stopped and saved by the runner, with the message
             } catch (AiLimitReached $e) {
                 // The job waits for its person's limit; the progress says so and polls again after Retry-After.
@@ -480,7 +480,7 @@ final class AiTranslateController
         }
         try {
             $results = $this->translator->translateUnits($units, $note === '' ? null : $note);
-        } catch (AiUnavailable $e) {
+        } catch (TranslatorUnavailable $e) {
             return self::json(503, ['error' => $e->getMessage()]);
         } finally {
             if ($this->translator instanceof ReportsCost) {

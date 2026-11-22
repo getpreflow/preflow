@@ -4,15 +4,18 @@ declare(strict_types=1);
 
 namespace Preflow\I18n\Machine;
 
-use Preflow\Ai\AiUnavailable;
-use Preflow\Ai\Tuning;
-
 /**
  * Translates text by machine. Callers depend on this, not on a provider, so tests and projects can
  * swap it (config/ai.php `translation.translator`). A translator answers its own availability and
  * price: Folio's Translate, the worker, `translate:work` and the estimate ask it, not the AI
  * connection, so a translator that is no AI (a translation API) needs no AI key. AiTranslator, the
  * default, answers through preflow/ai.
+ *
+ * A translator package (or an app's provider) binds BOTH this and TranslatorAvailability: binding
+ * only the translator leaves Folio's AI translation off (Folio asks TranslatorAvailability whether
+ * to offer Translate, its text sources and `ai.translate`). Such a provider registers after
+ * MachineServiceProvider (and after Folio, which registers it), so its bindings override the
+ * defaults. Naming the class in config/ai.php `translation.translator` needs neither.
  */
 interface MachineTranslator
 {
@@ -30,11 +33,12 @@ interface MachineTranslator
     public function estimateCost(Estimate $size): ?float;
 
     /**
-     * One text on the fly.
+     * One text on the fly. $tuning: instructions for this text (i18n's own type since 0.83.0; it was
+     * preflow/ai's Tuning before).
      *
-     * @throws AiUnavailable|TranslationFailed
+     * @throws TranslatorUnavailable|TranslationFailed
      */
-    public function translate(string $text, string $to, ?Tuning $tuning = null, ?string $from = null, TextFormat $format = TextFormat::Plain): string;
+    public function translate(string $text, string $to, ?TranslationTuning $tuning = null, ?string $from = null, TextFormat $format = TextFormat::Plain): string;
 
     /**
      * A failing unit becomes a Failed result, never an exception, so one bad text cannot stop a run.
@@ -42,7 +46,8 @@ interface MachineTranslator
      * @param list<TranslationUnit> $units
      * @param string|null $note a one-off instruction for this run
      * @return list<TranslationResult> one per unit, in the same order
-     * @throws AiUnavailable (only that) the provider cannot be used at all: the whole run stops
+     * @throws TranslatorUnavailable (only that) the translator cannot be used at all: the whole run
+     *         stops (i18n's own exception since 0.83.0; it was preflow/ai's AiUnavailable before)
      */
     public function translateUnits(array $units, ?string $note = null): array;
 }

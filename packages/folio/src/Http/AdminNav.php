@@ -23,7 +23,7 @@ final class AdminNav
 
     private string $prefix;
     private string $path = '';
-    /** @var list<array{section: string, label: string|Closure, url: string, icon: string, permission: ?string, order: int, badge: ?Closure, family: ?TypeFamily}> */
+    /** @var list<array{section: string, label: string|Closure, url: string, icon: string, permission: string|list<string>|null, order: int, badge: ?Closure, family: ?TypeFamily}> */
     private array $added = [];
     /** @var (Closure(string): ?int)|null the count badge of a type key; set at boot (Customizations resolve after the nav is built) */
     private ?Closure $badges = null;
@@ -55,9 +55,13 @@ final class AdminNav
      * @param string|Closure(): string $label a closure is asked when the sidebar renders (a text in the interface language)
      * @param (Closure(): mixed)|null $badge a count for the item, asked once and only while the item is visible; anything but an int above 0 (or a throw) shows none
      * @param TypeFamily|null $family what kind of content the item leads to, for its tint; null: none (@since 0.75)
+     * @param string|list<string>|null $permission a list shows the item only to whoever holds every one of them (@since 0.83.0)
      */
-    public function add(string $section, string|Closure $label, string $url, string $icon, ?string $permission, int $order = 100, ?Closure $badge = null, ?TypeFamily $family = null): void
+    public function add(string $section, string|Closure $label, string $url, string $icon, string|array|null $permission, int $order = 100, ?Closure $badge = null, ?TypeFamily $family = null): void
     {
+        if (is_array($permission) && ($permission === [] || !array_is_list($permission) || array_filter($permission, is_string(...)) !== $permission)) {
+            throw new \InvalidArgumentException('Nav item "' . $url . '": a permission list is a non-empty list of names (null shows the item to everyone).');
+        }
         if (preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $section) !== 1) {
             throw new \InvalidArgumentException('Nav section "' . $section . '" is not a valid name: lower case letters, digits, "_" and "-", starting with a letter, at most 64 characters.');
         }
@@ -95,7 +99,7 @@ final class AdminNav
     public function sections(): array
     {
         $groups = array_fill_keys(array_keys(self::BUILTIN), []);
-        $add = function (string $section, string|Closure $label, string $url, string $icon, ?string $permission, int $order, ?string $type = null, ?Closure $badge = null, ?TypeFamily $family = null) use (&$groups): void {
+        $add = function (string $section, string|Closure $label, string $url, string $icon, string|array|null $permission, int $order, ?string $type = null, ?Closure $badge = null, ?TypeFamily $family = null) use (&$groups): void {
             $groups[$section][] = compact('label', 'url', 'icon', 'permission', 'order', 'type', 'badge', 'family');
         };
 
@@ -120,7 +124,7 @@ final class AdminNav
         foreach ($groups as $section => $items) {
             $items = array_values(array_filter(
                 $items,
-                fn (array $item): bool => $item['permission'] === null || ($this->can)($item['permission']),
+                fn (array $item): bool => $item['permission'] === null || array_all((array) $item['permission'], fn (string $permission): bool => ($this->can)($permission)),
             ));
             usort($items, fn (array $a, array $b): int => $a['order'] <=> $b['order']); // stable
             if ($items !== []) {

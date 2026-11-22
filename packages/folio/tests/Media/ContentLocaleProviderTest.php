@@ -35,8 +35,8 @@ final class ContentLocaleProviderTest extends TestCase
         $content = new ContentLocale(new Locales(['en', 'de'], 'en'));
         $provider = new ContentLocaleProvider($content);
 
-        $this->assertSame('en', $provider->current());
-        $this->assertSame('de', \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->in('de'), $provider->current(...)), 'the render\'s locale');
+        $this->assertSame('en', $provider->localeOf(\Preflow\Testing\ContextFactory::forTest()));
+        $this->assertSame('de', $provider->localeOf(\Preflow\Testing\ContextFactory::forTest()->in('de')), 'the render\'s locale');
         $this->assertSame('en', $provider->default());
     }
 

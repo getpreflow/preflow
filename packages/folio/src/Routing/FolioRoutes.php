@@ -122,6 +122,9 @@ final class FolioRoutes
             ['GET',  $prefix . '/_search',             'search', self::SEARCH], // the ⌘K palette's records; before the generic {type} routes
             // The whole-page preview of a saved record (its real page; ?locale=&as=). No generic route has four segments.
             ['GET',  $prefix . '/preview/page/{type}/{id}', 'show', self::PAGE_PREVIEW],
+            // Any address of the site as a role (0.83.0): the screen, and the page its frame shows (?path=&as=).
+            ['GET',  $prefix . '/preview/address',      'addressScreen', self::PAGE_PREVIEW],
+            ['GET',  $prefix . '/preview/address/page', 'address', self::PAGE_PREVIEW],
         ], $aiDraft ? [
             // "Write a draft" (only while the draft writer is available); before POST {type}/{id}, which "_ai/draft" would match.
             ['POST', $prefix . '/_ai/draft',           'draft', self::AI_DRAFT],

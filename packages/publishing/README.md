@@ -187,7 +187,7 @@ stored record once more (by id) to name the changed fields.
   under `RenderContext::workingCopies()` (an admin, its preview, a share preview) reads the working
   copies. To switch the rest of a request: `Contexts::narrow(fn ($c) => $c->workingCopies())`; for a
   stretch only: `Contexts::within(Contexts::current()->workingCopies(), fn () => …)`.
-  `showWorkingCopies()` is deprecated since 0.81 (removed in 0.83). `find($type, $id)`, `query($type)`.
+  Outside every render it reads the snapshots. `find($type, $id)`, `query($type)`.
 - **`PublishedModels`** does the same for a model class, as read-only objects of the class:
   `find(Job::class, $id)`, `query(Job::class)`. Saving one throws.
 

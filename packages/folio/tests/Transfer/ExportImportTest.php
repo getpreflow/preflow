@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Preflow\Folio\Tests\Transfer;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Context\Contexts;
+use Preflow\Testing\ContextFactory;
 use Preflow\Data\DataManager;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Preflow\Folio\Transfer\ContentSet;
@@ -345,6 +347,39 @@ final class ExportImportTest extends TestCase
 
         $this->expectException(TransferException::class);
         $this->import($s);
+    }
+
+    /** A skipping or refusing write policy stops a files-only import: no file is written or deleted. */
+    public function test_a_write_policy_that_skips_or_refuses_stops_a_files_only_import(): void
+    {
+        $archive = $this->export('media');
+        $bytes = (string) stream_get_contents($archive, -1, 0);
+        $this->put('public/media/2026/10/stray.jpg', 'X');
+        $this->put('public/media/2026/10/a1.jpg', 'LOCAL');
+
+        foreach ([ContextFactory::forTest()->skippingWrites(), ContextFactory::forTest()->refusingWrites()] as $context) {
+            $stream = fopen('php://temp', 'w+b');
+            fwrite($stream, $bytes);
+            rewind($stream);
+            $app = $this->app();
+            $importer = new Importer(ContentSet::fromApp($app), $app->container()->get(DataManager::class));
+            $plan = $importer->read($stream, 'media');
+            try {
+                Contexts::run($context, function () use ($importer, $plan): void {
+                    try {
+                        $importer->apply($plan);
+                        $this->fail('the import should have been refused');
+                    } catch (TransferException $e) {
+                        $this->assertSame(Importer::RECORDS_UNCHANGED, $e->getCode());
+                        $this->assertStringContainsString('media', $e->getMessage());
+                    }
+                });
+            } finally {
+                $plan->cleanup();
+            }
+            $this->assertFileExists($this->dir . '/public/media/2026/10/stray.jpg', 'nothing deleted');
+            $this->assertSame('LOCAL', file_get_contents($this->dir . '/public/media/2026/10/a1.jpg'), 'nothing written');
+        }
     }
 
     public function test_only_media_leaves_records_and_only_data_leaves_files(): void

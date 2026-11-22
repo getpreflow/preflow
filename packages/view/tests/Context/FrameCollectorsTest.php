@@ -9,7 +9,6 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\Purpose;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\Site;
@@ -21,7 +20,6 @@ use Preflow\Htmx\ResponseHeaders;
 use Preflow\View\AssetCollector;
 use Preflow\View\Geo\GeoCapture;
 use Preflow\View\Geo\GeoCollector;
-use Preflow\View\Geo\RenderScopes;
 use Preflow\View\JsPosition;
 use Preflow\View\NonceGenerator;
 use Preflow\View\Seo\PageMeta;
@@ -277,33 +275,6 @@ final class FrameCollectorsTest extends TestCase
 
         $this->assertSame(['page block'], $capture->pageBlocks());
         $this->assertSame('component block', $capture->block(0));
-    }
-
-    public function test_render_scopes_add_is_a_deprecated_adapter(): void
-    {
-        Deprecations::reset();
-        $scopes = new RenderScopes();
-        $notices = [];
-        set_error_handler(static function (int $level, string $message) use (&$notices): bool {
-            $notices[] = $message;
-
-            return true;
-        }, E_USER_DEPRECATED);
-        try {
-            $ran = [];
-            $scopes->add(static function (ServerRequestInterface $r, \Closure $next) use (&$ran): ResponseInterface {
-                $ran[] = 'scope';
-
-                return $next();
-            });
-        } finally {
-            restore_error_handler();
-        }
-
-        $this->assertSame(['Preflow\View\Geo\RenderScopes::add() is deprecated since 0.81 and is removed in 0.83; use a context facet or RenderContext::memoKey() (each internal render has its own frame and context).'], $notices);
-        $response = Contexts::run(self::ctx(Purpose::Audit), static fn (): ResponseInterface => $scopes->run(new ServerRequest('GET', '/'), static fn (): ResponseInterface => new \Nyholm\Psr7\Response(204)));
-        $this->assertSame(204, $response->getStatusCode());
-        $this->assertSame(['scope'], $ran, 'an added scope still runs around the render');
     }
 
     /** A site whose pages and components add response headers. @param array<string, mixed> $cache config/page_cache.php */

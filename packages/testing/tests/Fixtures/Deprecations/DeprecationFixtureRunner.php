@@ -8,6 +8,7 @@ use Nyholm\Psr7\Response;
 use Preflow\Auth\AuthManager;
 use Preflow\Core\Application;
 use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\Purpose;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\RenderResult;
@@ -19,9 +20,8 @@ use Preflow\Testing\Contract\RenderIsolationContract;
 /**
  * A site runner of the render isolation contract, as a site writes it: no #[IgnoreDeprecations],
  * no Deprecations::reset(). Its app binds a translator and an auth manager, so the contract's
- * poison calls their deprecated setters (Translator::setLocale(), useOverrides(),
- * AuthManager::setUser()). RenderIsolationContractTest runs the runners extending it in a PHPUnit
- * subprocess under this folder's phpunit.xml (failOnDeprecation, as a site's).
+ * poison narrows the outer frame for them. RenderIsolationContractTest runs the runners extending
+ * it in a PHPUnit subprocess under this folder's phpunit.xml (failOnDeprecation, as a site's).
  */
 abstract class DeprecationFixtureRunner extends RenderIsolationContract
 {
@@ -56,6 +56,12 @@ abstract class DeprecationFixtureRunner extends RenderIsolationContract
                 return new RenderResult(new Response(200, [], $body), $frame->madeOutbox()?->drain() ?? [], $frame->skippedWrites());
             },
         ];
+    }
+
+    /** A shim of the site's own: deprecated, reported once per call site (the caller of this). */
+    protected static function legacyCall(): void
+    {
+        Deprecations::once('Acme\\Legacy::call() is deprecated; use the new call.');
     }
 
     /** What a page shows of its context: locale, viewer and reads (the interleaved test needs B to differ). */

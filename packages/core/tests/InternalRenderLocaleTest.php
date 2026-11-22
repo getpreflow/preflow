@@ -9,6 +9,8 @@ use Nyholm\Psr7\Response;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
 use Preflow\I18n\Translator;
 use Preflow\View\Audit\PageRenderer;
 use Psr\Http\Message\ResponseInterface;
@@ -77,7 +79,6 @@ final class GermanAdminStepRoute implements MiddlewareInterface
             return $handler->handle($request);
         }
         $translator = $this->container->get(Translator::class);
-        $translator->setLocale('de');
         // Admin requests show the texts staff changed: an override for a key public pages render too.
         $translator->setOverrides(new class implements \Preflow\I18n\TranslationOverrides {
             public function get(string $locale, string $key): ?string
@@ -86,7 +87,8 @@ final class GermanAdminStepRoute implements MiddlewareInterface
             }
         });
         $translator->overridable('demo.');
-        $translator->useOverrides(true);
+        // An admin request in German, with the texts staff changed (as AdminLocaleMiddleware narrows it).
+        Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->admin('de'));
         $page = $this->container->get(PageRenderer::class)->render('/about');
         preg_match('~<h1>.*?</p>~', $page->body, $main);
 

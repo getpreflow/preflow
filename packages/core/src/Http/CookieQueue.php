@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Preflow\Core\Http;
 
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\OutboxPolicy;
 use Preflow\Core\Context\RenderFrame;
 use Preflow\Core\Context\SettlesOnClose;
@@ -188,30 +187,6 @@ final class CookieQueue implements SettlesOnClose
         [$cookies, $queue->cookies] = [$queue->cookies, []];
 
         return $cookies;
-    }
-
-    /**
-     * Runs $render with the queue set aside: it starts empty, what the render queues is dropped,
-     * and the values queued before are back afterwards, also when $render throws. Inside a frame
-     * it runs in a Contexts::within() of the same context, so it stays in that frame.
-     *
-     * @deprecated 0.81, removed in 0.83: a render in its own frame (Application::render()) starts
-     *             with its own cookies
-     *
-     * @template T
-     * @param \Closure(): T $render
-     * @return T
-     */
-    public function isolated(\Closure $render): mixed
-    {
-        Deprecations::once('Preflow\Core\Http\CookieQueue::isolated() is deprecated since 0.81 and is removed in 0.83; use Application::render() (a render in its own frame starts with its own cookies).');
-        $queue = $this->target();
-        [$outer, $queue->cookies] = [$queue->cookies, []];
-        try {
-            return Contexts::depth() === 0 ? $render() : Contexts::within(Contexts::current(), $render);
-        } finally {
-            $queue->cookies = $outer;
-        }
     }
 
     public function apply(ResponseInterface $response): ResponseInterface

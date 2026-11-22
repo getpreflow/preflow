@@ -15,6 +15,8 @@ use PHPUnit\Framework\TestCase;
  * Since 0.81: data 0.81.0 (DataManager::updateIf() and deleteIf(), the conditional writes behind Tokens::consume() and the
  * remember-me rotation, which follow the write policy the same on every storage).
  * Since 0.78: data 0.78 (TypeFieldDefinition's exact, which RememberMe and Tokens give their ids, hashes and purposes).
+ * Since 0.83: testing 0.83.0 (the isolation contract before 0.83 calls the removed AuthManager::setUser(); testing is no
+ * dependency, so this is a conflict only).
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -24,6 +26,6 @@ final class ComposerConstraintsTest extends TestCase
 
         $this->assertSame('^0.82.0 || @dev', $composer['require']['preflow/core'] ?? null);
         $this->assertSame('^0.81.0 || @dev', $composer['require']['preflow/data'] ?? null);
-        $this->assertSame(['preflow/core' => '<0.82.0', 'preflow/data' => '<0.81.0'], $composer['conflict'] ?? null);
+        $this->assertSame(['preflow/core' => '<0.82.0', 'preflow/data' => '<0.81.0', 'preflow/testing' => '<0.83.0'], $composer['conflict'] ?? null);
     }
 }

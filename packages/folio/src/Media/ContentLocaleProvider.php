@@ -6,17 +6,12 @@ namespace Preflow\Folio\Media;
 
 use Preflow\Folio\Content\ContentLocale;
 use Preflow\Core\Context\RenderContext;
-use Preflow\Media\ContextLocaleProvider;
+use Preflow\Media\LocaleProvider;
 
 /** Media renders alt text in Folio's content locale (the page's language, the editing locale in previews). */
-final class ContentLocaleProvider implements ContextLocaleProvider
+final class ContentLocaleProvider implements LocaleProvider
 {
     public function __construct(private readonly ContentLocale $locale) {}
-
-    public function current(): string
-    {
-        return $this->locale->get();
-    }
 
     /** @since 0.81.0 */
     public function localeOf(RenderContext $ctx): string

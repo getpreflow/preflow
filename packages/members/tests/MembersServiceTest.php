@@ -6,6 +6,8 @@ namespace Preflow\Members\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\PasswordHasherInterface;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
 use Preflow\Members\Admission\AcceptOnConfirm;
 use Preflow\Members\Admission\Admission;
 use Preflow\Members\Admission\Decision;
@@ -231,20 +233,23 @@ final class MembersServiceTest extends TestCase
             $this->assertSame('en', $viewer->language('en'));
 
             $m = $this->members()->register('ada@example.com', 'Ada', 'correct horse battery', 'de', []);
-            $c->get(AuthManager::class)->addUser(new RecordUser($m), 'members');
+            $member = new RecordUser($m);
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new \Preflow\Core\Context\Viewer(['members' => $member], 'members')));
 
             $this->assertSame($m->getId(), $viewer->member()?->getId());
             $this->assertSame('Ada', $viewer->name());
             $this->assertSame('de', $viewer->language('en'));
             $this->assertFalse($viewer->isStaff());
 
-            $c->get(AuthManager::class)->addUser(new \Preflow\Auth\ArrayUser('admin', 'admin@site.test', '', ['admin']), 'session');
+            $admin = new \Preflow\Auth\ArrayUser('admin', 'admin@site.test', '', ['admin']);
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new \Preflow\Core\Context\Viewer(['members' => $member, 'session' => $admin], 'members')));
             $this->assertTrue($viewer->isStaff(), 'the default guard is staff');
 
             // A default guard of the members population (the starter's employers) is no staff.
             $auth = $c->get(AuthManager::class);
             $notStaff = new Viewer($auth, new \Preflow\Auth\Access\Access($auth, $c->get(\Preflow\Auth\Access\PermissionRegistry::class), false, ['session' => 'members']), $this->members());
-            $auth->addUser(new \Preflow\Auth\ArrayUser('employer', 'boss@firm.test', '', []), 'session');
+            $employer = new \Preflow\Auth\ArrayUser('employer', 'boss@firm.test', '', []);
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new \Preflow\Core\Context\Viewer(['members' => $member, 'session' => $employer], 'members')));
             $this->assertFalse($notStaff->isStaff());
         });
     }
@@ -260,11 +265,14 @@ final class MembersServiceTest extends TestCase
             $access->markStaffGuard('staff');
             $viewer = new Viewer($auth, $access, $this->members());
 
-            $auth->setUser(new \Preflow\Auth\ArrayUser('employer', 'boss@firm.test', '', []), 'session');
+            $employer = new \Preflow\Auth\ArrayUser('employer', 'boss@firm.test', '', []);
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new \Preflow\Core\Context\Viewer(['session' => $employer], 'session')));
             $this->assertFalse($viewer->isStaff(), 'an employer is no staff');
             $this->assertSame('', $viewer->name());
 
-            $auth->addUser(new \Preflow\Auth\ArrayUser('admin', 'admin@site.test', '', ['admin']), 'staff');
+            // A staff user signed in beside the employer, who stays the primary one.
+            $admin = new \Preflow\Auth\ArrayUser('admin', 'admin@site.test', '', ['admin']);
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new \Preflow\Core\Context\Viewer(['session' => $employer, 'staff' => $admin], 'session')));
             $this->assertTrue($viewer->isStaff());
             $this->assertSame('admin@site.test', $viewer->name());
         });

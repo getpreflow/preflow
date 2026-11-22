@@ -107,17 +107,6 @@ final class ValidationTranslationTest extends TestCase
         $this->assertSame(['This field is required.'], $factory->make(['f' => ['required']], [])->validate()->fieldErrors('f'));
     }
 
-    public function test_the_factorys_translator_can_be_set_for_a_while_and_put_back(): void
-    {
-        $factory = new ValidatorFactory(new RuleFactory());
-
-        $this->assertNull($factory->useTranslator(self::translator('de')));
-        $this->assertSame(['Dieses Feld ist erforderlich.'], $factory->make(['f' => ['required']], [])->validate()->fieldErrors('f'));
-        $previous = $factory->useTranslator(null);
-        $this->assertInstanceOf(Translator::class, $previous);
-        $this->assertSame(['This field is required.'], $factory->make(['f' => ['required']], [])->validate()->fieldErrors('f'));
-    }
-
     public function test_the_package_declares_the_public_group_with_the_same_keys_in_en_de_and_fr(): void
     {
         $root = dirname(__DIR__);

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Preflow\I18n\Machine;
 
-use Preflow\Ai\AiUnavailable;
 use Preflow\Ai\Limits\AiLimitReached;
 use Preflow\Ai\Limits\AiLimitsMisconfigured;
 use Preflow\Core\Context\Contexts;
@@ -68,7 +67,7 @@ final class TranslationWorker
                         $before = $job;
                         try {
                             $job = $this->runner->step($job->id);
-                        } catch (AiUnavailable $e) {
+                        } catch (TranslatorUnavailable $e) {
                             throw $e;
                         } catch (AiLimitReached $e) {
                             // Neither stopped nor failed: the job goes on once its person's window ends.
@@ -116,7 +115,7 @@ final class TranslationWorker
                     }
                 }
             } while ($progress && $this->now()->getTimestamp() < $deadline);
-        } catch (AiUnavailable $e) {
+        } catch (TranslatorUnavailable $e) {
             return new WorkReport($records, $cost, $unknown, $e->getMessage());
         }
 

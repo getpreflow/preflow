@@ -37,7 +37,6 @@ final class LocaleSwitchTest extends TestCase
     private function middleware(bool $redirectBare = true, bool $prefixDefault = true, string $cookieName = 'locale', bool $cookie = false, bool $prefixed = true): LocaleMiddleware
     {
         return new LocaleMiddleware(
-            new Translator(sys_get_temp_dir() . '/preflow_locale_switch_none', 'en', 'en'),
             self::LOCALES,
             'en',
             $prefixed ? 'prefix' : 'none',
@@ -239,7 +238,6 @@ final class LocaleSwitchTest extends TestCase
     public function test_switch_without_target_lands_on_the_slash_home_with_home_slash(): void
     {
         $mw = new LocaleMiddleware(
-            new Translator(sys_get_temp_dir() . '/preflow_locale_switch_none', 'en', 'en'),
             self::LOCALES,
             'en',
             'prefix',

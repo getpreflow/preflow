@@ -32,9 +32,6 @@ return [
         'peek' => [
             'return Contexts::peek()?->purpose->leavesNoTrace() === true;' => 'outside every render nothing is internal (the documented default)',
         ],
-        'setter' => [
-            "Deprecations::once('Preflow\\Core\\Http\\InternalRender::mark() is deprecated since 0.81 and is removed in 0.83; use Application::render() with RenderContext::internal().');" => 'the deprecation message names mark(); not a call',
-        ],
     ],
     'core/src/Http/Session/SessionMiddleware.php' => [
         'peek' => [
@@ -62,9 +59,6 @@ return [
         'peek' => [
             '$locale = Contexts::peek()?->locale;' => 'outside every render content renders in the default content locale (the documented default)',
         ],
-        'setter' => [
-            'Deprecations::once(\'Preflow\\Folio\\Content\\ContentLocale::set() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->in($locale)).\');' => 'the deprecation message names set(); not a call',
-        ],
     ],
     'folio/src/Http/InterfaceLocales.php' => [
         'peek' => [
@@ -73,12 +67,7 @@ return [
     ],
     'publishing/src/LiveContent.php' => [
         'peek' => [
-            'return Contexts::peek()?->reads;' => 'outside every render (a script, a unit test) reads see published snapshots (ruling R1), unless the deprecated setters changed that default',
-        ],
-    ],
-    'i18n/src/LocaleMiddleware.php' => [
-        'peek' => [
-            'return Contexts::peek()?->request?->localePrefix ?? \'\';' => 'the deprecated urlPrefix(): outside every render no URL, so no prefix (\'\', as 0.80 gave outside process())',
+            'return Contexts::peek()?->reads;' => 'outside every render (a script, a unit test) reads see published snapshots (ruling R1)',
         ],
     ],
     'core/src/Context/Writes.php' => [
@@ -110,7 +99,6 @@ return [
     ],
     'testing/src/Contract/RenderIsolationContract.php' => [
         'superglobal' => 'the isolation contract plants a marker in the superglobals on purpose (and restores them after each test), to prove no render reads them',
-        'setter' => 'the isolation contract calls the deprecated ambient setters on purpose, to prove no render reads what they set; drop each call when its shim is removed',
         'request-binding' => [
             '$container->instance(RequestContext::class, new RequestContext(\'/\', \'GET\', $this->poisonedRequest()));' => 'the isolation contract binds a poisoned visitor request on purpose, as a request binds it, to prove no render reads it',
         ],
@@ -159,12 +147,6 @@ return [
         'setter' => 'UserPreferences::setLocale() stores a person\'s admin language; it changes no render state',
     ],
 
-    'members/src/MembersView.php' => [
-        'setter' => [
-            '$this->pageLocale->set($locale);' => 'the deprecated PageLocale hook (removed in 0.83): an app\'s own one is still told the page\'s locale, inside the page\'s within(); drop it with PageLocale',
-        ],
-    ],
-
     // peek: only code with a documented default outside a render (ruling R1).
     'core/src/Context/NoRenderContext.php' => [
         'peek' => [
@@ -174,7 +156,7 @@ return [
 
     'media/src/ImageTag.php' => [
         'peek' => [
-            '$ctx = Contexts::peek();' => 'outside every render (a script, a unit test) alt text follows the LocaleProvider\'s current(), as before 0.81 (the documented default)',
+            '$ctx = Contexts::peek();' => 'outside every render (a script, a unit test) alt text is the LocaleProvider\'s default() (the documented default)',
         ],
     ],
 
@@ -318,9 +300,6 @@ return [
         'static-state' => [
             'private static ?Translator $english = null;' => 'the English fallback catalogue, loaded once',
             'private static ?\Closure $source = null;' => 'where the app\'s translator comes from, set once at boot (FolioServiceProvider); the translator follows the render context, so it holds no request state',
-        ],
-        'setter' => [
-            'Deprecations::once(\'Preflow\\Folio\\FolioText::use() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->admin($uiLocale)).\');' => 'the deprecation message names use(); not a call',
         ],
         'peek' => [
             'if (Contexts::peek()?->surface->admin === true && self::$source !== null) {' => 'outside every render there is no admin surface: Folio\'s own English texts (the documented default)',

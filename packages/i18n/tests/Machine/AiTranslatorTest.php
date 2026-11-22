@@ -12,12 +12,13 @@ use Preflow\Ai\AiUnavailable;
 use Preflow\Ai\StopReason;
 use Preflow\Ai\Testing\FakeAiClient;
 use Preflow\Ai\TokenUsage;
-use Preflow\Ai\Tuning;
 use Preflow\I18n\Machine\AiTranslator;
 use Preflow\I18n\Machine\TextFormat;
+use Preflow\I18n\Machine\TranslationTuning;
 use Preflow\I18n\Machine\TranslationFailed;
 use Preflow\I18n\Machine\TranslationResult;
 use Preflow\I18n\Machine\TranslationUnit;
+use Preflow\I18n\Machine\TranslatorUnavailable;
 use Preflow\I18n\Machine\UnitStatus;
 
 /** Batches go out as JSON items and come back mapped by n; failures stay with the unit they belong to. */
@@ -392,9 +393,10 @@ final class AiTranslatorTest extends TestCase
 
         try {
             $this->translator($fake)->translateUnits($units);
-            $this->fail('AiUnavailable expected');
-        } catch (AiUnavailable $e) {
+            $this->fail('TranslatorUnavailable expected');
+        } catch (TranslatorUnavailable $e) {
             $this->assertStringContainsString('not reachable', $e->getMessage());
+            $this->assertInstanceOf(AiUnavailable::class, $e->getPrevious(), 'the AI reason is kept');
             $this->assertStringContainsString('timeout', $e->getMessage());
         }
         $this->assertCount(2, $fake->requests(), 'the run stops instead of trying every batch');
@@ -511,16 +513,27 @@ final class AiTranslatorTest extends TestCase
 
         try {
             $this->translator($fake)->translateUnits([$this->unit('a', 'A', 'de'), $this->unit('b', 'B', 'fr'), $this->unit('c', 'C', 'it')]);
-            $this->fail('AiUnavailable expected');
-        } catch (AiUnavailable $e) {
+            $this->fail('TranslatorUnavailable expected');
+        } catch (TranslatorUnavailable $e) {
             $this->assertSame('quota', $e->getMessage());
+            $this->assertInstanceOf(AiUnavailable::class, $e->getPrevious());
         }
         $this->assertCount(2, $fake->requests(), 'the run stops at once');
 
         $off = new AiTranslator($this->ai(new FakeAiClient([self::echo()]), enabled: false), $this->settings());
         $this->assertSame([], $off->translateUnits([]));
-        $this->expectException(AiUnavailable::class);
+        $this->expectException(TranslatorUnavailable::class);
         $off->translateUnits([$this->unit('a', 'A')]);
+    }
+
+    public function test_the_translation_tuning_goes_into_the_requests_system_part(): void
+    {
+        $fake = new FakeAiClient([self::echo()]);
+        $this->translator($fake)->translate('Hi', 'de', (new TranslationTuning(['Formal.']))->with('Be brief.'));
+
+        $system = $fake->requests()[0]->tuning->system();
+        $this->assertStringContainsString("Formal.\n\nBe brief.", $system, 'every instruction, in order');
+        $this->assertNull($fake->requests()[0]->tuning->template, 'a translation tuning has no answer template');
     }
 
     public function test_translate_single_text_and_failure_throws(): void
@@ -528,7 +541,7 @@ final class AiTranslatorTest extends TestCase
         $fake = new FakeAiClient([self::echo()]);
         $translator = $this->translator($fake);
 
-        $this->assertSame('DE:<b>Hi</b>', $translator->translate('<b>Hi</b>', 'de', new Tuning(['Be brief.']), 'en', TextFormat::Html));
+        $this->assertSame('DE:<b>Hi</b>', $translator->translate('<b>Hi</b>', 'de', new TranslationTuning(['Be brief.']), 'en', TextFormat::Html));
         $request = $fake->requests()[0];
         $this->assertStringContainsString('Be brief.', $request->tuning->system());
         $this->assertSame('html', self::items($request)[0]['format']);

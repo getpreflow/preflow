@@ -84,9 +84,9 @@ final class SessionPageTest extends TestCase
 }
 ```
 
-Code that sets a user, a locale or the read mode the 0.81 way needs an open frame. A unit test
-that calls such code directly opens one: `Contexts::run(ContextFactory::forTest(), fn () => …)`.
-`AuthManager::setUser()`, `LocaleMiddleware::process()`, `PdfRenderer`, `MembersView::render()`
+Code that narrows the user, the locale or the read mode (`Contexts::narrow()`) needs an open
+frame. A unit test that calls such code directly opens one: `Contexts::run(ContextFactory::forTest(), fn () => …)`.
+`Contexts::narrow()`, `LocaleMiddleware::process()`, `PdfRenderer`, `MembersView::render()`
 and console commands that read the context throw `NoRenderContext` outside every render.
 
 ## ComponentTestCase
@@ -385,10 +385,10 @@ request that asks for it. The four tests:
   copies, the admin surface and another frozen time. Its request carries the cookie `m`, the
   header `X-Marker` and `REMOTE_ADDR` set to the marker, and that request is bound as the
   container's `RequestContext`, as every request binds it. The superglobals get the same markers
-  and `$_SESSION['m']`. Where the app has them, the contract calls the deprecated
-  `Translator::setLocale('xx')`, turns on translator overrides that answer every key with the
-  marker, signs in a user whose id is the marker with `AuthManager::setUser()`, and calls
-  `LiveContent::showWorkingCopies()`. It puts a CSS rule, a script and a page title holding the
+  and `$_SESSION['m']`. Where the app has them, the contract narrows the outer frame to locale
+  `xx` on the admin surface with translator overrides that answer every key with the marker, to a
+  viewer whose id is the marker, and to working copies (LiveContent; since 0.83 it narrows the
+  frame, before it called the deprecated setters). It puts a CSS rule, a script and a page title holding the
   marker into the asset registry and the SEO page meta, queues one cookie and one mail, and calls
   `poisonApp()`. The render's status and body must equal the same render's under a clean outer
   frame, and its body, headers and captured items must not contain the marker. A path that reads
@@ -413,9 +413,8 @@ request that asks for it. The four tests:
   for this test.
 
 Deprecations (since 0.82): a runner needs neither `#[IgnoreDeprecations]` nor a
-`Deprecations::reset()` of its own, also under `failOnDeprecation`. The contract marks only its
-own calls of the deprecated setters as expected (`Deprecations::expected()`), so they neither
-report nor use up a notice. Every other deprecated call still reports: in your page, in your
+`Deprecations::reset()` of its own, also under `failOnDeprecation`. The contract makes no
+deprecated call of its own (since 0.83). Every deprecated call still reports: in your page, in your
 `poisonApp()`, or in a factory the container runs for the poison. The contract resets
 `Deprecations::once()` after each test, so a call site one test reported is reported again by
 the next test that reaches it.

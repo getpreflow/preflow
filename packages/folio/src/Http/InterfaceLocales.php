@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\Deprecations;
-use Preflow\Core\Context\RenderContext;
 use Preflow\I18n\AcceptLanguage;
 use Preflow\I18n\LocaleNames;
 use Preflow\I18n\Translator;
@@ -69,25 +67,6 @@ final class InterfaceLocales
     public function current(): string
     {
         return $this->currentOrNull() ?? $this->default();
-    }
-
-    /**
-     * Enters $locale for the rest of the current render (its frame narrows to the admin surface
-     * in $locale, keeping its overrides switch, on by default); null leaves the admin surface.
-     * Outside every render it does nothing: there is no interface locale to keep there.
-     *
-     * @deprecated 0.81, removed in 0.83: Contexts::narrow(fn ($ctx) => $ctx->admin($locale)), or
-     *             Contexts::within($ctx->admin($locale), $fn) for a stretch of the render
-     */
-    public function setCurrent(?string $locale): void
-    {
-        Deprecations::once('Preflow\Folio\Http\InterfaceLocales::setCurrent() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->admin($locale)).');
-        if (Contexts::depth() === 0) {
-            return;
-        }
-        Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $locale === null
-            ? $ctx->public()
-            : $ctx->admin($locale, $ctx->surface->admin ? $ctx->surface->overrides : true));
     }
 
     /** The current render's interface locale; null on the public surface and outside every render. */

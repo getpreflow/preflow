@@ -73,11 +73,12 @@ final class PublishedModelsTest extends TestCase
         $published = $app->container()->get(PublishedModels::class);
         $this->assertSame('Carpenter', $published->find(Job::class, $id)?->title, 'outside a preview: the published copy');
 
-        $app->container()->get(\Preflow\Publishing\LiveContent::class)->showWorkingCopies();
-        $found = $published->find(Job::class, $id);
-        $this->assertSame('Draft title', $found?->title, 'in a preview: the working copy');
-        $this->assertSame(['Draft title'], array_map(static fn (Job $job): string => $job->title, $published->query(Job::class)->get()->items()));
-        $this->assertTrue($app->container()->get(\Preflow\Data\DataManager::class)->isReadOnly($found), 'still read-only');
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->workingCopies(), function () use ($app, $published, $id): void {
+            $found = $published->find(Job::class, $id);
+            $this->assertSame('Draft title', $found?->title, 'in a preview: the working copy');
+            $this->assertSame(['Draft title'], array_map(static fn (Job $job): string => $job->title, $published->query(Job::class)->get()->items()));
+            $this->assertTrue($app->container()->get(\Preflow\Data\DataManager::class)->isReadOnly($found), 'still read-only');
+        });
     }
 
     public function test_a_type_without_publishing_reads_its_own_table_as_live_content_does(): void

@@ -19,8 +19,8 @@ use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Since 0.75 an internal render (the SEO audit, GEO, a page cache rebuild) keeps the Set-Cookie
- * values the request queued before it: the guards' cookie queue is set aside for the render
- * (CookieQueue::isolated()) instead of being emptied by the render's own ResolveUserMiddleware.
+ * values the request queued before it: the render has its own frame and so its own
+ * cookies (since 0.81; CookieQueue::isolated() before) instead of being emptied by the render's own ResolveUserMiddleware.
  * Before, a signed-in marker or a rotated remember-me token queued by the request was lost, so an
  * admin running an audit step kept a token already rotated away and was signed out next time.
  */

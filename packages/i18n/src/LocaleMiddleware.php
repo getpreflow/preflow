@@ -6,7 +6,6 @@ namespace Preflow\I18n;
 
 use Nyholm\Psr7\Response;
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Http\IsHttps;
 use Preflow\Core\Http\LocaleUrls;
@@ -32,7 +31,6 @@ final class LocaleMiddleware implements MiddlewareInterface
     private const array NEVER_REDIRECTED = ['/robots.txt', '/sitemap.xml', '/llms.txt'];
 
     /**
-     * @param Translator $translator kept for the constructor's shape; since 0.81 the translator reads the locale from the context
      * @param string[] $availableLocales
      * @param string   $urlStrategy 'prefix' | 'none'
      * @param LocaleUrls|null $urls with redirectBare on (and the prefix strategy), a bare
@@ -44,7 +42,6 @@ final class LocaleMiddleware implements MiddlewareInterface
      * @param NonPublicPaths|null $nonPublic paths that are never redirected (admin, APIs)
      */
     public function __construct(
-        private readonly Translator $translator,
         private readonly array $availableLocales,
         private readonly string $defaultLocale,
         private readonly string $urlStrategy = 'prefix',
@@ -54,20 +51,6 @@ final class LocaleMiddleware implements MiddlewareInterface
         private readonly ?\Closure $pageExists = null,
         private readonly ?NonPublicPaths $nonPublic = null,
     ) {}
-
-    /**
-     * The locale prefix the current render's URL carried ('/de'; '/en' when the default locale
-     * was in the URL), or '' when it carried none or outside every render: the context's
-     * RequestContext::$localePrefix, which process() sets.
-     *
-     * @deprecated 0.81, removed in 0.83: read Contexts::current()->request->localePrefix
-     */
-    public function urlPrefix(): string
-    {
-        Deprecations::once('Preflow\I18n\LocaleMiddleware::urlPrefix() is deprecated since 0.81 and is removed in 0.83; use Contexts::current()->request->localePrefix.');
-
-        return Contexts::peek()?->request?->localePrefix ?? '';
-    }
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {

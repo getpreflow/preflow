@@ -77,6 +77,9 @@ final class TwoRolesTest extends TestCase
             ['POST /folio/_locale', '/folio/_locale', ['locale' => 'en'], [302, 302, 302]], // signed in, no permission
             ['POST /folio/_prefs/nav', '/folio/_prefs/nav', ['section' => 'settings', 'open' => '0'], [204, 204, 204]], // signed in, no permission
             ['GET /folio/_search', '/folio/_search?q=nothing', [], [200, 200, 200]], // signed in, no permission: the ⌘K search filters by {type}.view itself
+            // View any address as a role (0.83.0): site.view_as_address, then site.view_as; past both, no address to show (400).
+            ['GET /folio/preview/address', '/folio/preview/address', [], [200, 403, 403]],
+            ['GET /folio/preview/address/page', '/folio/preview/address/page', [], [400, 403, 403]],
             ['GET /folio/_blocks/{key}/new', '/folio/_blocks/nothing/new?name=body', [], [404, 404, 403]],
             ['POST /folio/_blocks/duplicate', '/folio/_blocks/duplicate', [], [400, 400, 403]],
             ['GET /folio/assets', '/folio/assets', [], [200, 200, 403]],
@@ -358,7 +361,7 @@ final class TwoRolesTest extends TestCase
         $this->as($account);
 
         $expected = [
-            'super' => ['/folio', '/folio/page', '/folio/member', '/folio/team', '/folio/assets', '/folio/rbac_role', '/folio/staff', '/folio/moderation_settings', '/folio/queue', '/folio/extensions', '/folio/translations', '/folio/redirects', '/folio/seo-audit', '/folio/cache', '/folio/ai'],
+            'super' => ['/folio', '/folio/page', '/folio/member', '/folio/team', '/folio/assets', '/folio/rbac_role', '/folio/staff', '/folio/moderation_settings', '/folio/queue', '/folio/extensions', '/folio/translations', '/folio/redirects', '/folio/seo-audit', '/folio/preview/address', '/folio/cache', '/folio/ai'],
             'content' => ['/folio', '/folio/page', '/folio/member', '/folio/team', '/folio/assets', '/folio/queue'],
             'plain' => [],
         ][$account];

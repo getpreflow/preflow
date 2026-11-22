@@ -20,7 +20,7 @@ final class SecurityHeadersMiddleware implements MiddlewareInterface
     /** The headers whose value holds the request's nonce (with the hypermedia clients' nonceHeaders()). */
     public const array NONCE_HEADERS = ['Content-Security-Policy', 'Content-Security-Policy-Report-Only'];
 
-    /** @var array{csp: array<string, list<string>>, report_only: bool, headers: array<string, string|null>, hsts: bool} */
+    /** @var array{csp: array<string, list<string>>, report_only: bool, headers: array<string, string|null>, hsts: bool, hsts_subdomains: bool} */
     private readonly array $config;
 
     /**
@@ -36,15 +36,18 @@ final class SecurityHeadersMiddleware implements MiddlewareInterface
         private readonly ?HypermediaProtocols $hypermedia = null,
     ) {
         $defaults = self::defaults();
+        // true/false, or ['enabled' => bool, 'subdomains' => bool] (@since 0.83.0), both default true.
+        $hsts = $config['hsts'] ?? $defaults['hsts'];
         $this->config = [
             'csp' => array_merge($defaults['csp'], (array) ($config['csp'] ?? [])),
             'report_only' => (bool) ($config['report_only'] ?? $defaults['report_only']),
             'headers' => array_merge($defaults['headers'], (array) ($config['headers'] ?? [])),
-            'hsts' => (bool) ($config['hsts'] ?? $defaults['hsts']),
+            'hsts' => is_array($hsts) ? (bool) ($hsts['enabled'] ?? true) : (bool) $hsts,
+            'hsts_subdomains' => is_array($hsts) ? (bool) ($hsts['subdomains'] ?? true) : true,
         ];
     }
 
-    /** @return array{csp: array<string, list<string>>, report_only: bool, headers: array<string, string>, hsts: bool} */
+    /** @return array{csp: array<string, list<string>>, report_only: bool, headers: array<string, string>, hsts: bool|array{enabled?: bool, subdomains?: bool}} */
     public static function defaults(): array
     {
         return [
@@ -114,7 +117,10 @@ final class SecurityHeadersMiddleware implements MiddlewareInterface
         }
 
         if ($this->config['hsts'] && $this->isHttps($request) && !$response->hasHeader('Strict-Transport-Security')) {
-            $response = $response->withHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+            $response = $response->withHeader(
+                'Strict-Transport-Security',
+                'max-age=31536000' . ($this->config['hsts_subdomains'] ? '; includeSubDomains' : ''),
+            );
         }
 
         return $response;

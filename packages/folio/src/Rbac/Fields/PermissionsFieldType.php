@@ -22,7 +22,8 @@ use Preflow\Rbac\RoleList;
  * toggles that column within the section), a type tile per row, a box per verb that applies ("–"
  * where it can't), and a switch per row for "{type}.*"; then every other declared permission as a
  * chip under its group (the group's pattern, if declared, as the group's "All"). The value is a list
- * of names and patterns; anything not declared is shown as unknown and dropped on save, a stored
+ * of names and patterns; a grant of a disabled permission (PermissionRegistry::disabled(), @since 0.83.0) is listed as unavailable
+ * with the registry's reason and kept on save (it can't be edited while disabled); anything else not declared is shown as unknown and dropped on save, a stored
  * declared name without a control (a verb that cannot apply) is kept in a hidden input.
  *
  * The engine checks exact names (no permission implies another), so the matrix shows granted and
@@ -74,9 +75,19 @@ final class PermissionsFieldType implements FieldType
         $held = $this->coverage?->held();
         $denied = static fn (string $value): string => $held !== null && !PermissionCoverage::covers($held, $value)
             ? ' disabled data-rbac-denied title="' . $e($deniedText) . '"' : '';
-        $input = static fn (string $value, ?string $title = null, string $attrs = '') => '<input type="checkbox" name="' . $name . '" value="' . $e($value) . '"'
-            . ($title !== null && $denied($value) === '' ? ' title="' . $e($title) . '"' : '') . $attrs . $denied($value)
-            . (in_array($value, $selected, true) ? ' checked' : '') . '>';
+        $input = function (string $value, ?string $title = null, string $attrs = '') use ($name, $e, $denied, $selected): string {
+            // A disabled permission (declared or not) is not editable: shown with the registry's reason, its stored grant posted by a hidden input.
+            $reason = $this->registry->disabledReason($value);
+            if ($reason !== null) {
+                return (in_array($value, $selected, true) ? '<input type="hidden" name="' . $name . '" value="' . $e($value) . '" data-rbac-kept>' : '')
+                    . '<input type="checkbox" name="' . $name . '" value="' . $e($value) . '"' . $attrs . ' disabled data-rbac-denied title="' . $e($reason) . '"'
+                    . (in_array($value, $selected, true) ? ' checked' : '') . '>';
+            }
+
+            return '<input type="checkbox" name="' . $name . '" value="' . $e($value) . '"'
+                . ($title !== null && $denied($value) === '' ? ' title="' . $e($title) . '"' : '') . $attrs . $denied($value)
+                . (in_array($value, $selected, true) ? ' checked' : '') . '>';
+        };
         [$sections, $others] = $this->layout();
         $fresh = array_flip(array_intersect($this->fresh(), $this->controlled($sections, $others)));
         $newBadge = '<span class="folio-badge is-warning rbac-fresh-badge">' . $e($t('new')) . '</span>';
@@ -89,6 +100,14 @@ final class PermissionsFieldType implements FieldType
             . '<input type="checkbox" class="rbac-switch-input" role="switch" name="' . $name . '" value="*" data-rbac-everything' . $denied('*') . ($everything ? ' checked' : '') . '>'
             . '<span class="rbac-switch" aria-hidden="true"></span></label>';
         $unknown = array_diff($selected, $this->known());
+        $off = array_intersect_key($this->registry->disabled(), array_flip(array_diff($selected, array_map('strval', array_keys($this->registry->all())))));
+        if ($off !== []) {
+            $html .= '<div class="rbac-unavailable"><p>' . $e($t('unavailable')) . '</p><ul>';
+            foreach ($off as $permission => $reason) {
+                $html .= '<li title="' . $e((string) $permission) . '"><code>' . $e((string) $permission) . '</code> <span>' . $e($reason) . '</span></li>';
+            }
+            $html .= '</ul></div>';
+        }
         if ($unknown !== []) {
             $html .= '<p class="rbac-unknown">' . str_replace(':names', implode(', ', array_map(static fn (string $p): string => '<code>' . $e($p) . '</code>', $unknown)), $e($t('unknown', ['names' => ':names']))) . '</p>';
         }
@@ -347,6 +366,6 @@ final class PermissionsFieldType implements FieldType
     /** @return list<string> */
     private function known(): array
     {
-        return ['*', ...array_map('strval', array_keys($this->registry->all())), ...$this->registry->patterns()];
+        return ['*', ...array_map('strval', array_keys($this->registry->all())), ...array_map('strval', array_keys($this->registry->disabled())), ...$this->registry->patterns()];
     }
 }

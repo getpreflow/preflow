@@ -375,37 +375,6 @@ final class LiveTagTest extends TestCase
         }
     }
 
-    /** Templates compiled before 0.82 call live() with the component class: it still renders, and says once that it is deprecated. */
-    public function test_a_template_compiled_before_0_82_still_renders_through_live(): void
-    {
-        $this->template('page.twig', '{% live with {a: 1} %}[{{ a }}]{% endlive %}');
-        $twig = (new \ReflectionProperty(TwigEngine::class, 'twig'))->getValue($this->engine);
-        $template = $twig->load('page.twig')->unwrap();
-        $extension = $twig->getExtension(\Preflow\Twig\LiveExtension::class);
-        $context = ['componentClass' => 'Anything'];
-        \Preflow\Core\Context\Deprecations::reset();
-        $notices = [];
-        set_error_handler(static function (int $no, string $message) use (&$notices): bool {
-            $notices[] = $message;
-
-            return true;
-        }, E_USER_DEPRECATED);
-        try {
-            $html = [];
-            foreach ([1, 2] as $_) {
-                $html[] = $extension->live($twig, $template, '__live_1', $context['componentClass'] ?? null, ['a' => 1]); // as 0.81 compiled it
-            }
-            $stored = $this->storing(fn (): string => $extension->live($twig, $template, '__live_1', $context['componentClass'] ?? null, ['a' => 1]));
-        } finally {
-            restore_error_handler();
-        }
-
-        $this->assertSame(['[1]', '[1]'], $html);
-        $this->assertSame('[1]', $this->live->fill($stored), 'stored and filled as by part()');
-        $this->assertSame(['Preflow\Twig\LiveExtension::live() is deprecated since 0.82 and is removed in 0.83; use part(), which templates compiled by 0.82 call (clear the Twig cache).'], array_values(array_unique($notices)));
-        $this->assertCount(2, $notices, 'once per call site: the loop and the storing call');
-    }
-
     public function test_live_blocks_on_one_line_get_their_own_names(): void
     {
         $this->template('page.twig', '{% live with {a: 1} %}[{{ a }}]{% endlive %}{% live with {a: 2} %}({{ a }}){% endlive %}{% live %}<3>{% endlive %}');

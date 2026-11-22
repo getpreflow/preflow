@@ -23,6 +23,7 @@
     "conflict": {
         "preflow/core": "<0.81.0",
         "preflow/data": "<0.78",
+        "preflow/folio": "<0.83.0",
         "preflow/i18n": "<0.77",
         "preflow/routing": "<0.59",
         "preflow/view": "<0.67"

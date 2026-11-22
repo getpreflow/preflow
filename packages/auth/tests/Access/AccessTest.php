@@ -12,6 +12,9 @@ use Preflow\Auth\Access\UndeclaredPermission;
 use Preflow\Auth\AuthManager;
 use Preflow\Auth\Authenticatable;
 use Preflow\Auth\Tests\Fixtures\TestUser;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\Viewer;
 
 final class AccessTest extends TestCase
 {
@@ -49,7 +52,7 @@ final class AccessTest extends TestCase
             $this->assertNull($access->user());
 
             $user = new TestUser();
-            $this->auth->setUser($user, 'site');
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['site' => $user], 'site')));
             $this->assertSame($user, $access->user());
             $this->assertNull((new Access(null, $this->registry, false, []))->user());
         });
@@ -59,7 +62,7 @@ final class AccessTest extends TestCase
     {
         \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
             $access = $this->access(populations: ['folio' => 'staff']);
-            $this->auth->setUser(new TestUser(), 'folio');
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['folio' => new TestUser()], 'folio')));
 
             $this->assertTrue($access->can('page.publish'));
         });
@@ -69,7 +72,7 @@ final class AccessTest extends TestCase
     {
         \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
             $access = $this->access();
-            $this->auth->setUser(new TestUser(), 'site'); // no population: members
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['site' => new TestUser()], 'site'))); // no population: members
 
             $this->assertFalse($access->can('page.publish'));
         });
@@ -83,7 +86,7 @@ final class AccessTest extends TestCase
     public function test_undeclared_permission_throws_in_debug(): void
     {
         \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
-            $this->auth->setUser(new TestUser(), 'folio');
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['folio' => new TestUser()], 'folio')));
 
             $this->expectException(UndeclaredPermission::class);
             $this->access(debug: true, populations: ['folio' => 'staff'])->can('pgae.edit');
@@ -94,7 +97,7 @@ final class AccessTest extends TestCase
     {
         \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
             $access = $this->access(populations: ['folio' => 'staff']);
-            $this->auth->setUser(new TestUser(), 'folio');
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['folio' => new TestUser()], 'folio')));
 
             $this->assertFalse($access->can('pgae.edit'));
             $this->assertFalse($access->can('pgae.edit'));
@@ -117,7 +120,7 @@ final class AccessTest extends TestCase
     {
         \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
             $access = $this->access(populations: ['folio' => 'staff']);
-            $this->auth->setUser(new TestUser(roles: ['editor']), 'folio');
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['folio' => new TestUser(roles: ['editor'])], 'folio')));
             $access->setResolver(new class implements PermissionResolver {
                 public function allows(Authenticatable $user, string $population, string $permission, ?object $subject): bool
                 {
@@ -179,9 +182,9 @@ final class AccessTest extends TestCase
             $access = $this->access(populations: ['folio' => 'staff']);
             $this->assertNull($access->population(), 'nobody signed in');
 
-            $this->auth->setUser(new TestUser(), 'folio');
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['folio' => new TestUser()], 'folio')));
             $this->assertSame('staff', $access->population());
-            $this->auth->setUser(new TestUser(), 'site');
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['site' => new TestUser()], 'site')));
             $this->assertSame('members', $access->population());
             $this->assertNull((new Access(null, $this->registry, false, []))->population(), 'no auth configured');
         });
@@ -195,7 +198,7 @@ final class AccessTest extends TestCase
     public function test_typo_in_a_family_throws_in_debug(): void
     {
         \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
-            $this->auth->setUser(new \Preflow\Auth\Tests\Fixtures\TestUser(), 'folio');
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['folio' => new \Preflow\Auth\Tests\Fixtures\TestUser()], 'folio')));
             $this->expectException(\Preflow\Auth\Access\UndeclaredPermission::class);
             $this->access(debug: true, populations: ['folio' => 'staff'])->can('page.pubish');
         });
@@ -206,7 +209,7 @@ final class AccessTest extends TestCase
         \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
             $this->registry->declare('members.approve', 'Approve', 'Members');
             $this->registry->disable('members.approve', 'extension members');
-            $this->auth->setUser(new TestUser(), 'folio');
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['folio' => new TestUser()], 'folio')));
 
             $this->assertFalse($this->access(debug: true, populations: ['folio' => 'staff'])->can('members.approve'));
             $this->assertSame('extension members', $this->registry->disabledReason('members.approve'));
@@ -220,7 +223,7 @@ final class AccessTest extends TestCase
             $this->registry->declare('members.approve');
             $this->registry->disable('members.approve', 'extension members');
             $access = $this->access(populations: ['folio' => 'staff']);
-            $this->auth->setUser(new TestUser(), 'folio');
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['folio' => new TestUser()], 'folio')));
 
             $access->can('members.approve');
             $access->can('members.approve');
@@ -337,7 +340,7 @@ final class AccessTest extends TestCase
         $this->assertSame([false, false], $answers);
         // The same staff guard's real user may do everything.
         \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function () use ($access): void {
-            @$this->auth->setUser(new TestUser(roles: ['admin']), 'staff');
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['staff' => new TestUser(roles: ['admin'])], 'staff')));
             $this->assertTrue($access->can('page.edit'));
         });
     }

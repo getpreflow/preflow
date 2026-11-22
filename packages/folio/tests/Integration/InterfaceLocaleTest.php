@@ -196,7 +196,7 @@ final class InterfaceLocaleTest extends TestCase
         $this->assertSame($before, (string) $this->send('GET', '/hello')->getBody(), 'byte-identical, in the frontend locale');
         $translator = $this->flow->container()->get(Translator::class);
         $this->assertSame('en', $translator->getLocale());
-        $this->assertSame('en', $this->flow->container()->get(\Preflow\Media\LocaleProvider::class)->current(), 'alt texts in the frontend locale');
+        $this->assertSame('en', \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), fn (): string => $this->flow->container()->get(\Preflow\Media\LocaleProvider::class)->localeOf(\Preflow\Core\Context\Contexts::current())), 'alt texts in the frontend locale');
         $this->assertSame('fr', $this->prefs()->locale((string) $ada->getId()));
     }
 

@@ -756,10 +756,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(FrontendResolver::class),
             $c->get(\Preflow\Folio\View\FolioEngine::class),
             new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class)),
-            $c->get(ContentLocale::class),
             $c->get(DataManager::class),
             $c->get(\Preflow\Publishing\PreviewLinks::class),
-            $c->get(\Preflow\Publishing\LiveContent::class),
             $c->get(\Preflow\View\AssetCollector::class),
             $c->get(\Preflow\Folio\Content\FrontendGate::class),
             $c->get(\Preflow\Core\Error\ErrorHandler::class),
@@ -787,10 +785,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\View\FolioEngine::class),
             $c->get(FrontendResolver::class),
             $c->get(DraftRecordFactory::class),
-            $c->get(ContentLocale::class),
             $c->get(\Preflow\View\AssetCollector::class),
             $c->get(\Preflow\Folio\Http\AdminAssetUrls::class),
-            self::translator($c, $app),
         ));
         // The whole-page preview (core's Application::preview()) and its "View as" control.
         $container->bind(\Preflow\Folio\Http\ViewAs::class, fn (Container $c) => new \Preflow\Folio\Http\ViewAs(
@@ -808,6 +804,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Http\ViewAs::class),
             $c->get(\Preflow\Folio\Http\AdminAssetUrls::class),
             $c->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
+            $c->bound(\Preflow\Core\Http\NonPublicPaths::class) ? $c->get(\Preflow\Core\Http\NonPublicPaths::class) : null,
         ));
         $container->bind(AssetController::class, fn (Container $c) => new AssetController(
             dirname(__DIR__) . '/assets',
@@ -949,7 +946,6 @@ final class FolioServiceProvider extends ServiceProvider
             return $folioTexts ??= self::translator($container, $app);
         });
         $container->bind(\Preflow\Folio\Http\AdminLocaleMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\AdminLocaleMiddleware(
-            self::translator($c, $app),
             $c->get(\Preflow\Folio\Http\InterfaceLocales::class),
             $c->get(\Preflow\Folio\Users\UserPreferences::class),
             onStart: static fn () => $c->get(\Preflow\Folio\Translations\OverridesCache::class)->startRequest(),
@@ -1892,6 +1888,11 @@ final class FolioServiceProvider extends ServiceProvider
         $nav->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.cache'), $base . '/cache', 'ui-settings', 'folio.cache', 950);
         // Settings → SEO audit, on every site (the last report of `preflow seo:audit`, or how to run one).
         $nav->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.seo_audit'), $base . '/seo-audit', 'ui-settings', 'seo.audit', 940);
+        // Settings → View as (any address of the site as a role): for whoever holds both permissions it asks
+        // (ViewAs::addresses()), where rbac's site.view_as is declared to go with Folio's site.view_as_address.
+        if ($container->get(\Preflow\Auth\Access\Access::class)->registry()->isDeclared(\Preflow\Folio\Http\ViewAs::PERMISSION)) {
+            $nav->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.view_as'), $base . '/preview/address', 'ui-settings', [\Preflow\Folio\Http\ViewAs::PERMISSION, \Preflow\Folio\Http\ViewAs::ADDRESS_PERMISSION], 945);
+        }
         // Settings → AI, while AI is switched on or a key is present (so a missing key or switch can be seen and fixed).
         if (self::aiSettingsVisible($container)) {
             $nav->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.ai'), $base . '/ai', 'ui-settings', 'ai.settings', 960);
@@ -1970,12 +1971,13 @@ final class FolioServiceProvider extends ServiceProvider
      * locales), so the core job runner can translate Folio records. Lazy: no type definition is
      * read and no source is built until a run asks for it; a type with nothing translatable (roles,
      * staff accounts) or whose records editors may not change (read-only) is not offered
-     * (FolioTextSource::offers()). None when nothing could translate them (no preflow/ai and no
-     * translator of the app's own); without preflow/ai a source has no per-field AI instructions.
+     * (FolioTextSource::offers()). None when nothing could translate them (the container's
+     * TranslatorAvailability says there is no translator); without preflow/ai a source has no per-field
+     * AI instructions.
      */
     private function registerTextSources(Container $container): void
     {
-        if (!\Preflow\I18n\Machine\MachineServiceProvider::hasTranslator($container) || !($this->locales($container)?->isMultilingual() ?? false)) {
+        if (!$container->get(\Preflow\I18n\Machine\TranslatorAvailability::class)->available() || !($this->locales($container)?->isMultilingual() ?? false)) {
             return;
         }
         $sources = $container->get(\Preflow\I18n\Machine\TextSources::class);
@@ -2100,16 +2102,24 @@ final class FolioServiceProvider extends ServiceProvider
         $registry->declare('redirects.manage', 'Redirects', 'Folio');
         $registry->declare('seo.audit', 'SEO audit', 'Folio');
         $registry->declare('seo.audit.run', 'Run the SEO audit', 'Folio');
+        // Any address as a role (the address preview), on top of rbac's site.view_as, in its group.
+        $registry->declare(\Preflow\Folio\Http\ViewAs::ADDRESS_PERMISSION, 'View any address as a role', 'Site');
         // Declared with AI off too, so roles may list them before AI is switched on. Drafts and Settings → AI
-        // need preflow/ai; translation needs a translator (preflow/ai's or the app's own). What is not there
+        // need preflow/ai; translation needs a translator (the container's TranslatorAvailability answers). What is not there
         // is not offered in the roles; a role that still grants it is denied quietly (disabled, not undeclared).
         $offered = [
-            'ai.translate' => \Preflow\I18n\Machine\MachineServiceProvider::hasTranslator($container),
+            'ai.translate' => $container->get(\Preflow\I18n\Machine\TranslatorAvailability::class)->available(),
             'ai.draft' => \Preflow\I18n\Machine\AiPackage::installed(),
             'ai.settings' => \Preflow\I18n\Machine\AiPackage::installed(),
         ];
+        // The reasons are fragments like the extensions' ("extension x"): translation has two sources, so it names both.
+        $missing = [
+            'ai.translate' => 'no machine translator (preflow/ai or config/ai.php translation.translator)',
+            'ai.draft' => 'package preflow/ai (not installed)',
+            'ai.settings' => 'package preflow/ai (not installed)',
+        ];
         foreach (['ai.translate' => 'Use AI translation', 'ai.draft' => 'Write drafts with AI', 'ai.settings' => 'AI settings'] as $name => $label) {
-            $offered[$name] ? $registry->declare($name, $label, 'AI') : $registry->disable($name, 'package preflow/ai (not installed)');
+            $offered[$name] ? $registry->declare($name, $label, 'AI') : $registry->disable($name, $missing[$name]);
         }
         foreach ($container->get(TypeCatalog::class)->all() as $listing) {
             $registry->declarePattern($listing->key . '.*');

@@ -97,8 +97,10 @@ $title = Contexts::within(Contexts::current()->in('fr'), fn () => $translator->g
 $translator->getLocale();                                          // "de"
 ```
 
-`setLocale()` is deprecated since 0.81 (removed in 0.83): inside a render it changes the current
-frame only, outside every render (a script, a unit test) the translator's own default.
+Outside every render (a script, a unit test) the texts are in the locale given to the
+constructor, without overrides. `setLocale()` and `useOverrides()`, deprecated since 0.81, are
+removed in 0.83: narrow the render context instead (`in()` for the public surface, `admin()` for
+the admin's texts with or without overrides).
 
 Parameters are replaced one after the other in the order they are passed. In one text, don't use
 a parameter whose name is the start of another (`:to` next to `:total`): `:to` would also replace
@@ -148,8 +150,9 @@ group.
 ### Admin overrides
 
 `TranslationOverrides` (`get(string $locale, string $key): ?string`) is the layer above the
-site files. `Translator::setOverrides()` sets it, and `useOverrides(true)` turns it on; it is
-off by default. Folio turns it on for the length of an admin request and stores the texts its
+site files. `Translator::setOverrides()` sets it; it applies on the admin surface that asks for
+overrides (`RenderContext::admin($uiLocale)`, overrides on unless `admin($uiLocale, false)`), and
+is off elsewhere. Folio enters that surface for the length of an admin request and stores the texts its
 Translations screen saves. Outside always-overridden groups (below), an override never reaches a public page:
 
 - only keys of an `admin` group take one, plus keys under prefixes registered with
@@ -158,8 +161,8 @@ Translations screen saves. Outside always-overridden groups (below), an override
 
 A site group that staff edit but public pages or mails render (Folio fills these from
 `translations.editable` in `config/folio.php`) is registered with
-`Translator::alwaysOverride('review-mail')`: its overrides apply on every request, with
-`useOverrides()` on or off, in the asked locale (`get($key, $params, 'fr')`). A locale's own
+`Translator::alwaysOverride('review-mail')`: its overrides apply on every request, whether the
+surface asks for overrides or not, in the asked locale (`get($key, $params, 'fr')`). A locale's own
 file still wins over a fallback locale's override. An `admin` group throws
 `InvalidArgumentException`, and a group declared `admin` later (`setScopes()`,
 `addDefaultsIfMissing()`) drops out; `alwaysOverridden()` lists the groups, sorted.
@@ -250,14 +253,13 @@ Template helpers: `t()`/`tc()` (parameters are HTML-escaped), `current_locale()`
 
 ```php
 $middleware = new LocaleMiddleware(
-    translator: $translator,
     availableLocales: ['en', 'de'],
     defaultLocale: 'en',
     urlStrategy: 'prefix', // request to /de/blog strips /de, sets locale to "de"
 );
 ```
 
-`urlPrefix()` (since 0.46) returns the prefix stripped from the current request's URL: `'/de'` for `/de/blog`, `'/en'` when the default locale was in the URL, and `''` when there was none or the strategy is `none`. It is set only while `process()` runs: cleared on entry and restored to the previous value when `process()` returns or throws, so a long-running worker never carries it into the next request, and code that runs after the response (deferred mail) or in a nested handle never sees a stale prefix. Preflow's core registers the middleware in the container as `LocaleMiddleware::class` and uses `urlPrefix()` to keep component URLs on the page's locale (`/de/--component/…`, see preflow/htmx).
+The prefix the request's URL carried is the render context's `Contexts::current()->request->localePrefix`: `'/de'` for `/de/blog`, `'/en'` when the default locale was in the URL, and `''` when there was none or the strategy is `none`. The middleware narrows the render's frame to it (since 0.81), so it ends with that frame: a long-running worker never carries it into the next request, and a nested handle has its own. Preflow's core registers the middleware in the container as `LocaleMiddleware::class` and reads the prefix to keep component URLs on the page's locale (`/de/--component/…`, see preflow/htmx). `urlPrefix()`, deprecated since 0.81, and the constructor's `translator` argument, unused since 0.81, are removed in 0.83.
 
 #### Language redirect and the remembered choice (since 0.78)
 
@@ -344,7 +346,7 @@ $twig->addExtension(new TranslationExtension($translator));
 Machine translation fills missing translations with AI, and keeps a human in the loop. It sits on
 the AI connection in `preflow/ai`, so read that README first for `config/ai.php`, keys and costs.
 Everything here works without Folio. With AI off, the classes still load and resolve; only
-calling the translator throws `AiUnavailable`.
+calling the translator throws `TranslatorUnavailable`.
 
 **Machine translation needs `preflow/ai` or a translator of your own** (since 0.80 this package
 only suggests `preflow/ai`). The default translator, `AiTranslator`, needs the package:
@@ -364,7 +366,12 @@ available. `translate:work` stays quiet (as with AI off), while `translate:plan`
 stepped say "Machine translation needs preflow/ai (composer require preflow/ai) or a translator of
 your own (config/ai.php translation.translator)." To ask in your own code:
 `Preflow\I18n\Machine\AiPackage::installed()` (is the package there) and
-`MachineServiceProvider::hasTranslator($container)` (is there a translator that can work).
+`$container->get(Preflow\I18n\Machine\TranslatorAvailability::class)->available()` (is there a
+translator that can work, since 0.83; it replaces the static `MachineServiceProvider::hasTranslator()`).
+The container answers it, so a translator package of its own that binds `MachineTranslator` also
+binds `TranslatorAvailability` (`ConfiguredTranslatorAvailability(true)` will do), and Folio offers
+Translate. It is not `MachineTranslator::available()`: that says whether the translator can
+translate now (AI on, key present); this says whether there is one to switch on.
 
 ### Setup
 
@@ -396,6 +403,24 @@ The container builds it (it gets the `batchChars` argument if it takes one, and 
 services such as `TranslationSettings`); the job runner, Folio's Translate and everything else
 that translates use it. A class that is not a `MachineTranslator` stops the boot.
 
+A translator package (or an app) that binds its translator in a provider instead binds **both**
+`MachineTranslator` and `TranslatorAvailability` (since 0.83). Binding only the translator leaves
+Folio's AI translation off, because Folio asks `TranslatorAvailability` whether to offer Translate,
+its text sources and the `ai.translate` permission. The provider must register after
+`MachineServiceProvider` (and after Folio, which registers it), so its bindings override the
+defaults:
+
+```php
+final class ApiTranslationProvider extends Preflow\Core\Container\ServiceProvider
+{
+    public function register(Preflow\Core\Container\Container $container): void
+    {
+        $container->singleton(Preflow\I18n\Machine\MachineTranslator::class, static fn ($c) => $c->make(App\Translation\ApiTranslator::class));
+        $container->singleton(Preflow\I18n\Machine\TranslatorAvailability::class, static fn () => new Preflow\I18n\Machine\ConfiguredTranslatorAvailability(true));
+    }
+}
+```
+
 A translator answers its own availability and price, so one that is no AI needs no AI key and
 leaves the rest of AI off:
 
@@ -413,17 +438,23 @@ tokens.
 ```php
 $translator = $container->get(Preflow\I18n\Machine\MachineTranslator::class);
 
-// One text, on the fly. Throws AiUnavailable (AI off or unusable) or TranslationFailed.
+// One text, on the fly. Throws TranslatorUnavailable (AI off or unusable) or TranslationFailed.
 $de = $translator->translate('Welcome back, {name}!', to: 'de', from: 'en');
 
 // Many texts. One TranslationResult per unit, in the same order.
 $results = $translator->translateUnits($units, note: 'This is a job post for engineers.');
 ```
 
-`translate()` takes an optional `Tuning` and a `TextFormat` (`Plain`, `Html` or `Markdown`).
+`translate()` takes an optional `TranslationTuning` (i18n's own list of instructions, such as
+`new TranslationTuning(['Formal.'])`; since 0.83, before it was preflow/ai's `Tuning`) and a
+`TextFormat` (`Plain`, `Html` or `Markdown`). `AiTranslator` adds the instructions to its
+request's system part.
 `translateUnits()` never throws for one bad text: that unit comes back with status `Failed` and
-an `error`, and the others are still delivered. Only `AiUnavailable` (no key, no credit, provider
+an `error`, and the others are still delivered. Only `TranslatorUnavailable` (no key, no credit, provider
 down) ends the whole call. A `note` is a one-off instruction for this call.
+`TranslatorUnavailable` is i18n's own (since 0.83; before, preflow/ai's `AiUnavailable`): a
+translator of your own throws it when its service cannot be used, and `AiTranslator` turns
+`AiUnavailable` into it (the AI exception is its `getPrevious()`).
 
 How a batch works:
 
@@ -434,7 +465,7 @@ How a batch works:
   A Gemini recitation block gets one more try with a request to word it freely.
 - A request that gets no answer at all (a timeout, a 5xx or 429 after the provider's own retry)
   is not split: halves would fail the same way. Its units fail once with the reason. When the
-  next request fails that way too, the call throws `AiUnavailable` ("not reachable"), so a run
+  next request fails that way too, the call throws `TranslatorUnavailable` ("not reachable"), so a run
   stops instead of sending request after request to a provider that is down.
 - Requests ask for low reasoning (`AiRequest::$lowReasoning`): translating needs little, and
   thinking tokens are billed as output.
@@ -597,7 +628,7 @@ short:
 - `unfinished($collection, $max = 5)` lists the collection's jobs that are not done, newest
   first (`JobStore::recent()`), so a screen can offer to continue them;
 - `step($jobId, $maxItems = 1)` does the next pending items and saves the state. One item that
-  fails is recorded and does not stop the run. `AiUnavailable` stops the job (state `stopped`,
+  fails is recorded and does not stop the run. `TranslatorUnavailable` stops the job (state `stopped`,
   with the message) and is rethrown;
 - `stop($jobId)` keeps what is done.
 
@@ -617,9 +648,8 @@ A cron script for data that has nothing to do with Folio. `PhraseSource` is your
 // bin/translate-phrases.php, run by cron: */5 * * * * php /path/to/bin/translate-phrases.php
 require __DIR__ . '/../vendor/autoload.php';
 
-use Preflow\Ai\AiUnavailable;
 use Preflow\Core\Application;
-use Preflow\I18n\Machine\{JobRunner, Scope, TextSources};
+use Preflow\I18n\Machine\{JobRunner, Scope, TextSources, TranslatorUnavailable};
 
 $root = dirname(__DIR__);
 $app = Application::create($root);
@@ -641,7 +671,7 @@ if ($id === null) {
 }
 try {
     $job = $runner->step($id, maxItems: 5);          // short: a few items per tick
-} catch (AiUnavailable $e) {
+} catch (TranslatorUnavailable $e) {
     fwrite(STDERR, $e->getMessage() . "\n");
     exit(1);
 }

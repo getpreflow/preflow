@@ -12,7 +12,6 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\RecordRenderer;
-use Preflow\Folio\Content\ContentLocale;
 use Preflow\Folio\Content\DraftRecordFactory;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TypeCatalog;
@@ -43,12 +42,8 @@ final class PreviewController
         private readonly TemplateEngineInterface $engine,
         private readonly FrontendResolver $frontend,
         ?DraftRecordFactory $drafts = null,
-        /** not used since 0.81.0 (the preview renders in a context of its own); kept for the constructor's shape */
-        private readonly ?ContentLocale $contentLocale = null,
         private readonly ?\Preflow\View\AssetCollector $assets = null,
         private readonly ?AdminAssetUrls $assetUrls = null,
-        /** not used since 0.81.0 (the translator follows the render context); kept for the constructor's shape */
-        private readonly ?\Preflow\I18n\Translator $translator = null,
     ) {
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
     }

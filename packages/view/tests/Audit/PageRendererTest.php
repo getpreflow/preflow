@@ -8,7 +8,6 @@ use Nyholm\Psr7\Response;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Context\RenderResult;
 use Preflow\Core\Context\SkippedWrite;
-use Preflow\Core\Http\InternalRender;
 use Preflow\Core\Http\Session\SessionMiddleware;
 use Preflow\View\Audit\PageRenderer;
 use Psr\Http\Message\ResponseInterface;
@@ -43,8 +42,6 @@ final class PageRendererTest extends TestCase
 
         $this->assertInstanceOf(ServerRequestInterface::class, $seen);
         $this->assertSame('de', $seenLocale, 'the app renders the page in its locale');
-        // Not marked: the app's internal Audit render says it leaves no trace, not the request.
-        $this->assertNull($seen->getAttribute(InternalRender::ATTRIBUTE));
         $this->assertTrue($seen->getAttribute(SessionMiddleware::WITHOUT_SESSION));
         $this->assertSame('GET', $seen->getMethod());
         $this->assertSame('https://site.test/de/spiele', (string) $seen->getUri());

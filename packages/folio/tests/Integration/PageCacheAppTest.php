@@ -174,9 +174,11 @@ final class PageCacheAppTest extends TestCase
 
         // The same app rendered working copies before (an admin request): memos hold the drafts.
         $app = $this->app();
-        $app->container()->get(\Preflow\Publishing\LiveContent::class)->showWorkingCopies();
-        $this->assertSame('Draft tagline', $app->container()->get(\Preflow\Folio\Content\Singletons::class)->get('site')['tagline'] ?? null);
-        $this->assertSame('Draft of one', $app->container()->get(\Preflow\Folio\Content\Collections::class)->list('post')[0]['title'] ?? null);
+        $admin = \Preflow\Testing\ContextFactory::forTest()->workingCopies();
+        \Preflow\Core\Context\Contexts::run($admin, function () use ($app): void {
+            $this->assertSame('Draft tagline', $app->container()->get(\Preflow\Folio\Content\Singletons::class)->get('site')['tagline'] ?? null);
+            $this->assertSame('Draft of one', $app->container()->get(\Preflow\Folio\Content\Collections::class)->list('post')[0]['title'] ?? null);
+        });
 
         $miss = $app->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test/category'));
         $this->assertSame('miss', $miss->getHeaderLine('X-Page-Cache'), $miss->getHeaderLine('X-Page-Cache-Skip'));
@@ -184,9 +186,11 @@ final class PageCacheAppTest extends TestCase
         $this->assertSame('<p>Public tagline</p><ul><li>Published one</li></ul>', (string) $miss->getBody());
         $this->assertSame('<p>Public tagline</p><ul><li>Published one</li></ul>', $this->storedBody('/category'));
 
-        // The admin request's own state is back afterwards.
-        $this->assertTrue($app->container()->get(\Preflow\Publishing\LiveContent::class)->showsWorkingCopies());
-        $this->assertSame('Draft tagline', $app->container()->get(\Preflow\Folio\Content\Singletons::class)->get('site')['tagline'] ?? null);
+        // A render of the admin's context still reads the drafts afterwards.
+        \Preflow\Core\Context\Contexts::run($admin, function () use ($app): void {
+            $this->assertTrue($app->container()->get(\Preflow\Publishing\LiveContent::class)->showsWorkingCopies());
+            $this->assertSame('Draft tagline', $app->container()->get(\Preflow\Folio\Content\Singletons::class)->get('site')['tagline'] ?? null);
+        });
     }
 
     #[RunInSeparateProcess]

@@ -168,15 +168,10 @@ final class BlocksAppTest extends BlocksAppTestCase
                 return ['body' => strip_tags((string) ($block['body'] ?? ''))] + $block;
             }
         });
-        $c->instance(BlockLocale::class, new class ($c->get(\Preflow\Data\Locales::class)) implements \Preflow\Blocks\ContextBlockLocale {
+        $c->instance(BlockLocale::class, new class ($c->get(\Preflow\Data\Locales::class)) implements BlockLocale {
             public function __construct(private readonly \Preflow\Data\Locales $locales) {}
 
             public function localeOf(\Preflow\Core\Context\RenderContext $ctx): string
-            {
-                return 'de';
-            }
-
-            public function get(): string
             {
                 return 'de';
             }

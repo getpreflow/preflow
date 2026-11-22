@@ -92,6 +92,35 @@ final class AdminNavTest extends TestCase
         $this->assertSame(['Dashboard'], array_column($sections[0]['items'], 'label'));
     }
 
+    /** 0.83.0: an item that asks a list of permissions shows only to whoever holds every one of them. */
+    public function test_an_item_with_several_permissions_needs_all_of_them(): void
+    {
+        $items = function (array $denied): array {
+            $nav = $this->nav($denied);
+            $nav->add('members', 'Both', '/folio/both', 'ui-file', ['one.do', 'two.do']);
+            $nav->add('members', 'One', '/folio/one', 'ui-file', ['one.do']);
+            $nav->setCurrentPath('/folio');
+            $labels = [];
+            foreach ($nav->sections() as $section) {
+                $labels = [...$labels, ...array_column($section['items'], 'label')];
+            }
+
+            return array_values(array_intersect($labels, ['Both', 'One']));
+        };
+
+        $this->assertSame(['Both', 'One'], $items([]));
+        $this->assertSame(['One'], $items(['two.do']));
+        $this->assertSame([], $items(['one.do']));
+        foreach ([[], ['a' => 'one.do'], ['one.do', 3]] as $bad) {
+            try {
+                $this->nav()->add('members', 'Bad', '/folio/bad', 'ui-file', $bad);
+                $this->fail('refused: ' . var_export($bad, true));
+            } catch (\InvalidArgumentException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
     public function test_settings_section_types_listed_under_settings(): void
     {
         $nav = $this->nav();

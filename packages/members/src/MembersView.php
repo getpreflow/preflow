@@ -6,10 +6,8 @@ namespace Preflow\Members;
 
 use Nyholm\Psr7\Response;
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Http\OldInput;
 use Preflow\Data\Locales;
-use Preflow\I18n\Translator;
 use Preflow\Members\Http\Input;
 use Preflow\View\AssetCollector;
 use Preflow\View\TemplateEngineInterface;
@@ -25,10 +23,6 @@ final class MembersView
 {
     private const string CACHE = 'private, no-store';
 
-    /**
-     * @param Translator $translator unused since 0.81 (the page's texts follow the render's locale); kept so existing calls keep working
-     * @param ?PageLocale $pageLocale deprecated since 0.81, removed in 0.83: an app's own one is still told the page's locale, inside the page's render
-     */
     public function __construct(
         private readonly TemplateEngineInterface $engine,
         private readonly AssetCollector $assets,
@@ -37,8 +31,6 @@ final class MembersView
         private readonly Links $links,
         private readonly LinkValidity $validity,
         private readonly Locales $locales,
-        private readonly Translator $translator,
-        private readonly ?PageLocale $pageLocale = null,
         private readonly ?OldInput $oldInput = null,
         private readonly ?\Preflow\Core\Http\Hypermedia\HypermediaProtocols $hypermedia = null,
     ) {}
@@ -64,14 +56,10 @@ final class MembersView
         // The page renders in its locale (texts, the site layout's content, the members' own
         // links); the render's locale is back afterwards, also when the page throws. Without an
         // i18n config the locale is the default one, which is right for a one-language site.
-        return Contexts::within(Contexts::current()->in($locale), function () use ($template, $vars, $request, $status, $locale): ResponseInterface {
-            if ($this->pageLocale !== null) {
-                Deprecations::once('Preflow\Members\PageLocale::set() is deprecated since 0.81 and is removed in 0.83; use Contexts::current()->locale.');
-                $this->pageLocale->set($locale);
-            }
-
-            return $this->page($template, $vars, $request, $status, $locale);
-        });
+        return Contexts::within(
+            Contexts::current()->in($locale),
+            fn (): ResponseInterface => $this->page($template, $vars, $request, $status, $locale),
+        );
     }
 
     /** @param array<string, mixed> $vars */

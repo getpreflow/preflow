@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Preflow\I18n;
 
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\RenderContext;
 
 /**
@@ -29,16 +28,10 @@ use Preflow\Core\Context\RenderContext;
  */
 final class Translator
 {
-    /** Outside every render: the locale the texts are in (the constructor's, or setLocale() there). */
-    private string $locale;
-
     /** @var array<string, string> group => 'admin'|'public' */
     private array $scopes = [];
 
     private TranslationOverrides $overrides;
-
-    /** Outside every render: whether overrides are on (useOverrides() there). */
-    private bool $overridesOn = false;
 
     /**
      * The text caches, one per text locale and overrides switch (all a render context changes in
@@ -59,12 +52,12 @@ final class Translator
     /** @var array<string, list<string>> group => lang directories of packages, in the order added */
     private array $defaults = [];
 
+    /** @param string $locale outside every render: the locale the texts are in (overrides are off there) */
     public function __construct(
         private readonly string $langPath,
-        string $locale,
+        private readonly string $locale,
         private readonly string $fallbackLocale,
     ) {
-        $this->locale = $locale;
         $this->overrides = new NoTranslationOverrides();
         $this->memos = new CatalogueMemos();
     }
@@ -199,7 +192,7 @@ final class Translator
     }
 
     /**
-     * The group's overrides apply on every request, whether useOverrides() is on or off: texts
+     * The group's overrides apply on every request, whether the surface asks for overrides or not: texts
      * of a site group that staff edit and that public pages or mails render. Not for an admin
      * group (those stay admin-only), also not when the group is declared "admin" later. Calling
      * it again changes nothing.
@@ -251,34 +244,7 @@ final class Translator
         return false;
     }
 
-    /**
-     * Turns overrides on or off for the rest of the current render: on narrows its frame to the
-     * admin surface with overrides, in the locale the texts are in now; off narrows an admin
-     * surface to one without (on the public surface they are off already). Outside every render
-     * it switches the translator's own default.
-     *
-     * @deprecated 0.81, removed in 0.83: narrow the frame to the surface, Contexts::narrow(fn ($ctx) => $ctx->admin($uiLocale, $overrides))
-     */
-    public function useOverrides(bool $on): void
-    {
-        Deprecations::once('Preflow\I18n\Translator::useOverrides() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->admin($uiLocale, $overrides)).');
-        if (Contexts::depth() === 0) {
-            $this->overridesOn = $on;
-            $this->forgetMemos();
-
-            return;
-        }
-        Contexts::narrow(static function (RenderContext $ctx) use ($on): RenderContext {
-            $surface = $ctx->surface;
-            if (!$surface->admin) {
-                return $on ? $ctx->admin($ctx->locale, true) : $ctx;
-            }
-
-            return $surface->overrides === $on ? $ctx : $ctx->admin((string) $surface->uiLocale, $on);
-        });
-    }
-
-    /** Whether overrides are on now: the current render's surface asks for them (outside every render, the translator's own default). */
+    /** Whether overrides are on now: the current render's surface asks for them (outside every render they are off). */
     public function usesOverrides(): bool
     {
         return $this->current()[1];
@@ -401,29 +367,6 @@ final class Translator
         return $this->current()[0];
     }
 
-    /**
-     * Sets the locale the texts are in for the rest of the current render: narrows its frame to
-     * $locale (on the admin surface, to that interface locale, which is what getLocale() gives
-     * there). Outside every render it sets the translator's own default.
-     *
-     * @deprecated 0.81, removed in 0.83: Contexts::narrow(fn ($ctx) => $ctx->in($locale)) for the
-     *             rest of the render, Contexts::within($ctx->in($locale), $fn) for a stretch of it;
-     *             on the admin surface $ctx->admin($locale) in place of $ctx->in($locale)
-     */
-    public function setLocale(string $locale): void
-    {
-        Deprecations::once('Preflow\I18n\Translator::setLocale() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->in($locale)), or on the admin surface Contexts::narrow(fn ($ctx) => $ctx->admin($locale)).');
-        if (Contexts::depth() === 0) {
-            $this->locale = $locale;
-            $this->forgetMemos();
-
-            return;
-        }
-        Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->surface->admin
-            ? $ctx->admin($locale, $ctx->surface->overrides)
-            : $ctx->in($locale));
-    }
-
     /** The site's default locale, the second step of the fallback chain. */
     public function getFallbackLocale(): string
     {
@@ -440,7 +383,7 @@ final class Translator
     {
         $ctx = Contexts::peek();
         if ($ctx === null) {
-            return [$this->locale, $this->overridesOn, null];
+            return [$this->locale, false, null];
         }
         $memo = $this->memos->byContext[$ctx] ??= $this->memoOf($ctx);
 
@@ -464,7 +407,7 @@ final class Translator
         return $this->memos->byKey[$overrides ? $locale . "\x01" : $locale] ??= new CatalogueMemo($locale, $overrides);
     }
 
-    /** Drops every context's text cache: what resolves a key changed (files, scopes, overrides, the default). */
+    /** Drops every context's text cache: what resolves a key changed (files, scopes, overrides). */
     private function forgetMemos(): void
     {
         $this->memos = new CatalogueMemos();
@@ -481,7 +424,7 @@ final class Translator
         if ($ctx === null) {
             $memo = null;
             $current = $this->locale;
-            $overrides = $this->overridesOn;
+            $overrides = false;
         } else {
             $memo = $this->memos->byContext[$ctx] ??= $this->memoOf($ctx);
             $current = $memo->locale;

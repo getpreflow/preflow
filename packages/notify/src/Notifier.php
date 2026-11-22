@@ -87,14 +87,12 @@ final class Notifier
      * Runs $work and returns what it returns; a message it queues with sendLater() is dropped,
      * never sent (also when sendLater() would send at once), and its onFailure is not called;
      * since 0.81.0 send() sends nothing either. The queue from before stays as it was and goes
-     * out at the next flush. Calls nest. Delegates to the queue's discarding() (since 0.81.0):
-     * with core, a render that must send nothing runs in a discarding render context instead,
-     * and this is a deprecated shim over it.
+     * out at the next flush. Calls nest. Delegates to the queue's discarding() (since 0.81.0).
+     * For notify on its own. With core it was removed in 0.83 inside a render (core's queue
+     * throws a LogicException there): a render that must send nothing runs in a discarding render
+     * context, Application::render() or Contexts::run() with RenderContext::discarding().
      *
      * @since 0.74
-     * @deprecated 0.81, removed in 0.83 with preflow/core 0.81+ (it reports through core; use
-     *             Application::render() or Contexts::run() with RenderContext::discarding()).
-     *             Without core it stays: notify on its own is not deprecated.
      *
      * @template T
      * @param \Closure(): T $work
