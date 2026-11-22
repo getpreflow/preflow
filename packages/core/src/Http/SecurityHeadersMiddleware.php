@@ -110,7 +110,7 @@ final class SecurityHeadersMiddleware implements MiddlewareInterface
             $response = $client->announceNonce($response, $nonce);
         }
 
-        // A fragment answers on its page's URL: it varies on the client's request headers (0.84).
+        // A URL may answer a page and a fragment: every HTML answer varies on the clients' request headers (0.84).
         if ($this->hypermedia !== null) {
             $response = $this->hypermedia->varying($request, $response);
         }

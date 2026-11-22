@@ -368,7 +368,7 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->signedIn = false;
 
         // Varying on what the key holds is fine; stored headers leave the per-request ones out.
-        $fine = $this->handler(fn (): ResponseInterface => $this->html('x')->withHeader('Vary', 'HX-Request, Accept-Encoding')
+        $fine = $this->handler(fn (): ResponseInterface => $this->html('x')->withHeader('Vary', 'HX-Request, HX-Target, HX-History-Restore-Request, Accept-Encoding')
             ->withHeader('Content-Security-Policy', "script-src 'nonce-abc'")->withHeader('HX-Trigger', 'loaded')
             ->withHeader('Strict-Transport-Security', 'max-age=1')->withHeader('X-Robots-Tag', 'noindex'));
         $this->assertSame('', $mw->process($this->get('/fine'), $fine)->getHeaderLine('X-Page-Cache-Skip'));

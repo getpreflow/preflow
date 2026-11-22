@@ -103,19 +103,18 @@ final class HypermediaProtocols
     }
 
     /**
-     * $response told to vary on the request headers of the client that sent $request
-     * (HypermediaProtocol::varyHeaders(); htmx: HX-Request…), when $request is a fragment request:
-     * a fragment answers on the same URL as its page, so a cache (the browser's back/forward
-     * cache included) must not show it for the page. Names already in Vary stay, each once; any
-     * other response is returned as it is.
+     * $response (an HTML answer: a page, a fragment, a history restore) told to vary on the request
+     * headers of the hypermedia clients (varyHeaders(); htmx: HX-Request…). A URL may answer a whole
+     * page and a fragment; a cache selects a stored answer by the Vary of the one it stored (RFC
+     * 9111), so each answer says it, whichever request it answers: the browser's back/forward cache
+     * never shows a fragment as a page, nor a page for an hx-get. Names already in Vary stay, each
+     * once; a `Vary: *` and an answer that is not HTML (an asset, JSON) are returned as they are.
+     * The page cache allows and keys on these names, so public pages are still stored.
      *
      * @since 0.84.0
      */
     public function varying(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
     {
-        if (!$this->wantsFragment($request)) {
-            return $response;
-        }
         $names = [];
         foreach (explode(',', $response->getHeaderLine('Vary')) as $name) {
             $name = trim($name);
@@ -123,10 +122,11 @@ final class HypermediaProtocols
                 $names[strtolower($name)] = $name;
             }
         }
-        if (isset($names['*'])) {
+        $vary = $this->varyHeaders();
+        if (isset($names['*']) || $vary === [] || !str_starts_with(strtolower(trim($response->getHeaderLine('Content-Type'))), 'text/html')) {
             return $response;
         }
-        foreach ($this->for($request)?->varyHeaders() ?? [] as $name) {
+        foreach ($vary as $name) {
             $names[strtolower($name)] ??= $name;
         }
 

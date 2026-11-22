@@ -94,4 +94,40 @@ final class AdminAuthMiddlewareTest extends TestCase
             $this->assertSame('private, max-age=60', $mw->process($factory->createServerRequest('GET', '/folio'), $own)->getHeaderLine('Cache-Control'), 'a screen that says its own caching keeps it');
         });
     }
+
+    /** A screen and its ?part= answer share one URL: through the security headers both vary on the client's headers and neither is stored. */
+    public function test_a_screen_and_its_part_both_vary_and_are_not_stored(): void
+    {
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $user = new \Preflow\Auth\ArrayUser('a@b.test', 'a@b.test', 'H', ['admin']);
+            $am = new AuthManager(['session' => $this->guard($user)], 'session');
+            $auth = new AdminAuthMiddleware($am, '/folio', new \Preflow\Folio\Http\AdminNav(new \Preflow\Folio\Content\TypeCatalog(sys_get_temp_dir() . '/folio_none'), static fn (): bool => true, '/folio'));
+            $protocols = new \Preflow\Core\Http\Hypermedia\HypermediaProtocols();
+            $protocols->add(new \Preflow\Htmx\HtmxDriver(new \Preflow\Htmx\ResponseHeaders()));
+            $security = new \Preflow\Core\Http\SecurityHeadersMiddleware(static fn (): string => 'abc', [], false, $protocols);
+            $screen = new class implements RequestHandlerInterface {
+                public function handle(ServerRequestInterface $request): ResponseInterface
+                {
+                    return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], 'x');
+                }
+            };
+            // The kernel order: security headers outside, the staff gate inside.
+            $inner = new class($auth, $screen) implements RequestHandlerInterface {
+                public function __construct(private AdminAuthMiddleware $auth, private RequestHandlerInterface $next) {}
+                public function handle(ServerRequestInterface $request): ResponseInterface
+                {
+                    return $this->auth->process($request, $this->next);
+                }
+            };
+            $factory = new Psr17Factory();
+            foreach ([
+                'page' => $factory->createServerRequest('GET', '/folio'),
+                'part' => $factory->createServerRequest('GET', '/folio?part=needs')->withHeader('HX-Request', 'true'),
+            ] as $label => $request) {
+                $res = $security->process($request, $inner);
+                $this->assertSame('no-store', $res->getHeaderLine('Cache-Control'), $label);
+                $this->assertStringContainsString('HX-Request', $res->getHeaderLine('Vary'), $label);
+            }
+        });
+    }
 }
