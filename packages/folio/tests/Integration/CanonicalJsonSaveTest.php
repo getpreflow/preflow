@@ -84,9 +84,11 @@ final class CanonicalJsonSaveTest extends TestCase
 
         $this->assertStringEndsWith("\n", $folio);
         $this->assertStringContainsString('"Übersetzung"', $folio, 'umlauts readable');
-        $this->assertSame(['title', 'count', 'tags', 'note', 'flag', 'uuid'], array_keys(json_decode($folio, true)));
-        $this->assertSame($folio, str_replace('"cli"', '"' . $folioId . '"', $this->file('cli')), 'a CLI save');
-        $this->assertSame($folio, str_replace('"hand"', '"' . $folioId . '"', $this->file('hand')), 'a hand-written file after its next save');
+        $this->assertSame(['title', 'count', 'tags', 'note', 'flag', 'uuid', '_updated_at'], array_keys(json_decode($folio, true)), 'the fields, then the system keys (the change date, 0.84)');
+        // The three saves ran at their own moments: the change date (0.84) may differ by a second.
+        $undated = static fn (string $json): string => (string) preg_replace('/"_updated_at": "[^"]+"/', '"_updated_at": "…"', $json);
+        $this->assertSame($undated($folio), $undated(str_replace('"cli"', '"' . $folioId . '"', $this->file('cli'))), 'a CLI save');
+        $this->assertSame($undated($folio), $undated(str_replace('"hand"', '"' . $folioId . '"', $this->file('hand'))), 'a hand-written file after its next save');
     }
 
     public function test_a_filter_on_a_number_and_a_yes_no_field_finds_a_record_saved_canonically(): void

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Schema;
 
+use Preflow\Data\ChangeDates;
 use Preflow\Data\DataManager;
 use Preflow\Data\PdoConnection;
 use Preflow\Data\RemembersColumns;
@@ -336,7 +337,8 @@ final class RecordTableSync
     /**
      * The columns besides the id, each with its kind: the field's (a scope field of a unique
      * field and a field of a composite index count as indexed), free text for extra columns and
-     * in untyped tables. A text field's column (TextColumns) is marked text, in untyped tables
+     * in untyped tables, and the change date (ChangeDates::FIELD, a date; since 0.84.0) unless the
+     * type declares an updated field of its own. A text field's column (TextColumns) is marked text, in untyped tables
      * too (they hold copies of the records, queried by the same type), so it compares by the
      * text rule; every other column exactly. On a grammar with full-text indexes the exact fields
      * and lists a full-text type's index covers (TextColumns::exactInFullText()) take the rule's
@@ -371,6 +373,12 @@ final class RecordTableSync
         foreach ($extraColumns as $name) {
             $specs[$name] ??= new ColumnSpec($name);
         }
+        // The change date of a type without an updated field of its own (ChangeDates, since 0.84.0):
+        // ISO 8601 text, compared exactly (free text in an untyped table, as every column there).
+        $specs[ChangeDates::FIELD] ??= ChangeDates::declared($def) === null
+            ? new ColumnSpec(ChangeDates::FIELD, $typed ? ColumnKind::Date : ColumnKind::Text)
+            : null;
+        $specs = array_filter($specs);
         unset($specs[$def->idField]);
 
         return $specs;

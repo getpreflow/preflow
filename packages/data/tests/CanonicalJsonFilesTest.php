@@ -22,7 +22,8 @@ use Preflow\Data\VersionFields;
  */
 final class CanonicalJsonFilesTest extends TestCase
 {
-    private const string CANONICAL = "{\n    \"title\": \"T\",\n    \"count\": 2,\n    \"tags\": [\n        \"a\"\n    ],\n    \"uuid\": \"r1\",\n    \"_version\": 1\n}\n";
+    /** Saved on the test clock (ContextFactory::NOW): the change date (0.84) is a system key too. */
+    private const string CANONICAL = "{\n    \"title\": \"T\",\n    \"count\": 2,\n    \"tags\": [\n        \"a\"\n    ],\n    \"uuid\": \"r1\",\n    \"_version\": 1,\n    \"_updated_at\": \"2026-01-01T00:00:00+00:00\"\n}\n";
 
     private string $dir;
 
@@ -37,6 +38,12 @@ final class CanonicalJsonFilesTest extends TestCase
                 'tags' => ['type' => 'tags'],
             ],
         ]));
+    }
+
+    /** $save on the test clock, so the change date it writes is ContextFactory::NOW. */
+    private static function onTestClock(\Closure $save): void
+    {
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), $save);
     }
 
     protected function tearDown(): void
@@ -80,7 +87,7 @@ final class CanonicalJsonFilesTest extends TestCase
     public function test_save_writes_fields_in_type_order_with_a_trailing_newline(): void
     {
         $dm = $this->dm();
-        $dm->saveType($this->item($dm, ['_version' => 1, 'tags' => ['a'], 'uuid' => 'r1', 'count' => 2, 'title' => 'T']));
+        self::onTestClock(fn () => $dm->saveType($this->item($dm, ['_version' => 1, 'tags' => ['a'], 'uuid' => 'r1', 'count' => 2, 'title' => 'T'])));
 
         $this->assertSame(self::CANONICAL, $this->file());
     }
@@ -88,14 +95,14 @@ final class CanonicalJsonFilesTest extends TestCase
     public function test_saving_an_unchanged_record_again_gives_the_same_bytes(): void
     {
         $dm = $this->dm();
-        $dm->saveType($this->item($dm, ['_version' => 1, 'tags' => ['a'], 'uuid' => 'r1', 'count' => 2, 'title' => 'T']));
+        self::onTestClock(fn () => $dm->saveType($this->item($dm, ['_version' => 1, 'tags' => ['a'], 'uuid' => 'r1', 'count' => 2, 'title' => 'T'])));
         $first = $this->file();
 
-        $dm->saveType($dm->findType('item', 'r1') ?? $this->fail('saved'));
+        self::onTestClock(fn () => $dm->saveType($dm->findType('item', 'r1') ?? $this->fail('saved')));
         $this->assertSame($first, $this->file());
 
         $fresh = $this->dm(); // another process (the CLI) loading and saving it
-        $fresh->saveType($fresh->findType('item', 'r1') ?? $this->fail('saved'));
+        self::onTestClock(fn () => $fresh->saveType($fresh->findType('item', 'r1') ?? $this->fail('saved')));
         $this->assertSame($first, $this->file());
     }
 
@@ -105,17 +112,17 @@ final class CanonicalJsonFilesTest extends TestCase
         file_put_contents($this->dir . '/data/items/r1.json', '{"extra":"x","_version":1,"tags":"[\"a\"]","count":"2","uuid":"r1","title":"T"}');
         $dm = $this->dm();
 
-        $dm->saveType($dm->findType('item', 'r1') ?? $this->fail('hand-written file read'));
+        self::onTestClock(fn () => $dm->saveType($dm->findType('item', 'r1') ?? $this->fail('hand-written file read')));
 
         $this->assertSame(substr(self::CANONICAL, 0, -3) . ",\n    \"extra\": \"x\"\n}\n", $this->file(), 'every key kept, the unknown one last');
 
         // A comma string, a number as text, unknown keys in their order: none is dropped.
         file_put_contents($this->dir . '/data/items/r1.json', '{"zeta":1,"tags":"a, b","_note":"n","count":"2.5","uuid":"r1","alpha":null,"title":"T","flag":"x"}');
         $dm = $this->dm();
-        $dm->saveType($dm->findType('item', 'r1') ?? $this->fail('hand-written file read'));
+        self::onTestClock(fn () => $dm->saveType($dm->findType('item', 'r1') ?? $this->fail('hand-written file read')));
 
         $saved = json_decode($this->file(), true);
-        $this->assertSame(['title', 'count', 'tags', 'uuid', '_note', '_version', 'zeta', 'alpha', 'flag'], array_keys($saved));
+        $this->assertSame(['title', 'count', 'tags', 'uuid', '_note', '_version', '_updated_at', 'zeta', 'alpha', 'flag'], array_keys($saved));
         $this->assertSame(['a', 'b'], $saved['tags']);
         $this->assertSame(2.5, $saved['count']);
         $this->assertSame([1, null, 'x'], [$saved['zeta'], $saved['alpha'], $saved['flag']]);
@@ -127,7 +134,7 @@ final class CanonicalJsonFilesTest extends TestCase
         file_put_contents($this->dir . '/data/items/r1.json', '{"uuid":"r1","title":"T","count":"many","tags":"[broken"}');
         $dm = $this->dm();
 
-        $dm->saveType($dm->findType('item', 'r1') ?? $this->fail('hand-written file read'), false);
+        self::onTestClock(fn () => $dm->saveType($dm->findType('item', 'r1') ?? $this->fail('hand-written file read'), false));
 
         $saved = json_decode($this->file(), true);
         $this->assertSame('many', $saved['count']);
@@ -137,7 +144,7 @@ final class CanonicalJsonFilesTest extends TestCase
     public function test_unicode_stays_readable_in_the_file(): void
     {
         $dm = $this->dm();
-        $dm->saveType($this->item($dm, ['uuid' => 'r1', 'title' => 'Grüße a/b', 'tags' => ['Übersetzung']]));
+        self::onTestClock(fn () => $dm->saveType($this->item($dm, ['uuid' => 'r1', 'title' => 'Grüße a/b', 'tags' => ['Übersetzung']])));
 
         $this->assertStringContainsString('"Grüße a/b"', $this->file());
         $this->assertStringContainsString('"Übersetzung"', $this->file());
@@ -151,8 +158,8 @@ final class CanonicalJsonFilesTest extends TestCase
         $pdo->exec('CREATE TABLE items (uuid TEXT PRIMARY KEY, title TEXT, count REAL, tags TEXT, _version INTEGER)');
         $dm = $this->dm(new SqliteDriver($pdo));
 
-        $dm->saveType($this->item($dm, ['uuid' => 'r1', 'title' => 'T', 'count' => '2', 'tags' => ['a']]));
-        $dm->saveType($this->item($dm, ['uuid' => 'r2', 'title' => 'T', 'tags' => '["a"]']));
+        self::onTestClock(fn () => $dm->saveType($this->item($dm, ['uuid' => 'r1', 'title' => 'T', 'count' => '2', 'tags' => ['a']])));
+        self::onTestClock(fn () => $dm->saveType($this->item($dm, ['uuid' => 'r2', 'title' => 'T', 'tags' => '["a"]'])));
 
         $this->assertSame('["a"]', $pdo->query("SELECT tags FROM items WHERE uuid = 'r1'")->fetchColumn());
         $this->assertSame('["a"]', $pdo->query("SELECT tags FROM items WHERE uuid = 'r2'")->fetchColumn());
@@ -176,12 +183,12 @@ final class CanonicalJsonFilesTest extends TestCase
         $ref->uuid = 'r1';
         $ref->name = 'N';
         $ref->uses = ['a'];
-        $dm->save($ref, false);
+        self::onTestClock(fn () => $dm->save($ref, false));
 
-        $canonical = "{\n    \"name\": \"N\",\n    \"uses\": [\n        \"a\"\n    ],\n    \"uuid\": \"r1\",\n    \"old\": \"gone\",\n    \"extra\": 1\n}\n";
+        $canonical = "{\n    \"name\": \"N\",\n    \"uses\": [\n        \"a\"\n    ],\n    \"uuid\": \"r1\",\n    \"_updated_at\": \"2026-01-01T00:00:00+00:00\",\n    \"old\": \"gone\",\n    \"extra\": 1\n}\n";
         $this->assertSame($canonical, (string) file_get_contents($file), 'the type\'s keys in order, then the other keys in their stored order');
 
-        $dm->save($ref, false);
+        self::onTestClock(fn () => $dm->save($ref, false));
         $this->assertSame($canonical, (string) file_get_contents($file), 'saving again gives the same bytes');
     }
 }

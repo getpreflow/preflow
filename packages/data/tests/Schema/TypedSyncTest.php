@@ -45,7 +45,7 @@ final class TypedSyncTest extends TestCase
 
         $this->assertSame(['created table event', 'added unique index uniq_event_slug', 'added index idx_event_city'], $lines);
         $this->assertSame(
-            ['uuid' => 'text', 'seats' => 'numeric', 'open' => 'integer', 'starts' => 'text', 'slug' => 'text', 'city' => 'text', 'name' => 'text'],
+            ['uuid' => 'text', 'seats' => 'numeric', 'open' => 'integer', 'starts' => 'text', 'slug' => 'text', 'city' => 'text', 'name' => 'text', '_updated_at' => 'text'],
             (new Schema($this->pdo))->columnTypes('event'),
         );
         $this->assertContains('uniq_event_slug', (new Schema($this->pdo))->indexes('event'));
@@ -196,7 +196,7 @@ final class TypedSyncTest extends TestCase
         $this->sync()->sync($def);
 
         $this->assertSame(
-            ['uuid' => 'BINARY', 'name' => 'preflow_text', 'bio' => 'preflow_text', 'key' => 'BINARY', 'born' => 'BINARY', 'age' => null, 'title' => 'preflow_text'],
+            ['uuid' => 'BINARY', 'name' => 'preflow_text', 'bio' => 'preflow_text', 'key' => 'BINARY', 'born' => 'BINARY', 'age' => null, 'title' => 'preflow_text', '_updated_at' => 'BINARY'],
             Grammars::for($this->pdo)->columnCollations($this->pdo, 'person'),
         );
         $driver = $this->dm()->driver('sqlite');

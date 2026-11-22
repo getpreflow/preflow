@@ -321,7 +321,7 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 | `ConditionalMeasures` (0.79, a marker) | Says `aggregate()` honours a measure's own `where:` condition (each `measures()` entry then has a `condition`, a `Query` of only that measure's conditions). | `AggregateQuery::get()` throws for a measure with a condition (never counts every record); measures without one still run. | Read only. |
 | `BulkDeletes::deleteMany()` (0.77) | Many deletes in a few statements (`deleteManyIn()`: activity prune and erasure). | deletes one by one. | No either way (a failure part-way leaves the deleted ones deleted); inside a SQL transaction it rolls back with it. |
 | `Savepoints::savepoint()` (0.77) | Writes inside a caller's open transaction that commit or roll back with it and whose failure leaves it usable. | DataManager does not use it; its consumer, `StoredActivityLog`, runs its writes and reads as they are (fine for storage without transactions). | Yes with it, within the caller's transaction. |
-| `DescribesColumns::hasColumn()` (0.77), `hasTable()` (0.78) | Says whether a table has a column (`hasColumn()`: publishing works on tables not migrated yet) and whether a type's table exists (`hasTable()`: the staff accounts, published copies). | takes any column and any table as present (right for schemaless storage; a SQL driver should implement it). | Read only. |
+| `DescribesColumns::hasColumn()` (0.77), `hasTable()` (0.78) | Says whether a table has a column (`hasColumn()`: publishing works on tables not migrated yet; since 0.84 the change dates, written only where it says the table has the column) and whether a type's table exists (`hasTable()`: the staff accounts, published copies). | takes any column and any table as present (right for schemaless storage; a SQL driver should implement it); its records get no change dates (0.84). | Read only. |
 | `RankedSearch::canScore()`, `score()` (0.78) | Scores the hits loose search found, so ⌘K puts a type's best matches first (`DataManager::canScore()`, `scoreIn()`; only for a type with `"fullText": true`). It orders, it never finds: the hits are the same on every driver. `MysqlDriver` scores with `MATCH … AGAINST` over the FULLTEXT index `migrate` adds. | hits stay in storage order; `scoreIn()` throws `UnsupportedStorage`. | Read only. |
 | `RunsSql::rawQuery()`, `execute()`, `dialect()` (0.78) | Raw SQL through `DataManager::raw()` and `execute()`; the auth tokens, remember-me and codes use it for their conditional single-statement writes. | `raw()` and `execute()` throw `UnsupportedStorage` (a `LogicException`), never a different result; tokens, remember-me and codes read and write under their own lock instead. | As the SQL runs. |
 | `PdoConnection::pdo()` (0.78, extends `RunsSql`) | The PDO connection itself, for `preflow migrate`, `Migration\Schema`, the table sync and the convert tool. | `migrate` runs only the steps registered for any storage; the table sync skips the type. | — |
@@ -689,6 +689,41 @@ record). A save never touches another record: a value colliding with a unique in
 
 A migration-made column that is `NOT NULL` now fails on a `null` instead of silently keeping
 its old value.
+
+### Change dates (0.84)
+
+Every record of a type keeps when it was last changed (`Preflow\Data\ChangeDates`), on every
+driver:
+
+- **Where:** a type with an updated field of its own (`updatedAt`, else `updated_at`) keeps it
+  there, so no record holds it twice; every other type in the system key `_updated_at` (beside
+  `_version`, `_published_at`). `ChangeDates::of($def)` names the key.
+- **What:** ISO 8601 in UTC to the second (`2026-11-22T18:59:29+00:00`), so ordering by it is a
+  plain text comparison on every driver (`->orderBy('_updated_at', SortDirection::Desc)`); a
+  declared field stored as a number gets the Unix time.
+- **When:** a save that changes the record sets it, from the render's clock: `saveType()`,
+  `saveTypeIfVersion()`, and `save()` / `insert()` / `insertIgnoring()` / `insertMany()` /
+  `update()` of a class-backed type (its updated property gets the value written). A save that
+  changes nothing keeps it (as a version field), so an unchanged record is written to the same
+  bytes; a versioned save moves it with the version, and `saveTypeIfVersion()` with `$next` equal
+  to `$expected` keeps the date the record was loaded with. It is never content: versions,
+  publish states and `changes()` ignore it. A read never touches it.
+- **Not moved:** writes that name their fields write only those: `updateIf()`,
+  `updateFieldsIfVersion()`, `incrementIn()` (counters), raw SQL, a driver called directly. A caller
+  that wants the date moved includes it: `[ChangeDates::of($def) => ChangeDates::value($def, $now)]`.
+- **Keeping dates:** `$dm->keepingChangeDates(fn () => …)` writes the change date a record carries
+  as it is (one without gets now): for imports and copies. Folio's content import writes an
+  archive's rows as they are (their dates too); an archive from before 0.84 is compared without
+  dates and what it writes is dated with the import.
+- **Published copies** keep their own `_updated_at`: the publish that wrote their content (a
+  publish of the same content keeps it). A type's own updated field is content, published as the
+  working copy holds it.
+- **Storage:** JSON records take the key. On SQL, `preflow migrate` adds the column to every table
+  the data layer makes (`RecordTableSync`, a date column compared exactly); until then saves are
+  written as before. `DataManager::changeDateOf($def)` says whether the storage holds it (a driver
+  that does not implement `DescribesColumns` is given none). A driver needs nothing new: it stores
+  the key as it stores the fields; `StorageDriverContract` pins it on every driver.
+- **Plain models** (no type) keep `#[Timestamps]` for this; their tables are their migrations'.
 
 ## Unique fields and indexes
 

@@ -108,6 +108,14 @@ use Preflow\Testing\PlainDriver;
  *   never 0); a match that changes no value is still a match.
  * - An empty id is '', 0 or '0' (as PdoDriver and DataManager treat it): save() with one inserts
  *   a record whose id the store generates, and lastInsertId() returns it.
+ * - Change dates (@since 0.84.0): DataManager writes every record of a type with its change date
+ *   (Preflow\Data\ChangeDates: the key `_updated_at`, or the type's own updated field; ISO 8601
+ *   text in UTC). A driver stores and reads it as any other key, and sorts by it as text; nothing
+ *   else is asked of it. An SQL store holds it in a column of its own, which `preflow migrate`
+ *   adds to the tables it makes (the tests create it as an `exact` field); a store without a
+ *   schema takes the key. DataManager writes it only to a store with DescribesColumns whose
+ *   hasColumn() says the table has it; a store without that capability gets no change date (its
+ *   records are written as before 0.84), and the change-date tests skip.
  *
  * Optional hooks, for stores that cannot do something generic:
  * - supportsAutoIds() (default true): false skips the test that saves with each empty id ('',
@@ -1808,6 +1816,98 @@ abstract class StorageDriverContract extends TestCase
         $this->assertNumber(1, $kept['amount'] ?? null);
         $this->assertNull($this->driver->findOne('records', 'r2'), 'nothing new');
         $this->assertNull($this->driver->findOne('records', 'r3'));
+    }
+
+    // --- change dates (@since 0.84.0) -----------------------------------------------------------
+
+    /** A type of $fields over the store (created as createType() makes it), and a DataManager on it. */
+    private function changeDates(bool $declared = false): array
+    {
+        $key = $declared ? 'stamped' : 'dated';
+        $this->createType($key, $declared
+            ? ['uuid' => 'exact', 'title' => 'text', 'updated_at' => 'exact']
+            : ['uuid' => 'exact', 'title' => 'text', \Preflow\Data\ChangeDates::FIELD => 'exact']);
+        $fields = ['title' => new TypeFieldDefinition('title')];
+        if ($declared) {
+            $fields['updated_at'] = new TypeFieldDefinition('updated_at', 'date');
+        }
+        $def = new TypeDefinition($key, $key, 'default', $fields);
+        $dm = new \Preflow\Data\DataManager(['default' => $this->driver], 'default');
+        if (!$this->driver instanceof DescribesColumns) {
+            $this->markTestSkipped('The driver does not implement DescribesColumns: DataManager writes it no change date.');
+        }
+
+        return [$dm, $def];
+    }
+
+    /** Runs $write on a clock that tells $at (ISO 8601). */
+    private static function at(string $at, \Closure $write): mixed
+    {
+        $clock = new \Preflow\Core\Context\FrozenClock(new \DateTimeImmutable($at));
+
+        return \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->withClock($clock), $write);
+    }
+
+    public function test_a_save_sets_the_change_date_and_an_update_moves_it(): void
+    {
+        [$dm, $def] = $this->changeDates();
+        $field = \Preflow\Data\ChangeDates::FIELD;
+
+        $record = \Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'c1', 'title' => 'First']);
+        self::at('2026-03-01T10:00:00+01:00', static fn () => $dm->saveType($record, false));
+        $this->assertSame('2026-03-01T09:00:00+00:00', $record->get($field), 'the saved record holds it, in UTC');
+        $this->assertSame('2026-03-01T09:00:00+00:00', ($this->driver->findOne('dated', 'c1') ?? [])[$field] ?? null, 'stored on create');
+
+        $loaded = $dm->findIn($def, 'c1');
+        $loaded->set('title', 'Second');
+        self::at('2026-03-02T08:30:15Z', static fn () => $dm->saveType($loaded, false));
+        $this->assertSame('2026-03-02T08:30:15+00:00', ($this->driver->findOne('dated', 'c1') ?? [])[$field] ?? null, 'moved on update');
+
+        self::at('2026-03-05T00:00:00Z', function () use ($dm, $def): void {
+            $dm->findIn($def, 'c1');
+            $dm->queryIn($def)->get();
+        });
+        $this->assertSame('2026-03-02T08:30:15+00:00', ($this->driver->findOne('dated', 'c1') ?? [])[$field] ?? null, 'a read leaves it');
+        $this->assertSame('Second', ($this->driver->findOne('dated', 'c1') ?? [])['title'] ?? null);
+    }
+
+    public function test_records_sort_by_their_change_date(): void
+    {
+        [$dm, $def] = $this->changeDates();
+        foreach (['c1' => '2026-03-02T00:00:00Z', 'c2' => '2025-12-31T23:59:59Z', 'c3' => '2026-03-01T12:00:00+02:00'] as $id => $at) {
+            self::at($at, static fn () => $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => $id, 'title' => $id]), false));
+        }
+
+        $this->assertSame(['c1', 'c3', 'c2'], $dm->queryIn($def)->orderBy(\Preflow\Data\ChangeDates::FIELD, SortDirection::Desc)->pluck('uuid'));
+        $this->assertSame(['c2', 'c3', 'c1'], $dm->queryIn($def)->orderBy(\Preflow\Data\ChangeDates::FIELD)->pluck('uuid'));
+        $this->assertSame(['c1'], $dm->queryIn($def)->where(\Preflow\Data\ChangeDates::FIELD, '>', '2026-03-01T10:00:00+00:00')->pluck('uuid'), 'compared as text, as written');
+    }
+
+    public function test_a_kept_change_date_round_trips_exactly(): void
+    {
+        [$dm, $def] = $this->changeDates();
+        $field = \Preflow\Data\ChangeDates::FIELD;
+
+        self::at('2026-03-05T00:00:00Z', static fn () => $dm->keepingChangeDates(
+            static fn () => $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'c1', 'title' => 'Imported', $field => '2019-07-04T17:45:00+00:00']), false),
+        ));
+
+        $this->assertSame('2019-07-04T17:45:00+00:00', $dm->findIn($def, 'c1')?->get($field), 'an import keeps the date it brings');
+        self::at('2026-03-05T00:00:00Z', static fn () => $dm->keepingChangeDates(
+            static fn () => $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'c2', 'title' => 'Without']), false),
+        ));
+        $this->assertSame('2026-03-05T00:00:00+00:00', $dm->findIn($def, 'c2')?->get($field), 'one without a date gets now');
+    }
+
+    public function test_a_type_with_its_own_updated_field_keeps_the_change_date_there(): void
+    {
+        [$dm, $def] = $this->changeDates(declared: true);
+
+        self::at('2026-03-01T09:00:00Z', static fn () => $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'c1', 'title' => 'First', 'updated_at' => '2020-01-01T00:00:00+00:00']), false));
+
+        $stored = $this->driver->findOne('stamped', 'c1') ?? [];
+        $this->assertSame('2026-03-01T09:00:00+00:00', $stored['updated_at'] ?? null, 'a save sets the declared field');
+        $this->assertArrayNotHasKey(\Preflow\Data\ChangeDates::FIELD, $stored, 'and no second key');
     }
 
     // --- insert only if new (InsertsNew, @since 0.79.0) -------------------------------------------

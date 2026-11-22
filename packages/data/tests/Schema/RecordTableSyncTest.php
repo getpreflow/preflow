@@ -43,7 +43,7 @@ final class RecordTableSyncTest extends TestCase
         $lines = $this->sync()->sync($this->def(['title', 'body']));
 
         $this->assertSame(['created table note'], $lines);
-        $this->assertSame(['uuid', 'title', 'body'], (new Schema($this->pdo))->columns('note'));
+        $this->assertSame(['uuid', 'title', 'body', '_updated_at'], (new Schema($this->pdo))->columns('note'), 'the fields, then the change date (0.84)');
     }
 
     public function test_record_table_sync_skips_a_storage_without_pdo_connection(): void
@@ -72,7 +72,7 @@ final class RecordTableSyncTest extends TestCase
         $sync->sync($this->def(['title']));
 
         $this->assertSame(['added column note.body'], $sync->sync($this->def(['title', 'body'])));
-        $this->assertSame(['uuid', 'title', 'body'], (new Schema($this->pdo))->columns('note'));
+        $this->assertSame(['uuid', 'title', '_updated_at', 'body'], (new Schema($this->pdo))->columns('note'));
     }
 
     public function test_extra_columns_are_created_too(): void
@@ -80,7 +80,7 @@ final class RecordTableSyncTest extends TestCase
         $lines = $this->sync()->sync($this->def(['title']), ['_order']);
 
         $this->assertSame(['created table note'], $lines);
-        $this->assertSame(['uuid', 'title', '_order'], (new Schema($this->pdo))->columns('note'));
+        $this->assertSame(['uuid', 'title', '_order', '_updated_at'], (new Schema($this->pdo))->columns('note'));
     }
 
     public function test_json_stored_definition_is_left_alone(): void

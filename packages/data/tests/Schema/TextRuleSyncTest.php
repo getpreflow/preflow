@@ -60,7 +60,7 @@ final class TextRuleSyncTest extends TestCase
 
         $this->assertSame(['converted collations of people: title, body'], $lines);
         $this->assertSame(
-            ['uuid' => 'BINARY', 'title' => 'preflow_text', 'body' => 'preflow_text', 'd' => 'BINARY'],
+            ['uuid' => 'BINARY', 'title' => 'preflow_text', 'body' => 'preflow_text', 'd' => 'BINARY', '_updated_at' => 'BINARY'],
             Grammars::for($this->pdo)->columnCollations($this->pdo, 'people'),
         );
         $this->assertSame([['uuid' => 'r1', 'title' => 'Müller', 'body' => 'Text', 'd' => '2026-01-02']], $this->rows());
@@ -96,7 +96,7 @@ final class TextRuleSyncTest extends TestCase
 
     public function test_a_scoped_unique_counts_duplicates_within_its_scope(): void
     {
-        $this->pdo->exec('CREATE TABLE code (uuid TEXT PRIMARY KEY, title TEXT, purpose TEXT)');
+        $this->pdo->exec('CREATE TABLE code (uuid TEXT PRIMARY KEY, title TEXT, purpose TEXT, _updated_at TEXT)');
         $this->pdo->exec('CREATE UNIQUE INDEX uniq_code_title ON code (title, purpose)');
         $this->pdo->exec('CREATE INDEX idx_code_purpose ON code (purpose)');
         $this->pdo->exec("INSERT INTO code (uuid, title, purpose) VALUES ('r1', 'Müller', 'a'), ('r2', 'MÜLLER', 'b')");
@@ -104,7 +104,7 @@ final class TextRuleSyncTest extends TestCase
         $lines = $this->sync()->sync(self::code());
 
         $this->assertSame(['converted collations of code: title, purpose'], $lines);
-        $this->assertSame(['uuid' => 'BINARY', 'title' => 'preflow_text', 'purpose' => 'preflow_text'], Grammars::for($this->pdo)->columnCollations($this->pdo, 'code'));
+        $this->assertSame(['uuid' => 'BINARY', 'title' => 'preflow_text', 'purpose' => 'preflow_text', '_updated_at' => 'BINARY'], Grammars::for($this->pdo)->columnCollations($this->pdo, 'code'));
     }
 
     public function test_many_duplicate_groups_are_listed_up_to_twenty(): void
@@ -245,7 +245,7 @@ final class TextRuleSyncTest extends TestCase
     /** A table the rebuild cannot keep as it is (a CHECK constraint) is converted on purpose, not by running migrate again. */
     public function test_a_table_the_rebuild_cannot_keep_is_left_with_the_way_to_convert_it(): void
     {
-        $this->pdo->exec("CREATE TABLE people (uuid TEXT PRIMARY KEY, title TEXT, body TEXT CHECK (body <> 'x'), d TEXT)");
+        $this->pdo->exec("CREATE TABLE people (uuid TEXT PRIMARY KEY, title TEXT, body TEXT CHECK (body <> 'x'), d TEXT, _updated_at TEXT)");
         $this->pdo->exec("INSERT INTO people (uuid, title) VALUES ('r1', 'Müller')");
 
         $lines = $this->sync()->sync(self::people());
@@ -390,14 +390,17 @@ final class TextRuleSyncTest extends TestCase
     /** The table as a site made it before 0.78: text columns compared by bytes. */
     private function oldPeople(): void
     {
-        $this->pdo->exec('CREATE TABLE people (uuid TEXT PRIMARY KEY, title TEXT, body TEXT, d TEXT)');
+        $this->pdo->exec('CREATE TABLE people (uuid TEXT PRIMARY KEY, title TEXT, body TEXT, d TEXT, _updated_at TEXT)');
         $this->pdo->exec('CREATE UNIQUE INDEX uniq_people_title ON people (title)');
     }
 
     /** @return list<array<string, mixed>> */
     private function rows(): array
     {
-        return $this->pdo->query('SELECT * FROM people ORDER BY uuid COLLATE BINARY')->fetchAll(\PDO::FETCH_ASSOC);
+        return array_map(
+            static fn (array $row): array => array_diff_key($row, ['_updated_at' => true]),
+            $this->pdo->query('SELECT * FROM people ORDER BY uuid COLLATE BINARY')->fetchAll(\PDO::FETCH_ASSOC),
+        );
     }
 
     private static function people(): TypeDefinition

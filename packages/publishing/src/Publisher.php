@@ -10,6 +10,7 @@ use Preflow\Core\Context\Contexts;
 use Preflow\Core\Context\WritePolicy;
 use Preflow\Core\Context\Writes;
 use Preflow\Data\AggregatingStorage;
+use Preflow\Data\ChangeDates;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\QueryBuilder;
@@ -44,14 +45,20 @@ final class Publisher
     /** A snapshot's key (only snapshots have it): the working `_version` it was published from. @since 0.77 */
     public const string PUBLISHED_VERSION = '_published_version';
 
-    /** System keys, never content: TABLE_META and PUBLISHED_VERSION (@since 0.77). */
-    public const array META = [...self::TABLE_META, self::PUBLISHED_VERSION];
+    /**
+     * System keys, never content: TABLE_META and PUBLISHED_VERSION (@since 0.77), and the change
+     * date ChangeDates::FIELD (@since 0.84.0; a type's own updated field is content, as before).
+     */
+    public const array META = [...self::TABLE_META, self::PUBLISHED_VERSION, ChangeDates::FIELD];
 
     /** Working-copy keys that are not content and are written without a new version (saveSystemKeys()). */
     private const array SYSTEM_KEYS = ['_order', '_share_token'];
 
-    /** Working-copy-only keys that are not copied into a snapshot. */
-    private const array WORKING_ONLY = ['_version', '_publish_at', '_share_token'];
+    /**
+     * Working-copy-only keys that are not copied into a snapshot. A snapshot keeps its own change
+     * date (ChangeDates::FIELD, since 0.84.0): when its content was last written by a publish.
+     */
+    private const array WORKING_ONLY = ['_version', '_publish_at', '_share_token', ChangeDates::FIELD];
 
     /** How often saveDraft() without a loaded version tries before giving up on a busy record. */
     private const int SAVE_ATTEMPTS = 3;
@@ -630,7 +637,10 @@ final class Publisher
         if ($this->dm->hasColumn($shadow, self::PUBLISHED_VERSION)) {
             $snapshot->set(self::PUBLISHED_VERSION, (int) ($working->get('_version') ?? 0));
         }
-        $this->dm->saveType($snapshot, false);
+        // Its change date (ChangeDates, since 0.84.0): the system key is the snapshot's own (left out
+        // of the copy: the publish that changed its content, kept by one that changes nothing); a
+        // type's own updated field is content, published as the working copy holds it.
+        $this->dm->keepingChangeDates(fn () => $this->dm->saveType($snapshot, false));
         $this->appendRevision($def, $snapshot, $previous, $stamp, $by);
 
         return $snapshot;
