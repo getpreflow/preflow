@@ -134,13 +134,14 @@ final class ImageTag
     /**
      * The alt-text language: the provider's for the current render context; a provider without
      * ContextLocaleProvider is asked its deprecated current() (reported once). Outside every
-     * render (a script, a unit test) there is no context: current(), as before 0.81.
+     * render (a script, a unit test) there is no context to ask, so the provider's default()
+     * answers: the app's default locale. No ambient state is read.
      */
     private function altLocale(): string
     {
         $ctx = Contexts::peek();
         if ($ctx === null) {
-            return $this->locale->current();
+            return $this->locale->default();
         }
         if ($this->locale instanceof ContextLocaleProvider) {
             $frame = Contexts::frame();
