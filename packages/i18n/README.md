@@ -97,8 +97,10 @@ $title = Contexts::within(Contexts::current()->in('fr'), fn () => $translator->g
 $translator->getLocale();                                          // "de"
 ```
 
-`setLocale()` is deprecated since 0.81 (removed in 0.83): inside a render it changes the current
-frame only, outside every render (a script, a unit test) the translator's own default.
+Outside every render (a script, a unit test) the texts are in the locale given to the
+constructor, without overrides. `setLocale()` and `useOverrides()`, deprecated since 0.81, are
+removed in 0.83: narrow the render context instead (`in()` for the public surface, `admin()` for
+the admin's texts with or without overrides).
 
 Parameters are replaced one after the other in the order they are passed. In one text, don't use
 a parameter whose name is the start of another (`:to` next to `:total`): `:to` would also replace
@@ -148,8 +150,9 @@ group.
 ### Admin overrides
 
 `TranslationOverrides` (`get(string $locale, string $key): ?string`) is the layer above the
-site files. `Translator::setOverrides()` sets it, and `useOverrides(true)` turns it on; it is
-off by default. Folio turns it on for the length of an admin request and stores the texts its
+site files. `Translator::setOverrides()` sets it; it applies on the admin surface that asks for
+overrides (`RenderContext::admin($uiLocale)`, overrides on unless `admin($uiLocale, false)`), and
+is off elsewhere. Folio enters that surface for the length of an admin request and stores the texts its
 Translations screen saves. Outside always-overridden groups (below), an override never reaches a public page:
 
 - only keys of an `admin` group take one, plus keys under prefixes registered with
@@ -158,8 +161,8 @@ Translations screen saves. Outside always-overridden groups (below), an override
 
 A site group that staff edit but public pages or mails render (Folio fills these from
 `translations.editable` in `config/folio.php`) is registered with
-`Translator::alwaysOverride('review-mail')`: its overrides apply on every request, with
-`useOverrides()` on or off, in the asked locale (`get($key, $params, 'fr')`). A locale's own
+`Translator::alwaysOverride('review-mail')`: its overrides apply on every request, whether the
+surface asks for overrides or not, in the asked locale (`get($key, $params, 'fr')`). A locale's own
 file still wins over a fallback locale's override. An `admin` group throws
 `InvalidArgumentException`, and a group declared `admin` later (`setScopes()`,
 `addDefaultsIfMissing()`) drops out; `alwaysOverridden()` lists the groups, sorted.
@@ -250,14 +253,13 @@ Template helpers: `t()`/`tc()` (parameters are HTML-escaped), `current_locale()`
 
 ```php
 $middleware = new LocaleMiddleware(
-    translator: $translator,
     availableLocales: ['en', 'de'],
     defaultLocale: 'en',
     urlStrategy: 'prefix', // request to /de/blog strips /de, sets locale to "de"
 );
 ```
 
-`urlPrefix()` (since 0.46) returns the prefix stripped from the current request's URL: `'/de'` for `/de/blog`, `'/en'` when the default locale was in the URL, and `''` when there was none or the strategy is `none`. It is set only while `process()` runs: cleared on entry and restored to the previous value when `process()` returns or throws, so a long-running worker never carries it into the next request, and code that runs after the response (deferred mail) or in a nested handle never sees a stale prefix. Preflow's core registers the middleware in the container as `LocaleMiddleware::class` and uses `urlPrefix()` to keep component URLs on the page's locale (`/de/--component/…`, see preflow/htmx).
+The prefix the request's URL carried is the render context's `Contexts::current()->request->localePrefix`: `'/de'` for `/de/blog`, `'/en'` when the default locale was in the URL, and `''` when there was none or the strategy is `none`. The middleware narrows the render's frame to it (since 0.81), so it ends with that frame: a long-running worker never carries it into the next request, and a nested handle has its own. Preflow's core registers the middleware in the container as `LocaleMiddleware::class` and reads the prefix to keep component URLs on the page's locale (`/de/--component/…`, see preflow/htmx). `urlPrefix()`, deprecated since 0.81, and the constructor's `translator` argument, unused since 0.81, are removed in 0.83.
 
 #### Language redirect and the remembered choice (since 0.78)
 

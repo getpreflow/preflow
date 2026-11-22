@@ -13,7 +13,9 @@ use Preflow\Auth\Access\PermissionResolver;
 use Preflow\Auth\Authenticatable;
 use Preflow\Auth\AuthManager;
 use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\RoleView;
+use Preflow\Core\Context\Viewer;
 use Preflow\Folio\Http\ViewAs;
 use Preflow\Testing\ContextFactory;
 
@@ -50,7 +52,7 @@ final class ViewAsTest extends TestCase
         $viewAs = new ViewAs($access);
 
         $answers = Contexts::run(ContextFactory::forTest(), static function () use ($auth, $viewAs): array {
-            @$auth->setUser(new class implements Authenticatable {
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['staff' => new class implements Authenticatable {
                 use \Preflow\Auth\AuthenticatableTrait;
 
                 public function getAuthId(): string
@@ -62,7 +64,7 @@ final class ViewAsTest extends TestCase
                 {
                     return ['editor'];
                 }
-            }, 'staff');
+            }], 'staff')));
             $refused = static function (string $value) use ($viewAs): bool {
                 try {
                     $viewAs->roleView($value);
@@ -107,7 +109,7 @@ final class ViewAsTest extends TestCase
         };
         $access->setResolver($resolver2);
         $refusedWithout = Contexts::run(ContextFactory::forTest(), static function () use ($auth, $viewAs): bool {
-            @$auth->setUser(new class implements Authenticatable {
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['staff' => new class implements Authenticatable {
                 use \Preflow\Auth\AuthenticatableTrait;
 
                 public function getAuthId(): string
@@ -119,7 +121,7 @@ final class ViewAsTest extends TestCase
                 {
                     return ['editor'];
                 }
-            }, 'staff');
+            }], 'staff')));
             try {
                 $viewAs->roleView('member:gold');
 

@@ -631,9 +631,8 @@ final class Application
      * asks for another), it opens a nested frame from the request (the clock of the frame around
      * it) and hands what it queued, notify's mail included, to the frame around it, which sends
      * it when it ends (a console command also when it fails); mail queued before the nested
-     * request failed goes with it too. A request marked with the deprecated InternalRender::mark() renders as
-     * an internal render: purpose Audit, nothing sent. run() and render() render in the frame they
-     * opened themselves.
+     * request failed goes with it too. run() and render() render in the frame they opened
+     * themselves; an internal render goes through render() with RenderContext::internal().
      */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
@@ -644,22 +643,17 @@ final class Application
             return $this->handleNested($request);
         }
 
-        $internal = self::marked($request);
         $clients = $this->withHypermedia($request);
         $ctx = $this->requestContext($request, $clients);
-        if ($internal) {
-            $ctx = self::asMarked($ctx);
-        } else {
-            $this->rebuildsScheduled = false;
-        }
+        $this->rebuildsScheduled = false;
 
         $held = [];
         try {
-            return Contexts::run($ctx, function () use ($request, $clients, $internal, &$held): ResponseInterface {
+            return Contexts::run($ctx, function () use ($request, $clients, &$held): ResponseInterface {
                 try {
                     $response = $this->handleInFrame($request, $clients);
                 } catch (\Throwable $e) {
-                    if (!$internal && self::sends()) {
+                    if (self::sends()) {
                         if (!$this->emitting) {
                             $this->logFailure($this->flushDeferredNotifications(...), 'Deferred notifications could not be flushed');
                         } else {
@@ -669,7 +663,7 @@ final class Application
                     }
                     throw $e;
                 }
-                if (!$internal && self::sends()) {
+                if (self::sends()) {
                     // In-process callers (CLI, tests) have no later emit step: what the request
                     // queued is sent now. run() sends after the response has gone out instead.
                     // A request whose context captures or discards (a role view a test derived
@@ -747,7 +741,7 @@ final class Application
      */
     public function render(RenderContext $ctx, ServerRequestInterface $request): RenderResult
     {
-        return $this->renderWith($ctx, $request, fn (): ResponseInterface => $this->handleInFrame($request));
+        return $this->renderWith($ctx, fn (): ResponseInterface => $this->handleInFrame($request));
     }
 
     /**
@@ -819,19 +813,16 @@ final class Application
      *
      * @param \Closure(): ResponseInterface $handle
      */
-    private function renderWith(RenderContext $ctx, ServerRequestInterface $request, \Closure $handle): RenderResult
+    private function renderWith(RenderContext $ctx, \Closure $handle): RenderResult
     {
         $frame = null;
         // A frame of a render entry: the Kernel never sets its cookies on the response (the result),
         // also not on its error page; the frame settles what it left by its policy when it closes
         // (CookieQueue::settle(): captured, handed to the frame around it, or dropped).
-        $response = Contexts::runRender($ctx, function () use (&$frame, $request, $ctx, $handle): ResponseInterface {
+        $response = Contexts::runRender($ctx, function () use (&$frame, $handle): ResponseInterface {
             $frame = Contexts::frame();
-            // Scopes a package added with the deprecated RenderScopes::add() run around an internal
-            // render, inside its frame.
-            return $ctx->purpose->isInternal() && $this->container->bound(\Preflow\View\Geo\RenderScopes::class)
-                ? $this->container->get(\Preflow\View\Geo\RenderScopes::class)->run($request, $handle)
-                : $handle();
+
+            return $handle();
         });
         $token = $ctx->get(\Preflow\Core\Context\Preview\PreviewGrant::class)?->token();
         if ($token !== null && $response->getStatusCode() < 300) {
@@ -1049,9 +1040,6 @@ final class Application
             ? $this->container->get(\Psr\Clock\ClockInterface::class)
             : $outer->clock;
         $ctx = $this->derived(RenderContext::fromRequest($this->withHypermedia($request), $this->site(), $clock), $request);
-        if (self::marked($request)) {
-            $ctx = self::asMarked($ctx);
-        }
         if ($outer->purpose->isInternal()) {
             // A request inside the SEO audit, GEO, a rebuild, verify or a preview is part of that
             // render: it leaves no trace where the render leaves none, and the page cache never
@@ -1084,22 +1072,6 @@ final class Application
         }
 
         return $outer->isFrozen() ? $ctx->at($outer->now) : $ctx;
-    }
-
-    /** Whether $request carries the deprecated InternalRender::mark(). */
-    private static function marked(ServerRequestInterface $request): bool
-    {
-        return $request->getAttribute(\Preflow\Core\Http\InternalRender::ATTRIBUTE) === true;
-    }
-
-    /**
-     * The context of a request marked with the deprecated InternalRender::mark(): an internal
-     * render (purpose Audit: it leaves no trace) that sends nothing, as a marked request did
-     * before 0.81. The shim works through the context; nothing reads the attribute itself.
-     */
-    private static function asMarked(RenderContext $ctx): RenderContext
-    {
-        return $ctx->because(Purpose::Audit)->discarding();
     }
 
     /**
@@ -1735,8 +1707,6 @@ final class Application
         // Markdown declared with {% apply geo %} / @geo; records only while GEO captures
         $geo = new \Preflow\View\Geo\GeoCollector();
         $this->container->instance(\Preflow\View\Geo\GeoCollector::class, $geo);
-        // Packages with request-scoped state add a wrapper here (bootGeo adds the core one)
-        $this->container->instance(\Preflow\View\Geo\RenderScopes::class, new \Preflow\View\Geo\RenderScopes());
         // GEO settings and llms.txt's pages: here, so providers can read the one and add to the other
         $this->container->instance(\Preflow\View\Geo\GeoConfig::class, $this->viewConfig(\Preflow\View\Geo\GeoConfig::class, 'geo'));
         // The public pages the sitemap and llms.txt both list
@@ -2222,7 +2192,7 @@ final class Application
             // Verify's second render: in a frame of its own as render() opens one (its own page
             // meta and nonce, the assets boot registered, nobody signed in, its queued mail
             // dropped), under the Verify context the middleware gives.
-            render: fn (RenderContext $ctx, ServerRequestInterface $request, \Closure $handle): RenderResult => $this->renderWith($ctx, $request, $this->withSiteDefaults($handle)),
+            render: fn (RenderContext $ctx, ServerRequestInterface $request, \Closure $handle): RenderResult => $this->renderWith($ctx, $this->withSiteDefaults($handle)),
             // Headers live parts add while the served page is filled (never on the stored page).
             hints: $container->get(\Preflow\Core\Http\ResponseHeaderHints::class),
             // A cookie a render left queued keeps its page out of the store (since 0.81.1).
@@ -2757,7 +2727,6 @@ final class Application
                 $nonPublic->add('/--locale');
             }
             $localeMiddleware = new \Preflow\I18n\LocaleMiddleware(
-                $translator,
                 $available,
                 $locale,
                 $strategy,
@@ -3296,7 +3265,6 @@ final class Application
             function (ServerRequestInterface $sub, \Preflow\View\Geo\GeoCapture $capture) use ($geo): ResponseInterface {
                 $result = $this->renderWith(
                     $this->internalContext(Purpose::Geo, $sub),
-                    $sub,
                     fn (): ResponseInterface => $geo->captureInto($capture, fn (): ResponseInterface => $this->handleInFrame($sub)),
                 );
 

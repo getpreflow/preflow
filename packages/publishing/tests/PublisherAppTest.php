@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Publishing\Tests;
 
+use Preflow\Core\Context\Contexts;
 use Preflow\Data\DynamicRecord;
 use Preflow\Publishing\LanguageChecks;
 use Preflow\Publishing\LiveContent;
@@ -17,6 +18,7 @@ use Preflow\Publishing\PublishState;
 use Preflow\Publishing\SchemaPublishingTypes;
 use Preflow\Publishing\Tests\Fixtures\Job;
 use Preflow\Publishing\VersionConflict;
+use Preflow\Testing\ContextFactory;
 use Preflow\Validation\ValidationException;
 
 /** Publishing a type without Folio: its schema's "publishing" flag is all it takes. */
@@ -106,8 +108,7 @@ final class PublisherAppTest extends PublishingAppTestCase
         // A preview reads the working copy the token points at; a public read sees nothing yet.
         $live = $this->app()->container()->get(LiveContent::class);
         $this->assertNull($live->find('post', 'p1'));
-        $live->showWorkingCopies();
-        $this->assertSame(['en' => 'Draft'], $live->find('post', 'p1')?->get('title'));
+        Contexts::run(ContextFactory::forTest()->workingCopies(), fn () => $this->assertSame(['en' => 'Draft'], $live->find('post', 'p1')?->get('title')));
     }
 
     public function test_preview_ttl_comes_from_the_config(): void
@@ -133,8 +134,7 @@ final class PublisherAppTest extends PublishingAppTestCase
         $this->assertSame('Carpenter', $published->find(Job::class, 'j1')?->title);
         $this->assertSame(['Carpenter'], array_map(static fn (Job $j): string => $j->title, $published->query(Job::class)->get()->items()));
 
-        $this->app()->container()->get(LiveContent::class)->showWorkingCopies();
-        $this->assertSame('Draft title', $published->find(Job::class, 'j1')?->title);
+        Contexts::run(ContextFactory::forTest()->workingCopies(), fn () => $this->assertSame('Draft title', $published->find(Job::class, 'j1')?->title));
     }
 
     public function test_complete_languages_refuses_and_names_the_locale(): void

@@ -468,7 +468,7 @@ final class RecordDeleterTest extends TestCase
             $this->assertSame(['Löscht auch 2 Spiele.', '2 Seiten verlieren eine Verknüpfung.'], $this->summary()->summary($this->deleter()->plan('designer', ['d1']))['lines']);
             $this->assertSame(['1 Seite verliert eine Verknüpfung.'], $this->summary()->summary($this->deleter()->plan('game', ['g1']))['lines']);
             $this->seed('game', 'g4', ['title' => 'Keltis', 'designer' => 'd1']);
-            $translator->setLocale('fr');
+            \Preflow\Core\Context\Contexts::narrow(static fn (\Preflow\Core\Context\RenderContext $ctx): \Preflow\Core\Context\RenderContext => $ctx->admin('fr'));
             // No French file: the map's default entry and the plain label, for which French has no singular guess.
             $this->assertSame(['Supprime aussi 3 games.', '2 pages perdent un lien.'], $this->summary()->summary($this->deleter()->plan('designer', ['d1']))['lines']);
             $this->assertSame(['1 page perd un lien.'], $this->summary()->summary($this->deleter()->plan('game', ['g1']))['lines']);

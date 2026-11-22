@@ -18,6 +18,9 @@ use Preflow\Auth\Tests\Fixtures\TestUser;
 use Preflow\Auth\TokenGuard;
 use Preflow\Auth\UserProviderInterface;
 use Preflow\Core\Application;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\Viewer;
 use Preflow\Core\Exceptions\UnauthorizedHttpException;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\SqliteDriver;
@@ -139,7 +142,7 @@ final class TokenAuthMiddlewareTest extends TestCase
     {
         \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
             // Another guard resolved the user earlier in the request (ResolveUserMiddleware does).
-            $this->manager->setUser($this->user, 'web');
+            Contexts::narrow(fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['web' => $this->user], 'web')));
 
             $this->expectException(UnauthorizedHttpException::class);
             (new TokenAuthMiddleware($this->manager))->process($this->request(), $this->handler());

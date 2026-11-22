@@ -70,7 +70,7 @@ use PHPUnit\Framework\TestCase;
  *    relative string; a line that ends with `// clock: stamp` (a file name, a write stamp, a log
  *    line) is no hit. Durations and deadlines (hrtime/microtime differences) are allowlisted: a
  *    frozen context clock must not apply to them;
- *  - setter: the ambient mutators the release deprecates: setLocale, setUser, addUser,
+ *  - setter: the ambient mutators 0.81 deprecated and 0.83 removed (so none comes back): setLocale, setUser, addUser,
  *    showWorkingCopies, useOverrides, useTranslator, setCurrent, discardingQueued,
  *    ContentLocale::set and a content or page locale's ->set(), FolioText::use,
  *    InternalRender::mark, the engine global 'interface_locale', RenderScopes::add, and isolate()

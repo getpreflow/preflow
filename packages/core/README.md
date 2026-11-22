@@ -373,9 +373,9 @@ $result = $app->preview(Contexts::current(), '/pricing', 'en', new RoleView('mem
 return $result->response;
 ```
 
-**Upgrading from 0.80**: the deprecated setters (`Translator::setLocale()`, `AuthManager::setUser()`,
-`LiveContent::showWorkingCopies()`, …) change the current frame only and say so once per call site;
-use `narrow()` for "from here on" and `within()` for set-and-restore. `Translator::setLocale('de')`
+**Upgrading from 0.80**: the setters 0.81 deprecated (`Translator::setLocale()`, `AuthManager::setUser()`,
+`LiveContent::showWorkingCopies()`, …) are removed in 0.83; use `narrow()` for "from here on" and
+`within()` for set-and-restore. `Translator::setLocale('de')`
 becomes `Contexts::narrow(fn ($c) => $c->in('de'))` on the public surface; on the admin surface
 (`$c->surface->admin`) it sets the admin's texts, so it becomes
 `Contexts::narrow(fn ($c) => $c->admin('de', $c->surface->overrides))`, the exact equivalent (plain
@@ -621,8 +621,9 @@ its render frames with `Contexts::runRender()`; with a queue of its own and no
 `setsQueuedCookies`, it sets the queue on the error response only, as before. `isFrameBound()`
 (since 0.82.0) tells the two kinds apart. The settling at close is the frame slot's
 `Preflow\Core\Context\SettlesOnClose` (since 0.82.0, optional): a slot of your own that holds
-something a frame may leave behind implements it and hands what it settles to the parent frame. `isolated(\Closure $render)` (since 0.75, deprecated since
-0.81) runs `$render` with the queue empty, drops what it queued and puts the earlier values back.
+something a frame may leave behind implements it and hands what it settles to the parent frame. `isolated()` (since 0.75, deprecated
+since 0.81) is removed in 0.83: a render in its own frame (`Application::render()`) starts with its
+own cookies.
 
 ### Auth providers from config
 
@@ -1012,22 +1013,18 @@ return [
   written while it rendered. Code can refuse the page being rendered with
   `$pageCache->refuse('why')`; `$pageCache->storing()` says whether it may be stored.
 - **Render isolation.** Every render the cache may store (a visitor's miss, verify's second
-  render, every rebuild) starts from the state a public render starts from. A package with
-  request-scoped state that outlives a request in the same process (a content mode, memos)
-  registers what resets it, and a store check as a second line:
+  render, every rebuild) runs under a public, published context of its own, so it starts from
+  the state a public render starts from. A package keeps request-scoped state on the context (a
+  facet) or keys its memos on `RenderContext::memoKey()` (`PageCache::isolate()` and
+  `isolated()`, deprecated since 0.81, are removed in 0.83). A store check is the second line:
 
   ```php
-  $pageCache->isolate(static function () use ($content): \Closure {
-      $restore = $content->showPublished();   // and empty the memos
-      return $restore;                         // run after the render, last entered first
-  });
   $pageCache->refuseWhen('working-copy', static fn (): bool => $content->showsDrafts());
   ```
 
-  A rebuild after a Folio admin request (a publish) runs in that request's process: Folio
-  resets its working-copy mode and its `Collections` and `Singletons` memos this way, so drafts
-  never reach a stored page, and refuses a page rendered with working copies anyway
-  (`refused:working-copy`, a share preview).
+  A rebuild after a Folio admin request (a publish) runs in that request's process: Folio's
+  `Collections` and `Singletons` memos are keyed on the context, so drafts never reach a stored
+  page, and a render narrowed to working copies (a share preview) is never stored (`context`).
 - **Stored headers** are the response's own, without `Set-Cookie`, the security headers
   (`Content-Security-Policy`, the clients' `nonceHeaders()` such as `HX-Nonce`, `Strict-Transport-Security`, which are added fresh to
   every hit) and `Date`, `Content-Length`, `Transfer-Encoding`, `Connection`, `Keep-Alive`.

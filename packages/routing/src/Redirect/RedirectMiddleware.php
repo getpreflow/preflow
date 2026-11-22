@@ -21,8 +21,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  * store and log failures never turn the 404 into a 500. The hit counter and the not-found log
  * are 'log' writes of the write policy (Writes, storage 'redirects'): a render that skips writes
  * (a preview, the SEO audit) or refuses them (a preview fragment) is answered the same way but
- * counts no hit and records nothing, and the skipped write is reported. So is a request marked
- * with the deprecated InternalRender::mark().
+ * counts no hit and records nothing, and the skipped write is reported. So is an internal render
+ * whose purpose leaves no trace (InternalRender::is()).
  */
 final class RedirectMiddleware implements MiddlewareInterface
 {
@@ -161,8 +161,8 @@ final class RedirectMiddleware implements MiddlewareInterface
     }
 
     /**
-     * Whether the log write runs: the write policy first (it reports a skipped write), then a
-     * request marked with the deprecated InternalRender::mark() in a render that allows writes.
+     * Whether the log write runs: the write policy first (it reports a skipped write), then
+     * whether the render leaves no trace (InternalRender::is()) where writes are allowed.
      */
     private static function writes(ServerRequestInterface $request, string $type, string $id): bool
     {

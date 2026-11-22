@@ -20,8 +20,8 @@ use Psr\Http\Message\ServerRequestInterface;
 use Preflow\Testing\ChecksFrameBalance;
 
 /**
- * Since 0.74 an internal render drops the mail its page queues (core's anonymous render scope,
- * Notifier::discardingQueued()): a GEO Markdown view of a page that queues a mail sends none
+ * Since 0.74 an internal render drops the mail its page queues (since 0.81 its context
+ * discards what it sends): a GEO Markdown view of a page that queues a mail sends none
  * when the request flushes, while the mail the request itself queued still goes out.
  */
 final class InternalRenderMailTest extends TestCase

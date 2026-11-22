@@ -8,7 +8,6 @@ use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\Purpose;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\Site;
@@ -24,8 +23,7 @@ use Psr\Http\Server\RequestHandlerInterface;
 /**
  * Since 0.81 the translator reads its locale and its overrides switch from the render context
  * (Contexts::current()): the public surface's texts in the context's locale, the admin surface's
- * in its interface locale with the overrides it asks for. setLocale() and useOverrides() are
- * deprecated shims that narrow the current frame. LocaleMiddleware narrows the frame to the
+ * in its interface locale with the overrides it asks for. LocaleMiddleware narrows the frame to the
  * locale and the prefix the URL carried; nothing is put back by hand.
  */
 final class LocaleContextTest extends TestCase
@@ -35,7 +33,6 @@ final class LocaleContextTest extends TestCase
     protected function setUp(): void
     {
         Contexts::reset();
-        Deprecations::reset();
         $this->lang = sys_get_temp_dir() . '/preflow_locale_ctx_' . bin2hex(random_bytes(4));
         foreach (['en' => 'Hello', 'de' => 'Hallo', 'fr' => 'Bonjour'] as $locale => $hi) {
             @mkdir($this->lang . '/' . $locale, 0777, true);
@@ -51,7 +48,6 @@ final class LocaleContextTest extends TestCase
     protected function tearDown(): void
     {
         Contexts::reset();
-        Deprecations::reset();
         foreach (glob($this->lang . '/*/*.php') ?: [] as $file) {
             unlink($file);
         }
@@ -86,30 +82,6 @@ final class LocaleContextTest extends TestCase
                 return 'Override ' . $locale;
             }
         };
-    }
-
-    /**
-     * Runs $fn and returns the E_USER_DEPRECATED messages it raised.
-     *
-     * @return list<string>
-     */
-    private static function deprecations(\Closure $fn): array
-    {
-        $messages = [];
-        set_error_handler(static function (int $no, string $message) use (&$messages): bool {
-            if ($no === E_USER_DEPRECATED) {
-                $messages[] = $message;
-            }
-
-            return true;
-        });
-        try {
-            $fn();
-        } finally {
-            restore_error_handler();
-        }
-
-        return $messages;
     }
 
     public function test_translator_follows_the_current_frame_locale(): void
@@ -160,87 +132,10 @@ final class LocaleContextTest extends TestCase
         });
     }
 
-    public function test_set_locale_is_a_deprecated_shim_bound_to_its_frame(): void
-    {
-        $t = $this->translator();
-
-        $messages = self::deprecations(function () use ($t): void {
-            Contexts::run(self::visit(), function () use ($t): void {
-                for ($i = 0; $i < 3; $i++) {
-                    $t->setLocale('de');
-                }
-                $this->assertSame('de', Contexts::current()->locale, 'the shim narrows the frame');
-                $this->assertSame('Hallo', $t->get('site.hi'));
-
-                Contexts::run(self::visit(), function () use ($t): void {
-                    $t->setLocale('fr');
-                    $this->assertSame('Bonjour', $t->get('site.hi'));
-                });
-                $this->assertSame('de', $t->getLocale(), 'a nested frame\'s setLocale() stays in that frame');
-
-                // On the admin surface it sets the interface locale (what getLocale() gives there).
-                Contexts::within(Contexts::current()->admin('en'), function () use ($t): void {
-                    $t->setLocale('fr');
-                    $this->assertSame('fr', Contexts::current()->surface->uiLocale);
-                    $this->assertSame('de', Contexts::current()->locale);
-                });
-            });
-            Contexts::run(self::visit(), function () use ($t): void {
-                $this->assertSame('en', $t->getLocale(), 'the next frame starts from its own context');
-            });
-        });
-
-        $this->assertContains('Preflow\I18n\Translator::setLocale() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->in($locale)), or on the admin surface Contexts::narrow(fn ($ctx) => $ctx->admin($locale)).', $messages);
-        $this->assertCount(3, $messages, 'once per call site, not per call');
-
-        // Outside every render it sets the translator's own default (a script, a unit test).
-        self::deprecations(static fn () => $t->setLocale('de'));
-        $this->assertSame('Hallo', $t->get('site.hi'));
-        Contexts::run(self::visit(), function () use ($t): void {
-            $this->assertSame('en', $t->getLocale(), 'a render reads its context, not that default');
-        });
-    }
-
-    public function test_use_overrides_is_a_deprecated_shim_bound_to_its_frame(): void
-    {
-        $t = $this->translator();
-        $t->setOverrides(self::overrides());
-        $t->setScopes(['site' => 'admin']);
-
-        $messages = self::deprecations(function () use ($t): void {
-            Contexts::run(self::visit()->in('de'), function () use ($t): void {
-                $this->assertFalse($t->usesOverrides());
-                $this->assertSame('Hallo', $t->get('site.hi'));
-
-                $t->useOverrides(true);
-                $surface = Contexts::current()->surface;
-                $this->assertTrue($surface->admin && $surface->overrides, 'the shim narrows to the admin surface with overrides');
-                $this->assertSame('de', $surface->uiLocale, 'in the locale the texts were in');
-                $this->assertTrue($t->usesOverrides());
-                $this->assertSame('Override de', $t->get('site.hi'));
-
-                $t->useOverrides(false);
-                $this->assertFalse($t->usesOverrides());
-                $this->assertSame('Hallo', $t->get('site.hi'));
-                $t->useOverrides(true);
-            });
-            Contexts::run(self::visit(), function () use ($t): void {
-                $this->assertFalse($t->usesOverrides(), 'the next frame starts public');
-                $this->assertSame('Hello', $t->get('site.hi'));
-            });
-        });
-
-        $this->assertContains('Preflow\I18n\Translator::useOverrides() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->admin($uiLocale, $overrides)).', $messages);
-
-        // Outside every render it switches the translator's own default.
-        self::deprecations(static fn () => $t->useOverrides(true));
-        $this->assertSame('Override en', $t->get('site.hi'));
-    }
-
     public function test_locale_middleware_narrows_and_never_restores_by_hand(): void
     {
         $t = $this->translator();
-        $mw = new LocaleMiddleware($t, ['en', 'de'], 'en', 'prefix');
+        $mw = new LocaleMiddleware(['en', 'de'], 'en', 'prefix');
         $seen = [];
         $handler = new class ($seen, $t) implements RequestHandlerInterface {
             /** @param list<array<string, string>> $seen */
@@ -278,8 +173,8 @@ final class LocaleContextTest extends TestCase
                 return new Response(200, [], Contexts::current()->locale . '|' . $request->getAttribute('locale'));
             }
         };
-        $none = new LocaleMiddleware($this->translator(), ['en', 'de'], 'en', 'none');
-        $prefix = new LocaleMiddleware($this->translator(), ['en', 'de'], 'en', 'prefix');
+        $none = new LocaleMiddleware(['en', 'de'], 'en', 'none');
+        $prefix = new LocaleMiddleware(['en', 'de'], 'en', 'prefix');
         $render = static fn (LocaleMiddleware $mw, string $path, string $locale): string => (string) Contexts::run(
             RenderContext::internal(Purpose::Geo, self::site(), new SystemClock(), $path)->in($locale),
             static fn () => $mw->process(new ServerRequest('GET', $path), $handler),
@@ -298,7 +193,7 @@ final class LocaleContextTest extends TestCase
     public function test_bare_redirect_skips_every_internal_purpose(): void
     {
         $urls = new LocaleUrls(['en', 'de'], 'en', true, true, true);
-        $mw = new LocaleMiddleware($this->translator(), ['en', 'de'], 'en', 'prefix', urls: $urls, pageExists: static fn (): bool => true);
+        $mw = new LocaleMiddleware(['en', 'de'], 'en', 'prefix', urls: $urls, pageExists: static fn (): bool => true);
         $handler = new class implements RequestHandlerInterface {
             public function handle(ServerRequestInterface $request): ResponseInterface
             {
@@ -340,20 +235,10 @@ final class LocaleContextTest extends TestCase
             'no LocaleUrls' => [null, ['/en/about' => '/en', '/de/about' => '/de', '/about' => '']],
         ];
         foreach ($cases as $name => [$urls, $paths]) {
-            $mw = new LocaleMiddleware($this->translator(), ['en', 'de'], 'en', 'prefix', urls: $urls);
+            $mw = new LocaleMiddleware(['en', 'de'], 'en', 'prefix', urls: $urls);
             foreach ($paths as $path => $expected) {
-                $deprecated = null;
-                Deprecations::reset();
-                $messages = self::deprecations(static function () use ($mw, $handler, $path, $urls, &$deprecated): void {
-                    $deprecated = Contexts::run(self::visit($path, self::site($urls)), static function () use ($mw, $handler, $path): string {
-                        $mw->process(new ServerRequest('GET', $path), $handler);
-
-                        return $mw->urlPrefix();
-                    });
-                });
+                Contexts::run(self::visit($path, self::site($urls)), static fn () => $mw->process(new ServerRequest('GET', $path), $handler));
                 $this->assertSame($expected, $handler->prefix, "{$name}: {$path} in the context");
-                $this->assertSame($expected, $deprecated, "{$name}: {$path} through the deprecated urlPrefix()");
-                $this->assertSame(['Preflow\I18n\LocaleMiddleware::urlPrefix() is deprecated since 0.81 and is removed in 0.83; use Contexts::current()->request->localePrefix.'], array_values(array_unique($messages)));
             }
         }
 
@@ -365,8 +250,6 @@ final class LocaleContextTest extends TestCase
         $this->assertSame('', RenderContext::internal(Purpose::Audit, self::site(), new SystemClock(), '/de/about')->request?->localePrefix);
         $this->assertSame('/de', unserialize(serialize($ctx))->request->localePrefix);
         $this->assertSame('/de', json_decode((string) json_encode($ctx), true)['request']['localePrefix']);
-        Deprecations::reset();
-        self::deprecations(fn () => $this->assertSame('', (new LocaleMiddleware($this->translator(), ['en'], 'en'))->urlPrefix(), 'outside every render no URL, no prefix'));
     }
 
     /** @return array<string, \Preflow\I18n\CatalogueMemo> the translator's text caches, by text locale and overrides switch */

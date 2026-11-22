@@ -87,9 +87,9 @@ use Preflow\View\Seo\SeoContext;
  *   carries the cookie `m`, the header X-Marker and REMOTE_ADDR set to the marker; the container's
  *   RequestContext gives the same request (bound as an instance where the app does not bind it to
  *   the current frame). The superglobals get the same markers and
- *   $_SESSION['m']. Where the app has them, the translator's deprecated setLocale('xx') and
- *   overrides that answer every key with the marker, AuthManager::setUser() with the marker
- *   user and LiveContent::showWorkingCopies() are called; a CSS rule, a script and a page title
+ *   $_SESSION['m']. The outer frame is narrowed where the app has them: to locale 'xx' on the
+ *   admin surface with translator overrides that answer every key with the marker, to the marker
+ *   user as its viewer, and to working copies (LiveContent); a CSS rule, a script and a page title
  *   holding the marker go into the asset registry and the SEO page meta; one cookie
  *   (CookieQueue) and one mail (the frame's outbox, channel 'mail') are queued; then poisonApp().
  *   The render's body, headers and captured items must not contain the marker, and its status
@@ -117,14 +117,12 @@ use Preflow\View\Seo\SeoContext;
  *
  * Superglobals are restored after each test.
  *
- * Deprecations (since 0.82.0): the poison calls deprecated setters on purpose (the translator's
- * setLocale() and useOverrides(), AuthManager::setUser(), LiveContent::showWorkingCopies()). Only
- * those calls are marked as expected (Deprecations::expected()), so they neither report nor use
- * up a notice; everything else reports as usual under a site's failOnDeprecation, the site's
- * page, its poisonApp() and the factories the container runs for the poison included. The
- * contract forgets what its tests reported (Deprecations::reset() in tearDown()), so a call site
- * one test reported is reported again by the next test that reaches it. A runner needs neither
- * #[IgnoreDeprecations] nor a reset of its own.
+ * Deprecations (since 0.82.0): the poison narrows the outer frame itself (since 0.83.0; it called
+ * the deprecated setters before), so every deprecation reports as usual under a site's
+ * failOnDeprecation, the site's page, its poisonApp() and the factories the container runs for
+ * the poison included. The contract forgets what its tests reported (Deprecations::reset() in
+ * tearDown()), so a call site one test reported is reported again by the next test that reaches
+ * it. A runner needs neither #[IgnoreDeprecations] nor a reset of its own.
  *
  * @since 0.81.0
  */
@@ -596,12 +594,10 @@ abstract class RenderIsolationContract extends TestCase
             $container->instance(RequestContext::class, new RequestContext('/', 'GET', $this->poisonedRequest()));
         }
         $has = static fn (string $id): bool => class_exists($id) && ($container->bound($id) || $container->resolved($id));
-        // The deprecated setters are called on purpose: only these calls are expected (the
-        // services are resolved outside, so a deprecation of the site's factories still counts).
+        // The outer frame: an admin request in locale 'xx' with overrides that answer every key
+        // with the marker, signed in as the marker user, reading working copies.
         if ($has(Translator::class)) {
-            $translator = $container->get(Translator::class);
-            Deprecations::expected(static fn () => $translator->setLocale('xx'));
-            $translator->setOverrides(new class ($marker) implements TranslationOverrides {
+            $container->get(Translator::class)->setOverrides(new class ($marker) implements TranslationOverrides {
                 public function __construct(private readonly string $marker) {}
 
                 public function get(string $locale, string $key): ?string
@@ -609,17 +605,15 @@ abstract class RenderIsolationContract extends TestCase
                     return $this->marker;
                 }
             });
-            Deprecations::expected(static fn () => $translator->useOverrides(true));
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->in('xx')->admin('xx'));
         }
         if ($has(AuthManager::class)) {
-            $auth = $container->get(AuthManager::class);
+            $guard = $container->get(AuthManager::class)->defaultGuardName();
             $user = $this->markerUser();
-            Deprecations::expected(static fn () => $auth->setUser($user));
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer([$guard => $user], $guard)));
         }
-        $live = 'Preflow\\Publishing\\LiveContent';
-        if ($has($live)) {
-            $liveContent = $container->get($live);
-            Deprecations::expected(static fn () => $liveContent->showWorkingCopies(true));
+        if ($has('Preflow\\Publishing\\LiveContent')) {
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->workingCopies());
         }
         if ($has(AssetCollector::class)) {
             $assets = $container->get(AssetCollector::class);

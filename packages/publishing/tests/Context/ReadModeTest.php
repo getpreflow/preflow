@@ -6,7 +6,6 @@ namespace Preflow\Publishing\Tests\Context;
 
 use Nyholm\Psr7\ServerRequest;
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\SystemClock;
 use Preflow\Core\Context\WritesRefused;
@@ -26,8 +25,7 @@ use Preflow\Publishing\UnsupportedReadMode;
 /**
  * Since 0.81 publishing reads the render context: LiveContent the read mode of the current
  * frame (published outside every render, ruling R1), publish:scheduled its console context's
- * now, and the clock seams the context's clock. showWorkingCopies() and isolate() are deprecated
- * shims bound to the frame they were called in. Publisher and RecordDeleter write through
+ * now, and the clock seams the context's clock. Publisher and RecordDeleter write through
  * DataManager, so a render that skips or refuses writes never publishes or deletes.
  */
 final class ReadModeTest extends PublishingAppTestCase
@@ -36,13 +34,11 @@ final class ReadModeTest extends PublishingAppTestCase
     {
         parent::setUp();
         Contexts::reset();
-        Deprecations::reset();
     }
 
     protected function tearDown(): void
     {
         Contexts::reset();
-        Deprecations::reset();
         parent::tearDown();
     }
 
@@ -72,30 +68,6 @@ final class ReadModeTest extends PublishingAppTestCase
     private function listed(): array
     {
         return array_map(static fn ($r): string => $r->get('title')['en'], $this->live()->query('post')->get()->items());
-    }
-
-    /**
-     * Runs $fn and returns the E_USER_DEPRECATED messages it raised.
-     *
-     * @return list<string>
-     */
-    private static function deprecations(\Closure $fn): array
-    {
-        $messages = [];
-        set_error_handler(static function (int $no, string $message) use (&$messages): bool {
-            if ($no === E_USER_DEPRECATED) {
-                $messages[] = $message;
-            }
-
-            return true;
-        });
-        try {
-            $fn();
-        } finally {
-            restore_error_handler();
-        }
-
-        return $messages;
     }
 
     public function test_live_content_follows_the_frame_read_mode(): void
@@ -132,40 +104,6 @@ final class ReadModeTest extends PublishingAppTestCase
             $this->assertSame('Published', $this->title(), 'the next render starts published');
         });
         $this->assertSame('Published', $this->title());
-    }
-
-    public function test_show_working_copies_is_a_deprecated_shim_bound_to_its_frame(): void
-    {
-        $this->seedPost();
-
-        $messages = self::deprecations(function (): void {
-            Contexts::run($this->visit(), function (): void {
-                for ($i = 0; $i < 3; $i++) {
-                    $this->live()->showWorkingCopies();
-                }
-                $this->assertTrue(Contexts::current()->reads->readsWorkingCopies(), 'the shim narrows the frame');
-                $this->assertGreaterThan(0, Contexts::frame()->departures(), 'the page cache sees the frame left the public default');
-                $this->assertSame('Draft', $this->title());
-
-                $this->live()->showWorkingCopies(false);
-                $this->assertSame('Published', $this->title());
-                $this->live()->showWorkingCopies();
-            });
-        });
-
-        // Once per call site: the loop warns once, the two calls after it once each.
-        $this->assertSame(array_fill(0, 3, 'Preflow\Publishing\LiveContent::showWorkingCopies() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->workingCopies()).'), $messages);
-        $this->assertSame('Published', $this->title(), 'the frame closed: published again');
-        Contexts::run($this->visit(), function (): void {
-            $this->assertSame('Published', $this->title(), 'the next render never sees it');
-        });
-
-        // Outside every render the shim sets what reads outside renders see; a render never sees it.
-        self::deprecations(fn () => $this->live()->showWorkingCopies());
-        $this->assertSame('Draft', $this->title());
-        Contexts::run($this->visit(), function (): void {
-            $this->assertSame('Published', $this->title());
-        });
     }
 
     public function test_as_of_is_refused_clearly(): void
@@ -234,48 +172,6 @@ final class ReadModeTest extends PublishingAppTestCase
         } finally {
             date_default_timezone_set($zone);
         }
-    }
-
-    public function test_live_content_isolate_is_a_deprecated_adapter(): void
-    {
-        $this->seedPost();
-
-        $messages = self::deprecations(function (): void {
-            Contexts::run($this->visit()->workingCopies(), function (): void {
-                $restore = $this->live()->isolate();
-                $this->assertSame('Published', $this->title(), 'isolate() switches the frame to published reads');
-                $this->assertFalse($this->live()->showsWorkingCopies());
-                $restore();
-                $this->assertSame('Draft', $this->title(), 'and its closure puts the working copies back');
-
-                // A closure from another frame does nothing here.
-                $inner = null;
-                Contexts::run($this->visit()->workingCopies(), function () use (&$inner): void {
-                    $inner = $this->live()->isolate();
-                });
-                Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->published());
-                $inner();
-                $this->assertSame('Published', $this->title(), 'a closure only acts in its own frame');
-            });
-
-            // Already published: nothing to switch or put back.
-            Contexts::run($this->visit(), function (): void {
-                $restore = $this->live()->isolate();
-                $this->assertSame(0, Contexts::frame()->departures());
-                $restore();
-                $this->assertSame('Published', $this->title());
-                $this->assertSame(0, Contexts::frame()->departures());
-            });
-
-            // Outside every render: the default for reads outside renders, put back afterwards.
-            $this->live()->showWorkingCopies();
-            $restore = $this->live()->isolate();
-            $this->assertSame('Published', $this->title());
-            $restore();
-            $this->assertSame('Draft', $this->title());
-        });
-
-        $this->assertContains('Preflow\Publishing\LiveContent::isolate() is deprecated since 0.81 and is removed in 0.83; use a render under RenderContext::published() and memos keyed on RenderContext::memoKey().', $messages);
     }
 
     public function test_a_render_that_skips_or_refuses_writes_never_publishes_or_deletes(): void

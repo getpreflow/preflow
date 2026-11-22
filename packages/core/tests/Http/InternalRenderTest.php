@@ -51,13 +51,11 @@ final class InternalRenderTest extends TestCase
         $this->assertFalse(self::in(Purpose::Verify));
     }
 
-    public function test_the_marker_alone_makes_nothing_internal(): void
+    public function test_a_request_attribute_alone_makes_nothing_internal(): void
     {
-        $marked = @InternalRender::mark(new ServerRequest('GET', '/'));
+        // The attribute the removed mark() set (before 0.83): the purpose decides, not the request.
+        $marked = (new ServerRequest('GET', '/'))->withAttribute('preflow.internal_render', true);
 
-        $this->assertTrue($marked->getAttribute('preflow.internal_render'));
-        $this->assertSame('preflow.internal_render', InternalRender::ATTRIBUTE);
-        // Outside every render, and inside a visitor's: the purpose decides, not the attribute.
         $this->assertFalse(InternalRender::is($marked));
         $this->assertFalse(Contexts::run(
             RenderContext::fromRequest($marked, new Site('http://localhost', ['en'], 'en'), new SystemClock()),

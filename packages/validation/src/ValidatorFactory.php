@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Preflow\Validation;
 
-use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\Deprecations;
 use Preflow\I18n\Translator;
 
 /**
@@ -26,37 +24,10 @@ final class ValidatorFactory
      */
     public function __construct(
         private readonly RuleFactory $ruleFactory,
-        private ?Translator $translator = null,
+        private readonly ?Translator $translator = null,
         /** @since 0.81.0 */
         private readonly ?\Closure $contextTranslator = null,
     ) {}
-
-    /**
-     * Sets the translator of the validators made from now on (null: none) in the current render
-     * frame, until it closes; returns the one before. Unlike the narrowing shims it lasts to the
-     * end of the frame, not only to the end of an enclosing Contexts::within(), and a frame of its
-     * own (an internal render, a mail) or a part() frame (a PDF preview printed into the page)
-     * starts without it, from the factory's own. Outside every render it sets the factory's own
-     * translator, which validators made outside renders get and every frame starts from (a call
-     * at boot still sets it for every form). Its messages are in the language the render context
-     * gives the translator.
-     *
-     * @deprecated 0.81, removed in 0.83: the admin surface translates the app's validators
-     *             (Contexts::narrow(fn ($ctx) => $ctx->admin($uiLocale))); for every form, pass the
-     *             translator to the constructor
-     */
-    public function useTranslator(?Translator $translator): ?Translator
-    {
-        Deprecations::once('Preflow\Validation\ValidatorFactory::useTranslator() is deprecated since 0.81 and is removed in 0.83; use the render context\'s surface (Contexts::narrow(fn ($ctx) => $ctx->admin($uiLocale))), or pass the translator to the constructor.');
-        $previous = $this->translator();
-        if (Contexts::depth() === 0) {
-            $this->translator = $translator;
-        } else {
-            self::frameTranslators()->set[$this] = [$translator];
-        }
-
-        return $previous;
-    }
 
     /**
      * @param array<string, list<ValidationRule|string>> $rules
@@ -64,26 +35,8 @@ final class ValidatorFactory
      */
     public function make(array $rules, array $data, mixed $subject = null): Validator
     {
-        $translator = $this->translator() ?? ($this->contextTranslator !== null ? ($this->contextTranslator)() : null);
+        $translator = $this->translator ?? ($this->contextTranslator !== null ? ($this->contextTranslator)() : null);
 
         return new Validator($this->ruleFactory, $rules, $data, $subject, $translator);
-    }
-
-    /** The translator given: useTranslator()'s in the current frame, else the factory's own. */
-    private function translator(): ?Translator
-    {
-        if (Contexts::depth() > 0) {
-            $set = self::frameTranslators()->set;
-            if (isset($set[$this])) {
-                return $set[$this][0];
-            }
-        }
-
-        return $this->translator;
-    }
-
-    private static function frameTranslators(): FrameTranslators
-    {
-        return Contexts::frame()->slot(FrameTranslators::class, static fn (): FrameTranslators => new FrameTranslators());
     }
 }

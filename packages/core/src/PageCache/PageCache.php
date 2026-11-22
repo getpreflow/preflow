@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Preflow\Core\PageCache;
 
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\Deprecations;
 
 /**
  * The page cache's public calls. Bound in the container whether the cache is on or not: off,
@@ -342,29 +341,8 @@ final class PageCache
         $this->carried[$name] = [$capture, $restore];
     }
 
-    /** @var list<\Closure(): ((\Closure(): void)|null)> */
-    private array $isolations = [];
-
     /** @var list<array{0: string, 1: \Closure(): bool}> */
     private array $storeChecks = [];
-
-    /**
-     * Render isolation for request-scoped state a package keeps between renders (a content mode,
-     * memos): $enter runs, in the current frame, around every render the cache may store (a
-     * visitor's miss, verify's second render, every rebuild) and puts in place the state a public
-     * render starts from; it returns what puts the earlier state back (or null), which runs after
-     * the render, the last entered first.
-     *
-     * @deprecated 0.81, removed in 0.83: key memos on RenderContext::memoKey(), or add a context
-     *             facet; only a public-default render of a visitor or a rebuild is stored anyway
-     *
-     * @param \Closure(): ((\Closure(): void)|null) $enter
-     */
-    public function isolate(\Closure $enter): void
-    {
-        Deprecations::once('Preflow\Core\PageCache\PageCache::isolate() is deprecated since 0.81 and is removed in 0.83; use RenderContext::memoKey() or a context facet.');
-        $this->isolations[] = $enter;
-    }
 
     /**
      * A check after every render the cache may store: when $when is true the page is not stored
@@ -378,25 +356,8 @@ final class PageCache
     }
 
     /**
-     * Runs $render with the isolate() callbacks around it, and asks the store checks
-     * (refuseWhen()) after it, before the state is put back.
-     *
-     * @deprecated 0.81, removed in 0.83: key memos on RenderContext::memoKey(), or add a context facet
-     *
-     * @template T
-     * @param \Closure(): T $render
-     * @return T
-     */
-    public function isolated(\Closure $render): mixed
-    {
-        Deprecations::once('Preflow\Core\PageCache\PageCache::isolated() is deprecated since 0.81 and is removed in 0.83; use RenderContext::memoKey() or a context facet.');
-
-        return $this->aroundRender($render);
-    }
-
-    /**
-     * Runs $render, a render the cache may store, in the current frame: the deprecated isolate()
-     * callbacks around it, the store checks (refuseWhen()) after it, before those are put back.
+     * Runs $render, a render the cache may store, in the current frame, and asks the store checks
+     * (refuseWhen()) after it.
      *
      * @internal the page cache middleware
      * @since 0.81.0
@@ -406,27 +367,14 @@ final class PageCache
      */
     public function aroundRender(\Closure $render): mixed
     {
-        $restores = [];
-        try {
-            foreach ($this->isolations as $enter) {
-                $restore = $enter();
-                if ($restore !== null) {
-                    $restores[] = $restore;
-                }
-            }
-            $result = $render();
-            foreach ($this->storeChecks as [$reason, $when]) {
-                if ($when()) {
-                    $this->refuse($reason);
-                }
-            }
-
-            return $result;
-        } finally {
-            foreach (array_reverse($restores) as $restore) {
-                $restore();
+        $result = $render();
+        foreach ($this->storeChecks as [$reason, $when]) {
+            if ($when()) {
+                $this->refuse($reason);
             }
         }
+
+        return $result;
     }
 
     /**

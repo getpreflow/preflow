@@ -756,10 +756,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(FrontendResolver::class),
             $c->get(\Preflow\Folio\View\FolioEngine::class),
             new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class)),
-            $c->get(ContentLocale::class),
             $c->get(DataManager::class),
             $c->get(\Preflow\Publishing\PreviewLinks::class),
-            $c->get(\Preflow\Publishing\LiveContent::class),
             $c->get(\Preflow\View\AssetCollector::class),
             $c->get(\Preflow\Folio\Content\FrontendGate::class),
             $c->get(\Preflow\Core\Error\ErrorHandler::class),
@@ -787,10 +785,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\View\FolioEngine::class),
             $c->get(FrontendResolver::class),
             $c->get(DraftRecordFactory::class),
-            $c->get(ContentLocale::class),
             $c->get(\Preflow\View\AssetCollector::class),
             $c->get(\Preflow\Folio\Http\AdminAssetUrls::class),
-            self::translator($c, $app),
         ));
         // The whole-page preview (core's Application::preview()) and its "View as" control.
         $container->bind(\Preflow\Folio\Http\ViewAs::class, fn (Container $c) => new \Preflow\Folio\Http\ViewAs(
@@ -950,7 +946,6 @@ final class FolioServiceProvider extends ServiceProvider
             return $folioTexts ??= self::translator($container, $app);
         });
         $container->bind(\Preflow\Folio\Http\AdminLocaleMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\AdminLocaleMiddleware(
-            self::translator($c, $app),
             $c->get(\Preflow\Folio\Http\InterfaceLocales::class),
             $c->get(\Preflow\Folio\Users\UserPreferences::class),
             onStart: static fn () => $c->get(\Preflow\Folio\Translations\OverridesCache::class)->startRequest(),

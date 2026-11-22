@@ -10,6 +10,9 @@ use Preflow\Auth\AuthManager;
 use Preflow\Auth\Authenticatable;
 use Preflow\Auth\GuardInterface;
 use Preflow\Auth\Tests\Fixtures\TestUser;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\Viewer;
 use Preflow\Core\Http\Csrf\StatelessCsrfToken;
 use Preflow\Testing\ArraySession;
 use Preflow\View\TemplateFunctionDefinition;
@@ -70,7 +73,7 @@ final class AuthExtensionProviderTest extends TestCase
         \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
             $user = new TestUser();
             $manager = $this->makeManager();
-            $manager->setUser($user);
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['web' => $user], 'web')));
             $provider = new AuthExtensionProvider($manager);
 
             $functions = $provider->getTemplateFunctions();
@@ -93,7 +96,7 @@ final class AuthExtensionProviderTest extends TestCase
             $this->assertNotNull($fn);
             $this->assertFalse(($fn->callable)());
 
-            $manager->setUser(new TestUser());
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['web' => new TestUser()], 'web')));
             $this->assertTrue(($fn->callable)());
         });
     }

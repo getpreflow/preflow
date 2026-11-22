@@ -7,6 +7,7 @@ namespace Preflow\I18n\Tests;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Response;
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Context\Contexts;
 use Preflow\Core\Http\LocaleUrls;
 use Preflow\Core\Http\NonPublicPaths;
 use Preflow\I18n\LocaleMiddleware;
@@ -52,7 +53,6 @@ final class BareRedirectTest extends TestCase
         }
 
         return new LocaleMiddleware(
-            $this->translator,
             self::LOCALES,
             'en',
             'prefix',
@@ -276,13 +276,12 @@ final class BareRedirectTest extends TestCase
         $mw = $this->middleware();
         $this->dispatch($mw, $this->request('/faq', ['Accept-Language' => 'de']));
 
-        $this->assertSame('', $mw->urlPrefix());
+        $this->assertSame('', (Contexts::peek()?->request?->localePrefix ?? ''));
     }
 
     public function test_cookie_name_is_configurable(): void
     {
         $mw = new LocaleMiddleware(
-            $this->translator,
             self::LOCALES,
             'en',
             'prefix',
@@ -391,7 +390,6 @@ final class BareRedirectTest extends TestCase
     public function test_bare_root_redirect_with_home_slash_goes_to_the_slash_form(): void
     {
         $mw = new LocaleMiddleware(
-            $this->translator,
             self::LOCALES,
             'en',
             'prefix',

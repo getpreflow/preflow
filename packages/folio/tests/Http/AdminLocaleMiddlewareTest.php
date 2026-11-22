@@ -77,7 +77,7 @@ final class AdminLocaleMiddlewareTest extends TestCase
 
     private function middleware(string $default = 'en'): AdminLocaleMiddleware
     {
-        return new AdminLocaleMiddleware($this->translator, new InterfaceLocales($this->translator, $default), $this->prefs);
+        return new AdminLocaleMiddleware(new InterfaceLocales($this->translator, $default), $this->prefs);
     }
 
     private function request(?Authenticatable $user = null, string $acceptLanguage = ''): ServerRequestInterface

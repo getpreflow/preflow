@@ -36,14 +36,10 @@ final class DemoActorTest extends TestCase
 
     public function test_the_label_reads_in_english_german_and_french(): void
     {
+        // Each locale asked for by name: nothing to set or put back (the translator follows the render context).
         $translator = $this->container()->get(Translator::class);
-        $previous = $translator->getLocale();
-        try {
-            foreach (['en' => 'Demo content', 'de' => 'Demo-Inhalte', 'fr' => 'Contenu de démonstration'] as $locale => $text) {
-                $this->assertSame($text, $translator->get(SeedActor::LABEL, [], $locale), $locale);
-            }
-        } finally {
-            $translator->setLocale($previous);
+        foreach (['en' => 'Demo content', 'de' => 'Demo-Inhalte', 'fr' => 'Contenu de démonstration'] as $locale => $text) {
+            $this->assertSame($text, $translator->get(SeedActor::LABEL, [], $locale), $locale);
         }
     }
 

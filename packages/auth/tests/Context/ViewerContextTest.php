@@ -19,7 +19,6 @@ use Preflow\Auth\SyntheticUser;
 use Preflow\Auth\Tests\Fixtures\TestUser;
 use Preflow\Auth\UserProviderInterface;
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\IdentityId;
 use Preflow\Core\Context\Purpose;
 use Preflow\Core\Context\RenderContext;
@@ -52,7 +51,6 @@ final class ViewerContextTest extends DataTestCase
     {
         parent::setUp();
         Contexts::reset();
-        Deprecations::reset();
     }
 
     protected function tearDown(): void
@@ -112,73 +110,6 @@ final class ViewerContextTest extends DataTestCase
         });
     }
 
-    public function test_set_user_is_a_deprecated_shim_bound_to_its_frame(): void
-    {
-        $outer = new TestUser('outer');
-        $inner = new TestUser('inner');
-        $auth = new AuthManager([], 'web');
-        $notices = $this->collectDeprecations();
-
-        try {
-            Contexts::run(ContextFactory::forTest(), function () use ($auth, $outer, $inner): void {
-                $auth->setUser($outer, 'web');
-                Contexts::run(ContextFactory::forTest(), function () use ($auth, $inner): void {
-                    $this->assertNull($auth->user(), 'a new frame starts with its own viewer');
-                    $auth->setUser($inner, 'members');
-                    $this->assertSame($inner, $auth->user());
-                    $this->assertSame('members', $auth->guardName());
-                    $this->assertSame($inner, Contexts::current()->viewer->primary(), 'it narrows the frame');
-                });
-                $this->assertSame($outer, $auth->user(), 'the outer viewer is back');
-                $this->assertSame('web', $auth->guardName());
-
-                $auth->setUser(null);
-                $this->assertNull($auth->user());
-                $this->assertTrue(Contexts::current()->viewer->isAnonymous());
-            });
-        } finally {
-            restore_error_handler();
-        }
-
-        $this->assertNotEmpty($notices->list);
-        $this->assertSame(
-            'Preflow\Auth\AuthManager::setUser() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->as($viewer)).',
-            $notices->list[0],
-        );
-
-        // Outside every frame there is nothing to set it in.
-        $this->expectException(\Preflow\Core\Context\NoRenderContext::class);
-        @$auth->setUser($outer);
-    }
-
-    public function test_add_user_is_a_deprecated_shim_bound_to_its_frame(): void
-    {
-        $staff = new TestUser('staff');
-        $member = new TestUser('member');
-        $auth = new AuthManager([], 'web');
-        $notices = $this->collectDeprecations();
-
-        try {
-            Contexts::run(ContextFactory::forTest(), function () use ($auth, $staff, $member): void {
-                $auth->setUser($staff, 'web');
-                Contexts::run(ContextFactory::forTest()->as(new Viewer(['web' => $staff], 'web')), function () use ($auth, $staff, $member): void {
-                    $auth->addUser($member, 'members');
-                    $auth->addUser(new TestUser('other'), 'members');
-                    $this->assertSame(['web' => $staff, 'members' => $member], $auth->users(), 'the first user of a guard stays');
-                    $this->assertSame($staff, $auth->user(), 'the primary user stays');
-                });
-                $this->assertSame(['web' => $staff], $auth->users(), 'the outer frame never saw the member');
-            });
-        } finally {
-            restore_error_handler();
-        }
-
-        $this->assertContains(
-            'Preflow\Auth\AuthManager::addUser() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->as($viewer)).',
-            $notices->list,
-        );
-    }
-
     public function test_a_synthetic_viewer_reads_as_synthetic_user(): void
     {
         $auth = new AuthManager([], 'web');
@@ -204,26 +135,12 @@ final class ViewerContextTest extends DataTestCase
             } catch (\LogicException) {
             }
 
-            // The deprecated setters never replace a role view.
-            foreach ([
-                static fn () => @$auth->setUser(new TestUser('real'), 'web'),
-                static fn () => @$auth->setUser(null),
-                static fn () => @$auth->setUser(new SyntheticUser(new RoleView('staff', ['owner'])), 'staff'),
-                static fn () => @$auth->addUser(new TestUser('m'), 'members'),
-            ] as $i => $set) {
-                try {
-                    $set();
-                    $this->fail("setter {$i}: replacing a role view must be refused");
-                } catch (\LogicException $e) {
-                    $this->assertStringContainsString('role view', $e->getMessage());
-                }
-            }
             $this->assertTrue(Contexts::current()->viewer->isSynthetic());
         });
 
-        // The shim given a SyntheticUser makes the frame its role view: writes skipped, mail captured.
-        Contexts::run(ContextFactory::forTest(), function () use ($auth, $view): void {
-            @$auth->setUser(new SyntheticUser($view), 'web');
+        // A SyntheticUser given as the viewer makes the frame its role view: writes skipped, mail captured.
+        Contexts::run(ContextFactory::forTest(), function () use ($view): void {
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(AuthManager::viewerOf(['web' => new SyntheticUser($view)], 'web')));
             $this->assertSame($view->roles, Contexts::current()->viewer->roleView?->roles);
             $this->assertSame(\Preflow\Core\Context\WritePolicy::Skip, Contexts::current()->writes);
             $this->assertSame(\Preflow\Core\Context\OutboxPolicy::Capture, Contexts::current()->outbox);
@@ -829,22 +746,6 @@ final class ViewerContextTest extends DataTestCase
 
             public function logout(ServerRequestInterface $request): void {}
         };
-    }
-
-    /** Collects E_USER_DEPRECATED messages (silenced ones too) until restore_error_handler(). */
-    private function collectDeprecations(): object
-    {
-        $notices = new class {
-            /** @var list<string> */
-            public array $list = [];
-        };
-        set_error_handler(static function (int $errno, string $message) use ($notices): bool {
-            $notices->list[] = $message;
-
-            return true;
-        }, E_USER_DEPRECATED);
-
-        return $notices;
     }
 }
 

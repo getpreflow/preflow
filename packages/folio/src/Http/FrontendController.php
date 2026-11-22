@@ -11,7 +11,6 @@ use Preflow\Core\Error\ErrorHandler;
 use Preflow\Core\Exceptions\NotFoundHttpException;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
-use Preflow\Folio\Content\ContentLocale;
 use Preflow\Folio\Content\FrontendGate;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\FrontendRoute;
@@ -29,12 +28,8 @@ final class FrontendController
         private readonly FrontendResolver $resolver,
         private readonly TemplateEngineInterface $engine,
         private readonly RecordRenderer $records,
-        /** not used since 0.81.0 (the page's locale narrows the context); kept for the constructor's shape */
-        private readonly ?ContentLocale $contentLocale = null,
         private readonly ?DataManager $dm = null,
         private readonly ?PreviewLinks $previews = null,
-        /** not used since 0.81.0 (the share preview narrows the context's read mode); kept for the constructor's shape */
-        private readonly ?\Preflow\Publishing\LiveContent $live = null,
         private readonly ?\Preflow\View\AssetCollector $assets = null,
         private readonly ?FrontendGate $gate = null,
         private readonly ?ErrorHandler $errors = null,

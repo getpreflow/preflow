@@ -96,8 +96,8 @@ final class FolioServiceProviderTest extends TestCase
 
             $translator = $app->container()->get(\Preflow\I18n\Translator::class);
             $this->assertSame($own, $translator->overrides(), $order);
-            $translator->useOverrides(true);
-            $this->assertSame('Keep it', $translator->get('folio.common.save'), $order);
+            // On the admin surface, with overrides.
+            $this->assertSame('Keep it', \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->admin('en'), static fn (): string => $translator->get('folio.common.save')), $order);
         }
     }
 
@@ -330,14 +330,16 @@ final class FolioServiceProviderTest extends TestCase
 
         // Since 0.81 an internal render (GEO, the audit) is a frame of its own: what it sets ends with it.
         $outer = \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest($site)->in('de'), static function () use ($locale, $site): string {
-            \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest($site), static function () use ($locale): void {
-                $locale->set('en');
+            $inner = \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest($site), static function () use ($locale): string {
+                \Preflow\Core\Context\Contexts::narrow(static fn (\Preflow\Core\Context\RenderContext $ctx): \Preflow\Core\Context\RenderContext => $ctx->in('en'));
+
+                return $locale->get();
             });
 
-            return \Preflow\Core\Context\Contexts::current()->locale;
+            return $inner . '|' . \Preflow\Core\Context\Contexts::current()->locale;
         });
 
-        $this->assertSame('de', $outer, 'the request\'s locale, not the render\'s choice');
+        $this->assertSame('en|de', $outer, 'the render reads its own locale; the request keeps its own, not the render\'s choice');
         \Preflow\Core\Context\Contexts::reset();
         $this->rrmdir($dir);
     }

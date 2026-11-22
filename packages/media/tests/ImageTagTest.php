@@ -74,15 +74,15 @@ final class ImageTagTest extends TestCase
         });
     }
 
-    /** Outside every render the provider's default() answers; current() is never asked. */
-    public function test_outside_a_render_alt_uses_the_default_locale_without_current(): void
+    /** Outside every render the provider's default() answers; localeOf() is never asked. */
+    public function test_outside_a_render_alt_uses_the_default_locale(): void
     {
         $asset = $this->lib->upload($this->upload($this->png(100, 50), 'a.png'), null);
         $this->lib->update($asset->id, ['alt' => ['en' => 'Sea', 'de' => 'Meer']]);
         $provider = new class implements \Preflow\Media\LocaleProvider {
-            public function current(): string
+            public function localeOf(\Preflow\Core\Context\RenderContext $ctx): string
             {
-                throw new \LogicException('current() must not be asked');
+                throw new \LogicException('localeOf() must not be asked outside a render');
             }
 
             public function default(): string
@@ -280,14 +280,9 @@ final class ImageTagTest extends TestCase
     {
         $asset = $this->lib->upload($this->upload($this->png(100, 50), 'a.png'), null);
         $this->lib->update($asset->id, ['alt' => ['en' => 'Sea', 'de' => 'Meer']]);
-        $provider = new class implements \Preflow\Media\ContextLocaleProvider {
+        $provider = new class implements \Preflow\Media\LocaleProvider {
             /** @var list<string> */
             public array $asked = [];
-
-            public function current(): string
-            {
-                return 'en';
-            }
 
             public function localeOf(\Preflow\Core\Context\RenderContext $ctx): string
             {

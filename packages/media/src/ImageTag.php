@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Preflow\Media;
 
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\RenderFrame;
 use Preflow\Media\Color\ColorRules;
@@ -132,8 +131,7 @@ final class ImageTag
     }
 
     /**
-     * The alt-text language: the provider's for the current render context; a provider without
-     * ContextLocaleProvider is asked its deprecated current() (reported once). Outside every
+     * The alt-text language: the provider's for the current render context. Outside every
      * render (a script, a unit test) there is no context to ask, so the provider's default()
      * answers: the app's default locale. No ambient state is read.
      */
@@ -143,20 +141,15 @@ final class ImageTag
         if ($ctx === null) {
             return $this->locale->default();
         }
-        if ($this->locale instanceof ContextLocaleProvider) {
-            $frame = Contexts::frame();
-            $kept = $this->altLocales[$frame] ?? null;
-            if ($kept !== null && $kept[0] === $ctx) {
-                return $kept[1];
-            }
-            $locale = $this->locale->localeOf($ctx);
-            $this->altLocales[$frame] = [$ctx, $locale];
-
-            return $locale;
+        $frame = Contexts::frame();
+        $kept = $this->altLocales[$frame] ?? null;
+        if ($kept !== null && $kept[0] === $ctx) {
+            return $kept[1];
         }
-        Deprecations::once('Preflow\Media\LocaleProvider::current() is deprecated since 0.81 and is removed in 0.83; use ContextLocaleProvider::localeOf().');
+        $locale = $this->locale->localeOf($ctx);
+        $this->altLocales[$frame] = [$ctx, $locale];
 
-        return $this->locale->current();
+        return $locale;
     }
 
     /** @param array<string, mixed> $options */

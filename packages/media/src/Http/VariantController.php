@@ -28,8 +28,8 @@ use Psr\Http\Message\ServerRequestInterface;
  * storage 'media'): a render that skips writes (a preview, the SEO audit) makes nothing and
  * reports the skipped write; it gets the variant if it exists; one that would be made but is not
  * yet on disk is a 404 with "X-Preflow-Variant: pending", so it can be told from one that does
- * not exist. A render that refuses writes fails with WritesRefused. A request marked with the
- * deprecated InternalRender::mark() makes nothing either.
+ * not exist. A render that refuses writes fails with WritesRefused. An internal render whose
+ * purpose leaves no trace (InternalRender::is()) makes nothing either.
  */
 final class VariantController
 {

@@ -462,15 +462,13 @@ final class TranslationOverridesTest extends TestCase
         $this->assertStringNotContainsString(':label', $this->flow->container()->get(Translator::class)->get('folio.common.move_up', [], 'en'));
         $this->overrides()->set('en', 'folio.common.move_up', 'Move :label up', null);
 
-        $translator = $this->flow->container()->get(Translator::class);
-        $translator->setLocale('en');
-        $translator->useOverrides(true); // as on an admin request (AdminLocaleMiddleware)
         mkdir($this->dir . '/q3', 0777, true);
         file_put_contents($this->dir . '/q3/aria.twig', '<button aria-label="{{ t(\'folio.common.move_up\', {label: name}) }}">x</button>');
         $engine = $this->flow->container()->get(\Preflow\View\TemplateEngineInterface::class);
         $engine->addNamespace('q3', $this->dir . '/q3');
 
-        $html = $engine->render('@q3/aria.twig', ['name' => '"><img src=x>']);
+        // On the admin surface in English, with overrides (as AdminLocaleMiddleware narrows an admin request).
+        $html = \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->admin('en'), static fn (): string => $engine->render('@q3/aria.twig', ['name' => '"><img src=x>']));
 
         $this->assertStringContainsString('aria-label="Move &quot;&gt;&lt;img src=x&gt; up"', $html);
         $this->assertStringNotContainsString('<img', $html);
@@ -592,11 +590,11 @@ final class TranslationOverridesTest extends TestCase
 
         // A mail in French, rendered during an admin request by a German user.
         $translator = $this->flow->container()->get(Translator::class);
-        $translator->setLocale('de');
-        $translator->useOverrides(true); // as on an admin request (AdminLocaleMiddleware)
-        $this->assertSame('Votre objet est en ligne', $translator->get('review-mail.approved.subject', [], 'fr'));
-        $this->assertSame('Ihr Objekt ist online', $translator->get('review-mail.approved.subject'));
-        $translator->useOverrides(false);
+        // On the admin surface in German, with overrides (as AdminLocaleMiddleware narrows an admin request).
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->admin('de'), function () use ($translator): void {
+            $this->assertSame('Votre objet est en ligne', $translator->get('review-mail.approved.subject', [], 'fr'));
+            $this->assertSame('Ihr Objekt ist online', $translator->get('review-mail.approved.subject'));
+        });
         $this->assertSame('Votre objet est en ligne', $translator->get('review-mail.approved.subject', [], 'fr'), 'and outside one (a queue worker)');
     }
 

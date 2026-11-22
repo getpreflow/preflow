@@ -9,6 +9,9 @@ use Preflow\Auth\AuthManager;
 use Preflow\Auth\Authenticatable;
 use Preflow\Auth\GuardInterface;
 use Preflow\Auth\Tests\Fixtures\TestUser;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\Viewer;
 use Psr\Http\Message\ServerRequestInterface;
 
 final class AuthManagerTest extends TestCase
@@ -68,7 +71,7 @@ final class AuthManagerTest extends TestCase
 
             $this->assertNull($manager->user());
 
-            $manager->setUser($user);
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['web' => $user], 'web')));
 
             $this->assertSame($user, $manager->user());
         });

@@ -230,8 +230,7 @@ final class RenderIsolationContractTest extends TestCase
 
     /**
      * A site runner needs neither #[IgnoreDeprecations] nor a Deprecations::reset() of its own: the
-     * contract's own deprecated calls (the poison's setters) do not count under failOnDeprecation,
-     * and a deprecated call of the site's still fails the run: in its page, also when an earlier
+     * contract makes no deprecated call, and a deprecated call of the site's still fails the run: in its page, also when an earlier
      * test of the contract reported it already, and in code only the poison reaches. Each fixture
      * runs in a PHPUnit subprocess under a site's deprecation settings
      * (Fixtures/Deprecations/phpunit.xml).
@@ -245,21 +244,15 @@ final class RenderIsolationContractTest extends TestCase
         [$exit, $output] = self::fixture('ShimCallingRunnerCase');
         $this->assertNotSame(0, $exit, "a runner whose page calls a deprecated shim fails\n{$output}");
         $this->assertStringNotContainsString('FAILURES!', $output, 'it fails for the deprecation only, every test passes');
-        $this->assertStringContainsString('InternalRender::mark() is deprecated', $output, 'the site\'s own deprecation is reported');
+        $this->assertStringContainsString('Acme\Legacy::call() is deprecated', $output, 'the site\'s own deprecation is reported');
         $this->assertStringContainsString('ShimCallingRunnerCase::test_interleaved_renders_are_independent', $output, 'reported again by interleave after the reset in tearDown()');
-        foreach (['Translator::setLocale()', 'Translator::useOverrides()', 'AuthManager::setUser()'] as $own) {
-            $this->assertStringNotContainsString($own, $output, "the contract's own call of {$own} is not the site's");
-        }
 
-        // Only the contract's own setter calls are expected: site code the poison reaches is not.
+        // Site code the poison reaches reports too.
         [$exit, $output] = self::fixture('PoisonOnlyShimRunnerCase');
         $this->assertNotSame(0, $exit, "a deprecated call reached only under the poison fails the run\n{$output}");
         $this->assertStringNotContainsString('FAILURES!', $output, 'it fails for the deprecation only, every test passes');
-        $this->assertStringContainsString('InternalRender::mark() is deprecated', $output);
+        $this->assertStringContainsString('Acme\Legacy::call() is deprecated', $output);
         $this->assertStringContainsString('PoisonOnlyShimRunnerCase::test_poisoned_ambient_state_never_reaches_the_render', $output, 'reported by the poison test itself');
-        foreach (['Translator::setLocale()', 'Translator::useOverrides()', 'AuthManager::setUser()'] as $own) {
-            $this->assertStringNotContainsString($own, $output, "the contract's own call of {$own} is not the site's");
-        }
     }
 
     /** @return array{int, string} the exit code and the output of PHPUnit over the deprecation fixture $case */

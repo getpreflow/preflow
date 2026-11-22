@@ -13,7 +13,6 @@ use Preflow\Auth\SessionGuard;
 use Preflow\Core\Application;
 use Preflow\Core\Container\Container;
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\Outbox;
 use Preflow\Core\Context\OutboxChannel;
 use Preflow\Core\Context\FrozenClock;
@@ -900,53 +899,11 @@ final class ApplicationEdgesTest extends TestCase
 
         $app->render(RenderContext::internal(Purpose::Audit, $app->site(), new SystemClock(), '/about'), new ServerRequest('GET', '/about'));
         $app->handle(new ServerRequest('GET', 'https://site.test/about'));
-        // The deprecated mark() still works through the context: handle() renders the request as an internal render.
-        $app->handle(@InternalRender::mark(new ServerRequest('GET', 'https://site.test/about')));
+        // A request attribute decides nothing: only the render's context says it is internal.
+        $app->handle((new ServerRequest('GET', 'https://site.test/about'))->withAttribute('preflow.internal_render', true));
 
-        $this->assertSame([true, false, true], $seen);
+        $this->assertSame([true, false, false], $seen);
         $this->assertFalse(InternalRender::is(new ServerRequest('GET', '/')), 'outside every render nothing is internal');
-        $this->assertFalse(InternalRender::is((new ServerRequest('GET', '/'))->withAttribute(InternalRender::ATTRIBUTE, true)), 'the attribute alone decides nothing');
-    }
-
-    public function test_internal_render_mark_is_deprecated(): void
-    {
-        Deprecations::reset();
-        $notices = self::deprecations(static function (): void {
-            InternalRender::mark(new ServerRequest('GET', '/'));
-        });
-
-        $this->assertSame(['Preflow\Core\Http\InternalRender::mark() is deprecated since 0.81 and is removed in 0.83; use Application::render() with RenderContext::internal().'], $notices);
-    }
-
-    public function test_cookie_queue_isolated_is_a_deprecated_shim_bound_to_its_frame(): void
-    {
-        Deprecations::reset();
-        $app = $this->app();
-        $queue = $app->container()->get(CookieQueue::class);
-        $ctx = RenderContext::fromRequest(new ServerRequest('GET', 'https://site.test/'), $app->site(), new SystemClock());
-
-        $seen = [];
-        $notices = self::deprecations(static function () use ($queue, $ctx, &$seen): void {
-            Contexts::run($ctx, static function () use ($queue, &$seen): void {
-                $queue->queue('outer=1');
-                $inside = $queue->isolated(static function () use ($queue, &$seen): string {
-                    $seen[] = $queue->has('outer') ? 'outer visible' : 'starts empty';
-                    $queue->queue('inner=1');
-                    $seen[] = 'same frame: ' . (Contexts::depth() === 1 ? 'yes' : 'no');
-
-                    return 'done';
-                });
-                $seen[] = $inside;
-                $seen[] = implode(',', $queue->pull());
-                // Another frame has its own queue, untouched by this one.
-                Contexts::run(Contexts::current(), static function () use ($queue, &$seen): void {
-                    $seen[] = 'nested: ' . implode(',', $queue->pull());
-                });
-            });
-        });
-
-        $this->assertSame(['starts empty', 'same frame: yes', 'done', 'outer=1', 'nested: '], $seen);
-        $this->assertSame(['Preflow\Core\Http\CookieQueue::isolated() is deprecated since 0.81 and is removed in 0.83; use Application::render() (a render in its own frame starts with its own cookies).'], $notices);
     }
 
     /** A failed visitor request still sends the mail it queued (0.80's behaviour); the error page renders. */
@@ -1145,24 +1102,6 @@ final class ApplicationEdgesTest extends TestCase
     private static function cookieNames(ResponseInterface $response): array
     {
         return array_map(static fn (string $c): string => strstr($c, '=', true) ?: $c, $response->getHeader('Set-Cookie'));
-    }
-
-    /** @return list<string> the deprecation messages $fn raised */
-    private static function deprecations(\Closure $fn): array
-    {
-        $notices = [];
-        set_error_handler(static function (int $no, string $message) use (&$notices): bool {
-            $notices[] = $message;
-
-            return true;
-        }, E_USER_DEPRECATED);
-        try {
-            $fn();
-        } finally {
-            restore_error_handler();
-        }
-
-        return $notices;
     }
 }
 

@@ -113,9 +113,9 @@ return [
 
 - `media_image()` emits `<picture>` with AVIF and WebP `srcset`s and an `<img>` with `width`,
   `height`, `loading` and the alt text in the page's language. A document renders as a link.
-  The language comes from the bound `LocaleProvider`; one that implements `ContextLocaleProvider`
-  (`localeOf(RenderContext)`) is asked once per render frame and context object (since 0.82.0),
-  so its `localeOf()` must depend only on the context it is given and fixed configuration.
+  The language comes from the bound `LocaleProvider`: its `localeOf(RenderContext)` (part of
+  `LocaleProvider` since 0.83; `ContextLocaleProvider`'s before) is asked once per render frame and
+  context object (since 0.82.0), so its `localeOf()` must depend only on the context it is given and fixed configuration.
   Outside every render (a script, a unit test) there is no context, so the provider's `default()`
   (the app's default locale) is the alt-text language.
 - `media_url()` gives an asset's URL (`''` without one; the master for an edited image).

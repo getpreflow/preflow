@@ -18,7 +18,7 @@ use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Since 0.75 the page cache's verify render (the page rendered once more as another visitor) drops
- * the mail it queues, as an internal render does (Notifier::discardingQueued()): a GET page that
+ * the mail it queues, as an internal render does (its context discards): a GET page that
  * queues a mail sends it once per visit, not twice on a verified miss.
  */
 final class VerifyMailTest extends TestCase

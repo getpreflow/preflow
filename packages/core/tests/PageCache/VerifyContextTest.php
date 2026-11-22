@@ -13,7 +13,6 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Core\Container\Container;
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\Site;
 use Preflow\Core\Context\SystemClock;
@@ -51,7 +50,6 @@ final class VerifyContextTest extends TestCase
     protected function setUp(): void
     {
         Contexts::reset();
-        Deprecations::reset();
         PurposeRoutes::$routes = [];
         PurposeRoutes::$seen = [];
         $this->dir = sys_get_temp_dir() . '/pcverifyctx_' . bin2hex(random_bytes(4));
@@ -179,52 +177,6 @@ final class VerifyContextTest extends TestCase
         $this->assertSame(0, $restored);
     }
 
-    public function test_page_cache_isolate_is_a_deprecated_adapter_bound_to_its_frame(): void
-    {
-        $cache = new PageCache(recorder: new DependencyRecorder());
-        $events = [];
-        $notices = self::deprecations(static function () use ($cache, &$events): void {
-            $cache->isolate(static function () use (&$events): \Closure {
-                $frame = Contexts::frame();
-                $events[] = 'enter ' . Contexts::current()->purpose->value . ' ' . Contexts::depth();
-
-                return static function () use (&$events, $frame): void {
-                    $events[] = 'restore ' . Contexts::current()->purpose->value . ' ' . Contexts::depth() . (Contexts::frame() === $frame ? ' same frame' : ' other frame');
-                };
-            });
-        });
-        $this->assertSame(['Preflow\Core\PageCache\PageCache::isolate() is deprecated since 0.81 and is removed in 0.83; use RenderContext::memoKey() or a context facet.'], $notices);
-
-        $handler = new class implements RequestHandlerInterface {
-            /** @var list<string> */
-            public array $seen = [];
-
-            public function handle(ServerRequestInterface $request): ResponseInterface
-            {
-                $this->seen[] = 'render ' . Contexts::current()->purpose->value . ' ' . Contexts::depth();
-
-                return new Response(200, ['Content-Type' => 'text/html'], '<p>page</p>');
-            }
-        };
-        [$mw] = $this->middleware($cache);
-
-        $this->assertSame('', $this->visit($mw, '/page', $handler)->getHeaderLine('X-Page-Cache-Skip'));
-
-        // Around the miss in the visitor's frame, and around verify's second render in that render's own frame.
-        $this->assertSame(['enter visit 1', 'restore visit 1 same frame', 'enter verify 2', 'restore verify 2 same frame'], $events);
-        $this->assertSame(['render visit 1', 'render verify 2'], $handler->seen);
-
-        // A hit runs no isolate callback; isolated() is deprecated too and still runs them in the current frame.
-        $events = [];
-        $this->visit($mw, '/page', $handler);
-        $this->assertSame([], $events);
-        $notices = self::deprecations(function () use ($cache): void {
-            $this->assertSame('ran', Contexts::run($this->visitor('/x'), static fn (): string => $cache->isolated(static fn (): string => 'ran')));
-        });
-        $this->assertSame(['enter visit 1', 'restore visit 1 same frame'], $events);
-        $this->assertSame(['Preflow\Core\PageCache\PageCache::isolated() is deprecated since 0.81 and is removed in 0.83; use RenderContext::memoKey() or a context facet.'], $notices);
-    }
-
     /**
      * A middleware on its own (verify always), with its store and log.
      *
@@ -275,23 +227,5 @@ final class VerifyContextTest extends TestCase
         $request = new ServerRequest('GET', 'https://example.com' . $path);
 
         return Contexts::run($this->visitor($path), static fn (): ResponseInterface => $mw->process($request, $handler));
-    }
-
-    /** @return list<string> the deprecation notices $fn raised */
-    private static function deprecations(\Closure $fn): array
-    {
-        $notices = [];
-        set_error_handler(static function (int $no, string $message) use (&$notices): bool {
-            $notices[] = $message;
-
-            return true;
-        }, E_USER_DEPRECATED);
-        try {
-            $fn();
-        } finally {
-            restore_error_handler();
-        }
-
-        return $notices;
     }
 }

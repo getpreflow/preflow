@@ -18,7 +18,9 @@ use Preflow\Core\Context\Preview\PreviewClaims;
 use Preflow\Core\Context\Preview\PreviewToken;
 use Preflow\Core\Context\Preview\PreviewTokenRejected;
 use Preflow\Core\Context\Purpose;
+use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\RoleView;
+use Preflow\Core\Context\Viewer;
 use Preflow\Testing\ContextFactory;
 
 /**
@@ -145,7 +147,7 @@ final class AccessPreviewGateTest extends TestCase
 
         $answers = Contexts::run(ContextFactory::forTest(), function () use ($gate, $role): array {
             $anonymous = Contexts::current();
-            @$this->auth->setUser(new TestUser('ed', roles: ['editor']), 'staff');
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['staff' => new TestUser('ed', roles: ['editor'])], 'staff')));
             $editor = Contexts::current();
 
             return [
@@ -182,7 +184,7 @@ final class AccessPreviewGateTest extends TestCase
     private function issue(array $requires, ?RoleView $role = null): string
     {
         return Contexts::run(ContextFactory::forTest(), function () use ($requires, $role): string {
-            @$this->auth->setUser(new TestUser('ed', roles: ['editor']), 'staff');
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['staff' => new TestUser('ed', roles: ['editor'])], 'staff')));
             $preview = ContextFactory::forTest()->asVisitor()->workingCopies()->because(Purpose::Preview);
 
             return (new PreviewToken(self::KEY))->issue($role === null ? $preview : $preview->asRole($role), self::SESSION, 'staff', Contexts::current()->viewer->primary(), $requires);
@@ -193,7 +195,7 @@ final class AccessPreviewGateTest extends TestCase
     private function admit(string $token, array $roles = ['editor']): PreviewClaims
     {
         return Contexts::run(ContextFactory::forTest(), function () use ($token, $roles): PreviewClaims {
-            @$this->auth->setUser(new TestUser('ed', roles: $roles), 'staff');
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer(['staff' => new TestUser('ed', roles: $roles)], 'staff')));
 
             return (new PreviewToken(self::KEY))->admit($token, self::SESSION, Contexts::current(), new AccessPreviewGate($this->access));
         });

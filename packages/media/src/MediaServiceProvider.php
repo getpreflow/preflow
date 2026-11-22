@@ -114,7 +114,6 @@ final class MediaServiceProvider extends ServiceProvider
             $config->cleanup,
         ));
         $container->singleton(LocaleProvider::class, fn (Container $c) => new ConfigLocaleProvider(
-            static fn (): ?string => self::translatorLocale($c),
             (string) $app->config()->get('app.locale', 'en'),
         ));
         $container->singleton(ImageTag::class, fn (Container $c) => new ImageTag(
@@ -232,15 +231,5 @@ final class MediaServiceProvider extends ServiceProvider
         } catch (\Throwable) {
             return Locales::single('en');
         }
-    }
-
-    private static function translatorLocale(Container $c): ?string
-    {
-        $translator = 'Preflow\I18n\Translator';
-        if (!class_exists($translator) || !$c->bound($translator)) {
-            return null;
-        }
-
-        return $c->get($translator)->getLocale();
     }
 }

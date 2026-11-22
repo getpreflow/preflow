@@ -8,7 +8,6 @@ use Preflow\Auth\Authenticatable;
 use Preflow\Core\Context\Contexts;
 use Preflow\Folio\Users\UserPreferences;
 use Preflow\I18n\Translator;
-use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -41,16 +40,10 @@ final class AdminLocaleMiddleware implements MiddlewareInterface
     public const string LOCALE = 'folio.interface_locale';
 
     public function __construct(
-        /** not used since 0.81.0 (the translator follows the render context); kept for the constructor's shape */
-        private readonly Translator $translator,
         private readonly InterfaceLocales $locales,
         private readonly UserPreferences $preferences,
-        /** not used since 0.81.0 (interface_locale is a lazy engine global); kept for the constructor's shape */
-        private readonly ?TemplateEngineInterface $engine = null,
         /** @var (\Closure(): void)|null run when an admin request starts (not a nested one): the overrides' cache reads afresh */
         private readonly ?\Closure $onStart = null,
-        /** not used since 0.81.0 (the admin surface translates validators); kept for the constructor's shape */
-        private readonly ?\Preflow\Validation\ValidatorFactory $validators = null,
         /** the admin's 404 page, on the request for NotFound::response() (attribute NotFound::class) */
         private readonly ?NotFound $notFound = null,
         /** @since 0.81.0 the content locale the admin renders its content in (Folio's default content locale); null: the site's default locale */

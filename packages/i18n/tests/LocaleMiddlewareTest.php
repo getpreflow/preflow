@@ -90,7 +90,7 @@ final class LocaleMiddlewareTest extends TestCase
 
     public function test_detects_locale_from_url_prefix(): void
     {
-        $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
+        $mw = new LocaleMiddleware(['en', 'de'], 'en', 'prefix');
 
         $captured = null;
         $this->process($mw, $this->createRequest('/de/blog'), $this->createHandler($captured));
@@ -100,7 +100,7 @@ final class LocaleMiddlewareTest extends TestCase
 
     public function test_strips_locale_prefix_from_uri(): void
     {
-        $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
+        $mw = new LocaleMiddleware(['en', 'de'], 'en', 'prefix');
 
         $captured = null;
         $this->process($mw, $this->createRequest('/de/blog/post'), $this->createHandler($captured));
@@ -111,7 +111,7 @@ final class LocaleMiddlewareTest extends TestCase
     public function test_locale_urls_decide_the_prefix_for_any_configured_code(): void
     {
         $locales = ['en', 'de-ch'];
-        $mw = new LocaleMiddleware($this->translator, $locales, 'en', 'prefix', urls: new \Preflow\Core\Http\LocaleUrls($locales, 'en'));
+        $mw = new LocaleMiddleware($locales, 'en', 'prefix', urls: new \Preflow\Core\Http\LocaleUrls($locales, 'en'));
 
         $captured = null;
         $this->process($mw, $this->createRequest('/de-ch/blog/post'), $this->createHandler($captured));
@@ -129,7 +129,7 @@ final class LocaleMiddlewareTest extends TestCase
 
     public function test_no_prefix_uses_default(): void
     {
-        $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
+        $mw = new LocaleMiddleware(['en', 'de'], 'en', 'prefix');
 
         $captured = null;
         $this->process($mw, $this->createRequest('/blog'), $this->createHandler($captured));
@@ -140,7 +140,7 @@ final class LocaleMiddlewareTest extends TestCase
 
     public function test_detects_locale_from_cookie(): void
     {
-        $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'none');
+        $mw = new LocaleMiddleware(['en', 'de'], 'en', 'none');
 
         $request = $this->createRequest('/blog', cookies: ['locale' => 'de']);
         $captured = null;
@@ -151,7 +151,7 @@ final class LocaleMiddlewareTest extends TestCase
 
     public function test_detects_locale_from_accept_language(): void
     {
-        $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'none');
+        $mw = new LocaleMiddleware(['en', 'de'], 'en', 'none');
 
         $request = $this->createRequest('/blog', headers: ['Accept-Language' => 'de-DE,de;q=0.9,en;q=0.8']);
         $captured = null;
@@ -162,7 +162,7 @@ final class LocaleMiddlewareTest extends TestCase
 
     public function test_invalid_locale_uses_default(): void
     {
-        $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
+        $mw = new LocaleMiddleware(['en', 'de'], 'en', 'prefix');
 
         $captured = null;
         $this->process($mw, $this->createRequest('/fr/blog'), $this->createHandler($captured));
@@ -175,7 +175,7 @@ final class LocaleMiddlewareTest extends TestCase
     public function test_prefix_strategy_sets_no_cookie(): void
     {
         // The URL prefix is the source of truth; no cookie (sites can claim "no cookies").
-        $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
+        $mw = new LocaleMiddleware(['en', 'de'], 'en', 'prefix');
 
         $captured = null;
         $response = $this->process($mw, $this->createRequest('/de/x'), $this->createHandler($captured));
@@ -187,7 +187,7 @@ final class LocaleMiddlewareTest extends TestCase
 
     public function test_cookie_only_when_enabled_and_changed(): void
     {
-        $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix', cookie: true);
+        $mw = new LocaleMiddleware(['en', 'de'], 'en', 'prefix', cookie: true);
 
         $same = $this->process($mw, $this->createRequest('/de/x', cookies: ['locale' => 'de']), $this->createHandler());
         $changed = $this->process($mw, $this->createRequest('/x', cookies: ['locale' => 'de']), $this->createHandler());
@@ -198,7 +198,7 @@ final class LocaleMiddlewareTest extends TestCase
 
     public function test_root_url_with_prefix(): void
     {
-        $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
+        $mw = new LocaleMiddleware(['en', 'de'], 'en', 'prefix');
 
         $captured = null;
         $this->process($mw, $this->createRequest('/de'), $this->createHandler($captured));
@@ -209,7 +209,7 @@ final class LocaleMiddlewareTest extends TestCase
 
     public function test_locale_attribute_set_on_request(): void
     {
-        $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
+        $mw = new LocaleMiddleware(['en', 'de'], 'en', 'prefix');
 
         $captured = null;
         $this->process($mw, $this->createRequest('/de/page'), $this->createHandler($captured));
@@ -223,7 +223,7 @@ final class LocaleMiddlewareTest extends TestCase
             public function __construct(private LocaleMiddleware $mw, private ?string &$seen) {}
             public function handle(ServerRequestInterface $request): ResponseInterface
             {
-                $this->seen = $this->mw->urlPrefix();
+                $this->seen = (Contexts::peek()?->request?->localePrefix ?? '');
                 return new Response(200);
             }
         };
@@ -231,7 +231,7 @@ final class LocaleMiddlewareTest extends TestCase
 
     public function test_url_prefix_is_the_stripped_locale(): void
     {
-        $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
+        $mw = new LocaleMiddleware(['en', 'de'], 'en', 'prefix');
         $seen = null;
 
         $this->process($mw, $this->createRequest('/de/blog'), $this->prefixProbe($mw, $seen));
@@ -246,14 +246,14 @@ final class LocaleMiddlewareTest extends TestCase
         $this->process($mw, $this->createRequest('/blog'), $this->prefixProbe($mw, $seen));
         $this->assertSame('', $seen);
 
-        $none = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'none');
+        $none = new LocaleMiddleware(['en', 'de'], 'en', 'none');
         $this->process($none, $this->createRequest('/de/blog'), $this->prefixProbe($none, $seen));
         $this->assertSame('', $seen);
     }
 
     public function test_url_prefix_resets_after_a_request_that_threw(): void
     {
-        $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
+        $mw = new LocaleMiddleware(['en', 'de'], 'en', 'prefix');
         $throwing = new class implements RequestHandlerInterface {
             public function handle(ServerRequestInterface $request): ResponseInterface
             {
@@ -274,16 +274,16 @@ final class LocaleMiddlewareTest extends TestCase
 
     public function test_url_prefix_is_empty_after_process_returns(): void
     {
-        $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
+        $mw = new LocaleMiddleware(['en', 'de'], 'en', 'prefix');
 
         $this->process($mw, $this->createRequest('/de/x'), $this->createHandler());
 
-        $this->assertSame('', $mw->urlPrefix());
+        $this->assertSame('', (Contexts::peek()?->request?->localePrefix ?? ''));
     }
 
     public function test_nested_process_restores_the_outer_prefix(): void
     {
-        $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
+        $mw = new LocaleMiddleware(['en', 'de'], 'en', 'prefix');
         $inner = null;
         $outer = null;
         $handler = new class($mw, $inner, $outer, $this->prefixProbe($mw, $inner)) implements RequestHandlerInterface {
@@ -293,7 +293,7 @@ final class LocaleMiddlewareTest extends TestCase
                 // A nested request has a frame of its own (Application::handle() opens one).
                 $inner = (new Psr17Factory())->createServerRequest('GET', '/x');
                 Contexts::run(RenderContext::fromRequest($inner, new Site('https://site.test', ['en', 'de'], 'en'), new SystemClock()), fn () => $this->mw->process($inner, $this->probe));
-                $this->outer = $this->mw->urlPrefix();
+                $this->outer = (Contexts::peek()?->request?->localePrefix ?? '');
                 return new Response(200);
             }
         };
@@ -302,6 +302,6 @@ final class LocaleMiddlewareTest extends TestCase
 
         $this->assertSame('', $inner);
         $this->assertSame('/de', $outer);
-        $this->assertSame('', $mw->urlPrefix());
+        $this->assertSame('', (Contexts::peek()?->request?->localePrefix ?? ''));
     }
 }

@@ -6,8 +6,6 @@ namespace Preflow\Auth;
 
 use Preflow\Auth\Support\ResolvedUsers;
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\Deprecations;
-use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\RenderFrame;
 use Preflow\Core\Context\RoleView;
 use Preflow\Core\Context\SyntheticIdentity;
@@ -122,57 +120,6 @@ final class AuthManager
         }
 
         return $this->guards[$name] = LazyGuard::of($this->guards[$name]);
-    }
-
-    /**
-     * The user signed in with $guard (null: the default guard) for the rest of the current render
-     * frame, as its only one; null signs everyone out of it. A SyntheticUser makes the frame a
-     * role view of its roles. A frame that renders as a role view keeps it: the shim never
-     * changes it (a LogicException), so code still on setUser() (an admin's own sign-in check)
-     * fails closed inside a role view.
-     *
-     * @deprecated 0.81, removed in 0.83: narrow the frame's viewer, Contexts::narrow(fn ($ctx) => $ctx->as($viewer))
-     *
-     * @throws \Preflow\Core\Context\NoRenderContext outside every render
-     * @throws \LogicException when the frame renders as a role view
-     */
-    public function setUser(?Authenticatable $user, ?string $guard = null): void
-    {
-        Deprecations::once('Preflow\Auth\AuthManager::setUser() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->as($viewer)).');
-        $guard ??= $this->defaultGuard;
-        Contexts::narrow(static function (RenderContext $ctx) use ($user, $guard): RenderContext {
-            if ($ctx->viewer->isSynthetic()) {
-                throw new \LogicException('AuthManager::setUser() cannot replace the role view (view as role) this render runs as.');
-            }
-
-            return $ctx->as($user === null ? Viewer::anonymous() : self::viewerOf([$guard => $user], $guard));
-        });
-    }
-
-    /**
-     * Another guard's user, signed in beside the ones already there for the rest of the current
-     * render frame; a guard that has a user keeps it. Without anyone signed in yet, $user is the
-     * primary one (0.80 kept it out of user() until setUser() named one).
-     *
-     * @deprecated 0.81, removed in 0.83: narrow the frame's viewer, Contexts::narrow(fn ($ctx) => $ctx->as($viewer))
-     *
-     * @throws \Preflow\Core\Context\NoRenderContext outside every render
-     * @throws \LogicException when the frame renders as a role view
-     */
-    public function addUser(Authenticatable $user, string $guard): void
-    {
-        Deprecations::once('Preflow\Auth\AuthManager::addUser() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->as($viewer)).');
-        Contexts::narrow(static function (RenderContext $ctx) use ($user, $guard): RenderContext {
-            $viewer = $ctx->viewer;
-            if ($viewer->isSynthetic()) {
-                throw new \LogicException('AuthManager::addUser() cannot add a user to a role view (view as role); it renders as its roles only.');
-            }
-            if (isset($viewer->identities[$guard])) {
-                return $ctx;
-            }
-
-            return $ctx->as(new Viewer($viewer->identities + [$guard => $user], $viewer->primaryGuard));
-        });
     }
 
     /**

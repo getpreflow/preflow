@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace Preflow\I18n\Tests;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\Site;
+use Preflow\Core\Context\SystemClock;
 use Preflow\I18n\NoTranslationOverrides;
 use Preflow\I18n\Tests\Support\TempLang;
 use Preflow\I18n\TranslationOverrides;
@@ -34,6 +38,18 @@ final class TranslatorLayersTest extends TestCase
         };
     }
 
+    /** Runs $fn in a render on the admin surface in $uiLocale, with overrides (or without). */
+    private static function admin(\Closure $fn, string $uiLocale = 'en', bool $overrides = true): mixed
+    {
+        return Contexts::run(self::render()->admin($uiLocale, $overrides), $fn);
+    }
+
+    /** A render on the public surface, in the site's default locale (en). */
+    private static function render(): RenderContext
+    {
+        return RenderContext::console(new Site('https://site.test', ['en', 'de', 'fr'], 'en'), new SystemClock());
+    }
+
     private function translator(string $locale = 'en', string $fallback = 'en'): Translator
     {
         $site = $this->tmp() . '/lang';
@@ -55,19 +71,19 @@ final class TranslatorLayersTest extends TestCase
     public function test_admin_group_with_overrides_on(): void
     {
         $t = $this->translator();
-        $t->useOverrides(true);
 
-        $this->assertSame('Override C', $t->get('adm.c'), 'override first');
-        $this->assertSame('Site B', $t->get('adm.b'), 'then the site file');
-        $this->assertSame('Package A', $t->get('adm.a'), 'then the package');
+        self::admin(function () use ($t): void {
+            $this->assertSame('Override C', $t->get('adm.c'), 'override first');
+            $this->assertSame('Site B', $t->get('adm.b'), 'then the site file');
+            $this->assertSame('Package A', $t->get('adm.a'), 'then the package');
+        });
     }
 
     public function test_public_group_ignores_overrides(): void
     {
         $t = $this->translator();
-        $t->useOverrides(true);
 
-        $this->assertSame('Public site A', $t->get('pub.a'));
+        self::admin(fn () => $this->assertSame('Public site A', $t->get('pub.a')));
     }
 
     public function test_overrides_are_off_by_default_and_when_turned_off(): void
@@ -76,12 +92,13 @@ final class TranslatorLayersTest extends TestCase
         $this->assertSame('Site C', $t->get('adm.c'), 'off by default');
         $this->assertFalse($t->usesOverrides());
 
-        $t->useOverrides(true);
-        $this->assertTrue($t->usesOverrides());
-        $t->useOverrides(false);
-        $this->assertFalse($t->usesOverrides());
-        $this->assertSame('Site C', $t->get('adm.c'));
-        $this->assertSame('Public site A', $t->get('pub.a'));
+        self::admin(fn () => $this->assertTrue($t->usesOverrides()));
+        self::admin(function () use ($t): void {
+            $this->assertFalse($t->usesOverrides());
+            $this->assertSame('Site C', $t->get('adm.c'));
+            $this->assertSame('Public site A', $t->get('pub.a'));
+        }, overrides: false);
+        Contexts::run(self::render(), fn () => $this->assertFalse($t->usesOverrides(), 'the public surface has none'));
     }
 
     public function test_the_overrides_layer_can_be_read_back(): void
@@ -113,9 +130,8 @@ final class TranslatorLayersTest extends TestCase
     public function test_overrides_follow_the_fallback_chain(): void
     {
         $t = $this->translator('fr', 'de');
-        $t->useOverrides(true);
 
-        $this->assertSame('Override C', $t->get('adm.c'), 'no fr or de text: the en override');
+        self::admin(fn () => $this->assertSame('Override C', $t->get('adm.c'), 'no fr or de text: the en override'), 'fr');
     }
 
     public function test_parameters_and_plurals(): void
@@ -128,9 +144,10 @@ final class TranslatorLayersTest extends TestCase
         $this->assertSame('1 Datei', $t->choice('g.files', 1));
         $this->assertSame('2 Dateien', $t->choice('g.files', 2));
 
-        $t->setLocale('fr');
-        $this->assertSame('1 fichier', $t->choice('g.files', 1));
-        $this->assertSame('2 fichiers', $t->choice('g.files', 2));
+        Contexts::run(self::render()->in('fr'), function () use ($t): void {
+            $this->assertSame('1 fichier', $t->choice('g.files', 1));
+            $this->assertSame('2 fichiers', $t->choice('g.files', 2));
+        });
     }
 
     public function test_has_checks_one_locale_with_all_layers(): void
@@ -146,8 +163,7 @@ final class TranslatorLayersTest extends TestCase
 
         $t->setOverrides(self::overrides(['de' => ['adm.x' => 'Ü']]));
         $this->assertFalse($t->has('adm.x', 'de'), 'overrides off');
-        $t->useOverrides(true);
-        $this->assertTrue($t->has('adm.x', 'de'));
+        self::admin(fn () => $this->assertTrue($t->has('adm.x', 'de')));
     }
 
     public function test_groups_lists_package_and_site_groups(): void
@@ -184,11 +200,12 @@ final class TranslatorLayersTest extends TestCase
     {
         $t = $this->translator();
         $this->langFile('lang', 'en', 'nest', ['a' => ['b' => 'AB', 'c' => ['d' => 'ACD']], 'e' => 'E']);
-        $t->useOverrides(true);
 
-        $this->assertSame(['adm.a' => 'Package A', 'adm.b' => 'Site B', 'adm.c' => 'Site C'], $t->entries('adm', 'en'), 'site over package, no overrides');
-        $this->assertSame(['nest.a.b' => 'AB', 'nest.a.c.d' => 'ACD', 'nest.e' => 'E'], $t->entries('nest', 'en'));
-        $this->assertSame([], $t->entries('adm', 'fr'), 'no fallback');
+        self::admin(function () use ($t): void {
+            $this->assertSame(['adm.a' => 'Package A', 'adm.b' => 'Site B', 'adm.c' => 'Site C'], $t->entries('adm', 'en'), 'site over package, no overrides');
+            $this->assertSame(['nest.a.b' => 'AB', 'nest.a.c.d' => 'ACD', 'nest.e' => 'E'], $t->entries('nest', 'en'));
+            $this->assertSame([], $t->entries('adm', 'fr'), 'no fallback');
+        });
     }
 
     public function test_add_defaults_if_missing_only_registers_undeclared_groups(): void
@@ -217,11 +234,12 @@ final class TranslatorLayersTest extends TestCase
         $t->overridable('pub.');
 
         $this->assertSame('Apps', $t->get('site.types.app.label'), 'overrides off');
-        $t->useOverrides(true);
-        $this->assertSame('Programs', $t->get('site.types.app.label'), 'under an overridable prefix');
-        $this->assertTrue($t->has('site.types.app.label'));
-        $this->assertSame('Hi', $t->get('site.greeting'), 'other keys of the group keep the files');
-        $this->assertSame('Public site A', $t->get('pub.a'), 'a public group never takes overrides');
+        self::admin(function () use ($t): void {
+            $this->assertSame('Programs', $t->get('site.types.app.label'), 'under an overridable prefix');
+            $this->assertTrue($t->has('site.types.app.label'));
+            $this->assertSame('Hi', $t->get('site.greeting'), 'other keys of the group keep the files');
+            $this->assertSame('Public site A', $t->get('pub.a'), 'a public group never takes overrides');
+        });
         $this->assertTrue($t->isOverridable('site.types.app.label'));
         $this->assertTrue($t->isOverridable('adm.a'));
         $this->assertFalse($t->isOverridable('site.greeting'));
@@ -258,7 +276,6 @@ final class TranslatorLayersTest extends TestCase
     public function test_an_always_overridden_group_takes_overrides_with_overrides_off(): void
     {
         $t = $this->reviewMail();
-        $t->useOverrides(false);
         $this->assertSame('En ligne', $t->get('review-mail.approved.subject', [], 'fr'));
 
         $t->alwaysOverride('review-mail');
@@ -312,9 +329,8 @@ final class TranslatorLayersTest extends TestCase
                 $this->addToAssertionCount(1);
             }
         }
-        $this->assertSame('folio.x', $t->get('folio.x'), 'overrides off: still needs useOverrides(true)');
-        $t->useOverrides(true);
-        $this->assertSame('Over', $t->get('folio.x'));
+        $this->assertSame('folio.x', $t->get('folio.x'), 'overrides off: still needs the admin surface with overrides');
+        self::admin(fn () => $this->assertSame('Over', $t->get('folio.x')));
     }
 
     /** A package that registers the group as admin later (it boots after Folio) ends it. */
@@ -328,8 +344,7 @@ final class TranslatorLayersTest extends TestCase
 
             $this->assertSame([], $t->alwaysOverridden(), $how);
             $this->assertSame('codes.x', $t->get('codes.x'), $how . ': admin-only again');
-            $t->useOverrides(true);
-            $this->assertSame('Over', $t->get('codes.x'), $how);
+            self::admin(fn () => $this->assertSame('Over', $t->get('codes.x'), $how));
         }
     }
 
@@ -363,7 +378,6 @@ final class TranslatorLayersTest extends TestCase
         $t = new Translator($this->tmp() . '/lang', 'en', 'en');
         $t->setScopes(['members' => 'public']);
         $t->setOverrides($counter);
-        $t->useOverrides(false);
         $t->alwaysOverride('review-mail');
 
         $t->get('members.x');

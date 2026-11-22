@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace Preflow\I18n\Tests;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\Site;
+use Preflow\Core\Context\SystemClock;
 use Preflow\I18n\Translator;
 
 final class TranslatorTest extends TestCase
@@ -109,9 +113,7 @@ final class TranslatorTest extends TestCase
 
         $this->assertSame('Blog', $t->get('blog.title'));
 
-        $t->setLocale('de');
-
-        $this->assertSame('Blog', $t->get('blog.title'));
+        Contexts::run(RenderContext::console(new Site('https://site.test', ['en', 'de', 'fr'], 'en'), new SystemClock())->in('de'), fn () => $this->assertSame('Blog', $t->get('blog.title')));
     }
 
     public function test_german_translations(): void
@@ -162,8 +164,8 @@ final class TranslatorTest extends TestCase
 
         $this->assertSame('en', $t->getLocale());
 
-        $t->setLocale('de');
-        $this->assertSame('de', $t->getLocale());
+        Contexts::run(RenderContext::console(new Site('https://site.test', ['en', 'de', 'fr'], 'en'), new SystemClock())->in('de'), fn () => $this->assertSame('de', $t->getLocale(), 'inside a render: its locale'));
+        $this->assertSame('en', $t->getLocale(), 'outside it again: the constructor\'s');
     }
 
     public function test_caches_loaded_files(): void

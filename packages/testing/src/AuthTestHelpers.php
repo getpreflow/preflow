@@ -22,7 +22,7 @@ trait AuthTestHelpers
      * before the first middleware runs. The identity middleware takes the user as it is (no
      * guard is asked, no cookie is set). The next request without actingAs() is nobody's again.
      * A request that renders as a role view (WebApplication::withContext() with asRole()) keeps
-     * its role view, as AuthManager::setUser() does. It works with handle(); render() takes its
+     * its role view: nobody signs in over it. It works with handle(); render() takes its
      * context from its caller, so the derivation is not used there.
      *
      * @param string|null $guard the guard they signed in with; null is the default guard

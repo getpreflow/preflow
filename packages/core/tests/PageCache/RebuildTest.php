@@ -7,7 +7,6 @@ namespace Preflow\Core\Tests\PageCache;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\TestCase;
-use Preflow\Core\Http\InternalRender;
 use Preflow\Core\PageCache\DataTags;
 use Preflow\Core\PageCache\Freshness;
 use Preflow\Core\PageCache\PageCacheConfig;
@@ -78,8 +77,6 @@ final class RebuildTest extends TestCase
                 $this->onQueue++;
             },
             rebuild: function (ServerRequestInterface $request) use ($store, $seconds, $during, $refuse): ResponseInterface {
-                // Not marked: the app renders it as an internal Rebuild render, whose purpose says it.
-                $this->assertNull($request->getAttribute(InternalRender::ATTRIBUTE));
                 $this->assertTrue($request->getAttribute(PageCacheMiddleware::REBUILD));
                 $this->rendered[] = (string) $request->getUri();
                 $this->now += 0.001;
@@ -558,7 +555,6 @@ final class RebuildTest extends TestCase
     {
         $request = Rebuild::request('http://example.com/x', ['locale' => 'de', 'proto' => 'https', 'host' => 'example.com', 'vary' => ['hx-target' => 'list']], 'abc', true);
 
-        $this->assertNull($request->getAttribute(InternalRender::ATTRIBUTE), 'not marked: the context says it is internal');
         $this->assertTrue($request->getAttribute(PageCacheMiddleware::REBUILD));
         $this->assertSame('abc', $request->getAttribute(Rebuild::EXPECTED_ID));
         $this->assertTrue($request->getAttribute(Rebuild::VERIFIED));

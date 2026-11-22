@@ -66,8 +66,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  * request passes through untouched.
  *
  * A miss renders with its reads recorded (DependencyRecorder, in its frame) and gets
- * `X-Page-Cache: miss`. It renders with published reads (the frame is narrowed to them); the
- * deprecated PageCache::isolate() callbacks still run around it, in its frame.
+ * `X-Page-Cache: miss`. It renders with published reads (the frame is narrowed to them).
  * It is stored only when none of these holds; with page_cache.explain on, the reason is sent
  * as `X-Page-Cache-Skip`:
  * - `status`: the status is not 200 (404s and redirects are never cached);
@@ -466,8 +465,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
         $verify = !$key->isHead() && $this->verifies($request, $key, $store);
         $rebuild = $request->getAttribute(self::REBUILD) === true;
         try {
-            // Published reads for the rest of the frame (a storable context reads them already), with
-            // the deprecated isolate() callbacks around the render, in this frame.
+            // Published reads for the rest of the frame (a storable context reads them already).
             Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->published());
             $departures = Contexts::frame()->departures();
             $handle = static fn (): ResponseInterface => $handler->handle($request);

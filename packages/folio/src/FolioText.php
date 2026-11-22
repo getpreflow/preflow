@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Preflow\Folio;
 
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\Deprecations;
-use Preflow\Core\Context\RenderContext;
 use Preflow\I18n\Translator;
 
 /**
@@ -36,29 +34,6 @@ final class FolioText
     public static function translatorFrom(?\Closure $source): void
     {
         self::$source = $source;
-    }
-
-    /**
-     * Enters the admin surface in $translator's locale for the rest of the current render (null:
-     * the public surface), and returns the translator FolioText gave before. The texts then come
-     * from the app's translator (translatorFrom()), not from $translator. Outside every render it
-     * changes nothing (the texts there are the English ones).
-     *
-     * @deprecated 0.81, removed in 0.83: Contexts::narrow(fn ($ctx) => $ctx->admin($uiLocale)), or
-     *             Contexts::within($ctx->admin($uiLocale), $fn) for a stretch of the render
-     */
-    public static function use(?Translator $translator): ?Translator
-    {
-        Deprecations::once('Preflow\Folio\FolioText::use() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->admin($uiLocale)).');
-        $previous = self::translator();
-        if (Contexts::depth() > 0) {
-            $locale = $translator?->getLocale();
-            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $locale === null
-                ? $ctx->public()
-                : $ctx->admin($locale, $ctx->surface->admin ? $ctx->surface->overrides : true));
-        }
-
-        return $previous;
     }
 
     /** @param array<string, string|int> $params */

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Preflow\Core\Context\Bridge;
 
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\FrameOutbox;
 use Preflow\Core\Context\OutboxPolicy;
 use Preflow\Core\Context\RenderContext;
@@ -74,18 +73,20 @@ final class NotifyOutbox implements DeferredQueue
     }
 
     /**
-     * The deprecated Notifier::discardingQueued() with core: $fn runs in a discarding stretch of
-     * the current frame (Contexts::within()), so what it queues, sends or schedules for after the
-     * response is dropped, also inside a render it starts; the frame's policy is back afterwards.
+     * Notifier::discardingQueued() with core: removed in 0.83 inside a render, where what a render
+     * sends is its context's outbox policy (Application::render() or Contexts::run() with
+     * RenderContext::discarding()). Outside every render there is no frame, so notify's own queue
+     * drops what $fn queues, as notify on its own does.
      *
-     * @deprecated 0.81, removed in 0.83: render under RenderContext::discarding() (Application::render(), Contexts::run())
+     * @throws \LogicException inside a render
      */
     public function discarding(\Closure $fn): mixed
     {
-        Deprecations::once('Preflow\Notify\Notifier::discardingQueued() is deprecated since 0.81 and is removed in 0.83; use Application::render() or Contexts::run() with RenderContext::discarding().', 3);
-        $ctx = self::context();
+        if (self::context() !== null) {
+            throw new \LogicException('Notifier::discardingQueued() is removed with preflow/core since 0.83: render under RenderContext::discarding() (Application::render() or Contexts::run()).');
+        }
 
-        return $ctx === null ? $this->fallback->discarding($fn) : Contexts::within($ctx->discarding(), $fn);
+        return $this->fallback->discarding($fn);
     }
 
     public function policy(): string
