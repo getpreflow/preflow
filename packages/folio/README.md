@@ -710,9 +710,10 @@ available for every type that has a route.
 ```
 
 - `columns`: the fields shown. The default is the first three
-  string/number/select/boolean/date fields that are not hidden (not the updated timestamp, which
-  the "Changed" column shows). A `relation` field can be
-  listed too: its cell shows the linked records' labels.
+  string/number/select/boolean/date fields that are not hidden. A type's own updated field
+  (`updatedAt`, `updated_at`) is an ordinary field: when it is among those three it stays a column,
+  next to the "Changed" column at the end. A `relation` field can be listed too: its cell shows the
+  linked records' labels.
 - `filters`: fields offered under "+ Filter": `select`, `boolean`, `date` (a from/until range)
   and `relation` fields. Active filters show as removable chips. A relation filter lists the
   target's records as a select, or searches them remotely when there are more than 200. Other
