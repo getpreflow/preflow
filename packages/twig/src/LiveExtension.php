@@ -80,20 +80,6 @@ final class LiveExtension extends AbstractExtension
         return $placeholder ?? $template->renderBlock($block, $with + $env->getGlobals());
     }
 
-    /**
-     * What templates compiled before 0.82 call: part(), with the component class they passed
-     * ignored (it comes from the template's file since 0.82.0).
-     *
-     * @internal compiled templates
-     * @deprecated 0.82, removed in 0.83: templates compiled by 0.82 call part()
-     */
-    public function live(Environment $env, Template $template, string $block, mixed $componentClass, mixed $with): string
-    {
-        \Preflow\Core\Context\Deprecations::once('Preflow\Twig\LiveExtension::live() is deprecated since 0.82 and is removed in 0.83; use part(), which templates compiled by 0.82 call (clear the Twig cache).');
-
-        return $this->part($env, $template, $block, $with);
-    }
-
     /** Whether $name is a loader name (page.twig, @folio/frontend/post.twig): no file path, no string template. */
     public static function logical(string $name): bool
     {
