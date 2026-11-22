@@ -7,7 +7,6 @@ namespace Preflow\Folio\Http;
 use Preflow\Auth\Authenticatable;
 use Preflow\Core\Context\Contexts;
 use Preflow\Folio\Users\UserPreferences;
-use Preflow\I18n\Translator;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
