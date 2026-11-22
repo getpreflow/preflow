@@ -15,7 +15,7 @@ use Preflow\I18n\Machine\JobStore;
 use Preflow\I18n\Machine\Scope;
 use Preflow\I18n\Machine\TextSources;
 use Preflow\I18n\Machine\MachineServiceProvider;
-use Preflow\I18n\Machine\MachineTranslation;
+use Preflow\I18n\Machine\TranslatorAvailability;
 use Preflow\I18n\Machine\MachineTranslator;
 use Preflow\I18n\Machine\TranslationSettings;
 use Preflow\I18n\Machine\TranslationUnit;
@@ -64,7 +64,7 @@ final class MachineServiceProviderTest extends TestCase
         $app->boot();
 
         // There is a translator (AiTranslator), though with AI off it cannot translate now.
-        $this->assertTrue($app->container()->get(MachineTranslation::class)->available());
+        $this->assertTrue($app->container()->get(TranslatorAvailability::class)->available());
         $this->assertFalse($app->container()->get(MachineTranslator::class)->available());
     }
 
@@ -74,7 +74,7 @@ final class MachineServiceProviderTest extends TestCase
         $app = Application::create($this->dir);
         $app->boot();
 
-        $this->assertFalse($app->container()->get(MachineTranslation::class)->available(), 'the container answers, not the i18n package');
+        $this->assertFalse($app->container()->get(TranslatorAvailability::class)->available(), 'the container answers, not the i18n package');
     }
 
     public function test_batch_chars_read_from_config(): void
@@ -161,6 +161,6 @@ final class NoMachineTranslationProvider extends \Preflow\Core\Container\Service
 {
     public function register(\Preflow\Core\Container\Container $container): void
     {
-        $container->singleton(MachineTranslation::class, static fn (): MachineTranslation => new \Preflow\I18n\Machine\ConfiguredMachineTranslation(false));
+        $container->singleton(TranslatorAvailability::class, static fn (): TranslatorAvailability => new \Preflow\I18n\Machine\ConfiguredTranslatorAvailability(false));
     }
 }

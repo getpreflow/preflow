@@ -8,7 +8,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Since 0.83.0: blocks 0.83.0 (BlockLocale with localeOf(), which ContentLocale implements); media 0.83.0 (LocaleProvider
- * with localeOf(), which ContentLocaleProvider implements); i18n 0.83.0 (Machine\MachineTranslation and
+ * with localeOf(), which ContentLocaleProvider implements); i18n 0.83.0 (Machine\TranslatorAvailability and
  * TranslatorUnavailable, which Folio's machine translation uses).
  * Since 0.82.0: core 0.82.0 (Http\ContentSecurityPolicy, with which the whole-page preview reads the page's frame-ancestors).
  * Since 0.81.0: core 0.81.0 (Context\Writes, which ReviewIndexUpdater asks before it writes the review index, so a

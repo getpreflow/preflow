@@ -16,7 +16,7 @@ use Preflow\I18n\Machine\Estimator;
 use Preflow\I18n\Machine\JobRunner;
 use Preflow\I18n\Machine\JobStore;
 use Preflow\I18n\Machine\MachineServiceProvider;
-use Preflow\I18n\Machine\MachineTranslation;
+use Preflow\I18n\Machine\TranslatorAvailability;
 use Preflow\I18n\Machine\MachineTranslator;
 use Preflow\I18n\Machine\MissingAiTranslator;
 use Preflow\I18n\Machine\ReviewIndex;
@@ -73,7 +73,7 @@ final class I18nWithoutAiTest extends TestCase
         $this->assertFalse(AiPackage::installed());
         $translator = $c->get(MachineTranslator::class);
         $this->assertInstanceOf(MissingAiTranslator::class, $translator);
-        $this->assertFalse($c->get(MachineTranslation::class)->available(), 'no translator: nothing offers translation');
+        $this->assertFalse($c->get(TranslatorAvailability::class)->available(), 'no translator: nothing offers translation');
         $this->assertFalse($translator->available());
         $this->assertNull($translator->estimateCost(new Estimate(1, 10, 0, 0, null, 1)));
         $this->assertInstanceOf(Estimator::class, $c->get(Estimator::class));
@@ -108,7 +108,7 @@ final class I18nWithoutAiTest extends TestCase
         $this->assertTrue(AiPackage::installed());
         $this->assertInstanceOf(\Preflow\I18n\Machine\AiTranslator::class, $app->container()->get(MachineTranslator::class));
         $this->assertTrue($app->container()->bound(TranslationSettings::class));
-        $this->assertTrue($app->container()->get(MachineTranslation::class)->available());
+        $this->assertTrue($app->container()->get(TranslatorAvailability::class)->available());
     }
 
     #[RunInSeparateProcess]
@@ -126,7 +126,7 @@ final class I18nWithoutAiTest extends TestCase
         $this->assertFalse(AiPackage::installed());
         $translator = $c->get(MachineTranslator::class);
         $this->assertInstanceOf(PrefixTranslator::class, $translator);
-        $this->assertTrue($c->get(MachineTranslation::class)->available(), 'the app\'s own translator counts');
+        $this->assertTrue($c->get(TranslatorAvailability::class)->available(), 'the app\'s own translator counts');
         $this->assertTrue($translator->available());
 
         $source = new ArrayTextSource(['1' => ['title' => 'One'], '2' => ['title' => 'Two']]);

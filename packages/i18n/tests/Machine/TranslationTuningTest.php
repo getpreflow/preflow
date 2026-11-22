@@ -18,6 +18,12 @@ final class TranslationTuningTest extends TestCase
         $this->assertSame(['Formal.'], (new TranslationTuning(['Formal.']))->instructions, 'immutable');
     }
 
+    public function test_the_constructor_trims_and_drops_empty_instructions_like_with(): void
+    {
+        $this->assertTrue((new TranslationTuning(['']))->isEmpty());
+        $this->assertSame(['Formal.', 'Be brief.'], (new TranslationTuning([' Formal. ', '', '  ', 'Be brief.']))->instructions);
+    }
+
     public function test_is_empty_without_instructions(): void
     {
         $this->assertTrue((new TranslationTuning())->isEmpty());

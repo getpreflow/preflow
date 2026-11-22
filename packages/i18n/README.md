@@ -366,10 +366,10 @@ available. `translate:work` stays quiet (as with AI off), while `translate:plan`
 stepped say "Machine translation needs preflow/ai (composer require preflow/ai) or a translator of
 your own (config/ai.php translation.translator)." To ask in your own code:
 `Preflow\I18n\Machine\AiPackage::installed()` (is the package there) and
-`$container->get(Preflow\I18n\Machine\MachineTranslation::class)->available()` (is there a
+`$container->get(Preflow\I18n\Machine\TranslatorAvailability::class)->available()` (is there a
 translator that can work, since 0.83; it replaces the static `MachineServiceProvider::hasTranslator()`).
 The container answers it, so a translator package of its own that binds `MachineTranslator` also
-binds `MachineTranslation` (`ConfiguredMachineTranslation(true)` will do), and Folio offers
+binds `TranslatorAvailability` (`ConfiguredTranslatorAvailability(true)` will do), and Folio offers
 Translate. It is not `MachineTranslator::available()`: that says whether the translator can
 translate now (AI on, key present); this says whether there is one to switch on.
 
@@ -402,6 +402,24 @@ glossary service), name the class of your `MachineTranslator` (since 0.66):
 The container builds it (it gets the `batchChars` argument if it takes one, and may take
 services such as `TranslationSettings`); the job runner, Folio's Translate and everything else
 that translates use it. A class that is not a `MachineTranslator` stops the boot.
+
+A translator package (or an app) that binds its translator in a provider instead binds **both**
+`MachineTranslator` and `TranslatorAvailability` (since 0.83). Binding only the translator leaves
+Folio's AI translation off, because Folio asks `TranslatorAvailability` whether to offer Translate,
+its text sources and the `ai.translate` permission. The provider must register after
+`MachineServiceProvider` (and after Folio, which registers it), so its bindings override the
+defaults:
+
+```php
+final class ApiTranslationProvider extends Preflow\Core\Container\ServiceProvider
+{
+    public function register(Preflow\Core\Container\Container $container): void
+    {
+        $container->singleton(Preflow\I18n\Machine\MachineTranslator::class, static fn ($c) => $c->make(App\Translation\ApiTranslator::class));
+        $container->singleton(Preflow\I18n\Machine\TranslatorAvailability::class, static fn () => new Preflow\I18n\Machine\ConfiguredTranslatorAvailability(true));
+    }
+}
+```
 
 A translator answers its own availability and price, so one that is no AI needs no AI key and
 leaves the rest of AI off:

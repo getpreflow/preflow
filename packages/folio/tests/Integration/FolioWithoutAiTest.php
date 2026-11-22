@@ -9,7 +9,7 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\Access\Access;
 use Preflow\I18n\Machine\AiPackage;
-use Preflow\I18n\Machine\MachineTranslation;
+use Preflow\I18n\Machine\TranslatorAvailability;
 use Preflow\Folio\Tests\Support\HiddenAiPackage;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Preflow\Testing\ChecksFrameBalance;
@@ -87,7 +87,7 @@ final class FolioWithoutAiTest extends TestCase
         $this->assertNotContains($this->post('/folio/_ai/draft', ['type' => 'article', 'id' => 'a1', 'brief' => 'x'])->getStatusCode(), [200, 500], 'no draft endpoint');
         $this->assertNotContains($this->post('/folio/post/p1/_ai/queue', ['locales' => ['de']])->getStatusCode(), [200, 500], 'no translate endpoint');
 
-        $this->assertFalse($this->app()->container()->get(MachineTranslation::class)->available(), 'no translator');
+        $this->assertFalse($this->app()->container()->get(TranslatorAvailability::class)->available(), 'no translator');
         $registry = $this->app()->container()->get(Access::class)->registry();
         foreach (['ai.translate', 'ai.draft', 'ai.settings'] as $permission) {
             $this->assertFalse($registry->isDeclared($permission), "{$permission}: roles do not offer it");
@@ -111,7 +111,7 @@ final class FolioWithoutAiTest extends TestCase
         $this->assertStringContainsString('href="/folio/post/_ai/run"', $pages['list'], 'Translate… on the list');
         $this->assertStringContainsString('formaction="/folio/post/_ai/run"', $pages['list'], 'bulk translate');
         $this->assertSame(200, $this->get('/folio/ai')->getStatusCode());
-        $this->assertTrue($this->app()->container()->get(MachineTranslation::class)->available());
+        $this->assertTrue($this->app()->container()->get(TranslatorAvailability::class)->available());
 
         $registry = $this->app()->container()->get(Access::class)->registry();
         foreach (['ai.translate', 'ai.draft', 'ai.settings'] as $permission) {
@@ -234,7 +234,7 @@ final class PlainTranslatorProvider extends \Preflow\Core\Container\ServiceProvi
     public function register(\Preflow\Core\Container\Container $container): void
     {
         $container->singleton(\Preflow\I18n\Machine\MachineTranslator::class, static fn (): PlainTranslator => new PlainTranslator());
-        $container->singleton(MachineTranslation::class, static fn (): MachineTranslation => new \Preflow\I18n\Machine\ConfiguredMachineTranslation(true));
+        $container->singleton(TranslatorAvailability::class, static fn (): TranslatorAvailability => new \Preflow\I18n\Machine\ConfiguredTranslatorAvailability(true));
     }
 }
 
@@ -243,6 +243,6 @@ final class NoMachineTranslationProvider extends \Preflow\Core\Container\Service
 {
     public function register(\Preflow\Core\Container\Container $container): void
     {
-        $container->singleton(MachineTranslation::class, static fn (): MachineTranslation => new \Preflow\I18n\Machine\ConfiguredMachineTranslation(false));
+        $container->singleton(TranslatorAvailability::class, static fn (): TranslatorAvailability => new \Preflow\I18n\Machine\ConfiguredTranslatorAvailability(false));
     }
 }

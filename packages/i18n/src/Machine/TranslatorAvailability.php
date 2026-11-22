@@ -8,7 +8,7 @@ namespace Preflow\I18n\Machine;
  * Whether the app has machine translation at all: the container's answer, so whoever binds the
  * MachineTranslator (preflow/i18n's MachineServiceProvider, a translator package, the app) also
  * says whether there is one. Folio asks it to offer Translate, its text sources and the
- * `ai.translate` permission. MachineServiceProvider binds ConfiguredMachineTranslation; a package
+ * `ai.translate` permission. MachineServiceProvider binds ConfiguredTranslatorAvailability; a package
  * that binds a translator of its own binds this too.
  *
  * Not the same as MachineTranslator::available(): that says whether the translator can translate
@@ -17,7 +17,7 @@ namespace Preflow\I18n\Machine;
  *
  * @since 0.83.0
  */
-interface MachineTranslation
+interface TranslatorAvailability
 {
     /**
      * True when a translator that can work is bound (false: MissingAiTranslator). Cheap and never

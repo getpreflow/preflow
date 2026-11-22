@@ -10,6 +10,12 @@ namespace Preflow\I18n\Machine;
  * price: Folio's Translate, the worker, `translate:work` and the estimate ask it, not the AI
  * connection, so a translator that is no AI (a translation API) needs no AI key. AiTranslator, the
  * default, answers through preflow/ai.
+ *
+ * A translator package (or an app's provider) binds BOTH this and TranslatorAvailability: binding
+ * only the translator leaves Folio's AI translation off (Folio asks TranslatorAvailability whether
+ * to offer Translate, its text sources and `ai.translate`). Such a provider registers after
+ * MachineServiceProvider (and after Folio, which registers it), so its bindings override the
+ * defaults. Naming the class in config/ai.php `translation.translator` needs neither.
  */
 interface MachineTranslator
 {

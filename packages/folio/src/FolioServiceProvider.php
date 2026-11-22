@@ -1972,12 +1972,12 @@ final class FolioServiceProvider extends ServiceProvider
      * read and no source is built until a run asks for it; a type with nothing translatable (roles,
      * staff accounts) or whose records editors may not change (read-only) is not offered
      * (FolioTextSource::offers()). None when nothing could translate them (the container's
-     * MachineTranslation says there is no translator); without preflow/ai a source has no per-field
+     * TranslatorAvailability says there is no translator); without preflow/ai a source has no per-field
      * AI instructions.
      */
     private function registerTextSources(Container $container): void
     {
-        if (!$container->get(\Preflow\I18n\Machine\MachineTranslation::class)->available() || !($this->locales($container)?->isMultilingual() ?? false)) {
+        if (!$container->get(\Preflow\I18n\Machine\TranslatorAvailability::class)->available() || !($this->locales($container)?->isMultilingual() ?? false)) {
             return;
         }
         $sources = $container->get(\Preflow\I18n\Machine\TextSources::class);
@@ -2105,10 +2105,10 @@ final class FolioServiceProvider extends ServiceProvider
         // Any address as a role (the address preview), on top of rbac's site.view_as, in its group.
         $registry->declare(\Preflow\Folio\Http\ViewAs::ADDRESS_PERMISSION, 'View any address as a role', 'Site');
         // Declared with AI off too, so roles may list them before AI is switched on. Drafts and Settings → AI
-        // need preflow/ai; translation needs a translator (the container's MachineTranslation answers). What is not there
+        // need preflow/ai; translation needs a translator (the container's TranslatorAvailability answers). What is not there
         // is not offered in the roles; a role that still grants it is denied quietly (disabled, not undeclared).
         $offered = [
-            'ai.translate' => $container->get(\Preflow\I18n\Machine\MachineTranslation::class)->available(),
+            'ai.translate' => $container->get(\Preflow\I18n\Machine\TranslatorAvailability::class)->available(),
             'ai.draft' => \Preflow\I18n\Machine\AiPackage::installed(),
             'ai.settings' => \Preflow\I18n\Machine\AiPackage::installed(),
         ];
