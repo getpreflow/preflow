@@ -77,4 +77,13 @@ final class MysqlMaintenanceTest extends TestCase
         $this->assertStringContainsString('utf8mb4_unicode_ci: 1 column(s)', $report);
         $this->assertStringContainsString('not applicable: foreign key references', $report);
     }
+
+    public function test_a_table_the_engine_cannot_check_is_reported_never_passed(): void
+    {
+        $this->driver->execute('CREATE TABLE `scratch` (`id` INT PRIMARY KEY) ENGINE=MEMORY');
+
+        $this->assertSame([], $this->driver->check(), 'not a problem: nothing was found');
+        $notApplicable = array_values(array_filter($this->driver->report(), static fn (string $line): bool => str_starts_with($line, 'not applicable: scratch: ')));
+        $this->assertCount(1, $notApplicable, 'the engine\'s note, so the check is not read as passed');
+    }
 }

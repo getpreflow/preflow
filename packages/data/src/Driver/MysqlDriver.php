@@ -137,21 +137,29 @@ final class MysqlDriver extends PdoDriver implements RankedSearch, RemembersColu
         return $this->searchCollation;
     }
 
+    /** @var list<string> the notes the last check() was answered with (a table its engine cannot check), for report() */
+    private array $checkNotes = [];
+
     /**
      * CHECK TABLE on every base table of the database: one line per error or warning the server
-     * answers with. References between records are not checked (see report()).
+     * answers with. A note (an engine that cannot check, such as MEMORY) is no problem and no pass
+     * either: report() lists it as not applicable. References between records are not checked
+     * (see report()).
      *
      * @since 0.84.0
      */
     public function check(): array
     {
         $problems = [];
+        $this->checkNotes = [];
         foreach ($this->tables() as $table) {
             foreach ($this->pdo->query('CHECK TABLE ' . $this->dialect->quoteIdentifier($table))->fetchAll(\PDO::FETCH_ASSOC) as $row) {
                 $row = array_change_key_case($row);
                 $type = strtolower((string) ($row['msg_type'] ?? ''));
                 $text = (string) ($row['msg_text'] ?? '');
-                if (in_array($type, ['error', 'warning'], true) || ($type === 'status' && !in_array(strtolower($text), ['ok', 'table is already up to date'], true))) {
+                if ($type === 'note') {
+                    $this->checkNotes[] = "not applicable: {$table}: {$text}";
+                } elseif (in_array($type, ['error', 'warning'], true) || ($type === 'status' && !in_array(strtolower($text), ['ok', 'table is already up to date'], true))) {
                     $problems[] = "{$table}: {$text}";
                 }
             }
@@ -182,7 +190,8 @@ final class MysqlDriver extends PdoDriver implements RankedSearch, RemembersColu
 
     /**
      * The text columns of the database by collation (the text rule lives in a column's
-     * collation), and what MySQL has no check for.
+     * collation), what MySQL has no check for, and the tables the last check() could not check
+     * (their engine's note).
      *
      * @since 0.84.0
      */
@@ -199,7 +208,7 @@ final class MysqlDriver extends PdoDriver implements RankedSearch, RemembersColu
         $lines[] = 'text comparison collation of this server: ' . ($this->matchCollation() ?? 'none of the usual ones (columns compare exactly)');
         $lines[] = 'not applicable: foreign key references (MySQL enforces them as records are written and has no command to verify them afterwards)';
 
-        return $lines;
+        return [...$lines, ...$this->checkNotes];
     }
 
     /** @return list<string> */
