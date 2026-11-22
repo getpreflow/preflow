@@ -327,7 +327,7 @@ final class FolioServiceProvider extends ServiceProvider
                 // the seed that gives a new site its first role runs after.
                 static fn (): bool => class_exists(\Preflow\Rbac\RoleStore::class)
                     && $c->bound(\Preflow\Rbac\RoleStore::class)
-                    && self::hasRoles($c->get(\Preflow\Rbac\RoleStore::class)),
+                    && $c->get(\Preflow\Rbac\RoleStore::class)->hasRoles(),
             ));
             $container->get(\Preflow\Data\Migration\MigrationRegistry::class)->afterMigrate(
                 'folio.permissions',
@@ -1984,12 +1984,6 @@ final class FolioServiceProvider extends ServiceProvider
     {
         return \Preflow\I18n\Machine\AiPackage::installed()
             && \Preflow\Folio\Http\AiSettingsController::visible($container->get(\Preflow\Ai\Ai::class));
-    }
-
-    /** Whether the role store holds any role (any population): the site had roles before. */
-    private static function hasRoles(\Preflow\Rbac\RoleStore $store): bool
-    {
-        return $store->rolesFor('staff') !== [] || $store->rolesFor('members') !== [];
     }
 
     /**

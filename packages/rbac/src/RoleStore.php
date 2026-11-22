@@ -108,6 +108,22 @@ final class RoleStore
         return ucfirst(str_replace('_', ' ', $name));
     }
 
+    /**
+     * Whether any role is stored, of any population (a site's own ones too); false before install.
+     *
+     * @since 0.84.0
+     */
+    public function hasRoles(): bool
+    {
+        foreach ($this->all() as $roles) {
+            if ($roles !== []) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** @return array<string, list<string>> role name => permission patterns */
     public function rolesFor(string $population): array
     {
