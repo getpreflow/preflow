@@ -143,6 +143,15 @@ final class FolioWithoutAiTest extends TestCase
         $registry = $c->get(Access::class)->registry();
         $this->assertTrue($registry->isDeclared('ai.translate'));
         $this->assertNull($registry->disabledReason('ai.translate'));
+
+        // It really translates: a job steps the record into German through the configured translator.
+        $runner = $c->get(\Preflow\I18n\Machine\JobRunner::class);
+        $job = $runner->plan('post', ['de'], \Preflow\I18n\Machine\Scope::Needed, ['p1']);
+        $runner->start($job->id);
+        $job = $runner->step($job->id);
+        $this->assertSame('done', $job->state, (string) $job->message);
+        $this->assertSame('done', $job->items['p1']['status']);
+        $this->assertSame('Hallo', $this->stored('post', 'p1')->get('title')['de'] ?? null, 'the German title');
         foreach (['ai.draft', 'ai.settings'] as $permission) {
             $this->assertFalse($registry->isDeclared($permission), $permission);
         }
@@ -224,7 +233,14 @@ final class PlainTranslator implements \Preflow\I18n\Machine\MachineTranslator
 
     public function translateUnits(array $units, ?string $note = null): array
     {
-        return [];
+        return array_map(
+            static fn (\Preflow\I18n\Machine\TranslationUnit $unit): \Preflow\I18n\Machine\TranslationResult => new \Preflow\I18n\Machine\TranslationResult(
+                $unit->id,
+                \Preflow\I18n\Machine\UnitStatus::Translated,
+                $unit->source === 'Hello' ? 'Hallo' : $unit->source,
+            ),
+            $units,
+        );
     }
 }
 
