@@ -104,6 +104,28 @@ final class FolioWithoutAiTest extends TestCase
         $this->assertStringContainsString('folio.nav.', $this->translationsFor('nav'), 'the other texts stay');
     }
 
+    /**
+     * The hidden prefixes are answered per app, not once per process: without the ai package, an app
+     * with a translator of its own lists the translate texts, a second app in the same process
+     * without one does not.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function test_the_hidden_text_prefixes_belong_to_the_app_not_the_process(): void
+    {
+        HiddenAiPackage::hide();
+        $this->seed();
+        $this->write('config/ai.php', "<?php\nreturn ['translation' => ['translator' => \\" . PlainTranslator::class . "::class]];\n");
+
+        $this->assertTrue($this->app()->container()->get(TranslatorAvailability::class)->available());
+        $this->assertStringContainsString('folio.ai_translate.', $this->translationsFor('ai_translate'), 'a translator: its texts are listed');
+
+        $this->write('config/ai.php', "<?php\nreturn [];\n");
+
+        $this->assertFalse($this->app()->container()->get(TranslatorAvailability::class)->available(), 'the second app has no translator');
+        $this->assertStringNotContainsString('folio.ai_translate.', $this->translationsFor('ai_translate'), 'so its texts are not listed');
+    }
+
     public function test_with_the_ai_package_every_ai_action_is_offered(): void
     {
         $this->assertTrue(AiPackage::installed());

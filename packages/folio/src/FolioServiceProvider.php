@@ -452,21 +452,23 @@ final class FolioServiceProvider extends ServiceProvider
         ));
 
         // One EditableTexts for the screen and the AI button's units (LabelUnits): they list the same rows.
-        $container->singleton(\Preflow\Folio\Translations\EditableTexts::class, fn (Container $c) => new \Preflow\Folio\Translations\EditableTexts(
-            self::translator($c, $app),
-            $c->bound(\Preflow\I18n\DerivedKeys::class) ? $c->get(\Preflow\I18n\DerivedKeys::class) : null,
-            $locales ?? \Preflow\Data\Locales::single('en'),
-            // The texts of features this site lacks are not offered: drafts and Settings → AI need
-            // preflow/ai, translation needs a translator (the same checks as the permissions below).
-            static function () use ($c): array {
-                static $prefixes = null; // asked once per key of a screen: answered once per process
+        $container->singleton(\Preflow\Folio\Translations\EditableTexts::class, function (Container $c) use ($app, $locales) {
+            $prefixes = null; // asked once per key of a screen: answered once per EditableTexts, so once per app
 
-                return $prefixes ??= [
-                    ...(\Preflow\I18n\Machine\AiPackage::installed() ? [] : ['folio.ai_draft.', 'folio.ai_settings.']),
-                    ...($c->get(\Preflow\I18n\Machine\TranslatorAvailability::class)->available() ? [] : ['folio.ai_translate.', 'folio.ai_queue.', 'folio.ai_run.']),
-                ];
-            },
-        ));
+            return new \Preflow\Folio\Translations\EditableTexts(
+                self::translator($c, $app),
+                $c->bound(\Preflow\I18n\DerivedKeys::class) ? $c->get(\Preflow\I18n\DerivedKeys::class) : null,
+                $locales ?? \Preflow\Data\Locales::single('en'),
+                // The texts of features this site lacks are not offered: drafts and Settings → AI need
+                // preflow/ai, translation needs a translator (the same checks as the permissions below).
+                static function () use ($c, &$prefixes): array {
+                    return $prefixes ??= [
+                        ...(\Preflow\I18n\Machine\AiPackage::installed() ? [] : ['folio.ai_draft.', 'folio.ai_settings.']),
+                        ...($c->get(\Preflow\I18n\Machine\TranslatorAvailability::class)->available() ? [] : ['folio.ai_translate.', 'folio.ai_queue.', 'folio.ai_run.']),
+                    ];
+                },
+            );
+        });
         $container->bind(\Preflow\Folio\Translations\LabelUnits::class, fn (Container $c) => new \Preflow\Folio\Translations\LabelUnits(
             $c->get(\Preflow\Folio\Translations\EditableTexts::class),
             $c->get(\Preflow\Folio\Translations\StoredOverrides::class),
