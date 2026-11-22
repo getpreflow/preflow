@@ -412,6 +412,14 @@ request that asks for it. The four tests:
   the body holds the frozen time. A page that prints a nonce needs the nonce made deterministic
   for this test.
 
+Deprecations (since 0.82): a runner needs neither `#[IgnoreDeprecations]` nor a
+`Deprecations::reset()` of its own, also under `failOnDeprecation`. The contract marks only its
+own calls of the deprecated setters as expected (`Deprecations::expected()`), so they neither
+report nor use up a notice. Every other deprecated call still reports: in your page, in your
+`poisonApp()`, or in a factory the container runs for the poison. The contract resets
+`Deprecations::once()` after each test, so a call site one test reported is reported again by
+the next test that reaches it.
+
 `Preflow\Testing\ContextFactory::forTest(?Site $site = null)` builds the context these tests start
 from: a visitor's GET of the home page (`http://localhost/` with the locale `en` without a site),
 purpose `Test`, on a `FrozenClock` at `2026-01-01T00:00:00Z`. Derive what a test needs from it

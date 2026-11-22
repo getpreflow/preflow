@@ -81,7 +81,8 @@ final readonly class RenderContext implements \JsonSerializable
             || str_starts_with($component, '/--component/')
             || ($protocols instanceof HypermediaProtocols && $protocols->wantsFragment($r));
 
-        return self::fresh($fragment ? Purpose::Fragment : Purpose::Visit, $site, $clock)->for($r);
+        // Built with its request part at once (what fresh()->for($r) gives, in one construction).
+        return self::fresh($fragment ? Purpose::Fragment : Purpose::Visit, $site, $clock, new RequestContext($path === '' ? '/' : $path, $r->getMethod(), $r, ''));
     }
 
     /** A console command: no request, anonymous, public, published, in the site's default locale. */
@@ -113,10 +114,10 @@ final readonly class RenderContext implements \JsonSerializable
             ->for(new ServerRequest('GET', $path));
     }
 
-    private static function fresh(Purpose $purpose, Site $site, ClockInterface $clock): self
+    private static function fresh(Purpose $purpose, Site $site, ClockInterface $clock, ?RequestContext $request = null): self
     {
         return new self(
-            request: null,
+            request: $request,
             purpose: $purpose,
             viewer: Viewer::anonymous(),
             locale: $site->defaultLocale,
@@ -361,11 +362,15 @@ final readonly class RenderContext implements \JsonSerializable
      */
     public function memoKey(): string
     {
-        return MemoKeys::of($this);
+        // Computed once per context: a context is immutable, so its key never changes, and the
+        // memos of a render ask for it on every read. A WeakMap: an entry goes with its context.
+        static $keys = new \WeakMap();
+
+        return $keys[$this] ??= $this->computeMemoKey();
     }
 
-    /** memoKey() computed (MemoKeys keeps it per context). @internal MemoKeys */
-    public function computeMemoKey(): string
+    /** memoKey() computed afresh. */
+    private function computeMemoKey(): string
     {
         $parts = [$this->locale, $this->reads->key(), $this->viewer->key(), $this->surface->key()];
         $extensions = $this->extensions;

@@ -48,7 +48,10 @@ use Psr\Http\Server\RequestHandlerInterface;
  * Since 0.81.1 core sets the rest (the Kernel applies the frame's queue to the
  * route's response and to the pipeline's answer, and to the error response
  * when the handler throws), so a cookie is set once and none is dropped: a
- * cookie queued before this middleware ran is no longer dropped.
+ * cookie queued before this middleware ran is no longer dropped. Since 0.82.0
+ * it sets them only where the frame's response takes them
+ * (CookieQueue::reachesResponse()); in a render's frame (a preview) it leaves
+ * them to the frame, which settles them by its outbox policy when it closes.
  */
 final class ResolveUserMiddleware implements MiddlewareInterface
 {
@@ -94,10 +97,13 @@ final class ResolveUserMiddleware implements MiddlewareInterface
             }
         }
 
-        // Nobody this time: the frame's viewer is anonymous, whatever it was before.
-        Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(
-            $name === null ? Viewer::anonymous() : AuthManager::viewerOf($users, $name),
-        ));
+        // Nobody this time: the frame's viewer is anonymous, whatever it was before (since 0.82.0
+        // a frame that is anonymous already keeps its context: nothing to derive).
+        Contexts::narrow(static fn (RenderContext $ctx): RenderContext => match (true) {
+            $name !== null => $ctx->as(AuthManager::viewerOf($users, $name)),
+            $ctx->viewer->isAnonymous() => $ctx,
+            default => $ctx->as(Viewer::anonymous()),
+        });
         $request = $request->withAttribute(RenderContext::class, Contexts::current());
         if ($name !== null) {
             $request = $request
@@ -125,7 +131,9 @@ final class ResolveUserMiddleware implements MiddlewareInterface
         foreach ($this->guards as $guard) {
             // A guard not built yet has queued nothing.
             $guard = $guard instanceof LazyGuard ? $guard->built() : $guard;
-            if ($guard instanceof SessionGuard) {
+            // Only where the response takes them (since 0.82.0): a render's frame or one that
+            // does not deliver settles them by its policy when it closes.
+            if ($guard instanceof SessionGuard && $guard->cookiesReachResponse()) {
                 array_push($cookies, ...$guard->pullCookies());
             }
         }

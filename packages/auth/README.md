@@ -224,6 +224,11 @@ $guard->login($user, $request, remember: true);   // also queues the cookie
   the member signed in.
 - `logout()` deletes the row and clears the cookie. Cookies reach error responses through the
   core `CookieQueue`.
+- `ResolveUserMiddleware` sets a guard's queued cookies on the response only where the response
+  takes them (`SessionGuard::cookiesReachResponse()`, since 0.82.0, which asks core's
+  `CookieQueue::reachesResponse()`). In a render's frame or a frame that does not deliver
+  (a preview, an internal render) it leaves them to the frame, which settles them when it
+  closes: captured, dropped or handed to the request around it.
 - On SQL one conditional `UPDATE` decides a rotation, so two uses of one value never both
   rotate; on the JSON driver a file lock in `storage/locks` does. `RememberMe::revokeAll()`
   (e.g. after a password change) and `prune()` are also available.

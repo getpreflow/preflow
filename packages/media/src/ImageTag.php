@@ -6,6 +6,8 @@ namespace Preflow\Media;
 
 use Preflow\Core\Context\Contexts;
 use Preflow\Core\Context\Deprecations;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\RenderFrame;
 use Preflow\Media\Color\ColorRules;
 use Preflow\Media\Image\BoxPlan;
 use Preflow\Media\Image\Formats;
@@ -41,6 +43,15 @@ final class ImageTag
     private ?ColorRules $colorRules = null;
 
     /**
+     * The alt-text language each open frame's context got from the locale provider, for the context
+     * object it was asked for (since 0.82.0): images of one frame ask once, a narrowed or within()
+     * context asks anew. An entry goes with its frame, so no frame reads another's.
+     *
+     * @var \WeakMap<RenderFrame, array{RenderContext, string}>
+     */
+    private readonly \WeakMap $altLocales;
+
+    /**
      * @param array<string, array<string, mixed>> $presets config/image.php "presets"
      * @param string $legacyUrlPrefix where legacy upload paths (Y/m/{id}.{ext}) are served
      */
@@ -52,7 +63,9 @@ final class ImageTag
         private readonly string $legacyUrlPrefix,
         private readonly ?ImageWidths $widths = null,
         private readonly ?Formats $formats = null,
-    ) {}
+    ) {
+        $this->altLocales = new \WeakMap();
+    }
 
     /**
      * The public URL of an asset value (a library id, a legacy upload path, or a list of
@@ -130,7 +143,15 @@ final class ImageTag
             return $this->locale->current();
         }
         if ($this->locale instanceof ContextLocaleProvider) {
-            return $this->locale->localeOf($ctx);
+            $frame = Contexts::frame();
+            $kept = $this->altLocales[$frame] ?? null;
+            if ($kept !== null && $kept[0] === $ctx) {
+                return $kept[1];
+            }
+            $locale = $this->locale->localeOf($ctx);
+            $this->altLocales[$frame] = [$ctx, $locale];
+
+            return $locale;
         }
         Deprecations::once('Preflow\Media\LocaleProvider::current() is deprecated since 0.81 and is removed in 0.83; use ContextLocaleProvider::localeOf().');
 

@@ -21,7 +21,9 @@ use Twig\TokenStream;
  * Live blocks don't nest: each live block carries the name of the live tag open around it
  * (PARENT_ATTRIBUTE), and LiveBlockNesting refuses one whose parent is a live block of the same
  * template once it is parsed. The block name prefix __live_ is theirs (LiveBlockNames). The second live block
- * on a line is named __live_{line}_2, the third __live_{line}_3, and so on. Since 0.81.1 this
+ * on a line is named __live_{line}_2, the third __live_{line}_3, and so on; names are unique
+ * across a file and its {% embed %}s, whose live blocks the file answers for (LiveEmbeddedBlocks,
+ * since 0.82.0), so a stored page fills them too. Since 0.81.1 this
  * uses no Parser method deprecated in Twig 3.12 (getBlockStack(), hasBlock()).
  */
 final class LiveTokenParser extends AbstractTokenParser

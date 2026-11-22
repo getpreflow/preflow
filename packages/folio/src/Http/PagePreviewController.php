@@ -8,6 +8,7 @@ use Nyholm\Psr7\Stream;
 use Preflow\Core\Application;
 use Preflow\Core\Context\Contexts;
 use Preflow\Core\Context\RenderResult;
+use Preflow\Core\Http\ContentSecurityPolicy;
 use Preflow\Core\Http\Hypermedia\HypermediaProtocols;
 use Preflow\Data\DataManager;
 use Preflow\Data\TypeRegistry;
@@ -188,14 +189,10 @@ final class PagePreviewController
         }
         $origin = strtolower(rtrim($origin, '/'));
         $scheme = $origin === '' ? '' : (string) parse_url($origin, PHP_URL_SCHEME) . ':';
-        foreach ($response->getHeader('Content-Security-Policy') as $policy) {
-            foreach (explode(';', $policy) as $directive) {
-                $parts = preg_split('/\s+/', trim($directive)) ?: [];
-                if (strtolower($parts[0] ?? '') !== 'frame-ancestors') {
-                    continue;
-                }
+        foreach (ContentSecurityPolicy::parse(...$response->getHeader('Content-Security-Policy'))->policies() as $policy) {
+            if (isset($policy['frame-ancestors'])) {
                 $allowed = false;
-                foreach (array_slice($parts, 1) as $source) {
+                foreach ($policy['frame-ancestors'] as $source) {
                     $source = strtolower(rtrim($source, '/'));
                     if (in_array($source, ["'self'", '*'], true) || ($origin !== '' && ($source === $origin || $source === $scheme))) {
                         $allowed = true;

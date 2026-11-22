@@ -33,7 +33,19 @@ final class RenderFrame
      */
     public readonly WritePolicy $openedWrites;
 
-    private FrameOutbox $outbox;
+    /**
+     * Whether a render entry opened the frame (Contexts::runRender(): Application::render(), or
+     * another runtime's): its response is its opener's result, not an answer to a request, so it
+     * never sets what the frame queued for a response (Set-Cookie values, CookieQueue); the
+     * opener settles that by the frame's outbox policy.
+     *
+     * @internal Contexts::runRender() sets it; core's cookie rule (CookieQueue::reachesResponse()) reads it
+     * @since 0.82.0
+     */
+    public readonly bool $openedByRender;
+
+    /** Made on first use (outbox()): a frame that queues nothing never builds one (since 0.82.0). */
+    private ?FrameOutbox $outbox = null;
 
     private readonly ?RenderFrame $parent;
 
@@ -50,28 +62,21 @@ final class RenderFrame
     private int $departures = 0;
 
     /**
-     * @internal Contexts::run() and part() open frames; $parent's channels are known to this one
+     * @internal Contexts::run(), runRender() and part() open frames; $parent's channels are known to this one
      * @param bool $part since 0.81.0: the frame's output is part of $parent's (Contexts::part())
+     * @param bool $openedByRender since 0.82.0: a render entry opened it (Contexts::runRender())
      */
-    public function __construct(RenderContext $context, ?RenderFrame $parent = null, bool $part = false)
+    public function __construct(RenderContext $context, ?RenderFrame $parent = null, bool $part = false, bool $openedByRender = false)
     {
         if ($part && $parent === null) {
             throw new \LogicException('A render frame that is part of its caller\'s output needs the caller\'s frame.');
         }
         $this->part = $part;
+        $this->openedByRender = $openedByRender;
         $this->context = $context;
         $this->openedOutbox = $context->outbox;
         $this->openedWrites = $context->writes;
         $this->parent = $parent;
-        $outermost = $parent === null;
-        $this->outbox = new FrameOutbox(
-            $parent?->outbox->channels() ?? [],
-            fn (): bool => $outermost
-                && Contexts::depth() === 1
-                && Contexts::frame() === $this
-                && $this->context->outbox === OutboxPolicy::Deliver,
-            $this->outboxPolicy(...),
-        );
     }
 
     /**
@@ -87,7 +92,36 @@ final class RenderFrame
         return $this->part ? $this->parent : null;
     }
 
+    /**
+     * The frame's outbox, made on its first use (since 0.82.0) with the channels the frame around
+     * it knows at that moment.
+     */
     public function outbox(): FrameOutbox
+    {
+        if ($this->outbox !== null) {
+            return $this->outbox;
+        }
+        $outermost = $this->parent === null;
+
+        return $this->outbox = new FrameOutbox(
+            // A frame around it that made no outbox has no channels (and makes none for this).
+            $this->parent?->madeOutbox()?->channels() ?? [],
+            fn (): bool => $outermost
+                && Contexts::depth() === 1
+                && Contexts::frame() === $this
+                && $this->context->outbox === OutboxPolicy::Deliver,
+            $this->outboxPolicy(...),
+        );
+    }
+
+    /**
+     * The outbox if something used it already; null for a frame that never queued, scheduled or
+     * registered anything (closing it has nothing to send, move or drop).
+     *
+     * @internal Contexts
+     * @since 0.82.0
+     */
+    public function madeOutbox(): ?FrameOutbox
     {
         return $this->outbox;
     }
@@ -132,6 +166,22 @@ final class RenderFrame
         }
 
         return $this->slots[$key] = $made;
+    }
+
+    /**
+     * Lets the slots that settle on close (SettlesOnClose) settle what they hold, by this frame's
+     * outbox policy. A frame without such slots does nothing.
+     *
+     * @internal Contexts, when the frame closes
+     * @since 0.82.0
+     */
+    public function settleSlots(?RenderFrame $parent): void
+    {
+        foreach ($this->slots as $slot) {
+            if ($slot instanceof SettlesOnClose) {
+                $slot->settle($this, $parent);
+            }
+        }
     }
 
     public function recordSkippedWrite(SkippedWrite $w): void

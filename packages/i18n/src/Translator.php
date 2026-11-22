@@ -42,12 +42,10 @@ final class Translator
 
     /**
      * The text caches, one per text locale and overrides switch (all a render context changes in
-     * how a key resolves): "{locale}" or "{locale}\x01" (overrides on) => its texts, for keys no
-     * override can answer. Contexts with the same two share one; forgetMemos() drops them all.
-     *
-     * @var array<string, CatalogueMemo>
+     * how a key resolves), and which one each context found (since 0.82.0, CatalogueMemos).
+     * forgetMemos() replaces the holder, so both are always dropped together.
      */
-    private array $memos = [];
+    private CatalogueMemos $memos;
 
     /** @var list<string> key prefixes of groups without a scope that take overrides too (overridable()) */
     private array $overridablePrefixes = [];
@@ -68,6 +66,7 @@ final class Translator
     ) {
         $this->locale = $locale;
         $this->overrides = new NoTranslationOverrides();
+        $this->memos = new CatalogueMemos();
     }
 
     /**
@@ -443,19 +442,32 @@ final class Translator
         if ($ctx === null) {
             return [$this->locale, $this->overridesOn, null];
         }
-        // Only the text locale and the overrides switch change how a key resolves (the fallback
-        // chain and the layers are the translator's own; the surface counts through these two).
-        $locale = $ctx->surface->admin ? (string) $ctx->surface->uiLocale : $ctx->locale;
-        $overrides = $ctx->surface->overrides;
-        $memo = $this->memos[$overrides ? $locale . "\x01" : $locale] ??= new CatalogueMemo($locale, $overrides);
+        $memo = $this->memos->byContext[$ctx] ??= $this->memoOf($ctx);
 
-        return [$locale, $overrides, $memo];
+        return [$memo->locale, $memo->overrides, $memo];
+    }
+
+    /**
+     * The text cache of $ctx, which names its text locale and overrides switch: on the admin
+     * surface its interface locale and the overrides it asks for, else the context's locale.
+     * Only these two change how a key resolves (the fallback chain and the layers are the
+     * translator's own; the surface counts through these two), so contexts that agree on them
+     * share one cache. memoOf() must depend only on the context's locale and surface: since
+     * 0.82.0 its answer is kept per context object (CatalogueMemos::$byContext).
+     */
+    private function memoOf(RenderContext $ctx): CatalogueMemo
+    {
+        $surface = $ctx->surface;
+        $locale = $surface->admin ? (string) $surface->uiLocale : $ctx->locale;
+        $overrides = $surface->overrides;
+
+        return $this->memos->byKey[$overrides ? $locale . "\x01" : $locale] ??= new CatalogueMemo($locale, $overrides);
     }
 
     /** Drops every context's text cache: what resolves a key changed (files, scopes, overrides, the default). */
     private function forgetMemos(): void
     {
-        $this->memos = [];
+        $this->memos = new CatalogueMemos();
     }
 
     /**
@@ -471,10 +483,9 @@ final class Translator
             $current = $this->locale;
             $overrides = $this->overridesOn;
         } else {
-            $surface = $ctx->surface;
-            $current = $surface->admin ? (string) $surface->uiLocale : $ctx->locale;
-            $overrides = $surface->overrides;
-            $memo = $this->memos[$overrides ? $current . "\x01" : $current] ??= new CatalogueMemo($current, $overrides);
+            $memo = $this->memos->byContext[$ctx] ??= $this->memoOf($ctx);
+            $current = $memo->locale;
+            $overrides = $memo->overrides;
         }
         $locale ??= $current;
         $memoKey = $locale . "\0" . $key;

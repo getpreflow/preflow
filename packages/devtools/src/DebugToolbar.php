@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\DevTools;
 
 use Preflow\Core\Debug\DebugCollector;
+use Preflow\Core\Http\RequestLimits;
 
 final class DebugToolbar
 {
@@ -12,18 +13,24 @@ final class DebugToolbar
     private const float SLOW_COMPONENT_MS = 50.0;
 
     /**
-     * @param string|null $nonce the request's CSP nonce (put on the toolbar's own tags)
-     * @param string      $page  the rendered page, inspected for markup the CSP will block
+     * @param string|null        $nonce      the CSP nonce of the page's policy for scripts (put on the
+     *                                       toolbar's own tags; on its style too without $styleNonce)
+     * @param string             $page       the rendered page, inspected for markup the CSP will block
+     * @param RequestLimits|null $limits     since 0.82.0: what the request asked of PHP's process-wide
+     *                                       limits (its frame's RequestLimits); shown when it asked anything
+     * @param string|null        $styleNonce since 0.82.0: the policy's nonce for styles, when it differs
+     *                                       (null: $nonce)
      */
-    public function render(DebugCollector $collector, ?string $nonce = null, string $page = ''): string
+    public function render(DebugCollector $collector, ?string $nonce = null, string $page = '', ?RequestLimits $limits = null, ?string $styleNonce = null): string
     {
-        $nonceAttr = $nonce !== null && $nonce !== '' ? ' nonce="' . htmlspecialchars($nonce, ENT_QUOTES, 'UTF-8') . '"' : '';
-        $styles = str_replace('<style>', '<style' . $nonceAttr . '>', $this->renderStyles());
+        $styleNonce ??= $nonce;
+        $nonceAttr = self::nonceAttr($nonce);
+        $styles = str_replace('<style>', '<style' . self::nonceAttr($styleNonce) . '>', $this->renderStyles());
         // The collector's asset numbers are set after the response left the middleware this runs in:
         // the page itself says what it carries.
         $assets = $page !== '' ? self::pageAssets($page) : $collector->getAssets();
         $bar = $this->renderBar($collector, $assets);
-        $panel = $this->renderPanel($collector, $assets, CspInspector::issues($page, $nonce));
+        $panel = $this->renderPanel($collector, $assets, CspInspector::issues($page, $nonce, $styleNonce), $limits);
         $script = str_replace('<script>', '<script' . $nonceAttr . '>', $this->renderScript());
 
         return <<<HTML
@@ -34,6 +41,11 @@ final class DebugToolbar
         {$script}
         </div>
         HTML;
+    }
+
+    private static function nonceAttr(?string $nonce): string
+    {
+        return $nonce !== null && $nonce !== '' ? ' nonce="' . htmlspecialchars($nonce, ENT_QUOTES, 'UTF-8') . '"' : '';
     }
 
     private function renderStyles(): string
@@ -238,7 +250,7 @@ final class DebugToolbar
      * @param array{css_count: int, js_count: int, css_bytes: int, js_bytes: int} $assetCounts
      * @param list<string> $cspIssues
      */
-    private function renderPanel(DebugCollector $collector, array $assetCounts, array $cspIssues = []): string
+    private function renderPanel(DebugCollector $collector, array $assetCounts, array $cspIssues = [], ?RequestLimits $limits = null): string
     {
         $components = $this->renderComponentsSection($collector);
         $queries = $this->renderQueriesSection($collector);
@@ -246,6 +258,7 @@ final class DebugToolbar
         $route = $this->renderRouteSection($collector);
         $csp = $this->renderCspSection($cspIssues);
         $deprecations = $this->renderDeprecationsSection($collector);
+        $requestLimits = $limits !== null ? $this->renderLimitsSection($limits) : '';
 
         return <<<HTML
         <div class="pdt-panel">
@@ -253,8 +266,41 @@ final class DebugToolbar
         {$queries}
         {$assets}
         {$route}
-        {$csp}
+        {$requestLimits}{$csp}
         </div>
+        HTML;
+    }
+
+    /**
+     * Each time limit the render asked for and what came of it, and whether it goes on after the
+     * browser closed the tab (LongRequest records both); nothing when it asked for neither.
+     */
+    private function renderLimitsSection(RequestLimits $limits): string
+    {
+        $rows = '';
+        foreach ($limits->timeLimits as ['seconds' => $seconds, 'before' => $before, 'raised' => $raised]) {
+            $outcome = match (true) {
+                $raised => "raised from {$before} s",
+                $before === 0 => 'kept, there is none',
+                $before >= $seconds => "kept, {$before} s is longer",
+                default => "not raised from {$before} s (set_time_limit is disabled)",
+            };
+            $class = $raised || $before === 0 || $before >= $seconds ? 'pdt-row' : 'pdt-row pdt-slow';
+            $rows .= "<div class=\"{$class}\">Time limit {$seconds} s: {$outcome}</div>";
+        }
+        if ($limits->ignoresUserAbort) {
+            $rows .= '<div class="pdt-row">Goes on when the browser closes the tab (ignore_user_abort)</div>';
+        }
+        if ($rows === '') {
+            return '';
+        }
+
+        return <<<HTML
+        <div class="pdt-section">
+        <div class="pdt-section-title">Request limits</div>
+        {$rows}
+        </div>
+
         HTML;
     }
 

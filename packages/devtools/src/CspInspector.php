@@ -11,9 +11,14 @@ namespace Preflow\DevTools;
  */
 final class CspInspector
 {
-    /** @return list<string> one human-readable issue per offending tag */
-    public static function issues(string $html, ?string $nonce): array
+    /**
+     * @param string|null $nonce      the nonce scripts must carry (null: any nonce)
+     * @param string|null $styleNonce since 0.82.0: the nonce styles must carry, when it differs (null: $nonce)
+     * @return list<string> one human-readable issue per offending tag
+     */
+    public static function issues(string $html, ?string $nonce, ?string $styleNonce = null): array
     {
+        $styleNonce ??= $nonce;
         $issues = [];
         // A script's or style's text is not markup: '<p style=…>' in a JS string is no attribute.
         $html = self::withoutRawText($html);
@@ -24,8 +29,9 @@ final class CspInspector
             if ($tag === 'script' && preg_match('/\bsrc\s*=|type\s*=\s*["\']application\/(ld\+)?json/i', $attrs) === 1) {
                 continue;
             }
+            $expected = $tag === 'style' ? $styleNonce : $nonce;
             $hasNonce = preg_match('/\bnonce\s*=\s*["\']([^"\']*)["\']/i', $attrs, $m) === 1
-                && ($nonce === null || $m[1] === $nonce);
+                && ($expected === null || $m[1] === $expected);
             if (!$hasNonce) {
                 $issues[] = "{$tag} without nonce";
             }

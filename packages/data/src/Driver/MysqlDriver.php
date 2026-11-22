@@ -72,6 +72,7 @@ final class MysqlDriver extends PdoDriver implements RankedSearch, RemembersColu
     /** @since 0.78 */
     public function forgetColumns(?string $table = null): void
     {
+        parent::forgetColumns($table);
         $this->compiler->forgetFacts($table);
     }
 

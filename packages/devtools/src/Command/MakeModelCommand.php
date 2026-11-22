@@ -571,6 +571,13 @@ final class MakeModelCommand implements CommandInterface
             $value = str_starts_with($value::class, 'Preflow\\Data\\') && !$value instanceof \Preflow\Data\FieldTransformer
                 ? ['@class' => $value::class] + get_object_vars($value)
                 : $value::class;
+            if (is_array($value) && $value['@class'] === \Preflow\Data\TypeDefinition::class && array_key_exists('idKind', $value)) {
+                // A class states its id kind (data 0.82); the JSON type states none. Counting that as
+                // a string id relies on classSource() refusing a JSON type that declares its id field:
+                // without a declared id field the type's own answer (DataManager::idKind(), before
+                // any table) is a string, the kind the generated ?string property states.
+                $value['idKind'] = $value['idKind']?->value ?? 'string';
+            }
         }
         if (!is_array($value)) {
             return $value;

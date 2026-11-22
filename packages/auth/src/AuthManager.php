@@ -8,6 +8,7 @@ use Preflow\Auth\Support\ResolvedUsers;
 use Preflow\Core\Context\Contexts;
 use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\RenderFrame;
 use Preflow\Core\Context\RoleView;
 use Preflow\Core\Context\SyntheticIdentity;
 use Preflow\Core\Context\Viewer;
@@ -38,6 +39,17 @@ final class AuthManager
     /** Request attribute naming the guard that signed in the request's Authenticatable. */
     public const string GUARD_ATTRIBUTE = 'preflow.auth.guard';
 
+    /** Makes the frame slot of resolved users (one closure for every call). */
+    private ?\Closure $newResolvedUsers = null;
+
+    /**
+     * What each open frame's viewer resolved to (resolved()), for the viewer object it was
+     * resolved for. An entry goes with its frame, so nothing of one frame reaches another.
+     *
+     * @var \WeakMap<RenderFrame, array{Viewer, array{?Authenticatable, ?string, array<string, Authenticatable>}}>
+     */
+    private readonly \WeakMap $resolvedInFrame;
+
     /**
      * @param array<string, GuardInterface|LazyGuard> $guards a LazyGuard is built on first use (since 0.66)
      * @param array<string, string> $loginPaths each guard's `login` path from config/auth.php, by guard name
@@ -49,6 +61,7 @@ final class AuthManager
         private readonly array $loginPaths = [],
         private readonly array $providers = [],
     ) {
+        $this->resolvedInFrame = new \WeakMap();
         foreach (array_keys($guards) as $name) {
             if (str_starts_with((string) $name, SyntheticIdentity::PREFIX)) {
                 throw new \InvalidArgumentException("A guard name must not start with '" . SyntheticIdentity::PREFIX . "', which names role views (view as role); got '{$name}'.");
@@ -170,29 +183,64 @@ final class AuthManager
      */
     public function users(): array
     {
-        $viewer = self::viewer();
-        $primary = $viewer === null ? null : self::primaryGuard($viewer);
-        if ($viewer === null || $primary === null) {
-            return [];
-        }
-        $users = [];
-        foreach ([$primary => $viewer->identities[$primary]] + $viewer->identities as $guard => $identity) {
-            $user = $this->userOf((string) $guard, $identity);
-            if ($user !== null) {
-                $users[self::nameOf($viewer, (string) $guard)] = $user;
-            }
-        }
-
-        return $users;
+        return $this->resolved()[2] ?? [];
     }
 
     /** The guard of user(); null when user() is null. A role view's is roleViewGuard(), never its population. */
     public function guardName(): ?string
     {
-        $viewer = self::viewer();
-        $guard = $viewer === null ? null : self::primaryGuard($viewer);
+        return $this->resolved()[1] ?? null;
+    }
 
-        return $guard !== null && $this->userOf($guard, $viewer->identities[$guard]) !== null ? self::nameOf($viewer, $guard) : null;
+    /**
+     * What the current render's viewer stands for: the primary user, its guard name and every
+     * user by guard name (primary first). Resolved once per frame and viewer (since 0.82.0); a
+     * frame narrowed to another viewer, or within() one, resolves that one. Null for nobody
+     * (anonymous, or outside every render).
+     *
+     * @return array{?Authenticatable, ?string, array<string, Authenticatable>}|null
+     */
+    private function resolved(): ?array
+    {
+        $viewer = self::viewer();
+        if ($viewer === null || $viewer->identities === []) {
+            return null;
+        }
+        $frame = Contexts::frame();
+        $kept = $this->resolvedInFrame[$frame] ?? null;
+        if ($kept !== null && $kept[0] === $viewer) {
+            return $kept[1];
+        }
+        $resolved = $this->resolve($viewer);
+        $this->resolvedInFrame[$frame] = [$viewer, $resolved];
+
+        return $resolved;
+    }
+
+    /**
+     * $viewer's users (see resolved()), each identity looked up as userOf() gives it.
+     *
+     * @return array{?Authenticatable, ?string, array<string, Authenticatable>}
+     */
+    private function resolve(Viewer $viewer): array
+    {
+        $primary = self::primaryGuard($viewer);
+        if ($primary === null) {
+            return [null, null, []];
+        }
+        $user = $this->userOf($primary, $viewer->identities[$primary]);
+        $users = $user === null ? [] : [self::nameOf($viewer, $primary) => $user];
+        foreach ($viewer->identities as $guard => $identity) {
+            if ((string) $guard === $primary) {
+                continue;
+            }
+            $found = $this->userOf((string) $guard, $identity);
+            if ($found !== null) {
+                $users[self::nameOf($viewer, (string) $guard)] = $found;
+            }
+        }
+
+        return [$user, $user === null ? null : self::nameOf($viewer, $primary), $users];
     }
 
     /** The guard name $guard of $viewer is given as: a role view's reserved one (roleViewGuard()), else $guard. */
@@ -245,10 +293,7 @@ final class AuthManager
     /** The primary user signed in for the current render; null when nobody is, and outside every render. */
     public function user(): ?Authenticatable
     {
-        $viewer = self::viewer();
-        $guard = $viewer === null ? null : self::primaryGuard($viewer);
-
-        return $guard === null ? null : $this->userOf($guard, $viewer->identities[$guard]);
+        return $this->resolved()[0] ?? null;
     }
 
     /**
@@ -290,7 +335,7 @@ final class AuthManager
     private function userOf(string $guard, Identity $identity): ?Authenticatable
     {
         if ($identity instanceof SyntheticIdentity) {
-            return Contexts::frame()->slot(ResolvedUsers::class, static fn (): ResolvedUsers => new ResolvedUsers())
+            return Contexts::frame()->slot(ResolvedUsers::class, $this->newResolvedUsers ??= static fn (): ResolvedUsers => new ResolvedUsers())
                 ->remember('synthetic', $identity->getAuthId(), static fn (): SyntheticUser => new SyntheticUser($identity->view));
         }
         if ($identity instanceof Authenticatable) {
@@ -301,7 +346,7 @@ final class AuthManager
             return null;
         }
         $id = $identity->getAuthId();
-        $user = Contexts::frame()->slot(ResolvedUsers::class, static fn (): ResolvedUsers => new ResolvedUsers())
+        $user = Contexts::frame()->slot(ResolvedUsers::class, $this->newResolvedUsers ??= static fn (): ResolvedUsers => new ResolvedUsers())
             ->remember($guard, $id, static fn (): ?Authenticatable => $provider->findById($id));
 
         return $user === null || self::isReserved($user) ? null : $user;

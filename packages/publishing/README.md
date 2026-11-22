@@ -4,6 +4,9 @@ Drafts and published copies of records. A type that publishes has a **working co
 change, the type's own table) and a **published snapshot** (what the public site reads,
 `{table}__published`, same ids). Every publish keeps a revision (`{table}__revisions`), a record can
 be scheduled to go live at a time, and a signed link shows a draft to someone without an account.
+Since 0.82.0 the version reads keep the type's id kind (preflow/data's `DataManager::idKind()`,
+`ShadowTypes::versionColumn()`); the snapshot type states none, because its table is made by the
+table sync with a text key and each snapshot takes its working record's id.
 Folio adds the screens (Publish, Discard, Revisions, Preview links) and its own rules; publishing
 itself needs no Folio.
 

@@ -10,9 +10,22 @@ use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Preflow\Core\Context\Contexts;
 use Preflow\Core\Debug\DebugCollector;
+use Preflow\Core\Http\RequestLimits;
+use Preflow\Core\Http\ContentSecurityPolicy;
 use Preflow\DevTools\DebugToolbar;
 
-/** Adds the debug toolbar to HTML pages; a render that leaves no trace (Purpose::leavesNoTrace(): audit, GEO, rebuild, preview) gets none. */
+/**
+ * Adds the debug toolbar to HTML pages; a render that leaves no trace (Purpose::leavesNoTrace():
+ * audit, GEO, rebuild, preview) gets none.
+ *
+ * Since 0.82.0 the toolbar's script and style carry the nonces of the policy the page is sent
+ * with: the response's own Content-Security-Policy (else its Report-Only trial,
+ * ContentSecurityPolicy::ofResponse()), which a page rendered in a frame of its own brings along
+ * (a whole-page preview, answered from the admin's request). Where that policy names no nonce for
+ * the tag, or there is none yet, the request's nonce (SecurityHeadersMiddleware adds that policy
+ * afterwards). The toolbar also shows what the request's frame asked of PHP's limits
+ * (RequestLimits); only that frame's, not those of renders it ran in frames of their own.
+ */
 final class DebugToolbarMiddleware implements MiddlewareInterface
 {
     public function __construct(
@@ -38,8 +51,13 @@ final class DebugToolbarMiddleware implements MiddlewareInterface
             return $response;
         }
 
-        $toolbar = new DebugToolbar();
-        $toolbarHtml = $toolbar->render($this->collector, $this->nonce !== null ? ($this->nonce)() : null, $body);
+        $policy = ContentSecurityPolicy::ofResponse($response);
+        $requestNonce = fn (): ?string => $this->nonce !== null ? ($this->nonce)() : null;
+        $nonce = $policy?->nonceFor('script') ?? $requestNonce();
+        $styleNonce = $policy?->nonceFor('style') ?? $requestNonce();
+        // Read from the request's frame (made empty there when nothing asked: debug mode only).
+        $limits = Contexts::depth() > 0 ? Contexts::frame()->slot(RequestLimits::class, static fn (): RequestLimits => new RequestLimits()) : null;
+        $toolbarHtml = (new DebugToolbar())->render($this->collector, $nonce, $body, $limits, $styleNonce);
 
         // Before the last </body> only: inlined scripts (e.g. htmx) can carry the tag in a string.
         $body = substr_replace($body, $toolbarHtml, (int) strrpos($body, '</body>'), 0);

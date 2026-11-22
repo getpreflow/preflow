@@ -80,7 +80,25 @@ final class Contexts
      */
     public static function run(RenderContext $ctx, \Closure $render): mixed
     {
-        return self::open($ctx, $render, false);
+        return self::open($ctx, $render, false, false);
+    }
+
+    /**
+     * Runs $render in a new frame under $ctx, as run() does, for a render entry: a render whose
+     * response is its caller's result (Application::render(), another runtime's render entry),
+     * not an answer to a request. The frame records it (RenderFrame::$openedByRender), so the
+     * Kernel never sets the cookies the frame queued on that response (CookieQueue::reachesResponse()),
+     * also not on its error page: the frame settles what is left when it closes, by its outbox
+     * policy (CookieQueue::settle(): hand it to the frame around it, capture it, or drop it).
+     *
+     * @since 0.82.0
+     * @template R
+     * @param \Closure(): R $render
+     * @return R
+     */
+    public static function runRender(RenderContext $ctx, \Closure $render): mixed
+    {
+        return self::open($ctx, $render, false, true);
     }
 
     /**
@@ -91,7 +109,10 @@ final class Contexts
      * output as a whole (the page cache's recording and refusals, the CSP nonce) can join that
      * frame's from an onEnter() hook. Core's application registers that hook; any other
      * collector registers its own. A render that is never part of the caller's output (a mail)
-     * uses run().
+     * uses run(). Since 0.82.0 what a capturing part captured moves, captured only, to the frame
+     * it is part of when it closes, where that frame does not deliver, so that frame's result
+     * reports it (a request a preview asks for in-process: RenderResult::wouldSend()); a caller
+     * that drains the part's own outbox afterwards uses run() instead.
      *
      * @since 0.81.0
      * @template R
@@ -106,7 +127,7 @@ final class Contexts
             throw self::missing('part');
         }
 
-        return self::open($ctx, $render, true);
+        return self::open($ctx, $render, true, false);
     }
 
     /**
@@ -114,7 +135,7 @@ final class Contexts
      * @param \Closure(): R $render
      * @return R
      */
-    private static function open(RenderContext $ctx, \Closure $render, bool $part): mixed
+    private static function open(RenderContext $ctx, \Closure $render, bool $part, bool $byRender): mixed
     {
         $depth = count(self::$frames);
         $debug = self::$debug;
@@ -126,7 +147,7 @@ final class Contexts
                 WritePolicy::Allow => $ctx,
             };
         }
-        $frame = new RenderFrame($ctx, $parent, $part);
+        $frame = new RenderFrame($ctx, $parent, $part, $byRender);
         self::$frames[] = $frame;
         self::$top = $frame;
 
@@ -145,15 +166,15 @@ final class Contexts
                 self::close($frame, $parent);
             } else {
                 // The stack was torn under the render (reported below): nothing it queued is sent.
-                $frame->outbox()->discard();
+                $frame->madeOutbox()?->discard();
             }
         } catch (\Throwable $e) {
             // A render that throws leaves nothing behind: no mail, cookie or after-response work.
             $failure = $e;
-            $frame->outbox()->discard();
+            $frame->madeOutbox()?->discard();
         }
 
-        foreach (array_reverse($leave) as $closure) {
+        foreach ($leave === [] ? [] : array_reverse($leave) as $closure) {
             try {
                 $closure();
             } catch (\Throwable $e) {
@@ -164,7 +185,7 @@ final class Contexts
                 }
             }
         }
-        if ($parent !== null) {
+        if ($parent !== null && $frame->skippedWrites() !== []) {
             foreach ($frame->skippedWrites() as $write) {
                 $parent->recordSkippedWrite($write);
             }
@@ -203,7 +224,9 @@ final class Contexts
 
     /**
      * Replaces the current frame's context with what $with returns, for the rest of that frame
-     * (not for an outer frame, and only until the end of an enclosing within()).
+     * (not for an outer frame, and only until the end of an enclosing within()). A $with that
+     * gives the frame's own context back changes nothing (since 0.82.0 it is not admitted again;
+     * one that is not the public default still counts as a departure, as before).
      *
      * @param \Closure(RenderContext): RenderContext $with
      *
@@ -218,8 +241,11 @@ final class Contexts
         if (!$narrowed instanceof RenderContext) {
             throw new \TypeError('Contexts::narrow() needs a closure that returns a RenderContext, got ' . get_debug_type($narrowed) . '.');
         }
-        self::admit($frame, $narrowed, 'narrow');
-        $frame->context = $narrowed;
+        // The frame's own context back changes nothing, so there is nothing to admit.
+        if ($narrowed !== $frame->context) {
+            self::admit($frame, $narrowed, 'narrow');
+            $frame->context = $narrowed;
+        }
         if (!$narrowed->isPublicDefault()) {
             $frame->noteDeparture();
         }
@@ -414,14 +440,33 @@ final class Contexts
     /** Applies the context's outbox policy to a frame whose render returned. */
     private static function close(RenderFrame $frame, ?RenderFrame $parent): void
     {
-        $outbox = $frame->outbox();
+        // Slots settle first (since 0.82.0: the cookies a frame left), so what they capture or hand on follows the policy below.
+        $frame->settleSlots($parent);
+        // A frame whose outbox was never made queued nothing: nothing to send, move or drop.
+        $outbox = $frame->madeOutbox();
+        if ($outbox === null) {
+            return;
+        }
         match ($frame->context->outbox) {
             OutboxPolicy::Discard => $outbox->discard(),
-            OutboxPolicy::Capture => $outbox->keepForCapture(),
+            // A capturing frame that is part of another's output (a request a preview asks for
+            // in-process) captures there, so that frame's result reports it (since 0.82.0); into a
+            // frame that delivers they would be dead weight (never sent, never reported), so the
+            // part keeps them.
+            OutboxPolicy::Capture => $parent !== null && $frame->partOf() === $parent && $parent->outboxPolicy() !== OutboxPolicy::Deliver
+                ? self::captureIn($outbox, $parent)
+                : $outbox->keepForCapture(),
             OutboxPolicy::Deliver => $parent !== null
                 ? $outbox->moveTo($parent->outbox())
                 : self::deliverOutermost($outbox),
         };
+    }
+
+    /** Moves a capturing part's items, captured only, to the frame it is part of; its after-response work is dropped. */
+    private static function captureIn(FrameOutbox $outbox, RenderFrame $parent): void
+    {
+        $outbox->keepForCapture();
+        $outbox->moveTo($parent->outbox());
     }
 
     private static function deliverOutermost(FrameOutbox $outbox): void
@@ -475,7 +520,7 @@ final class Contexts
         if ($method === 'within' && $will && !$was) {
             throw new \LogicException('Contexts::within() cannot start a role view (view as role): what the stretch queued would be sent with the frame. Render as a role with Contexts::run() (Application::render()).');
         }
-        if ($will && !$was && $frame->outbox()->pending() !== [0, 0]) {
+        if ($will && !$was && ($frame->madeOutbox()?->pending() ?? [0, 0]) !== [0, 0]) {
             // What the frame queued before is real (the admin's own mail): a role view would only capture it.
             throw new \LogicException("Contexts::{$method}() cannot turn a frame that already queued mail or after-response work into a role view (view as role): it would be captured and never sent. Render as a role with Contexts::run() (Application::render()).");
         }

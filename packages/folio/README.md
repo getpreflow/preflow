@@ -1288,8 +1288,8 @@ the call; the render is core's `Application::preview()`, which an app without Fo
 - A page that redirects (its login, a moved address) shows where it would go instead of leaving
   the preview. A page whose own policy forbids frames is explained in the frame, with a link that
   opens it in a tab of its own.
-- In debug mode the devtools toolbar adds the admin's CSP nonce to the previewed page, so the
-  browser reports one (report-only) CSP violation there. Debug only; production is unaffected.
+- In debug mode the devtools toolbar on a previewed page carries the nonces of the page's own
+  policy (since 0.82.0; before, the admin's nonce, which the browser reported as a CSP violation).
 
 Keys: **⌘S** / **Ctrl+S** saves the draft (also while typing; the browser's save dialog does not
 open), **⌘↵** / **Ctrl+Enter** publishes (where Publish is there), **Esc** closes the side panel on a

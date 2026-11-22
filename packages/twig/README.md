@@ -125,11 +125,20 @@ count) is a live part of a cached page (preflow/core's page cache):
 - While a page renders for the page cache, the tag prints a signed placeholder (template,
   block, values) instead of the body; the block is rendered for each visitor when the page is
   served. Otherwise it renders in place.
-- Live blocks don't nest. Not inside `{% embed %}`. Block names starting with `__live_` are
-  theirs: a template's own `{% block __live_… %}` is a syntax error.
+- Live blocks don't nest. Block names starting with `__live_` are theirs: a template's own
+  `{% block __live_… %}` is a syntax error.
+- Live blocks inside `{% embed %}` are filled too (since 0.82.0). As everywhere, the body sees
+  only its `with` values and the globals: the embed's `with` values and `only` don't reach it.
 - The placeholder names the template by its loader name (`page.twig`, `@folio/...`), or, in a
-  component's own template, by the component class. A template rendered by a path that is no
-  component's renders its live blocks in place and keeps the page from being stored.
+  component's own template, by the component class. That class comes from the file the
+  component renders, not from the template's variables (since 0.82.0): an `only` or a
+  `with {componentClass: …}` changes nothing. A template rendered by a path that is no
+  component's renders its live blocks in place and keeps the page from being stored. That
+  includes a component with its own `getTemplatePath()` (a file other than `ShortName.twig`
+  next to the class): since 0.82.0 it refuses the page instead of filling from the default file.
+- Templates compiled by 0.82 call `LiveExtension::part()`. `LiveExtension::live()`, which
+  templates compiled by 0.81 call, is deprecated (removed in 0.83) and reports once per call
+  site; clear the Twig cache after upgrading so every template is compiled again.
 - Print the tag's output as it is: captured into `{% set %}` and printed escaped, or passed
   through `|striptags` or `|slice`, the placeholder is broken and the part is missing.
 

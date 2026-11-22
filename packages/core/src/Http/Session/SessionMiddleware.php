@@ -46,8 +46,9 @@ final class SessionMiddleware implements MiddlewareInterface
         // request carries is the editor's, never started, aged, read, written or closed by it. A
         // session already on the request (the admin's own request handed to the role view) is
         // taken off it, so nothing downstream (CSRF, a flash) reaches it either.
-        if ($request->getAttribute(self::WITHOUT_SESSION) === true || Contexts::depth() > 0 && (Contexts::current()->purpose->isInternal() || Contexts::current()->viewer->isSynthetic())) {
-            if (Contexts::depth() > 0 && Contexts::current()->viewer->isSynthetic()) {
+        $current = Contexts::peek();
+        if ($request->getAttribute(self::WITHOUT_SESSION) === true || $current !== null && ($current->purpose->isInternal() || $current->viewer->isSynthetic())) {
+            if ($current !== null && $current->viewer->isSynthetic()) {
                 $request = $request->withoutAttribute(SessionInterface::class);
             }
 
@@ -69,7 +70,7 @@ final class SessionMiddleware implements MiddlewareInterface
         if (!$onPath) {
             $request = $request->withAttribute(self::RESUMED_BY_COOKIE, true);
         }
-        if (Contexts::depth() > 0) {
+        if ($current !== null) {
             // The render's request carries its session from here on (ofCurrentRender()).
             Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->for($request));
         }
@@ -92,10 +93,11 @@ final class SessionMiddleware implements MiddlewareInterface
      */
     public static function ofCurrentRender(): ?SessionInterface
     {
-        if (Contexts::depth() > 0 && Contexts::current()->viewer->isSynthetic()) {
+        $ctx = Contexts::peek();
+        if ($ctx === null || $ctx->viewer->isSynthetic()) {
             return null;
         }
-        $session = Contexts::peek()?->request?->request?->getAttribute(SessionInterface::class);
+        $session = $ctx->request?->request?->getAttribute(SessionInterface::class);
 
         return $session instanceof SessionInterface ? $session : null;
     }

@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-21 (v0.81.1)
+> Last updated: 2026-11-22 (v0.82.0, not released)
 
 ## Current State
 
-**v0.81.1** — 9909 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.82.0** (not released) — 10076 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -525,6 +525,89 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Render context follow-ups (v0.82.0, not released):** the follow-ups from 0.81.0 and 0.81.1. It makes each request cheaper, settles cookies by a frame's outbox policy on every path (error pages included), fills live blocks inside `{% embed %}`, drops the testing contract's need for `#[IgnoreDeprecations]`, fixes the toolbar's nonce and limits, and lets a type say whether its ids are strings or numbers. Deprecated shims stay until 0.83.
+  - **core:**
+    - **New:** `Contexts::runRender($ctx, fn () => …)` opens a frame like `run()`, marked as a render entry's frame (`RenderFrame::$openedByRender`, internal): the frame's response is the caller's result. `Application::render()` uses it, and another runtime that builds a `Kernel` gets the cookie rule by opening its render frames with it.
+    - **New:** `CookieQueue::reachesResponse()`, the one rule for whether a response takes the frame's queued cookies: true outside every frame and for a queue made with `new`; inside a frame, when the frame delivers and no render entry opened it. `CookieQueue::isFrameBound()` tells a frame-bound queue (`ofCurrentFrame()`) from one made with `new`.
+    - **New:** optional interface `Context\SettlesOnClose`: a frame slot that settles what it holds when its frame closes, before the outbox policy applies. `CookieQueue` implements it.
+    - **New:** `Http\ContentSecurityPolicy` reads CSP header values: `parse(...$values)` (comma-separated lists, first directive of a name wins, empty policies dropped), `ofResponse()` (enforced, else Report-Only, else null), `policies()`, and `nonceFor('script'|'style')` (`-src-elem`, then `-src`, then `default-src`; the nonce every restricting policy allows, else null).
+    - **New (internal, tests only):** `Deprecations::expected(fn () => …)`: while it runs, `Deprecations::once()` neither reports nor records, so a test can call a shim on purpose without using up the notice.
+    - **Changed:** every frame settles the cookies it left when it closes, by its outbox policy, not only `Application::render()`'s frame: a delivering frame hands them to the frame around it, a capturing one captures them, a discarding one drops them. A frame that queued nothing does no work; a frame whose render threw is not settled.
+    - **Changed:** the Kernel's error path applies queued cookies by the same rule as the success path. A failing visit still sets them on its error page; a failing preview captures them; a failing internal render drops them; a failing delivering render hands them to the request around it; a failing nested in-process request sets them on its own error page.
+    - **Changed:** a capturing `Contexts::part()` frame inside a frame that does not deliver moves all its captured items (mail too, not only cookies) to that frame when it closes, with its after-response work dropped. A preview now reports the cookies and mail its in-process requests would send. Inside a delivering frame the part keeps them.
+    - **Changed:** `RenderContext::computeMemoKey()` is private and the internal `MemoKeys` class is removed. `memoKey()` is unchanged.
+    - **Changed (cost):** one context is built per visit (`RenderContext::fromRequest()`), `narrow()` does not admit a frame's own context again, the middleware after the locale middleware keeps a context that already carries the request, SessionMiddleware reads the context once, and a frame makes its outbox on first use. The resulting context is the same, and the context and frame tests are unchanged.
+    - **Fixed:** a cookie on the route's response is no longer lost when a middleware further out throws: the error page sets it, once.
+    - **Fixed:** a request frame opened capturing (`handle()` under `withDerivedContext()`, a nested request under a preview) captures its queued cookies instead of losing them.
+  - **auth:**
+    - **Changed:** `ResolveUserMiddleware` sets a session guard's queued cookies only where the response takes them (new `SessionGuard::cookiesReachResponse()`, which asks `CookieQueue::reachesResponse()`); elsewhere the frame settles them when it closes.
+    - **Changed (cost):** `AuthManager` resolves the viewer once per frame and viewer: `user()`, `users()` and `guardName()` read that one resolution. Another viewer or a nested frame resolves anew.
+  - **twig:**
+    - **Fixed:** a `{% live %}` inside an `{% embed %}` fills from the page cache (also two embeds of one template, an embed inside `{% extends %}`, an embed inside an embed, and an embed in a component's own template). The recipe still names the file; the file answers for its embeds' live blocks, so a recipe works across compilations. The embed's `with` values and `only` don't reach the live body. Blade has no equivalent construct and is unchanged.
+    - **Changed:** the component class in a live block's recipe comes from the file the component renders, not from template variables: an `only` embed keeps it, and `with {componentClass: …}` cannot change it. A component with its own `getTemplatePath()` (not `ShortName.twig` next to the class) renders its live blocks in place and refuses the page (`live:twig-template`), instead of filling from the default file.
+    - **Deprecated:** `LiveExtension::live()` (five parameters; `$componentClass` is ignored), kept for templates compiled by 0.81. Templates compiled by 0.82 call `LiveExtension::part()` (internal).
+  - **testing:**
+    - **Changed:** `RenderIsolationContract` marks its own deprecated setter calls as expected (`Deprecations::expected()`) and resets `Deprecations::once()` after each test, so a site runner needs no `#[IgnoreDeprecations]` and no reset of its own, also under `failOnDeprecation`. Every other deprecated call still reports.
+  - **devtools:**
+    - **New:** the toolbar has a "Request limits" section read from the request frame's `RequestLimits` slot (each time limit and what came of it, and `ignore_user_abort`).
+    - **Fixed:** the toolbar's `<script>` and `<style>` carry the nonces of the response's own policy (`ContentSecurityPolicy::ofResponse()`), else the request's nonce. A whole-page preview no longer gets the admin's nonce, and the CSP inspector checks the page against its real nonces. `DebugToolbar::render()` gains optional `$limits` and `$styleNonce`, `CspInspector::issues()` an optional `$styleNonce`. This closes both 0.81.0 toolbar follow-ups.
+    - **Changed:** `make:model --from-type` compares the id kind as the type answers it (a JSON type without a declared id field counts as a string id).
+  - **folio:**
+    - **Fixed:** the preview's frame check (`PagePreviewController::refusesFrames()`) reads policies through `ContentSecurityPolicy`. Two edge cases now follow the CSP spec: a comma-joined value is several policies, and only a policy's first `frame-ancestors` counts.
+  - **data:**
+    - **New:** `IdKind` (`String`, `Int`) and `DataManager::idKind(TypeDefinition)`: whether a type's records have string or number ids. The model class's id property decides (`IdKind::ofModel()`, also the new `TypeDefinition::$idKind`); else the storage (new optional `StatesIdKinds`); else a declared id field stored as a number; else a string id. A class whose table key holds the other kind makes `idKind()` throw a `LogicException` that names the type, both kinds and the column.
+    - **New:** `PdoDriver` (SQLite, MySQL) implements `StatesIdKinds` and `RemembersColumns`: it reads the table's key column and asks its grammar to classify it through the new optional `Migration\Grammar\ClassifiesIdColumns` (SQLite by its affinity rules; MySQL treats every numeric type as a number, because it compares text with them as numbers). `forgetColumns()` drops the remembered answers. A driver that wraps another must implement and forward `StatesIdKinds`.
+  - **members:**
+    - **Changed:** `Members::synthetic()` (the view-as-role member) asks `DataManager::idKind()` and refuses Int: a member table with an integer key, a number id from a storage, or a field type an extension stores as a number. It accepts a declared id field of a type that is not stored as a number (`"text"`, or `"integer"` without Folio), which it used to refuse.
+  - **publishing:**
+    - **Changed:** Publisher's version reads keep the type's id kind (new `ShadowTypes::versionColumn()`). The published copy states no id kind: its table is the sync's, with a text key, so an int-class type's snapshots raise no conflict.
+  - **i18n, media, view (cost):**
+    - `Translator` finds each context's text cache without working out its key on every `t()` (an internal `CatalogueMemos` holder, replaced on every layer change).
+    - `ImageTag` asks a `ContextLocaleProvider` once per render frame and context object.
+    - `NonceGenerator` reads the frame's nonce with one `Contexts::slot()`.
+  - **Performance** (budget: a request at most 2 % slower than 0.80.0; set-up as for 0.81.0: PHP-FPM with opcache, one worker, each request boots and renders once, versions interleaved request by request, a run is the median of 10 rounds of 50; private release notes name the pages). The final measurement is the last one made, after all code changes but the last small amend, which moves no call on the request path: 4 runs per page back to back, with the rule written before measuring that no completed run is left out, and none was. Ranges are over the 4 runs.
+
+    | Page | Metric | 0.80.0 ms | 0.81.1 ms | 0.82.0 ms | 0.82.0 vs 0.80.0 | 0.82.0 vs 0.81.1 |
+    |---|---|---|---|---|---|---|
+    | signed-in member page, JSON/SQLite site | per request | 4.889–4.957 | 4.985–5.064 | 4.971–5.095 | +1.40 … +2.78 % | −0.89 … +0.61 % |
+    | | render only | 2.248–2.280 | 2.375–2.407 | 2.375–2.416 | +4.76 … +5.96 % | −0.67 … +0.37 % |
+    | 106 KB page, MySQL site | per request | 10.03–10.29 | 10.07–10.36 | 10.10–10.29 | −0.51 … +1.25 % | −0.66 … +0.82 % |
+    | | render only | 6.530–6.836 | 6.634–6.930 | 6.669–6.896 | +0.69 … +2.13 % | −0.49 … +0.53 % |
+
+    Function calls per request (exact, xdebug, one boot and request):
+
+    | Page | 0.80.0 | 0.81.1 | 0.82.0 | 0.82.0 vs 0.81.1 |
+    |---|---|---|---|---|
+    | member page | 27 036 | 28 019 | 27 976 | −43 (4.4 % of the 983 that 0.81 added) |
+    | MySQL page | 53 009 | 53 983 | 53 837 | −146 (15.0 % of the 974 that 0.81 added) |
+
+    - **Reading:** the call counts are the firm evidence. The timing differences against 0.81.1 are all within the run-to-run spread (the same code measured against itself differs by about ±1 % per request), so they don't show a gain on their own.
+    - **Against the budget:** the MySQL page is within 2 % of 0.80.0 per request in every run. The member page is at the budget, not clearly inside it: 3 of 4 runs are below 2 %, one is at +2.78 %, and the range is as wide as the spread. In the same runs 0.81.1 measured +1.96 … +2.32 % on the member page. Render only, the member page stays about 5 % slower than 0.80.0.
+    - **The earlier measurement** (4 runs after the first round of cost cuts) gave the member page +2.03 … +2.22 % per request against 0.80.0 and −0.30 … −0.70 % against 0.81.1, and the MySQL page +1.15 … +1.88 %. In those runs, runs made while the machine was busier were left out by a rule set after they were made. The table above uses the later runs.
+    - The 0.80.0 baseline runs each site's app code as it was on 0.80.0.
+    - What remains on the member page is spread thinly over Twig, data reads and the remember-me path, with no single hot spot. Folding the request's three framework derivations (locale, session, user) into one would mean deferring middleware changes past middleware boundaries or making the context lazy on every read; both were considered and not taken.
+  - **Upgrading:**
+    - **Upgrade every `preflow/*` package together, to `^0.82`.** New constraints: auth, testing, devtools and folio require core `^0.82.0` (and conflict with core before 0.82.0); members and publishing require data `^0.82.0` (and conflict with data before 0.82.0).
+    - **Clearing the Twig cache after upgrading is recommended** (`php preflow cache:clear`). Templates compiled by 0.82 call `LiveExtension::part()`. Templates compiled by 0.81 still work through the deprecated `live()`, which reports once per call site. Core's own Twig engine compiles into a folder per installed package set, so an update compiles anew; a Twig engine bound with a cache path of its own keeps the old templates, and Twig's `auto_reload` does not recompile them, because Composer keeps the files' archive timestamps.
+    - **Cookies on error responses.** A visit's error page still sets the cookies the visit queued (a rotated remember-me cookie is kept), and now also those the route's response carried when a middleware further out threw. A failing `Application::render()` no longer puts its cookies on its error page (the result's response): a preview captures them (`RenderResult::wouldSend('cookies')`), an internal render drops them, a delivering render hands them to the request around it. A request frame (not a render) whose policy is not Deliver no longer sets its cookies on its error page; the frame settles them. The 0.81.0 test that pinned the old behaviour was changed on purpose: `ApplicationEdgesTest::test_kernel_error_path_applies_only_its_own_frames_cookies` is now `test_a_failing_preview_captures_its_cookies_and_the_outer_frame_keeps_its_own`.
+    - **Frames settle their leftover cookies when they close,** every frame, by its policy. A request frame opened capturing now captures them, and a request a preview asks for in-process shows its cookies in the preview's `wouldSend('cookies')`; before, they were lost.
+    - **The Kernel's default rule.** A `Kernel` given the frame-bound queue (`CookieQueue::ofCurrentFrame()`) and no `setsQueuedCookies` now follows `CookieQueue::reachesResponse()` on the success and the error path. Before, it set the queue on the error response only. A `Kernel` given `new CookieQueue()` behaves as before. `Application` no longer passes `setsQueuedCookies`.
+    - **Another runtime's render entry** opens its frames with `Contexts::runRender()`, so their cookies never reach the response it renders (also not on its error page) and the frame settles them.
+    - **`CookieQueue::reachesResponse()` and `isFrameBound()`** are the rule and the test for it; a runtime or middleware that applies the queue itself asks `reachesResponse()` first.
+    - **ResolveUserMiddleware:** a guard's cookies follow the rule. In a render's frame or a frame that does not deliver it leaves them to the frame instead of setting them on the response.
+    - **Capturing parts:** a capturing `Contexts::part()` inside a frame that does not deliver moves its captured items, mail included, into that frame when it closes. Code that opens such a part and drains the part's own outbox afterwards now gets nothing; it should use `Contexts::run()`.
+    - **`LiveExtension::live()` is deprecated** and stays as a shim until 0.83. Only templates compiled before 0.82 call it; it ignores its `$componentClass` and delegates to `part()`.
+    - **A component with its own `getTemplatePath()`** renders its `{% live %}` blocks in place and refuses the page (`live:twig-template`) instead of filling from the default `ShortName.twig` next to the class. Such pages are no longer stored by the page cache.
+    - **Live blocks inside `{% embed %}` fill.** Before, they were not supported: a stored page left the live part out (or, inside an `only` embed of a component's template, the page was not stored).
+    - **Site runners of the testing contract** (each `RenderIsolationTest` extending `RenderIsolationContract`) drop: the `use PHPUnit\Framework\Attributes\IgnoreDeprecations;` import; `#[IgnoreDeprecations]` above the class; `use Preflow\Core\Context\Deprecations;` when nothing else uses it; in `tearDown()`, the `Deprecations::reset()` block and its comment (and the whole `tearDown()` when it then only calls the parent); a docblock paragraph about the ignored setters. Keep `#[RunTestsInSeparateProcesses]` and any trait `tearDown()` aliasing. A site factory or `poisonApp()` that calls a deprecated shim now fails the run; before, the attribute hid it.
+    - **`Deprecations::expected()`** (internal, tests only) is how a site's own test calls a shim on purpose without failing a `failOnDeprecation` run.
+    - **`ContentSecurityPolicy`:** code that parses CSP headers itself can use it. The devtools toolbar carries the response policy's script and style nonces (a whole-page preview passes its own policy), and its request limits section shows what the request frame asked. Folio's `refusesFrames` reads a comma-joined value as several policies and only a policy's first `frame-ancestors`, as browsers do.
+    - **`RenderContext::computeMemoKey()` is private** and `MemoKeys` is removed. Use `memoKey()`.
+    - **Id kinds:** `IdKind`, `DataManager::idKind()`, the optional `StatesIdKinds` (drivers) and `ClassifiesIdColumns` (grammars) are new. A model class whose table key holds the other kind (an `int` id property over a text key) makes `idKind()` throw; check view-as-role on a site with members after upgrading, since that is where it is called. The published copy of a publishing type states no id kind. `Members::synthetic()` uses `idKind()`: a member model file that declares its id with a field type not stored as a number (`"text"`, or `"integer"` without Folio), or `"number"` on a table the sync made (a text key), now gets a view-as-role member; a member table with an integer key is refused.
+    - **`ContextLocaleProvider`:** `ImageTag` reuses an answer for the same context object within a render frame. A provider's `localeOf()` must depend only on the context it is given and fixed configuration.
+  - **Not in 0.82:**
+    - Shim removal is 0.83, including `LiveExtension::live()` and the 0.81 shims and constructor parameters listed under 0.81.0.
+    - The 0.81.0 follow-ups other than the toolbar's: Folio's importer and `ExtensionsFile` writing around the write policy, conditional writes taking their condition twice, and `memoKey()` leaving out the frozen time and site origin.
 - **Render context patch (v0.81.1, released 2026-11-21):** the follow-ups found while upgrading the sites to 0.81.0.
   - **Fixed:** cookies a site queues (`CookieQueue`) reach the response without auth or a session: core applies a request's queued cookies to the route's response inside the pipeline, what middleware queued on the way out to the pipeline's answer, and each cookie once. The page cache does not store a page whose render set a cookie or left one queued (new `CookieQueue::pending()`): middleware inside the cache that queues after the route, verify's second render and a rebuild are covered. `ResolveUserMiddleware` no longer drops cookies queued before it ran, nor, on a request without a session, the site's. `Application::render()` keeps its outbox policy: a preview captures the cookies, an internal render drops them, a delivering render hands them to the request around it.
   - **Fixed:** `{% live %}` (preflow/twig) uses no Twig API deprecated since 3.12 (`Parser::getBlockStack()`, `hasBlock()`): each live block records the live tag open around it and `LiveBlockNesting` refuses one nested in the same template once it is parsed (directly, through a `{% block %}` or a `{% macro %}`; an `{% embed %}` is a template of its own, as before), with the same error at the inner tag's line; block names come from the tag's own per-source bookkeeping and are as before, except two live tags on one line on either side of an `{% embed %}` boundary, which now get different names (`__live_N`, `__live_N_2`).
@@ -546,8 +629,8 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   - **Follow-ups:**
     - Folio's importer and `ExtensionsFile` write around the write policy (admin only; admin routes refuse role views and grant nothing to tokens): route them through `DataManager` or `Writes::allowed()` (0.82).
     - Conditional writes take their condition twice (a PHP closure and SQL): one storage-neutral condition each driver compiles.
-    - The devtools toolbar does not show the frame's `RequestLimits` yet.
-    - In debug mode the toolbar adds the admin's nonce to a previewed page (one report-only CSP violation, debug only).
+    - ~~The devtools toolbar does not show the frame's `RequestLimits` yet.~~ Done in 0.82.0.
+    - ~~In debug mode the toolbar adds the admin's nonce to a previewed page (one report-only CSP violation, debug only).~~ Done in 0.82.0.
     - `RenderContext::memoKey()` leaves out the frozen time and the site origin (no time travel and one site per app today).
     - 0.83 removes the shims and unused constructor parameters below, merges `ContextBlockLocale`/`ContextLocaleProvider` into their base interfaces, and decides what `ImageTag` uses outside a render once `LocaleProvider::current()` goes (Folio's `ContentLocale::get()` stays as Folio's own method).
   - **Upgrading:**

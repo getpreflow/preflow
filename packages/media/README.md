@@ -113,6 +113,9 @@ return [
 
 - `media_image()` emits `<picture>` with AVIF and WebP `srcset`s and an `<img>` with `width`,
   `height`, `loading` and the alt text in the page's language. A document renders as a link.
+  The language comes from the bound `LocaleProvider`; one that implements `ContextLocaleProvider`
+  (`localeOf(RenderContext)`) is asked once per render frame and context object (since 0.82.0),
+  so its `localeOf()` must depend only on the context it is given and fixed configuration.
 - `media_url()` gives an asset's URL (`''` without one; the master for an edited image).
   `media_original_url()` gives the untouched original. Both accept what an asset field
   stores: a library id, a legacy upload path, or a list (its first item).

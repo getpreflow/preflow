@@ -38,7 +38,8 @@ return [
     ],
     'core/src/Http/Session/SessionMiddleware.php' => [
         'peek' => [
-            '$session = Contexts::peek()?->request?->request?->getAttribute(SessionInterface::class);' => 'outside every render there is no request and so no session: flash(), csrf_token() and old() read none (the documented default)',
+            '$current = Contexts::peek();' => 'outside every render there is no request and so no session: process() starts the session without narrowing a frame (the documented default)',
+            '$ctx = Contexts::peek();' => 'outside every render there is no request and so no session: flash(), csrf_token() and old() (ofCurrentRender()) read none (the documented default)',
         ],
     ],
     'core/src/Context/Preview/PreviewUrls.php' => [
@@ -191,11 +192,12 @@ return [
     'core/src/Context/Deprecations.php' => [
         'static-state' => [
             'private static array $reported = [];' => 'call sites that already reported a deprecation: once per process by design',
+            'private static int $expecting = 0;' => 'how many Deprecations::expected() stretches are open (tests only); back to 0 when each ends, also on a throw',
         ],
     ],
-    'core/src/Context/MemoKeys.php' => [
+    'core/src/Context/RenderContext.php' => [
         'static-state' => [
-            'private static ?\\WeakMap $keys = null;' => 'each context\'s memoKey(), computed once: a context is immutable, so its key never changes; keyed by the context and gone with it, so nothing reaches another render',
+            'static $keys = new \\WeakMap();' => 'each context\'s memoKey(), computed once: a context is immutable, so its key never changes; keyed by the context and gone with it, so nothing reaches another render',
         ],
     ],
     'core/src/Context/Preview/PreviewToken.php' => [

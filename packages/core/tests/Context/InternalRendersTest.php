@@ -176,6 +176,42 @@ final class InternalRendersTest extends TestCase
         $this->assertSame(0, Contexts::depth());
     }
 
+    /**
+     * A capturing or internal render that never used its outbox closes without making one, and
+     * makes none on the frame around it either: its result's captured items are simply empty.
+     */
+    #[RunInSeparateProcess]
+    public function test_a_render_that_never_used_its_outbox_makes_none(): void
+    {
+        $app = $this->site();
+        $frames = [];
+        Contexts::onEnter(static function (RenderContext $ctx, \Preflow\Core\Context\RenderFrame $frame) use (&$frames): ?\Closure {
+            $frames[] = $frame;
+
+            return null;
+        });
+
+        $outer = null;
+        $results = Contexts::run(RenderContext::console($app->site(), new SystemClock()), function () use ($app, &$outer): array {
+            $outer = Contexts::frame();
+
+            return [
+                $app->render(RenderContext::internal(Purpose::Audit, $app->site(), new SystemClock(), '/'), new ServerRequest('GET', 'https://site.test/')),
+                $app->render(RenderContext::fromRequest(new ServerRequest('GET', 'https://site.test/'), $app->site(), new SystemClock())->capturing(), new ServerRequest('GET', 'https://site.test/')),
+            ];
+        });
+
+        foreach ($results as $result) {
+            $this->assertSame(200, $result->response->getStatusCode());
+            $this->assertSame([], $result->captured);
+        }
+        $this->assertCount(3, $frames, 'the outer frame and the two renders');
+        foreach ($frames as $i => $frame) {
+            $this->assertNull($frame->madeOutbox(), "frame {$i} made no outbox");
+        }
+        $this->assertSame($outer, $frames[0]);
+    }
+
     #[RunInSeparateProcess]
     public function test_internal_render_sees_no_visitor_superglobals(): void
     {

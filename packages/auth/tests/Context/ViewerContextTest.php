@@ -273,6 +273,62 @@ final class ViewerContextTest extends DataTestCase
         });
     }
 
+    /**
+     * The viewer is resolved once per frame and viewer: user(), users() and guardName() read it
+     * again without a lookup; a viewer within() a stretch, a narrowed one and a nested frame are
+     * resolved on their own, and the frame's viewer again after the stretch.
+     */
+    public function test_the_viewer_is_resolved_once_per_frame_and_viewer(): void
+    {
+        $provider = new class implements UserProviderInterface {
+            /** @var list<string> */
+            public array $lookups = [];
+
+            public function findById(string $id): ?Authenticatable
+            {
+                $this->lookups[] = $id;
+
+                return new TestUser($id);
+            }
+
+            public function findByCredentials(array $credentials): ?Authenticatable
+            {
+                return null;
+            }
+        };
+        $auth = new AuthManager(['web' => self::guard(null), 'members' => self::guard(null)], 'web', providers: ['web' => $provider, 'members' => $provider]);
+        $restore = static fn (array $users, string $primary): Viewer => unserialize(serialize(new Viewer($users, $primary)));
+        $both = $restore(['members' => new TestUser('m1'), 'web' => new TestUser('w1')], 'web');
+
+        Contexts::run(ContextFactory::forTest()->as($both), function () use ($auth, $provider, $restore): void {
+            $this->assertSame('w1', $auth->user()?->getAuthId());
+            $this->assertSame(['web', 'members'], array_keys($auth->users()), 'the primary user first');
+            $this->assertSame('web', $auth->guardName());
+            $this->assertSame($auth->user(), $auth->users()['web']);
+            $this->assertSame(['w1', 'm1'], $provider->lookups, 'each identity looked up once');
+
+            Contexts::within(Contexts::current()->as($restore(['web' => new TestUser('w2')], 'web')), function () use ($auth): void {
+                $this->assertSame('w2', $auth->user()?->getAuthId(), 'the stretch\'s viewer');
+                $this->assertSame(['web'], array_keys($auth->users()));
+            });
+            $this->assertSame('w1', $auth->user()?->getAuthId(), 'the frame\'s viewer again');
+            $this->assertSame(['web', 'members'], array_keys($auth->users()));
+
+            Contexts::run(ContextFactory::forTest()->as($restore(['members' => new TestUser('m1')], 'members')), function () use ($auth): void {
+                $this->assertSame('m1', $auth->user()?->getAuthId(), 'a nested frame resolves its own viewer');
+                $this->assertSame('members', $auth->guardName());
+            });
+            $this->assertSame('w1', $auth->user()?->getAuthId());
+
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(Viewer::anonymous()));
+            $this->assertNull($auth->user(), 'narrowed to nobody');
+            $this->assertSame([], $auth->users());
+            $this->assertNull($auth->guardName());
+        });
+        $this->assertSame(['w1', 'm1', 'w2', 'm1'], $provider->lookups, 'once per frame: the stretch and the nested frame looked theirs up');
+        $this->assertNull($auth->user(), 'nobody outside every render');
+    }
+
     public function test_guards_refuse_to_resolve_a_synthetic_id(): void
     {
         $synthetic = SyntheticIdentity::PREFIX . 'staff:admin';

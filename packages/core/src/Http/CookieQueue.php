@@ -7,6 +7,8 @@ namespace Preflow\Core\Http;
 use Preflow\Core\Context\Contexts;
 use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\OutboxPolicy;
+use Preflow\Core\Context\RenderFrame;
+use Preflow\Core\Context\SettlesOnClose;
 use Psr\Http\Message\ResponseInterface;
 
 /**
@@ -20,11 +22,14 @@ use Psr\Http\Message\ResponseInterface;
  * Since 0.81.1 a request's frame that delivers sets what it queued, with or without auth or a
  * session: the Kernel applies the queue to the route's response and to the pipeline's answer
  * (ResolveUserMiddleware, on a request with a session, may have set them first), and to the error
- * response. A capturing render reports what it left (CookieChannel), a delivering one hands it to
- * the queue of the frame around it, a discarding one drops it. A queue made with `new` is a plain
- * list of its own.
+ * response. Since 0.82.0 the error response follows the same rule (reachesResponse()): a render
+ * entry's frame (Application::render()) never sets them, also when it fails. What a frame left
+ * when it closes is settled by its policy (settle(), since 0.82.0; before, only for a render):
+ * a capturing frame reports it (CookieChannel), a delivering one hands it to the queue of the
+ * frame around it, a discarding one drops it. A queue made with `new` is a plain list of its own,
+ * set by whoever holds it.
  */
-final class CookieQueue
+final class CookieQueue implements SettlesOnClose
 {
     /** @var list<string> */
     private array $cookies = [];
@@ -54,18 +59,99 @@ final class CookieQueue
     public function queue(string $setCookie): void
     {
         if ($this->frameBound && Contexts::depth() > 0) {
-            $frame = Contexts::frame();
-            $policy = $frame->outboxPolicy();
-            if ($frame->openedOutbox === OutboxPolicy::Deliver && $policy !== OutboxPolicy::Deliver) {
-                if ($policy === OutboxPolicy::Capture) {
-                    $frame->outbox()->channel(new CookieChannel());
-                    $frame->outbox()->queue(new QueuedCookie($setCookie), CookieChannel::NAME);
-                }
+            self::place($setCookie, Contexts::frame());
 
-                return;
-            }
+            return;
         }
         $this->target()->cookies[] = $setCookie;
+    }
+
+    /**
+     * Whether this is a frame-bound queue (ofCurrentFrame()), whose calls work on the current
+     * frame's own queue; false for a queue made with `new`, a plain list of its own.
+     *
+     * @since 0.82.0
+     */
+    public function isFrameBound(): bool
+    {
+        return $this->frameBound;
+    }
+
+    /**
+     * Settles what a frame's own queue (the frame slot) holds when the frame closes, by the
+     * frame's outbox policy: a delivering frame hands it to the queue of the frame around it (as
+     * if queued there; the outermost frame's response took what it could, the rest is dropped),
+     * a capturing frame keeps it as captured 'cookies' items in its outbox (RenderResult::wouldSend('cookies');
+     * a capturing request that is part of another frame's output captures there), a discarding
+     * frame drops it. A queue with nothing left makes no outbox.
+     *
+     * @internal Contexts, when the frame closes (SettlesOnClose)
+     * @since 0.82.0
+     */
+    public function settle(RenderFrame $frame, ?RenderFrame $parent): void
+    {
+        if ($this->cookies === []) {
+            return;
+        }
+        [$cookies, $this->cookies] = [$this->cookies, []];
+        $policy = $frame->context->outbox;
+        if ($policy === OutboxPolicy::Discard || ($policy === OutboxPolicy::Deliver && $parent === null)) {
+            return;
+        }
+        foreach ($cookies as $cookie) {
+            if ($policy === OutboxPolicy::Capture) {
+                self::capture($cookie, $frame);
+            } else {
+                self::place($cookie, $parent);
+            }
+        }
+    }
+
+    /**
+     * Queues $setCookie for $frame's response: inside a stretch of a frame that would send it but
+     * now does not (RenderFrame::outboxPolicy()), it is captured or dropped at once.
+     */
+    private static function place(string $setCookie, RenderFrame $frame): void
+    {
+        $policy = $frame->outboxPolicy();
+        if ($frame->openedOutbox === OutboxPolicy::Deliver && $policy !== OutboxPolicy::Deliver) {
+            if ($policy === OutboxPolicy::Capture) {
+                self::capture($setCookie, $frame);
+            }
+
+            return;
+        }
+        $frame->slot(self::class, static fn (): self => new self())->cookies[] = $setCookie;
+    }
+
+    /** Keeps $setCookie as a captured 'cookies' item in $frame's outbox. */
+    private static function capture(string $setCookie, RenderFrame $frame): void
+    {
+        $frame->outbox()->channel(new CookieChannel());
+        $frame->outbox()->queue(new QueuedCookie($setCookie), CookieChannel::NAME);
+    }
+
+    /**
+     * Whether the current frame's response takes what the queue holds: outside every frame; inside
+     * one, when the frame delivers (RenderFrame::outboxPolicy()) and no render entry opened it
+     * (RenderFrame::$openedByRender: Application::render() settles what its frame left by the
+     * frame's policy). A request asked for in-process inside another frame delivers in a frame of
+     * its own, so it sets its cookies on its own response. The rule the Kernel applies on every
+     * response, its error response included (pass it as Kernel's $setsQueuedCookies).
+     *
+     * @since 0.82.0
+     */
+    public function reachesResponse(): bool
+    {
+        // A queue of its own is a plain list that only its holder sets (on the response it
+        // answers): no frame ever settles it, so whatever it holds must go on this response, or
+        // it would leak into the next one.
+        if (!$this->frameBound || Contexts::depth() === 0) {
+            return true;
+        }
+        $frame = Contexts::frame();
+
+        return !$frame->openedByRender && $frame->outboxPolicy() === OutboxPolicy::Deliver;
     }
 
     /** Whether a cookie named $name is queued (not applied yet). */

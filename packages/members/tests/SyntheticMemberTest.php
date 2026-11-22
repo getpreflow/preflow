@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Members\Tests;
 
 use Nyholm\Psr7\ServerRequest;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Context\Contexts;
@@ -12,11 +13,17 @@ use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\RoleView;
 use Preflow\Core\Context\SystemClock;
 use Preflow\Data\DataManager;
+use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\StorageDriver;
+use Preflow\Data\TypeRegistry;
 use Preflow\Members\Access\MemberAccess;
 use Preflow\Members\Http\AccountController;
 use Preflow\Members\MembersConfig;
+use Preflow\Members\Tests\Support\IntIdMemberRow;
 use Preflow\Members\Tests\Support\MembersScaffold;
+use Preflow\Members\Tests\Support\NumberingMembersDriver;
+use Preflow\Members\Tests\Support\StringIdMemberRow;
 use Preflow\Members\Viewer;
 use Preflow\Testing\ChecksFrameBalance;
 
@@ -138,24 +145,82 @@ final class SyntheticMemberTest extends TestCase
 
     /**
      * A member type with a number id cannot stand for a role view's member: its reserved id would
-     * compare as 0 in SQL. Members::synthetic() refuses it.
+     * compare as 0 in SQL. Members::synthetic() asks the data layer for the id kind
+     * (DataManager::idKind()) and refuses a number id, however the type comes to have one.
+     *
+     * @return iterable<string, array{\Closure(string): array{TypeRegistry, StorageDriver}}>
      */
-    public function test_a_member_type_with_a_number_id_is_refused(): void
+    public static function numberIdTypes(): iterable
+    {
+        yield 'a model file declaring a number id' => [static function (string $dir): array {
+            $registry = new TypeRegistry($dir);
+            $registry->define([
+                'key' => MembersConfig::TYPE, 'table' => 'member', 'id_field' => 'id', 'label' => 'Members',
+                'fields' => ['id' => ['type' => 'number'], 'email' => ['type' => 'string'], 'roles' => ['type' => 'string']],
+            ]);
+
+            return [$registry, new SqliteDriver(new \PDO('sqlite::memory:'))];
+        }];
+        yield 'a model class with an int id' => [static fn (string $dir): array => [
+            new TypeRegistry($dir, null, [MembersConfig::TYPE => IntIdMemberRow::class]),
+            new SqliteDriver(new \PDO('sqlite::memory:')),
+        ]];
+        yield 'a table whose key is an integer, the id undeclared' => [static function (string $dir): array {
+            $registry = new TypeRegistry($dir);
+            $registry->define(['key' => MembersConfig::TYPE, 'table' => 'member', 'label' => 'Members', 'fields' => ['email' => ['type' => 'string'], 'roles' => ['type' => 'string']]]);
+            $pdo = new \PDO('sqlite::memory:');
+            $pdo->exec('CREATE TABLE member (uuid INTEGER PRIMARY KEY, email TEXT, roles TEXT)');
+
+            return [$registry, new SqliteDriver($pdo)];
+        }];
+        yield 'a storage that numbers members' => [static function (string $dir): array {
+            $registry = new TypeRegistry($dir);
+            $registry->define(['key' => MembersConfig::TYPE, 'table' => 'member', 'label' => 'Members', 'fields' => ['email' => ['type' => 'string'], 'roles' => ['type' => 'string']]]);
+
+            return [$registry, new NumberingMembersDriver(new SqliteDriver(new \PDO('sqlite::memory:')))];
+        }];
+    }
+
+    /** @param \Closure(string): array{TypeRegistry, StorageDriver} $setup */
+    #[DataProvider('numberIdTypes')]
+    public function test_a_member_type_with_a_number_id_is_refused(\Closure $setup): void
     {
         $dir = sys_get_temp_dir() . '/members_intid_' . bin2hex(random_bytes(4));
         @mkdir($dir, 0777, true);
         try {
-            $registry = new \Preflow\Data\TypeRegistry($dir);
-            $registry->define([
-                'key' => MembersConfig::TYPE, 'table' => 'member', 'id_field' => 'id', 'label' => 'Members',
-                'fields' => ['id' => ['type' => 'integer'], 'email' => ['type' => 'string'], 'roles' => ['type' => 'string']],
-            ]);
-            $dm = new DataManager(drivers: ['default' => new \Preflow\Data\Driver\SqliteDriver(new \PDO('sqlite::memory:'))], typeRegistry: $registry);
+            [$registry, $driver] = $setup($dir);
+            $dm = new DataManager(drivers: ['default' => $driver], typeRegistry: $registry);
             $members = new \Preflow\Members\Members($dm, new \Preflow\Auth\NativePasswordHasher());
 
             $this->expectException(\LogicException::class);
             $this->expectExceptionMessage('is not a string');
             $members->synthetic(new RoleView('member', ['member']));
+        } finally {
+            @rmdir($dir);
+        }
+    }
+
+    /** A member type whose model class has a string id (or a model file with an undeclared or string id) stands for a role view's member. */
+    public function test_a_member_type_with_a_string_id_is_synthesized(): void
+    {
+        $dir = sys_get_temp_dir() . '/members_strid_' . bin2hex(random_bytes(4));
+        @mkdir($dir, 0777, true);
+        try {
+            foreach ([
+                'class' => new TypeRegistry($dir, null, [MembersConfig::TYPE => StringIdMemberRow::class]),
+                'declared' => (static function () use ($dir): TypeRegistry {
+                    $registry = new TypeRegistry($dir);
+                    $registry->define(['key' => MembersConfig::TYPE, 'table' => 'member', 'label' => 'Members', 'fields' => ['uuid' => ['type' => 'string'], 'email' => ['type' => 'string'], 'roles' => ['type' => 'string']]]);
+
+                    return $registry;
+                })(),
+            ] as $case => $registry) {
+                $dm = new DataManager(drivers: ['default' => new SqliteDriver(new \PDO('sqlite::memory:'))], typeRegistry: $registry);
+                $member = (new \Preflow\Members\Members($dm, new \Preflow\Auth\NativePasswordHasher()))->synthetic(new RoleView('member', ['member']));
+
+                $this->assertSame('preflow:synthetic:member:member', $member->getId(), $case);
+                $this->assertSame(['member'], $member->get('roles'), $case);
+            }
         } finally {
             @rmdir($dir);
         }

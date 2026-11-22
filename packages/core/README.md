@@ -24,6 +24,7 @@ Requires PHP 8.4+.
 | HTTP exceptions | `NotFoundHttpException`, `ForbiddenHttpException`, `UnauthorizedHttpException` |
 | `NonPublicPaths` | Path prefixes that are not public pages (admin, member area, private files), for features that treat unknown addresses as pages |
 | `SafeReturnPath` | Whether a "next" / "return to" value is a safe path on this site under allowed prefixes |
+| `Http\ContentSecurityPolicy` (0.82) | Reads a policy someone else made: `parse(...$values)` (comma-separated lists, first directive of a name wins), `ofResponse($response)` (enforced, else Report-Only, else null), `policies()`, `nonceFor('script'\|'style')` (`-src-elem`, then `-src`, then `default-src`; the nonce every restricting policy allows, else null). It does not build one: `SecurityHeadersMiddleware` does |
 | `Version` (0.75) | Installed package versions from Composer: `Version::installed('preflow/folio')` ("0.75.0", no "v"; null when not installed), `Version::label()` ("0.75.0"; "dev · 01c613d" for a VCS branch or a package the root replaces; plain "dev" for a path repository, whose reference is no commit) |
 | Route contracts | `Route`, `RouteMode`, `RouterInterface`, `ConfiguredMiddleware` (route middleware with arguments) |
 
@@ -600,9 +601,27 @@ the route's response inside the pipeline, what middleware queued on the way out 
 pipeline's answer, and what is left to an error response, so a cookie is set once and never
 lost. The page cache never stores a page whose render set a cookie or left one queued
 (`pending()`, since 0.81.1: middleware inside the cache queued it after the route, verify's
-second render, a rebuild): `X-Page-Cache-Skip: set-cookie`. `Application::render()` follows its outbox policy instead: a preview captures the cookies
-(`RenderResult::wouldSend('cookies')`), an internal render drops them, and a delivering render
-hands them to the request around it. `isolated(\Closure $render)` (since 0.75, deprecated since
+second render, a rebuild): `X-Page-Cache-Skip: set-cookie`.
+
+A render's response never sets its cookies (`Application::render()`: the response is the
+caller's result), also when it fails. What a frame left queued when it closes is settled by its
+outbox policy (since 0.82.0 for every frame; before, only for `render()`): a capturing frame
+captures it (a preview: `RenderResult::wouldSend('cookies')`), a discarding one (an internal
+render) drops it, and a delivering one hands it to the queue of the frame around it, whose
+response sets it. A visit's error page still sets what the visit queued, such as a rotated
+remember-me cookie, and since 0.82.0 also a cookie the route's response already carried when a
+middleware further out threw. A request asked for in-process inside another one
+(`Application::handle()` within a frame) sets its cookies on its own response, not on the outer
+one, where its frame delivers; under a preview they are captured into the preview's result,
+under an internal render dropped. `reachesResponse()` (since 0.82.0) is the rule: true for a
+queue made with `new` (whoever holds it sets it) and outside every frame; inside a frame, when
+it delivers and no render entry opened it. A `Kernel` given the frame-bound queue
+(`CookieQueue::ofCurrentFrame()`) follows that rule by default, so another runtime only opens
+its render frames with `Contexts::runRender()`; with a queue of its own and no
+`setsQueuedCookies`, it sets the queue on the error response only, as before. `isFrameBound()`
+(since 0.82.0) tells the two kinds apart. The settling at close is the frame slot's
+`Preflow\Core\Context\SettlesOnClose` (since 0.82.0, optional): a slot of your own that holds
+something a frame may leave behind implements it and hands what it settles to the parent frame. `isolated(\Closure $render)` (since 0.75, deprecated since
 0.81) runs `$render` with the queue empty, drops what it queued and puts the earlier values back.
 
 ### Auth providers from config

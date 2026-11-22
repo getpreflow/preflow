@@ -1,0 +1,1 @@
+{% embed "box.twig" with {id: id, secret: "x"} only %}{% block body %}{% live with {id: id} %}#{{ id }}/{{ secret|default("none") }}/{{ who() }}{% endlive %}{% endblock %}{% endembed %}

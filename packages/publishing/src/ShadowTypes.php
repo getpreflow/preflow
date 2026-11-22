@@ -71,6 +71,27 @@ final class ShadowTypes
             locales: $def->locales,
             indexes: $def->indexes,
             titleField: $def->titleField,
+            // No id kind: the snapshots' table is the sync's (a text key) and every snapshot takes
+            // its working record's id, so the class's kind would contradict that key (DataManager::idKind()).
+            idKind: null,
+        );
+    }
+
+    /**
+     * $def narrowed to its id and one version column (compared exactly), as Publisher reads the
+     * versions of a type's records; its id kind kept.
+     *
+     * @since 0.82.0
+     */
+    public static function versionColumn(TypeDefinition $def, string $column): TypeDefinition
+    {
+        return new TypeDefinition(
+            key: $def->key,
+            table: $def->table,
+            storage: $def->storage,
+            fields: [$column => new TypeFieldDefinition($column, 'string', exact: true)],
+            idField: $def->idField,
+            idKind: $def->idKind,
         );
     }
 

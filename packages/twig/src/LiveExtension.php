@@ -17,7 +17,14 @@ final class LiveExtension extends AbstractExtension
     /** The kind of a Twig live block's placeholder (LiveParts). */
     public const string KIND = 'twig';
 
-    public function __construct(private readonly ?LiveParts $parts = null) {}
+    /**
+     * @param (\Closure(string): ?string)|null $componentOf the component class whose own template
+     *        has the given Twig name, null for none (since 0.82.0; TwigEngine knows them)
+     */
+    public function __construct(
+        private readonly ?LiveParts $parts = null,
+        private readonly ?\Closure $componentOf = null,
+    ) {}
 
     public function getTokenParsers(): array
     {
@@ -26,7 +33,7 @@ final class LiveExtension extends AbstractExtension
 
     public function getNodeVisitors(): array
     {
-        return [new LiveBlockNames(), new LiveBlockNesting()];
+        return [new LiveBlockNames(), new LiveBlockNesting(), new LiveEmbeddedBlocks()];
     }
 
     /** The name of a block {% live %} declares (LiveTokenParser). */
@@ -37,11 +44,16 @@ final class LiveExtension extends AbstractExtension
      * rendered with only $with and the globals. The recipe names the template by its logical
      * name (as the loader finds it), or, for a component's own template (rendered by its file),
      * by the component class; a template that is neither (a string) renders the block in place
-     * and keeps the page from being stored.
+     * and keeps the page from being stored. The class comes from the template's file (since
+     * 0.82.0; $componentOf), never from its variables: an {% embed … only %} or a
+     * `with {componentClass: …}` changes nothing. A block inside an {% embed %} is named the same way
+     * (the embed's template has the file's name), and the file answers for it (since 0.82.0,
+     * LiveEmbeddedBlocks).
      *
      * @internal compiled templates
+     * @since 0.82.0
      */
-    public function live(Environment $env, Template $template, string $block, mixed $componentClass, mixed $with): string
+    public function part(Environment $env, Template $template, string $block, mixed $with): string
     {
         if (!is_array($with)) {
             throw new RuntimeError(sprintf('{%% live with … %%} takes a mapping of values, %s given.', get_debug_type($with)), -1, $template->getSourceContext());
@@ -51,9 +63,10 @@ final class LiveExtension extends AbstractExtension
             $placeholder = null;
             if ($this->parts !== null) {
                 $name = $template->getTemplateName();
+                $class = self::logical($name) || $this->componentOf === null ? null : ($this->componentOf)($name);
                 $recipe = self::logical($name)
                     ? ['t' => $name, 'b' => $block, 'w' => $with]
-                    : (is_string($componentClass) && $componentClass !== '' ? ['c' => $componentClass, 'b' => $block, 'w' => $with] : null);
+                    : ($class !== null ? ['c' => $class, 'b' => $block, 'w' => $with] : null);
                 if ($recipe !== null) {
                     $placeholder = $this->parts->placeholder(self::KIND, $recipe);
                 } else {
@@ -65,6 +78,20 @@ final class LiveExtension extends AbstractExtension
         }
 
         return $placeholder ?? $template->renderBlock($block, $with + $env->getGlobals());
+    }
+
+    /**
+     * What templates compiled before 0.82 call: part(), with the component class they passed
+     * ignored (it comes from the template's file since 0.82.0).
+     *
+     * @internal compiled templates
+     * @deprecated 0.82, removed in 0.83: templates compiled by 0.82 call part()
+     */
+    public function live(Environment $env, Template $template, string $block, mixed $componentClass, mixed $with): string
+    {
+        \Preflow\Core\Context\Deprecations::once('Preflow\Twig\LiveExtension::live() is deprecated since 0.82 and is removed in 0.83; use part(), which templates compiled by 0.82 call (clear the Twig cache).');
+
+        return $this->part($env, $template, $block, $with);
     }
 
     /** Whether $name is a loader name (page.twig, @folio/frontend/post.twig): no file path, no string template. */

@@ -246,6 +246,71 @@ final class ImageTagTest extends TestCase
         $this->assertStringNotContainsString('preview', $html);
     }
 
+    /**
+     * Inside a render the alt-text language is asked once per frame and context: images of one
+     * frame share the answer; a narrowed context, a within() stretch, a nested frame and the
+     * frame's own context again after the stretch are asked anew, each with its own answer.
+     */
+    public function test_alt_locale_is_asked_once_per_frame_and_context(): void
+    {
+        $asset = $this->lib->upload($this->upload($this->png(100, 50), 'a.png'), null);
+        $this->lib->update($asset->id, ['alt' => ['en' => 'Sea', 'de' => 'Meer']]);
+        $provider = new class implements \Preflow\Media\ContextLocaleProvider {
+            /** @var list<string> */
+            public array $asked = [];
+
+            public function current(): string
+            {
+                return 'en';
+            }
+
+            public function localeOf(\Preflow\Core\Context\RenderContext $ctx): string
+            {
+                $this->asked[] = $ctx->locale;
+
+                return $ctx->locale;
+            }
+
+            public function default(): string
+            {
+                return 'en';
+            }
+        };
+        $tag = new ImageTag($this->lib, $provider, [], $this->css, '/folio/_uploads');
+        $site = new \Preflow\Core\Context\Site('https://site.test', ['en', 'de', 'fr'], 'en');
+        $ctx = \Preflow\Core\Context\RenderContext::fromRequest(new \Nyholm\Psr7\ServerRequest('GET', '/'), $site, new \Preflow\Core\Context\SystemClock());
+
+        \Preflow\Core\Context\Contexts::run($ctx, function () use ($tag, $asset, $provider, $ctx): void {
+            for ($i = 0; $i < 3; $i++) {
+                $this->assertStringContainsString('alt="Sea"', $tag->render($asset->id));
+            }
+            $this->assertSame(['en'], $provider->asked, 'three images, one question');
+
+            \Preflow\Core\Context\Contexts::narrow(static fn ($c) => $c->in('de'));
+            $this->assertStringContainsString('alt="Meer"', $tag->render($asset->id));
+            $this->assertStringContainsString('alt="Meer"', $tag->render($asset->id));
+            $this->assertSame(['en', 'de'], $provider->asked, 'a narrowed context is asked once');
+
+            \Preflow\Core\Context\Contexts::within(\Preflow\Core\Context\Contexts::current()->in('en'), function () use ($tag, $asset): void {
+                $this->assertStringContainsString('alt="Sea"', $tag->render($asset->id));
+            });
+            $this->assertStringContainsString('alt="Meer"', $tag->render($asset->id), 'the frame\'s context again after the stretch');
+            $this->assertSame(['en', 'de', 'en', 'de'], $provider->asked);
+
+            $de = \Preflow\Core\Context\Contexts::current();
+            \Preflow\Core\Context\Contexts::run($de, function () use ($tag, $asset): void {
+                $this->assertStringContainsString('alt="Meer"', $tag->render($asset->id));
+            });
+            $this->assertSame(['en', 'de', 'en', 'de', 'de'], $provider->asked, 'a nested frame is asked on its own, even under the same context');
+            $this->assertStringContainsString('alt="Meer"', $tag->render($asset->id));
+            $this->assertSame(['en', 'de', 'en', 'de', 'de'], $provider->asked, 'the outer frame kept its answer');
+        });
+        \Preflow\Core\Context\Contexts::run($ctx, function () use ($tag, $asset, $provider): void {
+            $this->assertStringContainsString('alt="Sea"', $tag->render($asset->id));
+            $this->assertCount(6, $provider->asked, 'a later frame under the same context is asked again');
+        });
+    }
+
     private function tag(array $presets = []): ImageTag
     {
         return new ImageTag($this->lib, $this->locale, $presets, $this->css, '/folio/_uploads', \Preflow\Media\Image\ImageWidths::fromConfig($presets, [480, 768]));
