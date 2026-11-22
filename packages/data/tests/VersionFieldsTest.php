@@ -243,7 +243,7 @@ final class VersionFieldsTest extends TestCase
         $this->assertTrue($sqlite->hasColumn($def, '_version'));
         $this->assertFalse($sqlite->hasColumn($def, '_published_version'));
         $sqlite->execute('ALTER TABLE notes ADD COLUMN _published_version TEXT', [], 'default');
-        $this->assertTrue($sqlite->hasColumn($def, '_published_version'), 'a missing column is asked again');
+        $this->assertTrue($sqlite->hasColumn($def, '_published_version'), 'asked again after a statement that changes a table');
 
         $this->assertTrue($this->dm('json')->hasColumn($def, 'anything'), 'JSON files take any key');
     }

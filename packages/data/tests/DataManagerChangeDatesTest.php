@@ -248,4 +248,32 @@ final class DataManagerChangeDatesTest extends TestCase
         $this->assertNull($dm->changeDateOf($def));
         $this->assertSame('One', $pdo->query("SELECT title FROM notes WHERE uuid = 'a'")->fetchColumn());
     }
+    public function test_a_kept_date_given_as_other_text_is_stored_as_utc_iso_text(): void
+    {
+        $dm = $this->json();
+        $def = self::note();
+
+        $dm->keepingChangeDates(static fn () => $dm->saveType(DynamicRecord::fromArray($def, ['uuid' => 'a', 'title' => 'A', ChangeDates::FIELD => '2026-01-01T10:00:00+02:00']), false));
+        $dm->keepingChangeDates(static fn () => $dm->saveType(DynamicRecord::fromArray($def, ['uuid' => 'b', 'title' => 'B', ChangeDates::FIELD => 'not a date']), false));
+
+        $this->assertSame('2026-01-01T08:00:00+00:00', $this->stored($dm, 'a')[ChangeDates::FIELD], 'in UTC, so a text sort orders it');
+        $this->assertSame('not a date', $this->stored($dm, 'b')[ChangeDates::FIELD], 'an unreadable value is kept as given');
+    }
+
+    public function test_a_missing_column_is_asked_once_until_the_columns_are_forgotten(): void
+    {
+        $pdo = new \PDO('sqlite:' . $this->dir . '/db.sqlite');
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $pdo->exec('CREATE TABLE notes (uuid TEXT PRIMARY KEY, title TEXT, n REAL)');
+        $dm = new DataManager(['sql' => new SqliteDriver($pdo)], 'sql');
+        $def = self::note('sql');
+        $this->assertNull($dm->changeDateOf($def));
+
+        // Added past the data layer: the answer this DataManager gave stands until it is told.
+        $pdo->exec('ALTER TABLE notes ADD COLUMN _updated_at TEXT');
+        $this->assertNull($dm->changeDateOf($def), 'no schema query per save');
+
+        $dm->forgetColumns('notes');
+        $this->assertSame(ChangeDates::FIELD, $dm->changeDateOf($def));
+    }
 }

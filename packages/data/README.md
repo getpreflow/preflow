@@ -714,7 +714,8 @@ driver:
   `updateFieldsIfVersion()`, `incrementIn()` (counters), raw SQL, a driver called directly. A caller
   that wants the date moved includes it: `[ChangeDates::FIELD => ChangeDates::text($now)]`.
 - **Keeping dates:** `$dm->keepingChangeDates(fn () => …)` writes the change date a record carries
-  as it is (one without gets now): for imports and copies. Folio's content import writes an
+  (one without gets now): for imports and copies. A readable date is stored as ISO 8601 UTC text,
+  so the sort holds; an unreadable value is kept as it is. Folio's content import writes an
   archive's rows as they are (their dates too); an archive from before 0.84 is compared without
   dates and what it writes is dated with the import.
 - **Published copies** keep their own `_updated_at`: the publish that wrote their content (a

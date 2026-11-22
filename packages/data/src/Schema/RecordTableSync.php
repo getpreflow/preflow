@@ -69,9 +69,13 @@ final class RecordTableSync
         }
     }
 
-    /** A driver that remembers column facts is told the table may have changed (RemembersColumns). */
+    /**
+     * The DataManager (hasColumn()) and a driver that remembers column facts (RemembersColumns) are
+     * told the table may have changed.
+     */
     private function forgetColumns(TypeDefinition $def): void
     {
+        $this->dm->forgetColumns($def->table);
         $driver = $this->dm->driver($def->storage);
         if ($driver instanceof RemembersColumns) {
             $driver->forgetColumns($def->table);

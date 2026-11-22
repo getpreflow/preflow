@@ -7,6 +7,7 @@ namespace Preflow\DevTools\Command;
 use Preflow\Core\Application;
 use Preflow\Data\DataManager;
 use Preflow\Data\PdoConnection;
+use Preflow\Data\RemembersColumns;
 use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\Migration\Migrator;
 
@@ -88,6 +89,11 @@ final class MigrateCommand implements CommandInterface
                     }
                 } else {
                     $migrator->migrate();
+                    // The migrations went past the data layer: what it remembers of the columns is stale.
+                    $dm->forgetColumns();
+                    if ($driver instanceof RemembersColumns) {
+                        $driver->forgetColumns();
+                    }
                 }
             }
 

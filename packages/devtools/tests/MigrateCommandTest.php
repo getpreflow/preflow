@@ -8,7 +8,10 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Core\Container\Container;
 use Preflow\Core\Container\ServiceProvider;
+use Preflow\Data\ChangeDates;
+use Preflow\Data\DataManager;
 use Preflow\Data\Migration\MigrationRegistry;
+use Preflow\Data\TypeDefinition;
 use Preflow\DevTools\Command\MigrateCommand;
 
 final class MigrateCommandTest extends TestCase
@@ -304,5 +307,48 @@ final class MigrateCommandTest extends TestCase
         ob_end_clean();
 
         $this->assertSame(1, $code);
+    }
+
+    public function test_the_steps_see_the_columns_the_apps_migrations_added(): void
+    {
+        $this->sqliteConfig();
+        file_put_contents($this->dir . '/migrations/2026_01_01_000003_create_dated.php', <<<'PHP'
+        <?php
+        use Preflow\Data\Migration\Migration;
+        use Preflow\Data\Migration\Schema;
+        return new class extends Migration {
+            public function up(Schema $schema): void
+            {
+                $schema->create('dated', function ($t) { $t->uuid('uuid')->primary(); $t->text('_updated_at')->nullable(); });
+            }
+        };
+        PHP);
+        $dir = $this->dir;
+        $command = new MigrateCommand(static function () use ($dir): Application {
+            $app = Application::create($dir);
+            $app->registerProvider(new class extends ServiceProvider {
+                public function register(Container $container): void {}
+                public function boot(Container $container): void
+                {
+                    $dm = $container->get(DataManager::class);
+                    $def = new TypeDefinition('dated', 'dated', 'sqlite', []);
+                    // Asked before the migrations ran (a provider that reads a table at boot).
+                    $dm->hasColumn($def, ChangeDates::FIELD);
+                    $container->get(MigrationRegistry::class)->afterMigrate('probe', static fn (): array => [
+                        'change dates: ' . ($dm->changeDateOf($def) ?? 'none'),
+                    ]);
+                }
+            });
+            $app->boot();
+
+            return $app;
+        });
+
+        ob_start();
+        $code = $command->execute([]);
+        $out = (string) ob_get_clean();
+
+        $this->assertSame(0, $code);
+        $this->assertStringContainsString('[probe] change dates: _updated_at', $out);
     }
 }

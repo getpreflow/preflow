@@ -56,7 +56,7 @@ final class DataManager
 
     private ?VersionFields $versionFields = null;
 
-    /** @var array<string, true> "storage|table|column" found (a missing column is asked again: a migrate may add it) */
+    /** @var array<string, array<string, bool>> table => "storage|column" => whether it is there, until forgetColumns() */
     private array $columns = [];
 
     /**
@@ -168,7 +168,10 @@ final class DataManager
     private function changeDateFor(TypeDefinition $def, string $key, mixed $given, ?array $stored, bool $changed): mixed
     {
         if ($this->keepingChangeDates > 0 && ChangeDates::isSet($given)) {
-            return $given instanceof \DateTimeInterface ? ChangeDates::text($given) : $given;
+            // As text() writes it, so a text sort orders it; an unreadable value is kept as given.
+            $at = ChangeDates::parse($given);
+
+            return $at !== null ? ChangeDates::text($at) : $given;
         }
         if (!$changed && $stored !== null && ChangeDates::isSet($stored[$key] ?? null)) {
             return $stored[$key];
@@ -204,22 +207,37 @@ final class DataManager
 
     /**
      * Whether the table of $def has $column: asked of a storage with a schema (DescribesColumns);
-     * one without (JSON files) takes any key, so true.
+     * one without (JSON files) takes any key, so true. The answer, either way, is remembered by
+     * this DataManager until forgetColumns() (the table sync calls it after it changes a table,
+     * migrate after the app's migrations), so a save asks the schema once.
      *
      * @since 0.77
      */
     public function hasColumn(TypeDefinition $def, string $column): bool
     {
-        $key = $def->storage . '|' . $def->table . '|' . $column;
-        if (isset($this->columns[$key])) {
-            return true;
+        $key = $def->storage . '|' . $column;
+        if (isset($this->columns[$def->table][$key])) {
+            return $this->columns[$def->table][$key];
         }
         $driver = $this->resolveDriver($def->storage);
-        if ($driver instanceof DescribesColumns && !$driver->hasColumn($def->table, $column)) {
-            return false;
-        }
 
-        return $this->columns[$key] = true;
+        return $this->columns[$def->table][$key] = !$driver instanceof DescribesColumns || $driver->hasColumn($def->table, $column);
+    }
+
+    /**
+     * Drops what hasColumn() remembers of $table (null: of every table), on every storage; the next
+     * call asks the storage again. Code that changes a table's columns calls it (RecordTableSync,
+     * `preflow migrate` after the app's migrations).
+     *
+     * @since 0.84.0
+     */
+    public function forgetColumns(?string $table = null): void
+    {
+        if ($table === null) {
+            $this->columns = [];
+        } else {
+            unset($this->columns[$table]);
+        }
     }
 
     /**
@@ -738,7 +756,9 @@ final class DataManager
 
     /**
      * Execute a raw SQL write (UPDATE, DELETE, an upsert) and return the affected rows. A storage
-     * that does not implement RunsSql throws UnsupportedStorage (a LogicException).
+     * that does not implement RunsSql throws UnsupportedStorage (a LogicException). A statement
+     * that changes a table (ALTER, CREATE, DROP, RENAME) forgets the columns remembered
+     * (forgetColumns(), and the driver's when it remembers them: RemembersColumns).
      *
      * @param array<int|string, mixed> $bindings Parameter bindings
      */
@@ -753,6 +773,12 @@ final class DataManager
             return $driver->execute($sql, $bindings);
         } finally {
             $this->observer?->rawWrote($this->storageKey($storage), $sql); // also after a failure: part may be written
+            if (preg_match('/^\s*(ALTER|CREATE|DROP|RENAME)\b/i', $sql) === 1) {
+                $this->forgetColumns();
+                if ($driver instanceof RemembersColumns) {
+                    $driver->forgetColumns();
+                }
+            }
         }
     }
 
