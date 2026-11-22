@@ -213,11 +213,15 @@ final class AddressPreviewTest extends TestCase
         $form = (string) $this->send('GET', '/folio/post/p1/edit')->getBody();
         // The preview bar's address field: the record's address, sent with the bar's View as choice (the select
         // belongs to the field's form), opening the address preview in a tab of its own.
-        $this->assertSame(1, preg_match('#<form class="folio-preview-address" id="folio-preview-address" method="get" action="/folio/preview/address" target="_blank" data-preview-address>(.*?)</form>#s', $form, $field), 'the address field in the preview bar');
+        $this->assertSame(1, preg_match('#<form class="folio-preview-address-form" id="folio-preview-address-form" method="get" action="/folio/preview/address" target="_blank" data-preview-address>(.*?)</form>#s', $form, $field), 'the address field in the preview bar');
         $this->assertStringContainsString('<input type="text" name="path" value="/hello"', $field[1]);
         $this->assertStringContainsString('aria-label="View another address as a role"', $field[1]);
         $this->assertStringNotContainsString('#ui-eye', $field[1], 'not the Preview switch\'s icon');
-        $this->assertStringContainsString('<select data-preview-as name="as" form="folio-preview-address">', $form, 'the bar\'s current role goes with it');
+        // Its styles are its own: the URL pill's address (.folio-preview-address) keeps its one rule.
+        $css = (string) file_get_contents(dirname(__DIR__, 2) . '/assets/admin.css');
+        $this->assertSame(1, preg_match_all('/^\.folio-preview-address \{/m', $css), 'one rule for the pill\'s address');
+        $this->assertStringContainsString('.folio-preview-address-form {', $css);
+        $this->assertStringContainsString('<select data-preview-as name="as" form="folio-preview-address-form">', $form, 'the bar\'s current role goes with it');
         $this->assertStringContainsString('href="/folio/preview/address"', $form, 'Settings → View as');
 
         $this->assertSame(['label' => 'View any address as a role', 'group' => 'Site'], $this->session->container()->get(PermissionRegistry::class)->all()['site.view_as_address'] ?? null, 'Folio declares it, beside site.view_as');
