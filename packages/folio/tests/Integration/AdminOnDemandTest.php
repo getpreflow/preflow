@@ -252,7 +252,7 @@ final class AdminOnDemandTest extends TestCase
         $nav = $app->container()->get(AdminNav::class);
 
         return array_map(
-            static fn (array $item): string => $item['section'] . ' ' . $item['url'] . ' ' . $item['permission'] . ' ' . $item['order'],
+            static fn (array $item): string => $item['section'] . ' ' . $item['url'] . ' ' . implode('+', (array) $item['permission']) . ' ' . $item['order'],
             (new \ReflectionProperty($nav, 'added'))->getValue($nav),
         );
     }

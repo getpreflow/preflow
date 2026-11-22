@@ -145,9 +145,14 @@ final class AddressPreviewTest extends TestCase
         $form = (string) $this->send('GET', '/folio/post/p1/edit')->getBody();
         $this->assertStringNotContainsString('/folio/preview/address', $form, 'no way to the screen');
 
+        $this->assertStringNotContainsString('href="/folio/preview/address"', $form, 'no Settings → View as');
+
         $this->signIn('addresses@site.test');
         $this->assertSame(403, $this->send('GET', '/folio/preview/address/page?path=%2Faccount&as=member:gold')->getStatusCode(), 'site.view_as_address without site.view_as');
         $this->assertSame(403, $this->send('GET', '/folio/preview/address')->getStatusCode());
+        // What it cannot open it is not offered: no Settings → View as (also not in the ⌘K screens), no eye icon.
+        $form = (string) $this->send('GET', '/folio/post/p1/edit')->getBody();
+        $this->assertStringNotContainsString('/folio/preview/address', $form, 'neither the sidebar item nor the editor\'s link');
 
         $this->signIn('writer@site.test');
         $this->assertSame(403, $this->send('GET', '/folio/preview/address/page?path=%2Faccount')->getStatusCode());

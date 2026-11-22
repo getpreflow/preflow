@@ -1893,9 +1893,10 @@ final class FolioServiceProvider extends ServiceProvider
         $nav->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.cache'), $base . '/cache', 'ui-settings', 'folio.cache', 950);
         // Settings → SEO audit, on every site (the last report of `preflow seo:audit`, or how to run one).
         $nav->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.seo_audit'), $base . '/seo-audit', 'ui-settings', 'seo.audit', 940);
-        // Settings → View as (any address of the site as a role), where rbac's site.view_as is declared to go with it.
+        // Settings → View as (any address of the site as a role): for whoever holds both permissions it asks
+        // (ViewAs::addresses()), where rbac's site.view_as is declared to go with Folio's site.view_as_address.
         if ($container->get(\Preflow\Auth\Access\Access::class)->registry()->isDeclared(\Preflow\Folio\Http\ViewAs::PERMISSION)) {
-            $nav->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.view_as'), $base . '/preview/address', 'ui-settings', \Preflow\Folio\Http\ViewAs::ADDRESS_PERMISSION, 945);
+            $nav->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.view_as'), $base . '/preview/address', 'ui-settings', [\Preflow\Folio\Http\ViewAs::PERMISSION, \Preflow\Folio\Http\ViewAs::ADDRESS_PERMISSION], 945);
         }
         // Settings → AI, while AI is switched on or a key is present (so a missing key or switch can be seen and fixed).
         if (self::aiSettingsVisible($container)) {
