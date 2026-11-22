@@ -1497,9 +1497,11 @@ and `/files/{id}`.
 
 **Without the storage driver** (since 0.84.0): the library stores its assets in the driver
 `config/media.php` `storage` names (`json` unless set). A site whose `config/data.php` has no such
-driver boots and works without media; every `{prefix}/assets` page (and the picker drawer) answers 200 with the missing driver and
-where to set it (htmx and JSON actions answer 503); the admin search, the dashboard count and the asset field leave the library out (a driver under `drivers` in `config/data.php`, or another `storage` in `config/media.php`),
-translated like Folio's other texts.
+driver boots and works without media. Every `{prefix}/assets` page (and the picker drawer) answers 200
+with the missing driver and where to set it (a driver under `drivers` in `config/data.php`, or another
+`storage` in `config/media.php`); htmx and JSON actions answer 503. The texts are translated like
+Folio's other texts. The admin search, the dashboard count and the asset field leave the library out:
+a record save keeps the asset ids it holds (they cannot be checked), and uploads are refused with a message.
 
 **Library screen** at `{prefix}/assets`:
 - grid and list views;

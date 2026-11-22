@@ -76,6 +76,24 @@ final class AssetsWithoutStorageTest extends TestCase
         $this->assertSame(200, $res->getStatusCode(), substr(strip_tags((string) $res->getBody()), 0, 300));
     }
 
+    public function test_saving_a_record_keeps_its_asset_ids_and_an_upload_is_refused_with_the_message(): void
+    {
+        $id = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
+        $this->write('storage/data/post/p1.json', (string) json_encode(['uuid' => 'p1', 'title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello'], 'cover' => $id]));
+
+        $res = $this->post('/folio/post/p1', ['title' => 'Hello again', 'slug' => 'hello', '_locale' => 'en', 'cover_ids' => [$id], '_action' => 'publish']);
+        $this->assertContains($res->getStatusCode(), [200, 302], substr(strip_tags((string) $res->getBody()), 0, 300));
+        $stored = json_decode((string) file_get_contents($this->dir . '/storage/data/post/p1.json'), true);
+        $this->assertSame($id, $stored['cover'], 'the reference survives the save');
+        $this->assertSame('Hello again', $stored['title']['en'] ?? null, 'and the save happened');
+
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $upload = $this->app()->handle($f->createServerRequest('POST', '/folio/post')->withHeader('Sec-Fetch-Site', 'same-origin')
+            ->withParsedBody(['title' => 'T', 'slug' => 'new', '_locale' => 'en'])
+            ->withUploadedFiles(['cover' => $f->createUploadedFile($f->createStream('x'), 1, UPLOAD_ERR_OK, 'pic.png')]));
+        $this->assertStringContainsString('pic.png was not uploaded: the media library has no storage', (string) $upload->getBody());
+    }
+
     public function test_a_configured_storage_is_not_in_the_way(): void
     {
         $this->write('config/data.php', "<?php\nreturn ['drivers' => ['json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data'], 'media_files' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data']], 'default' => 'json', 'models_path' => __DIR__ . '/models'];\n");

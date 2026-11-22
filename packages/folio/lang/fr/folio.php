@@ -543,6 +543,7 @@ return [
         'no_longer_option' => ':value (n’est plus proposé)',
         'rows' => '{0} :count ligne|{1} :count ligne|[2,*] :count lignes',
         'public_file' => ':label est un fichier public ; importez-le ici pour le rendre privé.',
+        'library_unavailable' => ':label n’a pas été importé : la médiathèque n’a pas de stockage sur ce site (voir Médias).',
         'private_file' => ':label est un fichier privé ; il ne peut être utilisé que dans un champ privé.',
         'copy_address' => 'Copier l’adresse',
         'copied' => 'Copié',

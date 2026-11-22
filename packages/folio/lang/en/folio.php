@@ -559,6 +559,7 @@ return [
         'no_longer_option' => ':value (no longer an option)',
         'rows' => ':count row|:count rows',
         'public_file' => ':label is a public file; upload it here to make it private.',
+        'library_unavailable' => ':label was not uploaded: the media library has no storage on this site (see Assets).',
         'private_file' => ':label is a private file; it can only be used in a private field.',
         // The redesigned field controls (0.75).
         'copy_address' => 'Copy the address',

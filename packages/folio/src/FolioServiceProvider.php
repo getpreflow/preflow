@@ -626,6 +626,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(\Preflow\Folio\Media\MediaAvailability::class)->usable() ? $c->get(\Preflow\Media\MediaLibrary::class) : null,
                 $prefix,
                 $can,
+                libraryUnavailable: !$c->get(\Preflow\Folio\Media\MediaAvailability::class)->usable(),
             ));
             $registry->register(new RelationFieldType(
                 $c->get(\Preflow\Data\DataManager::class),

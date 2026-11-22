@@ -543,6 +543,7 @@ return [
         'no_longer_option' => ':value (nicht mehr zur Auswahl)',
         'rows' => ':count Zeile|:count Zeilen',
         'public_file' => ':label ist eine öffentliche Datei; lade sie hier hoch, um sie privat zu machen.',
+        'library_unavailable' => ':label wurde nicht hochgeladen: Die Mediathek hat auf dieser Website keinen Speicher (siehe Medien).',
         'private_file' => ':label ist eine private Datei; sie kann nur in einem privaten Feld verwendet werden.',
         'copy_address' => 'Adresse kopieren',
         'copied' => 'Kopiert',

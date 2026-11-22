@@ -34,6 +34,12 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
         private readonly string $adminPrefix = '/folio',
         /** @var (\Closure(string): bool)|null permission check; null allows everything */
         private readonly ?\Closure $can = null,
+        /**
+         * The library exists but cannot be used (its storage driver is not configured; since 0.84.0):
+         * a submitted asset id (MediaLibrary::ID_PATTERN) cannot be checked and is kept as it is, so a
+         * save never erases a reference, and uploads are refused with a message.
+         */
+        private readonly bool $libraryUnavailable = false,
     ) {}
 
     /** @var list<string> refused uploads since the last drainErrors() */
@@ -323,7 +329,7 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
             ? $this->toList($this->fromStorage($existing))
             // Only values that exist: asset ids (one in the bin too: restoring it brings it back), or paths this field wrote earlier.
             : $this->matchingPrivacy(
-                array_values(array_filter($submittedIds, fn ($v) => is_string($v) && $v !== '' && ($this->library?->isAssetId($v) === true || $this->library?->findBinned($v) !== null || $this->isStoredUpload($v)))),
+                array_values(array_filter($submittedIds, fn ($v) => is_string($v) && $v !== '' && ($this->libraryUnavailable && preg_match(\Preflow\Media\MediaLibrary::ID_PATTERN, $v) === 1 || $this->library?->isAssetId($v) === true || $this->library?->findBinned($v) !== null || $this->isStoredUpload($v)))),
                 $this->assetConfig($config)['private'],
             );
 
@@ -342,6 +348,10 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
     {
         $kept = [];
         foreach ($values as $value) {
+            if ($this->libraryUnavailable && preg_match(\Preflow\Media\MediaLibrary::ID_PATTERN, $value) === 1) {
+                $kept[] = $value; // nothing to check it against: never drop it
+                continue;
+            }
             $asset = $this->library?->find($value) ?? $this->library?->findBinned($value);
             if (($asset?->private ?? false) === $private) {
                 $kept[] = $value;
@@ -373,6 +383,10 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
         $cfg = $this->assetConfig($config);
         foreach ($uploads as $file) {
             if (!$file instanceof UploadedFileInterface || $file->getError() !== UPLOAD_ERR_OK) {
+                continue;
+            }
+            if ($this->libraryUnavailable) {
+                $this->errors[] = \Preflow\Folio\FolioText::get('folio.fields.library_unavailable', ['label' => $file->getClientFilename() ?? 'upload']);
                 continue;
             }
             if ($cfg['private'] && $this->library === null) {
