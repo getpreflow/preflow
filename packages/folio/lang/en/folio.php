@@ -72,6 +72,7 @@ return [
         'translations' => 'Translations',
         'redirects' => 'Redirects',
         'seo_audit' => 'SEO audit',
+        'view_as' => 'View as',
     ],
     // The roles screen (preflow/rbac's permission matrix): Folio's own permissions, the verbs of a
     // type's and the asset library's standard permissions, the groups of Folio's permissions.
@@ -81,7 +82,7 @@ return [
             'translations' => ['edit' => 'Translations'],
             'seo' => ['audit' => 'SEO audit', 'audit_run' => 'Run the SEO audit'],
             'ai' => ['translate' => 'Use AI translation', 'draft' => 'Write drafts with AI', 'settings' => 'AI settings'],
-            'site' => ['view_as' => 'View the site as a role'],
+            'site' => ['view_as' => 'View the site as a role', 'view_as_address' => 'View any address as a role'],
         ],
         'verbs' => ['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete', 'upload' => 'Upload'],
         'groups' => ['folio' => 'Folio', 'assets' => 'Assets', 'ai' => 'AI', 'site' => 'Site'],
@@ -315,6 +316,14 @@ return [
         'open_tab' => 'Open the preview in a new tab',
         'parts_locked' => 'Interactive parts are switched off in this preview: the site’s app key can’t sign previews (it needs at least 32 characters).',
         'locked_click' => 'Switched off in this preview.',
+        'other_address' => 'View another address as a role',
+        'address_title' => 'View as',
+        'address_intro' => 'Any page of the site, also one that is no record, as a role or a visitor sees it, with the working copies.',
+        'address' => 'Address',
+        'address_help' => 'A path of this site, such as /account or /de/kontakt.',
+        'address_show' => 'Show',
+        'address_frame' => 'Preview of :address',
+        'address_refused' => 'Not an address of this site: :address',
     ],
     // A shared preview link (anyone holding it sees the draft): said at the top of the page.
     'share_preview' => [

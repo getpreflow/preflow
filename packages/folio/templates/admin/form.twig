@@ -209,6 +209,7 @@
             {% if page and page.view_as %}<label class="folio-preview-as" data-preview-as-field hidden><span>{{ t('folio.preview.view_as') }}</span>
                 <select data-preview-as>{% for group in page.view_as %}{% if group.label %}<optgroup label="{{ group.label }}">{% endif %}{% for option in group.options %}<option value="{{ option.value }}">{{ option.label }}</option>{% endfor %}{% if group.label %}</optgroup>{% endif %}{% endfor %}</select>
             </label>{% endif %}
+            {% if page and page.address_url %}<a class="btn btn-secondary btn-icon btn-sm folio-preview-address-open" href="{{ page.address_url }}" aria-label="{{ t('folio.preview.other_address') }}" title="{{ t('folio.preview.other_address') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-eye"></use></svg></a>{% endif %}
             <button type="button" class="btn btn-ghost btn-sm folio-focus-toggle" data-folio-focus aria-pressed="false" title="{{ t('folio.form.focus_help') }}">{{ t('folio.form.focus') }}</button>
         </div>
         {% if share %}<div class="folio-share" id="folio-share"></div>{% endif %}

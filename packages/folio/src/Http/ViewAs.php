@@ -18,12 +18,25 @@ use Preflow\Folio\FolioText;
  *
  * A value is "{population}:{role}": "member:gold", "staff:editor"; '' is an anonymous visitor.
  *
+ * Since 0.83.0 the preview also takes any address of the site that is no record's page (an app's
+ * own route, such as /account): that asks site.view_as_address (Folio declares it) on top of
+ * site.view_as (addresses()). Without it an editor keeps the record preview only.
+ *
  * @since 0.81.0
  */
 final class ViewAs
 {
     /** The permission to view the site as a role: core's one name for it (rbac declares it). */
     public const string PERMISSION = \Preflow\Core\Context\Preview\PreviewGate::VIEW_AS;
+
+    /**
+     * The permission to preview any address of the site as a role, not only a record's page
+     * (Folio declares it, in the group of site.view_as). An address preview's token requires it
+     * beside PERMISSION, so taking either away ends that preview at its next request.
+     *
+     * @since 0.83.0
+     */
+    public const string ADDRESS_PERMISSION = 'site.view_as_address';
 
     /**
      * @param (\Closure(string $population, string $role): string)|null $label a role's label as
@@ -41,6 +54,20 @@ final class ViewAs
             && $this->access->user() !== null
             && $this->access->registry()->isDeclared(self::PERMISSION)
             && $this->access->can(self::PERMISSION);
+    }
+
+    /**
+     * Whether the signed-in editor may preview any address of the site as a role: allowed() and
+     * ADDRESS_PERMISSION, declared and held.
+     *
+     * @since 0.83.0
+     */
+    public function addresses(): bool
+    {
+        return $this->allowed()
+            && $this->access !== null
+            && $this->access->registry()->isDeclared(self::ADDRESS_PERMISSION)
+            && $this->access->can(self::ADDRESS_PERMISSION);
     }
 
     /**

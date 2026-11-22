@@ -8,6 +8,8 @@ use Nyholm\Psr7\Stream;
 use Preflow\Core\Application;
 use Preflow\Core\Context\Contexts;
 use Preflow\Core\Context\RenderResult;
+use Preflow\Core\Context\RoleView;
+use Preflow\Core\Http\NonPublicPaths;
 use Preflow\Core\Http\ContentSecurityPolicy;
 use Preflow\Core\Http\Hypermedia\HypermediaProtocols;
 use Preflow\Data\DataManager;
@@ -45,6 +47,19 @@ use Psr\Http\Message\ServerRequestInterface;
  * X-Frame-Options: DENY) is explained inside the frame, with a link that opens it in a tab of
  * its own. Relative addresses in the page resolve against its own address (<base href>).
  *
+ * Since 0.83.0 the same preview takes any address of the site, also one that is no record's page
+ * (an app's own route, such as /account): GET {admin}/preview/address/page?path=&as= renders it,
+ * GET {admin}/preview/address is the screen with the address field, the View as choice and the
+ * frame (the record's editor links to it). Both ask site.view_as_address (FolioPermissionMiddleware)
+ * and site.view_as (ViewAs::addresses()), also for a visitor's view: the address preview reads the
+ * working copies of every type, as any preview does. The frame, the bar, the outbox and the token
+ * are the record preview's (one rendering path, render()); the token requires both permissions,
+ * also for a visitor's view.
+ * Only a path of the site's own pages is taken (sitePath()): no scheme, host, protocol-relative
+ * "//", backslash, control character, query or fragment; never the admin's or another non-public
+ * prefix (NonPublicPaths). Dot segments and doubled slashes are resolved; the language is the one
+ * the path's prefix names, else the site's default. Anything else answers 400.
+ *
  * @since 0.81.0
  */
 final class PagePreviewController
@@ -60,6 +75,8 @@ final class PagePreviewController
         private readonly ViewAs $viewAs,
         private readonly ?AdminAssetUrls $assetUrls = null,
         private readonly ?HypermediaProtocols $hypermedia = null,
+        /** The prefixes that are no public page (the admin's, APIs'): never an address to preview. @since 0.83.0 */
+        private readonly ?NonPublicPaths $nonPublic = null,
     ) {}
 
     public function show(ServerRequestInterface $request): ResponseInterface
@@ -93,19 +110,150 @@ final class PagePreviewController
             return $this->notice(FolioText::get('folio.preview.other_record', ['path' => $path]));
         }
 
-        // The editor's request (its admin surface, identity, session) is only where it starts from.
-        // The preview's follow-ups (component actions, lazy parts) carry a token checked for what
-        // this request was: the type's edit permission (FolioPermissionMiddleware), and view as.
-        $viewer = Contexts::current()->viewer;
-        $guard = $viewer->primaryGuardName();
-        $requires = [$typeDef->key . '.edit'];
+        // The preview's follow-ups carry a token checked for what this request was: the type's edit
+        // permission (FolioPermissionMiddleware), and view as.
+        return $this->render($request, $path, $locale, $role, [$typeDef->key . '.edit']);
+    }
+
+    /**
+     * GET {admin}/preview/address?path=&as= (site.view_as_address, then site.view_as): the address
+     * field, the View as choice and, for an address of the site, the frame that shows it
+     * (sitePath()). An address that is none shows why beside the field, and no frame.
+     *
+     * @since 0.83.0
+     */
+    public function addressScreen(ServerRequestInterface $request): ResponseInterface
+    {
+        if (!$this->viewAs->addresses()) {
+            return Forbidden::response($request, $this->engine, $this->prefix, $this->catalog);
+        }
+        $query = $request->getQueryParams();
+        $typed = $query['path'] ?? null;
+        $as = is_string($query['as'] ?? null) ? $query['as'] : '';
+        $path = null;
+        $error = null;
+        if ($typed !== null && $typed !== '') {
+            try {
+                $path = $this->sitePath($typed);
+            } catch (\InvalidArgumentException) {
+                $error = FolioText::get('folio.preview.address_refused', ['address' => is_string($typed) ? $typed : '']);
+            }
+        }
+        $groups = [];
+        foreach ($this->viewAs->options() as $option) {
+            $groups[$option['group']] ??= ['label' => $option['group'], 'options' => []];
+            $groups[$option['group']]['options'][] = ['value' => $option['value'], 'label' => $option['label']];
+        }
+        $frame = $path === null ? null : $this->prefix . '/preview/address/page?path=' . rawurlencode($path) . ($as !== '' ? '&as=' . rawurlencode($as) : '');
+
+        return new \Nyholm\Psr7\Response(200, ['Content-Type' => 'text/html; charset=UTF-8', 'Cache-Control' => 'no-store'], $this->engine->render('@folio/admin/preview/address.twig', [
+            'prefix' => $this->prefix,
+            'path' => $path !== null ? rawurldecode($path) : (is_string($typed) ? $typed : ''),
+            'as' => $as,
+            'view_as' => array_values($groups),
+            'error' => $error,
+            'frame' => $frame,
+        ]));
+    }
+
+    /**
+     * GET {admin}/preview/address/page?path=&as= (site.view_as_address, then site.view_as): the
+     * page at a path of the site as the role (or a visitor), as the record preview shows a record's.
+     *
+     * @since 0.83.0
+     */
+    public function address(ServerRequestInterface $request): ResponseInterface
+    {
+        $query = $request->getQueryParams();
+        $as = $query['as'] ?? '';
+        try {
+            $role = $this->viewAs->addresses()
+                ? $this->viewAs->roleView(is_string($as) ? $as : throw new \DomainException('View as takes one value.'))
+                : throw new \DomainException('This editor may not preview addresses.');
+        } catch (\DomainException) {
+            return Forbidden::response($request, $this->engine, $this->prefix, $this->catalog);
+        }
+        $typed = $query['path'] ?? null;
+        try {
+            $path = $this->sitePath($typed);
+        } catch (\InvalidArgumentException) {
+            return $this->notice(FolioText::get('folio.preview.address_refused', ['address' => is_string($typed) ? $typed : '']), null, 400);
+        }
+        $site = $this->app->site();
+        $locale = $site->urls?->localeOf($path) ?? $site->defaultLocale;
+
+        // Both permissions, also for a visitor's view: taking either away ends it at its next request.
+        return $this->render($request, $path, $locale, $role, [ViewAs::ADDRESS_PERMISSION, ViewAs::PERMISSION]);
+    }
+
+    /**
+     * The preview of $path in $locale as $role (null: a visitor), answered for the frame. The
+     * editor's request (its admin surface, identity, session) is only where it starts from: the
+     * page's follow-ups (component actions, lazy parts) carry a token that requires $requires, and
+     * with a role site.view_as, checked again at every use. A staff role view names the editor's
+     * guard, so it passes no other guard of the staff population.
+     *
+     * @param list<string> $requires
+     */
+    private function render(ServerRequestInterface $request, string $path, string $locale, ?RoleView $role, array $requires): ResponseInterface
+    {
         if ($role !== null) {
-            $role = $role->by($guard);
+            $role = $role->by(Contexts::current()->viewer->primaryGuardName());
             $requires[] = ViewAs::PERMISSION;
         }
-        $result = $this->app->preview(Contexts::current(), self::encodedPath($path), $locale, $role, $request, $requires);
+        $result = $this->app->preview(Contexts::current(), self::encodedPath($path), $locale, $role, $request, array_values(array_unique($requires)));
 
         return $this->answer($result, $request, $path);
+    }
+
+    /**
+     * $typed as a path of the site's own pages, each segment percent-encoded once ("/über-uns" is
+     * "/%C3%BCber-uns", as the request asks for it): '/' first (added to a path typed without it,
+     * as the field shows it), dot and empty segments resolved ('/a//b/../c' is '/a/c', also when
+     * encoded), a trailing slash only where the site's locale root has one. What it leads to is
+     * checked decoded, so an encoded segment ("/%66olio") is never a way into the admin.
+     *
+     * @throws \InvalidArgumentException for anything else: not a string, empty, a scheme ("https:",
+     *         "javascript:"), a host ("//host", "\\host"), a backslash or control character (also
+     *         encoded), a query or fragment, a path above the root, or one under the admin's or
+     *         another non-public prefix
+     */
+    private function sitePath(mixed $typed): string
+    {
+        $typed = is_string($typed) ? trim($typed) : '';
+        if ($typed === '' || preg_match('/[\x00-\x1F\x7F\\\\]/', $typed . rawurldecode($typed)) === 1 || strpbrk($typed, '?#') !== false
+            || preg_match('/^[A-Za-z][A-Za-z0-9+.-]*:/', $typed) === 1 || str_starts_with($typed, '//')) {
+            throw new \InvalidArgumentException('Not a path of this site.');
+        }
+        $names = [];
+        foreach (explode('/', $typed) as $segment) {
+            $name = rawurldecode($segment);
+            if ($name === '' || $name === '.') {
+                continue;
+            }
+            if ($name === '..') {
+                if ($names === []) {
+                    throw new \InvalidArgumentException('A path above the root.');
+                }
+                array_pop($names);
+                continue;
+            }
+            $names[] = $name;
+        }
+        $plain = '/' . implode('/', $names);
+        $path = '/' . implode('/', array_map(rawurlencode(...), $names));
+        $urls = $this->app->site()->urls;
+        if ($path !== '/' && str_ends_with($typed, '/') && $urls?->isHome($path . '/') === true) {
+            $path .= '/';
+        }
+        $admin = rtrim($this->prefix, '/');
+        foreach ([$plain, $urls?->strip($plain) ?? $plain] as $candidate) {
+            if (($admin !== '' && ($candidate === $admin || str_starts_with($candidate, $admin . '/'))) || $this->nonPublic?->matches($candidate) === true) {
+                throw new \InvalidArgumentException('Not a public page.');
+            }
+        }
+
+        return $path;
     }
 
     private function answer(RenderResult $result, ServerRequestInterface $request, string $path): ResponseInterface
@@ -162,11 +310,11 @@ final class PagePreviewController
      * forbids frames), with an optional link that opens $link in a tab of its own. Admin markup
      * with a policy of its own: no script, styles from the admin's files, framed by the admin only.
      */
-    private function notice(string $message, ?string $link = null): ResponseInterface
+    private function notice(string $message, ?string $link = null, int $status = 200): ResponseInterface
     {
         $html = $this->engine->render('@folio/admin/preview/notice.twig', ['message' => $message, 'link' => $link]);
 
-        return new \Nyholm\Psr7\Response(200, [
+        return new \Nyholm\Psr7\Response($status, [
             'Content-Type' => 'text/html; charset=UTF-8',
             'Cache-Control' => 'private, no-store',
             'X-Robots-Tag' => 'noindex',

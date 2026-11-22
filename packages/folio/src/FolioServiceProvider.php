@@ -808,6 +808,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Http\ViewAs::class),
             $c->get(\Preflow\Folio\Http\AdminAssetUrls::class),
             $c->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
+            $c->bound(\Preflow\Core\Http\NonPublicPaths::class) ? $c->get(\Preflow\Core\Http\NonPublicPaths::class) : null,
         ));
         $container->bind(AssetController::class, fn (Container $c) => new AssetController(
             dirname(__DIR__) . '/assets',
@@ -1892,6 +1893,10 @@ final class FolioServiceProvider extends ServiceProvider
         $nav->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.cache'), $base . '/cache', 'ui-settings', 'folio.cache', 950);
         // Settings → SEO audit, on every site (the last report of `preflow seo:audit`, or how to run one).
         $nav->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.seo_audit'), $base . '/seo-audit', 'ui-settings', 'seo.audit', 940);
+        // Settings → View as (any address of the site as a role), where rbac's site.view_as is declared to go with it.
+        if ($container->get(\Preflow\Auth\Access\Access::class)->registry()->isDeclared(\Preflow\Folio\Http\ViewAs::PERMISSION)) {
+            $nav->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.view_as'), $base . '/preview/address', 'ui-settings', \Preflow\Folio\Http\ViewAs::ADDRESS_PERMISSION, 945);
+        }
         // Settings → AI, while AI is switched on or a key is present (so a missing key or switch can be seen and fixed).
         if (self::aiSettingsVisible($container)) {
             $nav->add('settings', static fn (): string => \Preflow\Folio\FolioText::get('folio.nav.ai'), $base . '/ai', 'ui-settings', 'ai.settings', 960);
@@ -2101,6 +2106,8 @@ final class FolioServiceProvider extends ServiceProvider
         $registry->declare('redirects.manage', 'Redirects', 'Folio');
         $registry->declare('seo.audit', 'SEO audit', 'Folio');
         $registry->declare('seo.audit.run', 'Run the SEO audit', 'Folio');
+        // Any address as a role (the address preview), on top of rbac's site.view_as, in its group.
+        $registry->declare(\Preflow\Folio\Http\ViewAs::ADDRESS_PERMISSION, 'View any address as a role', 'Site');
         // Declared with AI off too, so roles may list them before AI is switched on. Drafts and Settings → AI
         // need preflow/ai; translation needs a translator (the container's MachineTranslation answers). What is not there
         // is not offered in the roles; a role that still grants it is denied quietly (disabled, not undeclared).

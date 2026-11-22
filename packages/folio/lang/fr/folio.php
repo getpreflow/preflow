@@ -66,6 +66,7 @@ return [
         'translations' => 'Traductions',
         'redirects' => 'Redirections',
         'seo_audit' => 'Audit SEO',
+        'view_as' => 'Voir en tant que',
     ],
     'permissions' => [
         'names' => [
@@ -73,7 +74,7 @@ return [
             'translations' => ['edit' => 'Traductions'],
             'seo' => ['audit' => 'Audit SEO', 'audit_run' => 'Lancer l’audit SEO'],
             'ai' => ['translate' => 'Utiliser la traduction par IA', 'draft' => 'Rédiger des brouillons avec l’IA', 'settings' => 'Réglages IA'],
-            'site' => ['view_as' => 'Voir le site en tant que rôle'],
+            'site' => ['view_as' => 'Voir le site en tant que rôle', 'view_as_address' => 'Voir n’importe quelle adresse en tant que rôle'],
         ],
         'verbs' => ['view' => 'Voir', 'create' => 'Créer', 'edit' => 'Modifier', 'publish' => 'Publier', 'delete' => 'Supprimer', 'upload' => 'Importer'],
         'groups' => ['folio' => 'Folio', 'assets' => 'Médias', 'ai' => 'IA', 'site' => 'Site'],
@@ -303,6 +304,14 @@ return [
         'open_tab' => 'Ouvrir l’aperçu dans un nouvel onglet',
         'parts_locked' => 'Les parties interactives sont désactivées dans cet aperçu : la clé d’application du site ne peut pas signer d’aperçu (il lui faut au moins 32 caractères).',
         'locked_click' => 'Désactivé dans cet aperçu.',
+        'other_address' => 'Voir une autre adresse en tant que rôle',
+        'address_title' => 'Voir en tant que',
+        'address_intro' => 'N’importe quelle page du site, même sans fiche, telle qu’un rôle ou un visiteur la voit, avec les copies de travail.',
+        'address' => 'Adresse',
+        'address_help' => 'Un chemin de ce site, par exemple /account ou /fr/contact.',
+        'address_show' => 'Afficher',
+        'address_frame' => 'Aperçu de :address',
+        'address_refused' => 'Pas une adresse de ce site : :address',
     ],
     'share_preview' => [
         'notice' => 'Aperçu d’un brouillon. Les formulaires de cette page envoient au site public.',

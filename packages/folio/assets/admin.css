@@ -3609,6 +3609,11 @@ a.folio-asset-use-row:hover { background: var(--c-row-hover); color: var(--c-tex
 .folio-preview-as { display: inline-flex; flex: none; align-items: center; gap: 6px; color: var(--c-text-muted); font-size: 12px; }
 .folio-preview-as[hidden] { display: none; }
 .folio-preview-as select { height: 30px; min-height: 30px; max-width: 200px; padding-block: 0; font-size: 12px; }
+/* Settings → View as (address.twig): the address, View as and Show in a row, the page's frame below. */
+.folio-address-preview { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0 16px; }
+.folio-address-preview > .form-group { flex: 1 1 14rem; min-width: 0; }
+.folio-address-preview-actions { flex: none; padding-top: 26px; }
+.folio-address-preview-frame { height: 70vh; min-height: 420px; margin-top: 8px; }
 
 @media (max-width: 1280px) {
   .folio-view-switch span { display: none; }

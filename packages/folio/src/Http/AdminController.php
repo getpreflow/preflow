@@ -1722,10 +1722,12 @@ final class AdminController
      * The whole-page preview beside the live one (form.twig, page-preview.js): the record's real
      * page through PagePreviewController, for a saved record of a routed type. A new record has
      * no page yet (url null: "Save once to preview the whole page"); "View as" offers the roles
-     * the editor may view it as (ViewAs), shown only when there is a role to choose.
+     * the editor may view it as (ViewAs), shown only when there is a role to choose. Since 0.83.0,
+     * for an editor who may view any address (ViewAs::addresses()), address_url opens the address
+     * screen at the record's address (else null).
      *
      * @param array<string, mixed> $values
-     * @return array{url: ?string, view_as: list<array{label: string, options: list<array{value: string, label: string}>}>}|null
+     * @return array{url: ?string, view_as: list<array{label: string, options: list<array{value: string, label: string}>}>, address_url: ?string}|null
      */
     private function pagePreview(string $type, TypeDefinition $typeDef, array $values, string $locale, bool $isNew): ?array
     {
@@ -1742,9 +1744,12 @@ final class AdminController
             $groups[$option['group']]['options'][] = ['value' => $option['value'], 'label' => $option['label']];
         }
 
+        $address = $saved && ($this->viewAs?->addresses() ?? false) ? $this->frontend->urlFor(DynamicRecord::fromArray($typeDef, $values), $locale) : null;
+
         return [
             'url' => $saved ? $this->prefix . '/preview/page/' . rawurlencode($type) . '/' . rawurlencode((string) $id) . '?locale=' . rawurlencode($locale) : null,
             'view_as' => array_values($groups),
+            'address_url' => $address !== null ? $this->prefix . '/preview/address?path=' . rawurlencode($address) : null,
         ];
     }
 
