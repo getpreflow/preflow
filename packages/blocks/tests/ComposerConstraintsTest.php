@@ -18,7 +18,8 @@ use PHPUnit\Framework\TestCase;
  * folio 0.71 (before 0.70 Folio ships its own block classes, registry and renderer, which clash with this package's; 0.70
  * still passes BlocksConfig::fromApp() a fallback and reads extra.folio.blocks, which 0.71 dropped, so a site's old
  * block settings would silently stop counting; it is not required: it carries the blocks field and its editor, and
- * registers this package itself since 0.70).
+ * registers this package itself since 0.70). folio 0.83 since blocks 0.83: Folio before 0.83 implements ContextBlockLocale,
+ * which 0.83 merged into BlockLocale.
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -32,7 +33,7 @@ final class ComposerConstraintsTest extends TestCase
             'preflow/components' => '<0.70',
             'preflow/core' => '<0.81.0',
             'preflow/data' => '<0.75',
-            'preflow/folio' => '<0.71',
+            'preflow/folio' => '<0.83.0',
             'preflow/view' => '<0.70',
         ], $composer['conflict'] ?? null);
     }

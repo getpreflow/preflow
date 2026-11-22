@@ -7,6 +7,8 @@ namespace Preflow\Media\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.83: folio 0.83.0 (Folio before 0.83 implements ContextLocaleProvider, which 0.83 merged into LocaleProvider;
+ * folio is no dependency, so this is a conflict only).
  * Since 0.81: core 0.81.0 (Context\Writes: making a variant asks the render's write policy).
  * Since 0.78: data 0.78 (TypeFieldDefinition's exact, which MediaLibrary gives the asset columns that hold machine values).
  * Since 0.77: core 0.77 (Activity\ActivityLog, which MediaLibrary writes upload, replace and alt-text changes to); i18n 0.77 (Machine\WritesAs, which AltTextSource implements); data 0.77 (raised in step with the release; no 0.77-only data API is called from src).
@@ -24,12 +26,13 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/core' => '<0.81.0', 'preflow/data' => '<0.78', 'preflow/i18n' => '<0.77', 'preflow/routing' => '<0.59', 'preflow/view' => '<0.67'],
+            ['preflow/core' => '<0.81.0', 'preflow/data' => '<0.78', 'preflow/folio' => '<0.83.0', 'preflow/i18n' => '<0.77', 'preflow/routing' => '<0.59', 'preflow/view' => '<0.67'],
             $composer['conflict'] ?? null,
         );
-        // Each conflict matches its require's lower bound; i18n is only suggested.
+        // Each conflict matches its require's lower bound; i18n is only suggested, folio no dependency.
         $this->assertArrayNotHasKey('preflow/i18n', $composer['require']);
-        foreach (array_diff_key($composer['conflict'], ['preflow/i18n' => true]) as $package => $below) {
+        $this->assertArrayNotHasKey('preflow/folio', $composer['require']);
+        foreach (array_diff_key($composer['conflict'], ['preflow/i18n' => true, 'preflow/folio' => true]) as $package => $below) {
             $this->assertSame('^' . substr($below, 1) . ' || @dev', $composer['require'][$package] ?? null, $package);
         }
         $this->assertArrayHasKey('preflow/i18n', $composer['suggest'] ?? []);

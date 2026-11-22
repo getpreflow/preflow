@@ -23,6 +23,7 @@ use PHPUnit\Framework\TestCase;
  * (CommandInterface, extra.preflow.commands) for the commands. Folio is not required: it binds its rules
  * and registers this package itself since 0.71; folio 0.72 is the conflict, because Folio 0.71 extends Publisher and
  * RecordDeleter, which are final again since 0.72, and a Folio before 0.71 builds its own Publisher and LiveContent.
+ * testing 0.83.0 since 0.83: the isolation contract before 0.83 calls the removed LiveContent::showWorkingCopies().
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -35,6 +36,7 @@ final class ComposerConstraintsTest extends TestCase
             'preflow/data' => '<0.82.0',
             'preflow/devtools' => '<0.81.0',
             'preflow/folio' => '<0.72',
+            'preflow/testing' => '<0.83.0',
             'preflow/validation' => '<0.70',
         ], $composer['conflict'] ?? null);
         foreach (['preflow/core', 'preflow/data', 'preflow/validation'] as $package) {

@@ -7,6 +7,7 @@ namespace Preflow\Core\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.83: i18n 0.83.0 (LocaleMiddleware without the translator it no longer used, which the locale boot builds).
  * Since 0.81: data 0.81.0 (incrementIn()'s accounting flag, which Throttle::hit() passes for the per-person AI limits);
  * view 0.81.0 (PageRenderer and GeoMiddleware take the app's render closure first, without AssetCollector or
  * RenderScopes; the frame-bound collectors: AssetCollector::markBooted(), which a render inside another starts from,
@@ -68,7 +69,7 @@ final class ComposerConstraintsTest extends TestCase
             'preflow/components' => '<0.60',
             'preflow/data' => '<0.81.0',
             'preflow/htmx' => '<0.65',
-            'preflow/i18n' => '<0.81.0',
+            'preflow/i18n' => '<0.83.0',
             'preflow/routing' => '<0.78.2',
             'preflow/view' => '<0.81.0',
             'preflow/twig' => '<0.60',
