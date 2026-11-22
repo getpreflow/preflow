@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Preflow\Folio\Tests\Transfer;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Context\Contexts;
+use Preflow\Testing\ContextFactory;
 use Preflow\Data\DataManager;
 use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\StorageDriver;
@@ -244,6 +246,31 @@ abstract class ImportReplacesTestCase extends TestCase
             $this->assertSame(['added' => [], 'changed' => [], 'removed' => []], $plan->tables['note__published'] ?? ['added' => [], 'changed' => [], 'removed' => []]);
         } finally {
             $plan->cleanup();
+        }
+    }
+
+    /** A skipping or refusing write policy (a preview) stops an import before it writes a record. */
+    public function test_a_write_policy_that_skips_or_refuses_stops_the_import_before_any_write(): void
+    {
+        $this->setGames(['b' => ['title' => 'Live', 'slug' => 'x']]);
+        $archive = $this->export();
+        $this->setGames(['a' => ['title' => 'Local', 'slug' => 'y']]);
+        $archiveBytes = stream_get_contents($archive, -1, 0);
+
+        foreach ([ContextFactory::forTest()->skippingWrites(), ContextFactory::forTest()->refusingWrites()] as $context) {
+            $stream = fopen('php://temp', 'w+b');
+            fwrite($stream, (string) $archiveBytes);
+            rewind($stream);
+            [$importer] = $this->importerWithData();
+            $plan = $importer->read($stream, 'data');
+            try {
+                $e = Contexts::run($context, fn (): \Preflow\Folio\Transfer\TransferException => $this->applyFailing($importer, $plan));
+            } finally {
+                $plan->cleanup();
+            }
+            $this->assertSame(Importer::RECORDS_UNCHANGED, $e->getCode());
+            $this->assertStringContainsString('game', $e->getMessage(), 'the refused type is named');
+            $this->assertSame(['a' => ['title' => 'Local', 'slug' => 'y']], $this->games(), 'nothing was written');
         }
     }
 
