@@ -58,7 +58,7 @@ final class TextRuleSyncTest extends TestCase
 
         $lines = $this->sync()->sync(self::people());
 
-        $this->assertSame(['converted collations of people: title, body'], $lines);
+        $this->assertSame(['converted collations of people: title, body', 'added index idx_people__updated_at'], $lines);
         $this->assertSame(
             ['uuid' => 'BINARY', 'title' => 'preflow_text', 'body' => 'preflow_text', 'd' => 'BINARY', '_updated_at' => 'BINARY'],
             Grammars::for($this->pdo)->columnCollations($this->pdo, 'people'),
@@ -83,6 +83,7 @@ final class TextRuleSyncTest extends TestCase
             'refused: people.title: 1 value is there more than once when case is ignored; the column keeps its collation until they differ',
             '  "Müller" in r1, r2',
             'converted collations of people: body',
+            'added index idx_people__updated_at',
         ], $lines);
         $collations = Grammars::for($this->pdo)->columnCollations($this->pdo, 'people');
         $this->assertSame('BINARY', $collations['title'], 'the column stays exact');
@@ -103,7 +104,7 @@ final class TextRuleSyncTest extends TestCase
 
         $lines = $this->sync()->sync(self::code());
 
-        $this->assertSame(['converted collations of code: title, purpose'], $lines);
+        $this->assertSame(['converted collations of code: title, purpose', 'added index idx_code__updated_at'], $lines);
         $this->assertSame(['uuid' => 'BINARY', 'title' => 'preflow_text', 'purpose' => 'preflow_text', '_updated_at' => 'BINARY'], Grammars::for($this->pdo)->columnCollations($this->pdo, 'code'));
     }
 
@@ -235,7 +236,8 @@ final class TextRuleSyncTest extends TestCase
 
         $lines = $this->sync()->sync(self::people());
 
-        $this->assertCount(1, $lines);
+        $this->assertCount(2, $lines);
+        $this->assertSame('added index idx_people__updated_at', $lines[1], 'the change date\'s index, made after the refusal');
         $this->assertStringStartsWith('refused: people: the server refused the conversion (', $lines[0]);
         $this->assertStringEndsWith('); run migrate again', $lines[0]);
         $this->assertSame('BINARY', Grammars::for($this->pdo)->columnCollations($this->pdo, 'people')['title']);
@@ -352,8 +354,8 @@ final class TextRuleSyncTest extends TestCase
             $this->pdo->clear();
 
             $this->assertSame([sprintf(TextRuleConversion::NO_CONVERSION, RuleOnlyGrammar::class)], $this->conversion($declared)->convert());
-            $this->assertSame([], $this->sync()->sync(self::people()), 'the record table keeps its columns, quietly');
-            $this->assertSame([], $this->pdo->matching('/^\s*(ALTER|CREATE|DROP|REINDEX)\b/i'), 'nothing changed');
+            $this->assertSame(['added index idx_people__updated_at'], $this->sync()->sync(self::people()), 'the record table keeps its columns, quietly (its change date gets its index)');
+            $this->assertSame(['CREATE INDEX `idx_people__updated_at` ON `people` (`_updated_at`)'], $this->pdo->matching('/^\s*(ALTER|CREATE|DROP|REINDEX)\b/i'), 'nothing changed but the new index');
 
             $this->pdo->exec('DROP TABLE people');
             $this->sync()->sync(self::people());

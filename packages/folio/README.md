@@ -723,12 +723,11 @@ available for every type that has a route.
   unsorted lists end in the record id, so pages stay stable.
 - `changed` (since 0.84): every list ends in a "Changed" column, a relative time ("3 hours ago",
   "Yesterday", else the date) with the exact time as its tooltip and ISO 8601 in `<time datetime>`.
-  It reads each record's change date, which the data layer keeps on every save (`_updated_at`, or the
-  type's own `updatedAt` / `updated_at` field; see the data README, "Change dates"); a record
-  without one shows a dash. Its header sorts the list by it (`?sort=-_updated_at`: newest first),
-  once the storage holds the dates (a SQL table after `preflow migrate`). `"changed": false` hides
-  the column; a type that lists its updated field in `columns` gets the same relative cell there
-  instead of a second column.
+  It reads each record's change date, which the data layer keeps on every save (`_updated_at`; see
+  the data README, "Change dates"); a record without one shows a dash. Its header sorts the list by
+  it (`?sort=-_updated_at`: newest first), once the storage holds the dates (a SQL table after
+  `preflow migrate`). `"changed": false` hides the column. A type's own `updatedAt` / `updated_at`
+  field is an ordinary field: `columns` may list it beside the Changed column.
 - `orderable: true`: Move up / Move down in each row's "…" menu, which store a manual position
   in the record's `_order` key. New records go to the end.
 

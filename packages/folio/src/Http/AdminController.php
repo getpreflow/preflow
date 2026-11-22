@@ -375,12 +375,9 @@ final class AdminController
         $route = $this->frontend->routeFor($type);
         $uncheckedUrl = $this->prefix . '/' . $type . '?unchecked=1';
 
-        // The "Changed" column (since 0.84): each record's change date (ChangeDates). A type that lists
-        // its own updated field gets the same relative cell in that column instead.
+        // The "Changed" column (since 0.84): each record's change date (ChangeDates, `_updated_at`).
         $showsChanged = ListQuery::showsChanged($typeDef, $listConfig);
-        $changedColumn = $showsChanged ? null : ListQuery::changedField($typeDef);
-        $changedColumn = $changedColumn !== null && isset($columns[$changedColumn]) ? $changedColumn : null;
-        $changedAt = $showsChanged || $changedColumn !== null ? $this->changedTimes($typeDef, $records) : [];
+        $changedAt = $showsChanged ? $this->changedTimes($typeDef, $records) : [];
 
         $rows = [];
         foreach ($records as $record) {
@@ -464,8 +461,6 @@ final class AdminController
             'column_kinds' => array_combine(array_keys($columns), array_map(static fn (string $name): string => ListCells::kind($typeDef, $name), array_keys($columns))),
             'extra_columns' => array_column($extraColumns, 'label'),
             'shows_changed' => $showsChanged,
-            // The listed column that is the type's own updated field: shown as the "Changed" cell is.
-            'changed_column' => $changedColumn,
             'rows' => $rows,
             'list' => $list,
             'has_records' => $hasRecords,
@@ -2446,7 +2441,7 @@ final class AdminController
 
     /**
      * When each record of a page was last changed (the "Changed" column): its change date
-     * (ChangeDates::of(): the system key, or the type's own updated field) as ISO 8601, for
+     * (ChangeDates::FIELD) as ISO 8601, for
      * `<time datetime>`. A record without a readable one (written before the date was kept and
      * not given one by `preflow migrate`) is left out.
      *
@@ -2455,7 +2450,7 @@ final class AdminController
      */
     private function changedTimes(TypeDefinition $typeDef, array $records): array
     {
-        $key = \Preflow\Data\ChangeDates::of($typeDef);
+        $key = \Preflow\Data\ChangeDates::FIELD;
         $times = [];
         foreach ($records as $record) {
             $at = \Preflow\Data\ChangeDates::parse($record->get($key));

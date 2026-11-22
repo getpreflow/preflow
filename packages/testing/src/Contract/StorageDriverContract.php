@@ -109,8 +109,8 @@ use Preflow\Testing\PlainDriver;
  * - An empty id is '', 0 or '0' (as PdoDriver and DataManager treat it): save() with one inserts
  *   a record whose id the store generates, and lastInsertId() returns it.
  * - Change dates (@since 0.84.0): DataManager writes every record of a type with its change date
- *   (Preflow\Data\ChangeDates: the key `_updated_at`, or the type's own updated field; ISO 8601
- *   text in UTC). A driver stores and reads it as any other key, and sorts by it as text; nothing
+ *   (Preflow\Data\ChangeDates: the system key `_updated_at`, ISO 8601 text in UTC; a type's own
+ *   updated field is content it never writes). A driver stores and reads it as any other key, and sorts by it as text; nothing
  *   else is asked of it. An SQL store holds it in a column of its own, which `preflow migrate`
  *   adds to the tables it makes (the tests create it as an `exact` field); a store without a
  *   schema takes the key. DataManager writes it only to a store with DescribesColumns whose
@@ -1827,7 +1827,7 @@ abstract class StorageDriverContract extends TestCase
     {
         $key = $declared ? 'stamped' : 'dated';
         $this->createType($key, $declared
-            ? ['uuid' => 'exact', 'title' => 'text', 'updated_at' => 'exact']
+            ? ['uuid' => 'exact', 'title' => 'text', 'updated_at' => 'exact', \Preflow\Data\ChangeDates::FIELD => 'exact']
             : ['uuid' => 'exact', 'title' => 'text', \Preflow\Data\ChangeDates::FIELD => 'exact']);
         $fields = ['title' => new TypeFieldDefinition('title')];
         if ($declared) {
@@ -1901,15 +1901,19 @@ abstract class StorageDriverContract extends TestCase
         $this->assertSame('2026-03-05T00:00:00+00:00', $dm->findIn($def, 'c2')?->get($field), 'one without a date gets now');
     }
 
-    public function test_a_type_with_its_own_updated_field_keeps_the_change_date_there(): void
+    /** A type's own updated field is its content: the data layer writes only _updated_at. */
+    public function test_a_types_own_updated_field_is_left_as_written(): void
     {
         [$dm, $def] = $this->changeDates(declared: true);
 
         self::at('2026-03-01T09:00:00Z', static fn () => $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'c1', 'title' => 'First', 'updated_at' => '2020-01-01T00:00:00+00:00']), false));
+        $loaded = $dm->findIn($def, 'c1');
+        $loaded->set('title', 'Second');
+        self::at('2026-03-02T09:00:00Z', static fn () => $dm->saveType($loaded, false));
 
         $stored = $this->driver->findOne('stamped', 'c1') ?? [];
-        $this->assertSame('2026-03-01T09:00:00+00:00', $stored['updated_at'] ?? null, 'a save sets the declared field');
-        $this->assertArrayNotHasKey(\Preflow\Data\ChangeDates::FIELD, $stored, 'and no second key');
+        $this->assertSame('2020-01-01T00:00:00+00:00', $stored['updated_at'] ?? null, 'the site\'s field, as the site wrote it');
+        $this->assertSame('2026-03-02T09:00:00+00:00', $stored[\Preflow\Data\ChangeDates::FIELD] ?? null, 'the change date beside it');
     }
 
     /**

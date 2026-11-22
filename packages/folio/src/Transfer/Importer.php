@@ -135,7 +135,7 @@ final class Importer
                     // An archive from before change dates (0.84): the record is written now.
                     $dateKey = $this->dm->changeDateOf($def);
                     if ($dateKey !== null && !ChangeDates::isSet($row[$dateKey] ?? null)) {
-                        $row[$dateKey] = ChangeDates::value($def, Contexts::clock()->now(), $this->dm->fieldKinds());
+                        $row[$dateKey] = ChangeDates::text(Contexts::clock()->now());
                     }
                     // As saveType() writes it: no empty text in number, yes/no or date columns.
                     $rows[$id] = $this->dm->storageValues($def, $row);
@@ -375,7 +375,7 @@ final class Importer
             unset($local['']);
 
             $diff = ['added' => [], 'changed' => [], 'removed' => []];
-            $dateKey = ChangeDates::of($def);
+            $dateKey = ChangeDates::FIELD;
             foreach ($incoming as $id => $row) {
                 $id = (string) $id;
                 if (!array_key_exists($id, $local)) {

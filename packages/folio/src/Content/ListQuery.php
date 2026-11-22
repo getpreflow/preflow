@@ -55,7 +55,7 @@ final readonly class ListQuery
 
     /**
      * The columns the admin list shows: "list.columns" (known fields only), else the first three
-     * fields of a plain-valued type that are not hidden, not the id field and not the updated timestamp (the "Changed" column shows that).
+     * fields of a plain-valued type that are not hidden and not the id field.
      *
      * @param array<string, mixed> $listConfig
      * @return list<string>
@@ -68,9 +68,8 @@ final readonly class ListQuery
         ));
 
         if ($names === []) {
-            $changed = self::changedField($def); // the "Changed" column shows it (since 0.84), not a plain one
             foreach ($def->fields as $name => $fieldDef) {
-                if ($name !== $def->idField && $name !== $changed && in_array($fieldDef->type, self::LIST_TYPES, true) && ($fieldDef->config['hidden'] ?? false) !== true) {
+                if ($name !== $def->idField && in_array($fieldDef->type, self::LIST_TYPES, true) && ($fieldDef->config['hidden'] ?? false) !== true) {
                     $names[] = $name;
                 }
                 if (count($names) === 3) {
@@ -83,35 +82,22 @@ final readonly class ListQuery
     }
 
     /**
-     * Whether the list ends in a "Changed" column (@since 0.84.0): every list does, unless the
-     * type's "list" block says `"changed": false` or the type already lists its updated
-     * timestamp among "list.columns".
+     * Whether the list ends in a "Changed" column (@since 0.84.0): the records' change dates
+     * (ChangeDates, `_updated_at`). Every list does, unless the type's "list" block says
+     * `"changed": false` or the type keeps no change dates. A type's own updated field is an
+     * ordinary field: "list.columns" may list it beside the column.
      *
      * @param array<string, mixed> $listConfig
      */
     public static function showsChanged(TypeDefinition $def, array $listConfig): bool
     {
-        if (($listConfig['changed'] ?? true) === false) {
-            return false;
-        }
-        $field = self::changedField($def);
-
-        return $field === null || !in_array($field, self::columns($def, $listConfig), true);
+        return ($listConfig['changed'] ?? true) !== false && $def->changeDates;
     }
 
     /**
-     * The updated field the type declares (updatedAt or updated_at: the data layer keeps its change
-     * date there, ChangeDates::declared()), or null when it keeps it in the system key. @since 0.84.0
-     */
-    public static function changedField(TypeDefinition $def): ?string
-    {
-        return ChangeDates::declared($def);
-    }
-
-    /**
-     * "sort" takes a list column, and the change date key (ChangeDates::of(): "_updated_at", or the
-     * type's updated field) while the list shows the "Changed" column and $changeDates says the
-     * storage holds it (DataManager::changeDateOf(); since 0.84.0).
+     * "sort" takes a list column, and the change date ("_updated_at", ChangeDates::FIELD) while the
+     * list shows the "Changed" column and $changeDates says the storage holds it
+     * (DataManager::changeDateOf(); since 0.84.0).
      *
      * @param array<string, mixed> $listConfig
      * @param bool                 $statuses    whether the type publishes, so "status" may narrow it (@since 0.75)
@@ -119,7 +105,7 @@ final readonly class ListQuery
      */
     public static function fromRequest(ServerRequestInterface $request, TypeDefinition $def, array $listConfig, string $locale, bool $statuses = false, bool $changeDates = false): self
     {
-        $changedSort = $changeDates && self::showsChanged($def, $listConfig) ? ChangeDates::of($def) : null;
+        $changedSort = $changeDates && self::showsChanged($def, $listConfig) ? ChangeDates::FIELD : null;
         $params = $request->getQueryParams();
 
         $q = is_string($params['q'] ?? null) ? mb_substr(trim($params['q']), 0, 200) : '';

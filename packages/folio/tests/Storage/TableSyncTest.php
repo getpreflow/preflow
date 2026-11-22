@@ -75,7 +75,7 @@ final class TableSyncTest extends TestCase
 
         $lines = $this->tableSync()->syncOwn();
 
-        $this->assertSame(['created table memo'], $lines);
+        $this->assertSame(['created table memo', 'added index idx_memo__updated_at'], $lines);
         $this->assertFalse((new Schema($this->pdo))->hasTable('post'));
         $this->assertSame(['memo'], array_map(static fn (array $e): string => $e['def']->table, $this->tableSync()->own()));
     }

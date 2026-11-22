@@ -74,6 +74,7 @@ final class ShadowTypes
             // No id kind: the snapshots' table is the sync's (a text key) and every snapshot takes
             // its working record's id, so the class's kind would contradict that key (DataManager::idKind()).
             idKind: null,
+            changeDates: $def->changeDates,
         );
     }
 
@@ -92,6 +93,7 @@ final class ShadowTypes
             fields: [$column => new TypeFieldDefinition($column, 'string', exact: true)],
             idField: $def->idField,
             idKind: $def->idKind,
+            changeDates: $def->changeDates,
         );
     }
 
@@ -109,6 +111,7 @@ final class ShadowTypes
             storage: $def->storage,
             fields: $fields,
             idField: 'uuid',
+            changeDates: $def->changeDates,
         );
     }
 }

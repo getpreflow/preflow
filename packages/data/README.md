@@ -696,38 +696,39 @@ its old value.
 Every record of a type keeps when it was last changed (`Preflow\Data\ChangeDates`), on every
 driver:
 
-- **Where:** a type with an updated field of its own (`updatedAt`, else `updated_at`) keeps it
-  there, so no record holds it twice; every other type in the system key `_updated_at` (beside
-  `_version`, `_published_at`). `ChangeDates::of($def)` names the key.
+- **Where:** the system key `_updated_at` (`ChangeDates::FIELD`, beside `_version`,
+  `_published_at`), on every type. A type's own `updatedAt` / `updated_at` field is content: the
+  data layer never writes it (a site gives it its own meaning). A type whose rows are never changed
+  after they are written says `changeDates: false` on its `TypeDefinition` (the activity log's own
+  tables: their `at` is their time).
 - **What:** ISO 8601 in UTC to the second (`2026-11-22T18:59:29+00:00`), so ordering by it is a
-  plain text comparison on every driver (`->orderBy('_updated_at', SortDirection::Desc)`); a
-  declared field stored as a number gets the Unix time.
+  plain text comparison on every driver (`->orderBy('_updated_at', SortDirection::Desc)`).
 - **When:** a save that changes the record sets it, from the render's clock: `saveType()`,
   `saveTypeIfVersion()`, and `save()` / `insert()` / `insertIgnoring()` / `insertMany()` /
-  `update()` of a class-backed type (its updated property gets the value written). A save that
+  `update()` of a class-backed type. A save that
   changes nothing keeps it (as a version field), so an unchanged record is written to the same
   bytes; a versioned save moves it with the version, and `saveTypeIfVersion()` with `$next` equal
   to `$expected` keeps the date the record was loaded with. It is never content: versions,
   publish states and `changes()` ignore it. A read never touches it.
 - **Not moved:** writes that name their fields write only those: `updateIf()`,
   `updateFieldsIfVersion()`, `incrementIn()` (counters), raw SQL, a driver called directly. A caller
-  that wants the date moved includes it: `[ChangeDates::of($def) => ChangeDates::value($def, $now)]`.
+  that wants the date moved includes it: `[ChangeDates::FIELD => ChangeDates::text($now)]`.
 - **Keeping dates:** `$dm->keepingChangeDates(fn () => …)` writes the change date a record carries
   as it is (one without gets now): for imports and copies. Folio's content import writes an
   archive's rows as they are (their dates too); an archive from before 0.84 is compared without
   dates and what it writes is dated with the import.
 - **Published copies** keep their own `_updated_at`: the publish that wrote their content (a
-  publish of the same content keeps it). A type's own updated field is content, published as the
-  working copy holds it.
+  publish of the same content keeps it).
 - **Storage:** JSON records take the key. On SQL, `preflow migrate` adds the column to every table
-  the data layer makes (`RecordTableSync`, a date column compared exactly); until then saves are
+  the data layer makes (`RecordTableSync`, a date column compared exactly, with an index on typed
+  tables, since lists sort by it); until then saves are
   written as before. `DataManager::changeDateOf($def)` says whether the storage holds it (a driver
   that does not implement `DescribesColumns` is given none). A driver needs nothing new: it stores
   the key as it stores the fields; `StorageDriverContract` pins it on every driver.
 - **Backfill:** the step `data.change-dates` of `preflow migrate` (after every table step, on any
   storage) gives each record without a date the activity log's newest event for it (a log with
-  `Preflow\Core\Activity\LastChanges`, as the stored one), else a published copy's
-  `_published_at`, else the storage's own write time (`WriteTimes`: a JSON file's modification
+  `Preflow\Core\Activity\LastChanges`, as the stored one), else the type's own `updatedAt` /
+  `updated_at` value (read, never written), else a published copy's `_published_at`, else the storage's own write time (`WriteTimes`: a JSON file's modification
   time), else its `createdAt` / `created_at`, else the time of the migrate. It writes only empty
   dates, 500 records per transaction, so a second run writes nothing and an interrupted one goes
   on where it stopped.

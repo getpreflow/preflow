@@ -40,7 +40,7 @@ final class MysqlTypedSyncTest extends TestCase
     {
         $lines = $this->sync()->sync(self::def());
 
-        $this->assertSame(['created table event', 'added unique index uniq_event_slug', 'added index idx_event_city', 'added index idx_event_short'], $lines);
+        $this->assertSame(['created table event', 'added unique index uniq_event_slug', 'added index idx_event_city', 'added index idx_event_short', 'added index idx_event__updated_at'], $lines);
         $this->assertSame([
             'uuid' => 'varchar(191)', 'seats' => 'double', 'open' => 'tinyint(1)', 'starts' => 'varchar(32)',
             'slug' => 'varchar(191)', 'city' => 'varchar(191)', 'short' => 'varchar(40)', 'name' => 'longtext', '_updated_at' => 'varchar(32)',
@@ -135,9 +135,10 @@ final class MysqlTypedSyncTest extends TestCase
             'warning: event.slug has no unique index; convert the table (see the data README)',
             'added index idx_event_city',
             'added index idx_event_short',
+            'added index idx_event__updated_at',
         ], $lines, 'plain indexes on the LONGTEXT columns by a prefix; no unique index over a column of another type');
         $this->assertSame($before, (new Schema($this->pdo))->columnTypes('event'));
-        $this->assertEqualsCanonicalizing(['PRIMARY', 'idx_event_city', 'idx_event_short'], (new Schema($this->pdo))->indexes('event'));
+        $this->assertEqualsCanonicalizing(['PRIMARY', 'idx_event_city', 'idx_event_short', 'idx_event__updated_at'], (new Schema($this->pdo))->indexes('event'));
         $this->assertSame(array_slice($lines, 0, 8), $sync->sync(self::def()), 'nothing changed, so the same warnings again');
     }
 
@@ -165,7 +166,7 @@ final class MysqlTypedSyncTest extends TestCase
 
         $lines = $this->sync()->sync($def);
 
-        $this->assertCount(2, $lines);
+        $this->assertCount(3, $lines, 'the table, its unique index, the change date\'s index');
         $this->assertSame(64, strlen(substr($lines[1], strlen('added unique index '))));
     }
 

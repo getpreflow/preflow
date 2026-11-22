@@ -65,8 +65,6 @@
                             {%- if row.home %}<span class="folio-row-meta">{{ row.home }}</span>{% endif %}</span>
                         </div></td>
                         {%- if frontend|default(false) %}<td class="folio-cell-address folio-mono">{{ row.address|default('') }}</td>{% endif -%}
-                    {%- elseif name == changed_column|default(null) -%}
-                        <td class="folio-cell-changed">{{ cells.changed_cell(row.changed|default('')) }}</td>
                     {%- else -%}
                         <td{% if kinds[name]|default('') == 'number' %} class="is-number"{% endif %}>{{ row.marked[name]|raw }}</td>
                     {%- endif -%}

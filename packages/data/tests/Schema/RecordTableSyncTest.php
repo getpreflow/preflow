@@ -42,7 +42,7 @@ final class RecordTableSyncTest extends TestCase
     {
         $lines = $this->sync()->sync($this->def(['title', 'body']));
 
-        $this->assertSame(['created table note'], $lines);
+        $this->assertSame(['created table note', 'added index idx_note__updated_at'], $lines);
         $this->assertSame(['uuid', 'title', 'body', '_updated_at'], (new Schema($this->pdo))->columns('note'), 'the fields, then the change date (0.84)');
     }
 
@@ -79,7 +79,7 @@ final class RecordTableSyncTest extends TestCase
     {
         $lines = $this->sync()->sync($this->def(['title']), ['_order']);
 
-        $this->assertSame(['created table note'], $lines);
+        $this->assertSame(['created table note', 'added index idx_note__updated_at'], $lines);
         $this->assertSame(['uuid', 'title', '_order', '_updated_at'], (new Schema($this->pdo))->columns('note'));
     }
 

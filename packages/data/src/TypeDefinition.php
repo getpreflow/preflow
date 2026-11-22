@@ -25,6 +25,8 @@ final readonly class TypeDefinition
      * @param ?IdKind $idKind the id kind the type's model class states (IdKind::ofModel(); TypeRegistry
      *        sets it for a class-backed type). null: no class states one, so ask DataManager::idKind(),
      *        which answers for every type (the storage, then the declared id field). @since 0.82.0
+     * @param bool $changeDates its records keep a change date (ChangeDates, `_updated_at`); false for a
+     *        type whose rows are never changed after they are written (a log). @since 0.84.0
      * @throws \InvalidArgumentException an index without fields, over a field the type does not have (or twice
      *         over one), over a translatable field, or named as another index (a field's own, a unique field's,
      *         another composite's); a titleField the type does not have
@@ -44,6 +46,7 @@ final readonly class TypeDefinition
         public bool $readonly = false,
         bool $creatable = true,
         public ?IdKind $idKind = null,
+        public bool $changeDates = true,
     ) {
         $this->creatable = $creatable && !$readonly;
         $this->assertIndexes();

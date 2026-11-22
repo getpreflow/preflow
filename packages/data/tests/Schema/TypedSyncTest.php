@@ -43,7 +43,7 @@ final class TypedSyncTest extends TestCase
     {
         $lines = $this->sync()->sync(self::def());
 
-        $this->assertSame(['created table event', 'added unique index uniq_event_slug', 'added index idx_event_city'], $lines);
+        $this->assertSame(['created table event', 'added unique index uniq_event_slug', 'added index idx_event_city', 'added index idx_event__updated_at'], $lines);
         $this->assertSame(
             ['uuid' => 'text', 'seats' => 'numeric', 'open' => 'integer', 'starts' => 'text', 'slug' => 'text', 'city' => 'text', 'name' => 'text', '_updated_at' => 'text'],
             (new Schema($this->pdo))->columnTypes('event'),
@@ -115,9 +115,10 @@ final class TypedSyncTest extends TestCase
             'warning: event.open is text, expected boolean; convert the table (see the data README)',
             'added unique index uniq_event_slug',
             'added index idx_event_city',
+            'added index idx_event__updated_at',
         ], $lines, 'the indexes on the columns of their type (TEXT on SQLite), which hold no duplicates');
         $this->assertSame($before, (new Schema($this->pdo))->columnTypes('event'));
-        $this->assertEqualsCanonicalizing(['uniq_event_slug', 'idx_event_city'], array_values(array_filter((new Schema($this->pdo))->indexes('event'), static fn (string $i): bool => !str_starts_with($i, 'sqlite_'))));
+        $this->assertEqualsCanonicalizing(['uniq_event_slug', 'idx_event_city', 'idx_event__updated_at'], array_values(array_filter((new Schema($this->pdo))->indexes('event'), static fn (string $i): bool => !str_starts_with($i, 'sqlite_'))));
         $this->assertSame(array_slice($lines, 0, 2), $sync->sync(self::def()), 'nothing changed, so the same warnings again');
     }
 
@@ -148,7 +149,7 @@ final class TypedSyncTest extends TestCase
     {
         $lines = $this->sync()->sync(self::def(), unique: false);
 
-        $this->assertSame(['created table event', 'added index idx_event_city'], $lines);
+        $this->assertSame(['created table event', 'added index idx_event_city', 'added index idx_event__updated_at'], $lines);
         $this->assertNotContains('uniq_event_slug', (new Schema($this->pdo))->indexes('event'));
         $this->assertSame('numeric', (new Schema($this->pdo))->columnTypes('event')['seats']);
     }
@@ -164,7 +165,7 @@ final class TypedSyncTest extends TestCase
     {
         $def = new TypeDefinition('page', 'page', 'sqlite', ['slug' => new TypeFieldDefinition('slug', translatable: true, unique: true)]);
 
-        $this->assertSame(['created table page'], $this->sync()->sync($def));
+        $this->assertSame(['created table page', 'added index idx_page__updated_at'], $this->sync()->sync($def));
         $this->assertSame([], $this->sync()->sync($def));
     }
 

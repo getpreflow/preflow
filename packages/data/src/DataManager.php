@@ -140,38 +140,41 @@ final class DataManager
     }
 
     /**
-     * The key records of $def keep their change date in (ChangeDates::of()), or null where the
-     * storage does not say it holds it: a storage that describes its columns (DescribesColumns:
-     * the built-in drivers; JSON takes any key) and has it, so a SQL table `preflow migrate` has
-     * not given the column yet is written as before, and so is any storage that cannot tell.
+     * The key records of $def keep their change date in (ChangeDates::FIELD), or null where they
+     * keep none: a type without change dates (TypeDefinition::$changeDates false), or a storage
+     * that does not say it holds the key (it must describe its columns, DescribesColumns: the
+     * built-in drivers; JSON takes any key), so a SQL table `preflow migrate` has not given the
+     * column yet is written as before, and so is any storage that cannot tell.
      *
      * @since 0.84.0
      */
     public function changeDateOf(TypeDefinition $def): ?string
     {
-        $key = ChangeDates::of($def);
+        if (!$def->changeDates) {
+            return null;
+        }
 
-        return $this->resolveDriver($def->storage) instanceof DescribesColumns && $this->hasColumn($def, $key) ? $key : null;
+        return $this->resolveDriver($def->storage) instanceof DescribesColumns && $this->hasColumn($def, ChangeDates::FIELD) ? ChangeDates::FIELD : null;
     }
 
     /**
      * The change date a save of $def writes (ChangeDates): the record's own ($given) while
      * keepingChangeDates() is open and it has one; the stored one ($stored) when the save changes
      * nothing ($changed false) and a date is stored; else now, from the render's clock
-     * (Contexts::clock()), as ChangeDates::value() stores it.
+     * (Contexts::clock()), as ChangeDates::text() writes it.
      *
      * @param array<string, mixed>|null $stored the record as stored (null: none, or not read)
      */
     private function changeDateFor(TypeDefinition $def, string $key, mixed $given, ?array $stored, bool $changed): mixed
     {
         if ($this->keepingChangeDates > 0 && ChangeDates::isSet($given)) {
-            return $given instanceof \DateTimeInterface ? ChangeDates::value($def, $given, $this->fieldKinds()) : $given;
+            return $given instanceof \DateTimeInterface ? ChangeDates::text($given) : $given;
         }
         if (!$changed && $stored !== null && ChangeDates::isSet($stored[$key] ?? null)) {
             return $stored[$key];
         }
 
-        return ChangeDates::value($def, Contexts::clock()->now(), $this->fieldKinds());
+        return ChangeDates::text(Contexts::clock()->now());
     }
 
     /** Whether the change date of a save needs the stored record: not while a kept date is given. */
@@ -1177,10 +1180,10 @@ final class DataManager
     {
         $values = $this->classTypeValues($model, $def);
         $dateKey = $this->changeDateOf($def);
-        $givenDate = $dateKey === null ? null : $values[$dateKey] ?? null;
         if ($dateKey !== null) {
-            // A first write gets now (or a kept date); a save of a stored record decides on what is stored, below.
-            $values[$dateKey] = $this->changeDateFor($def, $dateKey, $givenDate, null, true);
+            // A first write gets now; a save of a stored record decides on what is stored, below. (A
+            // class has no property for the system key: nothing is given, so nothing is kept.)
+            $values[$dateKey] = $this->changeDateFor($def, $dateKey, null, null, true);
         }
         $record = new DynamicRecord($def, $values);
         $driver = $this->resolveDriver($def->storage);
@@ -1210,13 +1213,13 @@ final class DataManager
         }
 
         $versionField = $this->versionFieldOf($def);
-        if ($dateKey !== null && $versionField === null && !$inserting && !self::emptyId($id) && $this->datesFromStore($givenDate)) {
+        if ($dateKey !== null && $versionField === null && !$inserting && !self::emptyId($id)) {
             $stored = $driver->findOne($def->table, $id, $def->idField);
-            $record->set($dateKey, $this->changeDateFor($def, $dateKey, $givenDate, $stored, $stored === null || $this->contentChanged($def, $this->storageData($record), $stored, '')));
+            $record->set($dateKey, $this->changeDateFor($def, $dateKey, null, $stored, $stored === null || $this->contentChanged($def, $this->storageData($record), $stored, '')));
         }
         $data = $this->storageData($record);
         $written = true;
-        $this->guarded($record, function () use ($driver, $def, $id, &$data, $versionField, $inserting, $given, $dateKey, $givenDate, &$written): void {
+        $this->guarded($record, function () use ($driver, $def, $id, &$data, $versionField, $inserting, $given, $dateKey, &$written): void {
             if ($inserting && $given && $driver instanceof InsertsNew) {
                 // Checked again in the write itself: a writer in between is a duplicate, not an overwrite.
                 $written = $driver->insertNew($def->table, $this->storageValues($def, $versionField === null ? $data : [...$data, $versionField => 1]), $def->idField);
@@ -1230,7 +1233,7 @@ final class DataManager
                 return;
             }
             if ($versionField !== null) {
-                $this->saveClassBumped($driver, $def, $id, $data, $versionField, $dateKey, $givenDate);
+                $this->saveClassBumped($driver, $def, $id, $data, $versionField, $dateKey);
 
                 return;
             }
@@ -1242,9 +1245,6 @@ final class DataManager
 
         if (self::emptyId($id)) {
             $this->takeInsertId($driver, $meta, $model);
-        }
-        if ($dateKey !== null) {
-            $this->giveChangeDate($model, $dateKey, $data[$dateKey] ?? null);
         }
         $this->forgetSkipped($model, array_keys($values));
         $this->wroteModel($meta, $model);
@@ -1261,7 +1261,7 @@ final class DataManager
      *
      * @param array<string, mixed> $data
      */
-    private function saveClassBumped(StorageDriver $driver, TypeDefinition $def, string|int $id, array &$data, string $versionField, ?string $dateKey = null, mixed $givenDate = null): void
+    private function saveClassBumped(StorageDriver $driver, TypeDefinition $def, string|int $id, array &$data, string $versionField, ?string $dateKey = null): void
     {
         for ($attempt = 1; ; $attempt++) {
             $stored = $driver->findOne($def->table, $id, $def->idField);
@@ -1269,7 +1269,7 @@ final class DataManager
             $current = $value === null || $value === '' ? null : (int) $value;
             $changed = $stored === null || $this->contentChanged($def, $data, $stored, $versionField);
             if ($dateKey !== null) {
-                $data[$dateKey] = $this->changeDateFor($def, $dateKey, $givenDate, $stored, $changed);
+                $data[$dateKey] = $this->changeDateFor($def, $dateKey, null, $stored, $changed);
             }
             // Unchanged: the stored version stays (none stays none).
             $version = $changed ? [$versionField => ($current ?? 0) + 1] : ($current === null ? [] : [$versionField => $current]);
@@ -1282,35 +1282,6 @@ final class DataManager
             if ($driver->updateIfVersion($def->table, $id, $fields, $versionField, $current, $def->idField)) {
                 return;
             }
-        }
-    }
-
-    /**
-     * A class-backed model's change date property (the type's declared updated field, when the
-     * class has it as a public property) takes the date just written, as its type holds it: a date
-     * object, the Unix time or the text.
-     */
-    private function giveChangeDate(Model $model, string $key, mixed $value): void
-    {
-        if (!property_exists($model, $key)) {
-            return;
-        }
-        $prop = new \ReflectionProperty($model, $key);
-        if (!$prop->isPublic() || $prop->isStatic() || $prop->isReadOnly()) {
-            return;
-        }
-        $type = $prop->getType();
-        $name = $type instanceof \ReflectionNamedType ? $type->getName() : 'mixed';
-        $date = ChangeDates::parse($value);
-        $given = match (true) {
-            in_array($name, [\DateTimeImmutable::class, \DateTimeInterface::class], true) => $date,
-            $name === 'int' => $date?->getTimestamp(),
-            $name === 'string' => is_scalar($value) ? (string) $value : null,
-            $name === 'mixed' => $value,
-            default => null, // a type that takes no date: left as it is
-        };
-        if ($given !== null) {
-            $model->{$key} = $given;
         }
     }
 
@@ -1652,7 +1623,7 @@ final class DataManager
     private function contentChanged(TypeDefinition $def, array $data, array $stored, string $versionField): bool
     {
         // The change date (ChangeDates) is no content: it follows whether the rest changed.
-        $skip = array_flip([$def->idField, $versionField, ChangeDates::of($def), ...($this->versionFields?->nonContent($def) ?? [])]);
+        $skip = array_flip([$def->idField, $versionField, ChangeDates::FIELD, ...($this->versionFields?->nonContent($def) ?? [])]);
         foreach (array_diff_key($data, $skip) as $key => $value) {
             $kind = isset($def->fields[$key]) ? $this->fieldKinds()->columnKindOf($def->fields[$key]) : null;
             if (self::asStored($value, $kind) !== self::asStored($stored[$key] ?? null, $kind)) {

@@ -23,7 +23,7 @@ final class RecordTableSyncFullTextTest extends TestCase
             'body' => new TypeFieldDefinition('body', 'text'),
         ], fullText: true);
 
-        $this->assertSame(['created table post'], $sync->sync($def));
+        $this->assertSame(['created table post', 'added index idx_post__updated_at'], $sync->sync($def));
         $this->assertSame([], $sync->sync($def));
     }
 }

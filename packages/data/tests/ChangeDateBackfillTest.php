@@ -69,20 +69,31 @@ final class ChangeDateBackfillTest extends TestCase
         $this->assertSame('2025-05-05T05:05:05+00:00', $driver->findOne('page__published', 'a')[ChangeDates::FIELD]);
     }
 
-    public function test_a_types_own_updated_field_keeps_its_values_and_fills_the_empty_ones(): void
+    public function test_a_types_own_updated_field_is_read_never_written(): void
     {
         $driver = new JsonFileDriver($this->dir . '/data');
         $dm = new DataManager(['default' => $driver], 'default');
         $def = new TypeDefinition('memo', 'memo', 'default', ['title' => new TypeFieldDefinition('title'), 'updated_at' => new TypeFieldDefinition('updated_at', 'date')]);
-        $driver->save('memo', 'kept', ['uuid' => 'kept', 'title' => 'K', 'updated_at' => '2026-01-02 03:04:05']);
+        $driver->save('memo', 'kept', ['uuid' => 'kept', 'title' => 'K', 'updated_at' => '2026-01-02T03:04:05+01:00']);
         $driver->save('memo', 'empty', ['uuid' => 'empty', 'title' => 'E', 'updated_at' => '']);
         touch($this->dir . '/data/memo/empty.json', (new \DateTimeImmutable('2023-03-03T03:03:03Z'))->getTimestamp());
 
-        $this->assertSame(['gave 1 record of memo a change date (1 from the file time)'], self::backfill($dm, [$def]));
+        $this->assertSame(['gave 2 records of memo a change date (1 from its updated time, 1 from the file time)'], self::backfill($dm, [$def]));
 
-        $this->assertSame('2026-01-02 03:04:05', $driver->findOne('memo', 'kept')['updated_at'], 'as the site wrote it');
-        $this->assertSame('2023-03-03T03:03:03+00:00', $driver->findOne('memo', 'empty')['updated_at']);
-        $this->assertArrayNotHasKey(ChangeDates::FIELD, $driver->findOne('memo', 'kept'), 'no second key');
+        $this->assertSame('2026-01-02T02:04:05+00:00', $driver->findOne('memo', 'kept')[ChangeDates::FIELD], 'its own time, in UTC');
+        $this->assertSame('2026-01-02T03:04:05+01:00', $driver->findOne('memo', 'kept')['updated_at'], 'as the site wrote it');
+        $this->assertSame('', $driver->findOne('memo', 'empty')['updated_at']);
+        $this->assertSame('2023-03-03T03:03:03+00:00', $driver->findOne('memo', 'empty')[ChangeDates::FIELD]);
+    }
+
+    public function test_a_type_without_change_dates_is_left_out(): void
+    {
+        $driver = new JsonFileDriver($this->dir . '/data');
+        $dm = new DataManager(['default' => $driver], 'default');
+        $driver->save('log', 'a', ['uuid' => 'a', 'line' => 'x']);
+
+        $this->assertSame([], self::backfill($dm, [new TypeDefinition('log', 'log', 'default', ['line' => new TypeFieldDefinition('line')], changeDates: false)]));
+        $this->assertArrayNotHasKey(ChangeDates::FIELD, $driver->findOne('log', 'a'));
     }
 
     public function test_a_sql_table_without_the_column_is_left_out(): void

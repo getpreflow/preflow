@@ -194,7 +194,7 @@ final class DataManagerChangeDatesTest extends TestCase
         $this->assertSame('2026-02-03T10:00:00+00:00', $this->stored($dm, (string) $note->uuid, 'plain_note')[ChangeDates::FIELD]);
     }
 
-    public function test_a_class_backed_type_with_its_own_updated_field_gets_it_on_the_property(): void
+    public function test_a_class_backed_types_own_updated_property_is_left_as_the_class_sets_it(): void
     {
         $dm = $this->json();
         $note = new DatedNote();
@@ -202,16 +202,20 @@ final class DataManagerChangeDatesTest extends TestCase
         $note->updatedAt = '2001-01-01 00:00:00';
         self::at('2026-02-01T10:00:00+01:00', static fn () => $dm->insert($note, false));
 
-        $this->assertSame('2026-02-01T09:00:00+00:00', $note->updatedAt, 'the property holds what was written');
+        $this->assertSame('2001-01-01 00:00:00', $note->updatedAt, 'the property is the class\'s');
         $stored = $this->stored($dm, (string) $note->uuid, 'dated_note');
-        $this->assertSame('2026-02-01T09:00:00+00:00', $stored['updatedAt']);
-        $this->assertArrayNotHasKey(ChangeDates::FIELD, $stored, 'no second key');
+        $this->assertSame('2001-01-01 00:00:00', $stored['updatedAt'], 'content, as written');
+        $this->assertSame('2026-02-01T09:00:00+00:00', $stored[ChangeDates::FIELD], 'the change date beside it');
+    }
 
-        $imported = new DatedNote();
-        $imported->title = 'Old';
-        $imported->updatedAt = '2001-01-01T00:00:00+00:00';
-        self::at('2026-02-01T10:00:00Z', static fn () => $dm->keepingChangeDates(static fn () => $dm->insert($imported, false)));
-        $this->assertSame('2001-01-01T00:00:00+00:00', $this->stored($dm, (string) $imported->uuid, 'dated_note')['updatedAt'], 'kept on import');
+    public function test_a_type_without_change_dates_gets_none(): void
+    {
+        $dm = $this->json();
+        $def = new TypeDefinition('log', 'log', 'default', ['line' => new TypeFieldDefinition('line')], changeDates: false);
+        $dm->saveType(DynamicRecord::fromArray($def, ['uuid' => 'a', 'line' => 'x']), false);
+
+        $this->assertNull($dm->changeDateOf($def));
+        $this->assertArrayNotHasKey(ChangeDates::FIELD, $this->stored($dm, 'a', 'log'));
     }
 
     public function test_a_sql_table_without_the_column_saves_as_before_until_migrate_adds_it(): void

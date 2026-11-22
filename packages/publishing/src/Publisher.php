@@ -47,7 +47,7 @@ final class Publisher
 
     /**
      * System keys, never content: TABLE_META and PUBLISHED_VERSION (@since 0.77), and the change
-     * date ChangeDates::FIELD (@since 0.84.0; a type's own updated field is content, as before).
+     * date ChangeDates::FIELD (@since 0.84.0; a type's own updated field is content).
      */
     public const array META = [...self::TABLE_META, self::PUBLISHED_VERSION, ChangeDates::FIELD];
 
@@ -637,10 +637,9 @@ final class Publisher
         if ($this->dm->hasColumn($shadow, self::PUBLISHED_VERSION)) {
             $snapshot->set(self::PUBLISHED_VERSION, (int) ($working->get('_version') ?? 0));
         }
-        // Its change date (ChangeDates, since 0.84.0): the system key is the snapshot's own (left out
-        // of the copy: the publish that changed its content, kept by one that changes nothing); a
-        // type's own updated field is content, published as the working copy holds it.
-        $this->dm->keepingChangeDates(fn () => $this->dm->saveType($snapshot, false));
+        // Its change date (ChangeDates, since 0.84.0) is the snapshot's own (left out of the copy):
+        // the publish that changed its content, kept by one that changes nothing.
+        $this->dm->saveType($snapshot, false);
         $this->appendRevision($def, $snapshot, $previous, $stamp, $by);
 
         return $snapshot;

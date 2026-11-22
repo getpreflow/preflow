@@ -65,7 +65,7 @@ final class MysqlTextRuleSyncTest extends TestCase
 
         $lines = $this->sync()->sync(self::people());
 
-        $this->assertSame(['added column people._updated_at', 'converted collations of people: title, body, d', $this->defaultLine('people')], $lines, 'the date was utf8mb4_unicode_ci, now exact');
+        $this->assertSame(['added column people._updated_at', 'converted collations of people: title, body, d', $this->defaultLine('people'), 'added index idx_people__updated_at'], $lines, 'the date was utf8mb4_unicode_ci, now exact');
         $this->assertSame(
             ['uuid' => 'utf8mb4_bin', 'title' => $this->text, 'body' => $this->text, 'd' => 'utf8mb4_bin', '_updated_at' => 'utf8mb4_bin'],
             Grammars::for($this->pdo)->columnCollations($this->pdo, 'people'),
@@ -93,6 +93,7 @@ final class MysqlTextRuleSyncTest extends TestCase
             '  "Müller" in r1, r2',
             'converted collations of people: body, d',
             $this->defaultLine('people'),
+            'added index idx_people__updated_at',
         ], $lines);
         $collations = Grammars::for($this->pdo)->columnCollations($this->pdo, 'people');
         $this->assertSame('utf8mb4_bin', $collations['title']);
@@ -110,7 +111,7 @@ final class MysqlTextRuleSyncTest extends TestCase
             . 'UNIQUE KEY uniq_code_title (title, purpose), KEY idx_code_purpose (purpose)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
         $this->pdo->exec("INSERT INTO code (uuid, title, purpose) VALUES ('r1', 'Müller', 'a'), ('r2', 'MÜLLER', 'b')");
 
-        $this->assertSame(['added column code._updated_at', 'converted collations of code: title, purpose', $this->defaultLine('code')], $this->sync()->sync(self::code()));
+        $this->assertSame(['added column code._updated_at', 'converted collations of code: title, purpose', $this->defaultLine('code'), 'added index idx_code__updated_at'], $this->sync()->sync(self::code()));
         $this->assertSame(['uuid' => 'utf8mb4_bin', 'title' => $this->text, 'purpose' => $this->text, '_updated_at' => 'utf8mb4_bin'], Grammars::for($this->pdo)->columnCollations($this->pdo, 'code'));
     }
 
@@ -120,12 +121,12 @@ final class MysqlTextRuleSyncTest extends TestCase
         Grammars::register('mysql', new MysqlGrammar(collations: []));
         $this->pdo->clear();
 
-        $this->assertSame(['added column people._updated_at'], $this->sync()->sync(self::people()), 'only the change date (0.84)');
+        $this->assertSame(['added column people._updated_at', 'added index idx_people__updated_at'], $this->sync()->sync(self::people()), 'only the change date and its index (0.84)');
         $this->assertSame(
             ['warning: this server has no accent-sensitive, case-insensitive collation (MariaDB 10.10+ or MySQL 8.0+); text columns keep their comparison'],
             $this->conversion()->convert(),
         );
-        $this->assertSame(['ALTER TABLE `people` ADD COLUMN `_updated_at` VARCHAR(32) COLLATE utf8mb4_bin'], $this->pdo->matching('/^\s*(ALTER|CREATE|DROP)/i'), 'the new column only');
+        $this->assertSame(['ALTER TABLE `people` ADD COLUMN `_updated_at` VARCHAR(32) COLLATE utf8mb4_bin', 'CREATE INDEX `idx_people__updated_at` ON `people` (`_updated_at`)'], $this->pdo->matching('/^\s*(ALTER|CREATE|DROP)/i'), 'the new column and its index only');
         $this->assertSame('utf8mb4_unicode_ci', Grammars::for($this->pdo)->columnCollations($this->pdo, 'people')['body']);
     }
 
@@ -139,7 +140,7 @@ final class MysqlTextRuleSyncTest extends TestCase
 
         $lines = $this->sync()->sync(self::post());
 
-        $this->assertSame(['added column post._updated_at', 'converted collations of post: title, body, tags', $this->defaultLine('post')], $lines);
+        $this->assertSame(['added column post._updated_at', 'converted collations of post: title, body, tags', $this->defaultLine('post'), 'added index idx_post__updated_at'], $lines);
         $this->assertCount(1, $this->pdo->matching('/^ALTER TABLE `post` MODIFY/'));
         $this->assertSame(['uuid' => 'utf8mb4_bin', 'title' => $this->text, 'body' => $this->text, 'tags' => $this->text, '_updated_at' => 'utf8mb4_bin'], Grammars::for($this->pdo)->columnCollations($this->pdo, 'post'));
         $this->assertSame(['ft_post_search' => ['title', 'body', 'tags']], (new MysqlGrammar())->fullTextIndexes($this->pdo, 'post'));
@@ -254,6 +255,7 @@ final class MysqlTextRuleSyncTest extends TestCase
             'added column folio_assets._updated_at',
             'converted collations of folio_assets: title, alt, ' . implode(', ', $system),
             $this->defaultLine('folio_assets'),
+            'added index idx_folio_assets__updated_at',
         ], $lines);
         $collations = Grammars::for($this->pdo)->columnCollations($this->pdo, 'folio_assets');
         $this->assertSame($this->text, $collations['title']);

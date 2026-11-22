@@ -9,7 +9,7 @@ use Preflow\Data\Attributes\Field;
 use Preflow\Data\Attributes\Id;
 use Preflow\Data\Model;
 
-/** A class-backed type with an updated field of its own: its change date (ChangeDates) lives there. */
+/** A class-backed type with an updated field of its own: content, which the change date (ChangeDates) leaves alone. */
 #[Entity(table: 'dated_note', type: 'dated_note')]
 final class DatedNote extends Model
 {

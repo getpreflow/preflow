@@ -142,6 +142,8 @@ final class StoredActivityLog implements ActivityLog, LastChanges
             ],
             idField: 'id',
             indexes: [['subject', 'record_id']],
+            // Its own time is "at" (moved when a session's row coalesces): no second date (ChangeDates, 0.84).
+            changeDates: false,
         );
         $this->last = new TypeDefinition(
             key: self::LAST_TABLE,
@@ -154,6 +156,7 @@ final class StoredActivityLog implements ActivityLog, LastChanges
                 'at' => new TypeFieldDefinition('at', 'string', exact: true),
             ],
             idField: 'id',
+            changeDates: false,
         );
     }
 

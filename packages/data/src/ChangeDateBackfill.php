@@ -14,13 +14,14 @@ use Preflow\Data\Attributes\Timestamps;
  * the best one there is, on every storage:
  *
  * 1. the newest event the activity log keeps for it (a log with LastChanges, as the stored one);
- * 2. the time a published copy was written (its `_published_at`);
- * 3. when the storage last wrote it (WriteTimes: a JSON file's modification time);
- * 4. when it was created (a `createdAt` / `created_at` value);
- * 5. else the time of the migrate.
+ * 2. the type's own updated time (an `updatedAt` / `updated_at` value: read, never written);
+ * 3. the time a published copy was written (its `_published_at`);
+ * 4. when the storage last wrote it (WriteTimes: a JSON file's modification time);
+ * 5. when it was created (a `createdAt` / `created_at` value);
+ * 6. else the time of the migrate.
  *
- * Only empty change dates are written (null or ''), so a type's own updated field keeps every
- * value it has, and a second run changes nothing. Each value is written alone, past the data
+ * Only empty change dates are written (null or ''), and nothing else, so a second run changes
+ * nothing. Each value is written alone, past the data
  * layer's save (no version moves, nothing else is stamped). Records are read CHUNK at a time and
  * each chunk is written in one transaction where the storage has them, so a large table never
  * holds one long statement; a run cut short leaves the rest for the next migrate. A SQL table
@@ -85,7 +86,7 @@ final class ChangeDateBackfill
         }
         $driver = $this->dm->driver($def->storage);
         $now = Contexts::clock()->now();
-        $counts = ['activity' => 0, 'published' => 0, 'storage' => 0, 'created' => 0, 'now' => 0];
+        $counts = ['activity' => 0, 'updated' => 0, 'published' => 0, 'storage' => 0, 'created' => 0, 'now' => 0];
         $done = [];
         foreach ([null, ''] as $empty) {
             while (true) {
@@ -119,7 +120,7 @@ final class ChangeDateBackfill
         }
         $this->dm->reportWrite($def->storage, $def->table);
         $from = [];
-        foreach (['activity' => 'the activity log', 'published' => 'the publish time', 'storage' => 'the file time', 'created' => 'the creation time', 'now' => 'now'] as $source => $label) {
+        foreach (['activity' => 'the activity log', 'updated' => 'its updated time', 'published' => 'the publish time', 'storage' => 'the file time', 'created' => 'the creation time', 'now' => 'now'] as $source => $label) {
             if ($counts[$source] > 0) {
                 $from[] = "{$counts[$source]} from {$label}";
             }
@@ -129,7 +130,7 @@ final class ChangeDateBackfill
     }
 
     /**
-     * The change date of each row, as ChangeDates::value() stores it, counted by its source.
+     * The change date of each row, as ChangeDates::text() writes it, counted by its source.
      *
      * @param list<array<string, mixed>> $rows
      * @param array<string, int> $counts
@@ -163,22 +164,28 @@ final class ChangeDateBackfill
             $id = (string) $id;
             [$at, $source] = match (true) {
                 ($t = ChangeDates::parse($logged[$id] ?? null)) !== null => [$t, 'activity'],
+                ($t = self::first($row, Timestamps::UPDATED_NAMES)) !== null => [$t, 'updated'],
                 ($t = ChangeDates::parse($row['_published_at'] ?? null)) !== null => [$t, 'published'],
                 isset($written[$id]) => [$written[$id], 'storage'],
-                ($t = self::created($row)) !== null => [$t, 'created'],
+                ($t = self::first($row, Timestamps::CREATED_NAMES)) !== null => [$t, 'created'],
                 default => [$now, 'now'],
             };
-            $dates[$id] = ChangeDates::value($def, $at, $this->dm->fieldKinds());
+            $dates[$id] = ChangeDates::text($at);
             $counts[$source]++;
         }
 
         return $dates;
     }
 
-    /** @param array<string, mixed> $row */
-    private static function created(array $row): ?\DateTimeImmutable
+    /**
+     * The first readable time among $names in the row.
+     *
+     * @param array<string, mixed> $row
+     * @param list<string> $names
+     */
+    private static function first(array $row, array $names): ?\DateTimeImmutable
     {
-        foreach (Timestamps::CREATED_NAMES as $name) {
+        foreach ($names as $name) {
             $at = ChangeDates::parse($row[$name] ?? null);
             if ($at !== null) {
                 return $at;

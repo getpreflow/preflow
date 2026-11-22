@@ -72,7 +72,7 @@ final class PublishingTablesTest extends PublishingAppTestCase
         foreach (['article', 'article__published'] as $table) {
             $this->assertContains("added index idx_{$table}_title", $lines);
             $this->assertContains("added index idx_{$table}_state_views", $lines);
-            $this->assertEqualsCanonicalizing(["idx_{$table}_title", "idx_{$table}_state_views"], self::own($this->schema()->indexes($table)), $table);
+            $this->assertEqualsCanonicalizing(["idx_{$table}_title", "idx_{$table}_state_views", "idx_{$table}__updated_at"], self::own($this->schema()->indexes($table)), $table);
         }
         $this->assertSame([], self::own($this->schema()->indexes('article__revisions')));
         $this->assertSame([], $this->migrate(), 'a second migrate is a no-op');

@@ -13,7 +13,7 @@ use Preflow\Testing\ContextFactory;
 /**
  * Change dates (ChangeDates, 0.84.0) and publishing: a published copy keeps its own (when a
  * publish wrote its content), the working copy's moves only with its content, neither counts as
- * content, and a type's own updated field is published as the working copy holds it.
+ * content, and a type's own updated field is content the data layer never writes.
  */
 final class PublishedChangeDatesTest extends PublishingAppTestCase
 {
@@ -52,17 +52,19 @@ final class PublishedChangeDatesTest extends PublishingAppTestCase
         $this->assertNotNull($working);
     }
 
-    public function test_a_types_own_updated_field_is_published_as_the_working_copy_holds_it(): void
+    public function test_a_types_own_updated_field_is_content_and_each_copy_has_its_own_change_date(): void
     {
         $this->write('config/models/memo.json', (string) json_encode(['key' => 'memo', 'table' => 'memo', 'storage' => 'json', 'publishing' => true, 'fields' => [
             'title' => ['type' => 'string'],
             'updated_at' => ['type' => 'date'],
         ]]));
         $this->reboot();
-        self::at('2026-03-01T08:00:00Z', fn () => $this->working('memo', 'm1', ['title' => 'First']));
+        self::at('2026-03-01T08:00:00Z', fn () => $this->working('memo', 'm1', ['title' => 'First', 'updated_at' => '2020-05-05']));
         self::at('2026-03-02T08:00:00Z', fn () => $this->publisher()->publish($this->stored('memo', 'm1'), 'ana'));
 
-        $this->assertSame('2026-03-01T08:00:00+00:00', $this->snapshotDate('memo', 'm1', 'updated_at'), 'content: the working copy\'s');
-        $this->assertNull($this->snapshotDate('memo', 'm1'), 'no second key');
+        $this->assertSame('2020-05-05', $this->snapshotDate('memo', 'm1', 'updated_at'), 'published as the working copy holds it');
+        $this->assertSame('2020-05-05', $this->stored('memo', 'm1')->get('updated_at'));
+        $this->assertSame('2026-03-02T08:00:00+00:00', $this->snapshotDate('memo', 'm1'));
+        $this->assertSame('2026-03-01T08:00:00+00:00', $this->stored('memo', 'm1')->get(ChangeDates::FIELD));
     }
 }
