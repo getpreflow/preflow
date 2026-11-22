@@ -966,6 +966,7 @@ abstract class StorageDriverContract extends TestCase
     /** @since 0.78.1 (0.78 respected accents in matching) */
     public function test_like_ignores_accents(): void
     {
+        $this->requireAccentFreeMatching();
         $this->seedEdgeWords();
         $type = new TypeDefinition('edges', 'edges', 'default', ['title' => new TypeFieldDefinition('title')]);
 
@@ -1030,10 +1031,18 @@ abstract class StorageDriverContract extends TestCase
         $this->seedEdgeWords();
 
         $this->assertSame(['d', 'e', 'f', 'l', 'o', 's', 't', 'w', 'x'], $this->edgeIds((new Query())->where('title', 'NOT LIKE', '%ÜBER%')), 'case ignored');
-        $this->assertSame(['d', 'e', 'f', 'l', 'o', 's', 't', 'w', 'x'], $this->edgeIds((new Query())->where('title', 'NOT LIKE', '%uber%')), 'accents ignored');
         $this->assertSame(['d', 'e', 'f', 'o', 's', 't', 'u', 'w'], $this->edgeIds((new Query())->where('title', 'NOT LIKE', 'KELVIN')));
         $this->assertSame(['d', 'e', 'f', 'l', 'o', 's', 'u', 'w', 'x'], $this->edgeIds((new Query())->where('title', 'NOT LIKE', 'İSTANBUL')));
         $this->assertSame(['d', 'e', 'f', 'l', 'o', 's', 't', 'u', 'x'], $this->edgeIds((new Query())->where('title', 'NOT LIKE', 'abc%')));
+    }
+
+    /** @since 0.84.0 (the accent half of test_not_like_follows_the_rule) */
+    public function test_not_like_ignores_accents(): void
+    {
+        $this->requireAccentFreeMatching();
+        $this->seedEdgeWords();
+
+        $this->assertSame(['d', 'e', 'f', 'l', 'o', 's', 't', 'w', 'x'], $this->edgeIds((new Query())->where('title', 'NOT LIKE', '%uber%')), 'accents ignored');
     }
 
     /** Loose search (Folio's lists, ⌘K) is CONTAINS per word, so it follows the rule too. */
@@ -1049,13 +1058,28 @@ abstract class StorageDriverContract extends TestCase
         };
 
         $this->assertSame(['u'], $loose('ÜBER UNS'));
-        $this->assertSame(['u'], $loose('uber'), 'accents ignored');
         $this->assertSame([], $loose('strasse'));
         $this->assertSame(['s'], $loose('STRAẞE'));
         $this->assertSame(['l', 'x'], $loose('kelvin'));
-        $this->assertSame(['t'], $loose('istanbul'));
         $this->assertSame([], $loose('ilik'));
         $this->assertSame(['w'], $loose('abc'));
+    }
+
+    /** @since 0.84.0 (the accent half of test_loose_search_follows_the_rule) */
+    public function test_loose_search_ignores_accents(): void
+    {
+        $this->requireAccentFreeMatching();
+        $this->seedEdgeWords();
+        $type = new TypeDefinition('edges', 'edges', 'default', ['title' => new TypeFieldDefinition('title')]);
+        $loose = function (string $term) use ($type): array {
+            $ids = array_map(static fn ($record): string => (string) $record->get('uuid'), QueryBuilder::forType($this->driver, $type)->searchLoose($term)->get()->items());
+            sort($ids);
+
+            return $ids;
+        };
+
+        $this->assertSame(['u'], $loose('uber'), 'accents ignored');
+        $this->assertSame(['t'], $loose('istanbul'), 'the dot of İ is an accent');
     }
 
     public function test_dotted_i_is_an_i_and_dotless_i_a_letter_of_its_own(): void
@@ -1063,9 +1087,17 @@ abstract class StorageDriverContract extends TestCase
         $this->seedEdgeWords();
 
         $this->assertSame(['t'], $this->edgeIds((new Query())->where('title', 'LIKE', 'İSTANBUL')));
-        $this->assertSame(['t'], $this->edgeIds((new Query())->where('title', 'LIKE', 'istanbul')), 'the dot of İ is an accent, ignored');
         $this->assertSame([], $this->edgeIds((new Query())->where('title', 'LIKE', 'ILIK')), 'ı is a letter of its own');
         $this->assertSame(['d'], $this->edgeIds((new Query())->where('title', 'LIKE', 'ılık')));
+    }
+
+    /** @since 0.84.0 (the accent half of test_dotted_i_is_an_i_and_dotless_i_a_letter_of_its_own) */
+    public function test_the_dot_of_a_dotted_i_is_an_accent(): void
+    {
+        $this->requireAccentFreeMatching();
+        $this->seedEdgeWords();
+
+        $this->assertSame(['t'], $this->edgeIds((new Query())->where('title', 'LIKE', 'istanbul')), 'the dot of İ is an accent, ignored');
     }
 
     public function test_where_in_and_not_in(): void
@@ -1919,7 +1951,6 @@ abstract class StorageDriverContract extends TestCase
     /** The text-matching rule's edge cases: accents, ß, the Kelvin sign, the long s, dotted and dotless i, width forms. */
     private function seedEdgeWords(): void
     {
-        $this->requireAccentFreeMatching();
         $this->createType('edges', ['uuid' => 'exact', 'title' => 'exact']);
         foreach (['u' => 'Über uns', 'e' => 'ÉTÉ', 's' => 'Straße', 't' => 'İstanbul', 'd' => 'ılık', 'x' => "\u{212A}elvin", 'l' => 'Kelvin', 'f' => "\u{017F}uper", 'o' => 'super', 'w' => 'ＡＢＣ ①'] as $id => $title) {
             $this->driver->save('edges', $id, ['uuid' => $id, 'title' => $title]);

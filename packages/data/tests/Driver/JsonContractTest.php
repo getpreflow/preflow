@@ -9,7 +9,7 @@ use Preflow\Data\StorageDriver;
 use Preflow\Testing\Contract\StorageDriverContract;
 
 /** The storage driver contract on JSON files (in a temporary directory). */
-final class JsonContractTest extends StorageDriverContract
+class JsonContractTest extends StorageDriverContract
 {
     private string $dataDir;
 
