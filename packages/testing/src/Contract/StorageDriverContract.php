@@ -116,6 +116,8 @@ use Preflow\Testing\PlainDriver;
  *   schema takes the key. DataManager writes it only to a store with DescribesColumns whose
  *   hasColumn() says the table has it; a store without that capability gets no change date (its
  *   records are written as before 0.84), and the change-date tests skip.
+ *   A store that knows when each record was written by its own means (a file's time) may say so
+ *   (WriteTimes): the backfill of `preflow migrate` uses it for records written before 0.84.
  *
  * Optional hooks, for stores that cannot do something generic:
  * - supportsAutoIds() (default true): false skips the test that saves with each empty id ('',
@@ -1908,6 +1910,77 @@ abstract class StorageDriverContract extends TestCase
         $stored = $this->driver->findOne('stamped', 'c1') ?? [];
         $this->assertSame('2026-03-01T09:00:00+00:00', $stored['updated_at'] ?? null, 'a save sets the declared field');
         $this->assertArrayNotHasKey(\Preflow\Data\ChangeDates::FIELD, $stored, 'and no second key');
+    }
+
+    /**
+     * `preflow migrate`'s backfill (ChangeDateBackfill) on this store: records without a change date
+     * get the activity log's newest event, else the storage's own write time (WriteTimes), else
+     * their creation time, else the migrate's time; a stored date stays; a second run writes
+     * nothing; chunks follow each other until every record has one.
+     */
+    public function test_the_backfill_gives_every_record_without_a_change_date_one(): void
+    {
+        if (!$this->driver instanceof DescribesColumns) {
+            $this->markTestSkipped('The driver does not implement DescribesColumns: DataManager keeps no change dates on it.');
+        }
+        $field = \Preflow\Data\ChangeDates::FIELD;
+        $this->createType('aged', ['uuid' => 'exact', 'title' => 'text', 'created_at' => 'exact', $field => 'exact']);
+        $def = new TypeDefinition('aged', 'aged', 'default', ['title' => new TypeFieldDefinition('title'), 'created_at' => new TypeFieldDefinition('created_at')]);
+        $dm = new \Preflow\Data\DataManager(['default' => $this->driver], 'default');
+        $this->driver->save('aged', 'logged', ['uuid' => 'logged', 'title' => 'In the log', 'created_at' => '2020-01-01T00:00:00+00:00']);
+        $this->driver->save('aged', 'created', ['uuid' => 'created', 'title' => 'Created', 'created_at' => '2021-05-06T07:08:09+02:00']);
+        $this->driver->save('aged', 'plain', ['uuid' => 'plain', 'title' => 'Nothing known']);
+        $this->driver->save('aged', 'dated', ['uuid' => 'dated', 'title' => 'Dated', $field => '2019-01-01T00:00:00+00:00']);
+        $this->driver->save('aged', 'blank', ['uuid' => 'blank', 'title' => 'Blank', $field => '']);
+        $log = new class implements \Preflow\Core\Activity\LastChanges {
+            public function lastChanged(string $subject, array $ids): array
+            {
+                return $subject === 'aged' && in_array('logged', $ids, true) ? ['logged' => '2026-02-03T04:05:06+00:00'] : [];
+            }
+
+            public function record(\Preflow\Core\Activity\Activity $activity): void {}
+
+            public function recent(int $limit, ?array $subjects = null, ?string $before = null, ?string $by = null): \Preflow\Core\Activity\ActivityPage
+            {
+                throw new \LogicException('not read');
+            }
+
+            public function people(?array $subjects = null): array
+            {
+                return [];
+            }
+
+            public function prune(): int
+            {
+                return 0;
+            }
+
+            public function forget(string $subject, string $id): void {}
+        };
+        $backfill = new \Preflow\Data\ChangeDateBackfill($dm, static fn (): array => [$def, $def], $log, chunk: 2);
+
+        $lines = self::at('2026-11-22T12:00:00Z', static fn (): array => $backfill->run());
+
+        $this->assertCount(1, $lines, 'one line per table (listed twice, done once)');
+        $this->assertStringStartsWith('gave 4 records of aged a change date (', $lines[0]);
+        $dates = [];
+        foreach (['logged', 'created', 'plain', 'dated', 'blank'] as $id) {
+            $dates[$id] = ($this->driver->findOne('aged', $id) ?? [])[$field] ?? null;
+        }
+        $this->assertSame('2026-02-03T04:05:06+00:00', $dates['logged'], 'the activity log first');
+        $this->assertSame('2019-01-01T00:00:00+00:00', $dates['dated'], 'a stored date stays');
+        $this->assertSame('Dated', ($this->driver->findOne('aged', 'dated') ?? [])['title'] ?? null, 'only the date is written');
+        if ($this->driver instanceof \Preflow\Data\WriteTimes) {
+            $this->assertNotSame('2021-05-06T05:08:09+00:00', $dates['created'], 'the storage\'s own write time before the creation time');
+            $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$/', (string) $dates['plain']);
+        } else {
+            $this->assertSame('2021-05-06T05:08:09+00:00', $dates['created'], 'the creation time, in UTC');
+            $this->assertSame('2026-11-22T12:00:00+00:00', $dates['plain'], 'else the time of the migrate');
+            $this->assertSame('2026-11-22T12:00:00+00:00', $dates['blank'], 'an empty one counts as none');
+        }
+
+        $this->assertSame([], self::at('2026-11-23T12:00:00Z', static fn (): array => $backfill->run()), 'a second run writes nothing');
+        $this->assertSame('2026-02-03T04:05:06+00:00', ($this->driver->findOne('aged', 'logged') ?? [])[$field] ?? null);
     }
 
     // --- insert only if new (InsertsNew, @since 0.79.0) -------------------------------------------

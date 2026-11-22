@@ -1459,6 +1459,7 @@ final class Application
         );
         $this->bindActivityLog($dataManager, isset($drivers[\Preflow\Data\Activity\StoredActivityLog::STORAGE]) ? \Preflow\Data\Activity\StoredActivityLog::STORAGE : 'default');
         $this->registerTextRuleSteps($dataManager, $migrations, $dataConfig['text_rule'] ?? [], $modelPaths);
+        $this->registerChangeDateStep($dataManager, $migrations);
         if ($this->pageChanges !== null) {
             $dataManager->observe(new \Preflow\Core\PageCache\DataLayerObserver(
                 $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class),
@@ -1558,6 +1559,40 @@ final class Application
                 $migrations->storage(),
             ))->check());
         }
+    }
+
+    /**
+     * `data.change-dates` (since 0.84.0): after every table step has made the change-date columns,
+     * every record of a type (the registered record tables, the registry's types) without a change
+     * date gets one (ChangeDateBackfill: the activity log's newest event, a published copy's time,
+     * the storage's write time, the creation time, else now). On every storage; a second run
+     * writes nothing.
+     */
+    private function registerChangeDateStep(\Preflow\Data\DataManager $dataManager, \Preflow\Data\Migration\MigrationRegistry $migrations): void
+    {
+        if (!class_exists(\Preflow\Data\ChangeDateBackfill::class)) {
+            return;
+        }
+        $container = $this->container;
+        $types = static function () use ($container, $dataManager): array {
+            $defs = [];
+            if ($container->bound(\Preflow\Data\Schema\RecordTables::class)) {
+                foreach ($container->get(\Preflow\Data\Schema\RecordTables::class)->all() as $entry) {
+                    $defs[] = $entry['def'];
+                }
+            }
+            $registry = $dataManager->getTypeRegistry();
+            foreach ($registry?->keys() ?? [] as $key) {
+                $defs[] = $registry->get($key);
+            }
+
+            return $defs;
+        };
+        $migrations->afterMigrate('data.change-dates', static function () use ($container, $dataManager, $types): array {
+            $log = $container->bound(\Preflow\Core\Activity\ActivityLog::class) ? $container->get(\Preflow\Core\Activity\ActivityLog::class) : null;
+
+            return (new \Preflow\Data\ChangeDateBackfill($dataManager, $types, $log instanceof \Preflow\Core\Activity\LastChanges ? $log : null))->run();
+        }, sqlOnly: false, last: true);
     }
 
     /**

@@ -329,6 +329,7 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 | `MaintenanceReport::report()` (0.84, extends `Maintenance`) | Lines for the operator that are no problems: `db:check` prints them after the problems. MySQL: its text columns by collation and `not applicable: …` for what it has no check for (references between records), so a skipped check never reads as a passed one. | `db:check` prints the problems only. | — |
 | `Dumps::dump()`, `restore()` (0.78) | The whole store as text the same driver restores into an empty store (`preflow db:dump`, `db:restore`). | the commands refuse the storage and point to the database's own tools (MySQL/MariaDB: `mysqldump`; JSON: copy the folder). | `restore()` is all or nothing. |
 | `StatesIdKinds::idKindOf()` (0.82) | Says what kind of id the storage holds for a type: `PdoDriver` reads the table's key column and its schema grammar classifies the type (`Migration\Grammar\ClassifiesIdColumns`, 0.82: SQLite by its affinity rules, MySQL a number for every numeric type, as it compares text with them as numbers; a missing table or a grammar without it nothing). `DataManager::idKind()` asks it after the type's model class (a disagreement with the class throws) and before the declared id field. A driver that wraps another must implement it and forward the call. | `idKind()` follows the type: its class, else its declared id field, else a string id. | Read only. |
+| `WriteTimes::writeTimes()` (0.84) | When each record was last written by the storage's own bookkeeping (the JSON driver: each file's modification time), for the change-date backfill of `preflow migrate`. | the backfill takes the record's creation time, else the time of the migrate. | Read only. |
 | `ChangeTokens::changeToken()` (0.77) | A token that moves with every write of a type, so readers reuse what they computed. | `DataManager::changeToken()` only passes it on (null); its consumer, `StoredActivityLog::people()`, reuses nothing and computes every time. | Read only. |
 
 A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`, `InsertsNew`, `BulkDeletes`,
@@ -336,8 +337,8 @@ A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`,
 `RunsSql`), `Transactions`, `UniqueIndexes`, `SelectsColumns` and `SelectsSubqueries` from it and implements `exclusive()` itself (as
 `SqliteDriver` and `MysqlDriver` do); its `Dialect` may add `PatternMatching` and `InsertIfNew` (0.80). `MysqlDriver` adds
 `RankedSearch`, `SqliteDriver` adds `Maintenance` and `Dumps`. Since 0.82 `PdoDriver` also implements `StatesIdKinds` and `RemembersColumns` (a subclass that overrides `forgetColumns()` calls the parent), and both grammars implement `ClassifiesIdColumns`. The JSON file driver implements `VersionedStorage`, `ConditionalUpdates`, `InsertsNew`,
-`ExclusiveWrites`, `BulkDeletes`, `ChangeTokens`, `DescribesColumns`, `AtomicCounters` and
-`AggregatingStorage`.
+`ExclusiveWrites`, `BulkDeletes`, `ChangeTokens`, `DescribesColumns`, `AtomicCounters`,
+`AggregatingStorage` and (0.84) `WriteTimes`.
 
 ### Migrations
 
@@ -723,6 +724,13 @@ driver:
   written as before. `DataManager::changeDateOf($def)` says whether the storage holds it (a driver
   that does not implement `DescribesColumns` is given none). A driver needs nothing new: it stores
   the key as it stores the fields; `StorageDriverContract` pins it on every driver.
+- **Backfill:** the step `data.change-dates` of `preflow migrate` (after every table step, on any
+  storage) gives each record without a date the activity log's newest event for it (a log with
+  `Preflow\Core\Activity\LastChanges`, as the stored one), else a published copy's
+  `_published_at`, else the storage's own write time (`WriteTimes`: a JSON file's modification
+  time), else its `createdAt` / `created_at`, else the time of the migrate. It writes only empty
+  dates, 500 records per transaction, so a second run writes nothing and an interrupted one goes
+  on where it stopped.
 - **Plain models** (no type) keep `#[Timestamps]` for this; their tables are their migrations'.
 
 ## Unique fields and indexes

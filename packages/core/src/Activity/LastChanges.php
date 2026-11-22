@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace Preflow\Core\Activity;
 
 /**
- * An ActivityLog that can also say when records were last written: one cheap read for a page of
- * records, whatever the log keeps otherwise. An admin's list uses it for the "Changed" column
- * of a type that keeps no updated timestamp of its own. A log without it simply has no answer
- * (callers ask with `instanceof`), and a record the log no longer keeps is left out.
+ * An ActivityLog that can also say when records were last written: one cheap read for a chunk of
+ * records, whatever the log keeps otherwise. The data layer's change-date backfill (`preflow
+ * migrate`, step data.change-dates) asks it first for records written before change dates were
+ * kept. A log without it simply has no answer (callers ask with `instanceof`), and a record the
+ * log no longer keeps is left out.
  *
  * @since 0.84.0
  */
