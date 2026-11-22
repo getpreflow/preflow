@@ -8,6 +8,7 @@ use Preflow\Core\Application;
 use Preflow\Data\DataManager;
 use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Folio\Media\MediaAvailability;
 use Preflow\Publishing\Publisher;
 use Preflow\Publishing\ShadowTypes;
 use Preflow\Folio\Translations\StoredOverrides;
@@ -63,7 +64,10 @@ final class ContentSet
             }
         }
         $assets = $c->get(MediaLibrary::class)->definition();
-        $tables[$assets->table] = $assets;
+        // Without the library's storage driver (MediaAvailability) there is no asset table to read or write.
+        if ($c->get(MediaAvailability::class)->usable()) {
+            $tables[$assets->table] = $assets;
+        }
         // The admins' text overrides travel with the content (the table is made when missing, so an export always reads it).
         $overrides = $c->get(StoredOverrides::class);
         $overrides->ensureTable();

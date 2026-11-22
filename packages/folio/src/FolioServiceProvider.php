@@ -1007,7 +1007,8 @@ final class FolioServiceProvider extends ServiceProvider
             new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c), static fn (): ?\Preflow\Auth\UserProviderInterface => self::staffProviderOrNone($c), $c->bound(\Preflow\Core\Activity\ActivityActors::class) ? $c->get(\Preflow\Core\Activity\ActivityActors::class) : null),
             $c->get(\Preflow\Publishing\Publisher::class),
             // Of the rows' assets, the ones still in the library (a binned or deleted one: no link).
-            $c->bound(\Preflow\Media\MediaLibrary::class) ? static function (array $ids) use ($c): array {
+            // Without a usable library (MediaAvailability) asset rows show unlinked.
+            $c->bound(\Preflow\Media\MediaLibrary::class) && $c->get(\Preflow\Folio\Media\MediaAvailability::class)->usable() ? static function (array $ids) use ($c): array {
                 $library = $c->get(\Preflow\Media\MediaLibrary::class);
                 $library->prefetch($ids);
 

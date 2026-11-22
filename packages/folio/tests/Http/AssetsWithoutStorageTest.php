@@ -94,6 +94,48 @@ final class AssetsWithoutStorageTest extends TestCase
         $this->assertStringContainsString('pic.png was not uploaded: the media library has no storage', (string) $upload->getBody());
     }
 
+    public function test_export_and_import_leave_the_library_out(): void
+    {
+        $app = $this->app();
+        $dm = $app->container()->get(\Preflow\Data\DataManager::class);
+        $set = \Preflow\Folio\Transfer\ContentSet::fromApp($app);
+        $this->assertNotContains($app->container()->get(\Preflow\Media\MediaLibrary::class)->definition()->table, array_keys($set->tables()), 'no table to read without its storage');
+
+        $s = fopen('php://temp', 'w+b');
+        (new \Preflow\Folio\Transfer\Exporter($set, $dm))->export($s);
+        rewind($s);
+        $plan = (new \Preflow\Folio\Transfer\Importer($set, $dm))->read($s);
+        try {
+            $this->assertTrue($plan->isEmpty(), 'the same content back');
+        } finally {
+            $plan->cleanup();
+        }
+    }
+
+    public function test_the_activity_screen_shows_asset_rows_without_the_library(): void
+    {
+        $log = $this->app()->container()->get(\Preflow\Core\Activity\ActivityLog::class);
+        $log->record(new \Preflow\Core\Activity\Activity('post', 'p9', 'Spring launch', \Preflow\Core\Activity\ActivityKind::Created, by: 'admin@site.test'));
+        $log->record(new \Preflow\Core\Activity\Activity('asset', 'a1b2c3d4e5f60718293a4b5c6d7e8f90', 'meadow.png', \Preflow\Core\Activity\ActivityKind::Created, by: 'admin@site.test'));
+
+        $res = $this->get('/folio/activity');
+        $this->assertSame(200, $res->getStatusCode(), substr(strip_tags((string) $res->getBody()), 0, 300));
+        $this->assertStringContainsString('Spring launch', (string) $res->getBody(), 'the log was read: its other rows show');
+        $this->assertStringNotContainsString('meadow.png', (string) $res->getBody(), 'no asset rows without a library');
+    }
+
+    public function test_the_ai_alt_text_route_is_behind_the_library_check(): void
+    {
+        foreach (\Preflow\Folio\Routing\FolioRoutes::admin('/folio', true, ai: true) as $entry) {
+            if ($entry->pattern === '/folio/assets/{id}/_ai/suggest') {
+                $this->assertContains('Preflow\\Folio\\Http\\MediaStorageMiddleware', $entry->middleware);
+
+                return;
+            }
+        }
+        $this->fail('no AI alt text route');
+    }
+
     public function test_a_configured_storage_is_not_in_the_way(): void
     {
         $this->write('config/data.php', "<?php\nreturn ['drivers' => ['json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data'], 'media_files' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data']], 'default' => 'json', 'models_path' => __DIR__ . '/models'];\n");

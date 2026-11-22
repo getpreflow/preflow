@@ -205,8 +205,9 @@ final class FolioRoutes
                     // What the route's type allows (data's "readonly" / "creatable"), with or without sign-in.
                     $middleware[] = self::TYPE_ACTIONS_MW;
                 }
-                if ($handlerClass === self::ASSETS) {
-                    $middleware[] = self::MEDIA_STORAGE_MW; // the library's storage driver must exist (503 with the way to set it)
+                if ($handlerClass === self::ASSETS || str_starts_with($pattern, $prefix . '/assets/')) {
+                    // The library's routes, the AI alt text's too: its storage driver must exist (503 with the way to set it).
+                    $middleware[] = self::MEDIA_STORAGE_MW;
                 }
             }
             $c = PatternCompiler::compile($pattern);
