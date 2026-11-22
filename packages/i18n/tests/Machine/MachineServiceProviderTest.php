@@ -16,6 +16,7 @@ use Preflow\I18n\Machine\JobStore;
 use Preflow\I18n\Machine\Scope;
 use Preflow\I18n\Machine\TextSources;
 use Preflow\I18n\Machine\MachineServiceProvider;
+use Preflow\I18n\Machine\MachineTranslation;
 use Preflow\I18n\Machine\MachineTranslator;
 use Preflow\I18n\Machine\TranslationSettings;
 use Preflow\I18n\Machine\TranslationUnit;
@@ -56,6 +57,25 @@ final class MachineServiceProviderTest extends TestCase
 
         $this->expectException(AiUnavailable::class);
         $translator->translateUnits([new TranslationUnit(id: 'a', label: 'A', source: 'Hi', to: 'de', from: 'en')]);
+    }
+
+    public function test_machine_translation_is_there_with_the_ai_package_and_ai_off(): void
+    {
+        $app = Application::create($this->dir);
+        $app->boot();
+
+        // There is a translator (AiTranslator), though with AI off it cannot translate now.
+        $this->assertTrue($app->container()->get(MachineTranslation::class)->available());
+        $this->assertFalse($app->container()->get(MachineTranslator::class)->available());
+    }
+
+    public function test_a_provider_after_it_answers_machine_translation_itself(): void
+    {
+        file_put_contents($this->dir . '/config/providers.php', "<?php\nreturn [\\" . MachineServiceProvider::class . "::class, \\" . NoMachineTranslationProvider::class . "::class];\n");
+        $app = Application::create($this->dir);
+        $app->boot();
+
+        $this->assertFalse($app->container()->get(MachineTranslation::class)->available(), 'the container answers, not the i18n package');
     }
 
     public function test_batch_chars_read_from_config(): void
@@ -116,7 +136,7 @@ final class UpperTranslator implements MachineTranslator
 {
     public function __construct(public readonly TranslationSettings $settings) {}
 
-    public function translate(string $text, string $to, ?\Preflow\Ai\Tuning $tuning = null, ?string $from = null, \Preflow\I18n\Machine\TextFormat $format = \Preflow\I18n\Machine\TextFormat::Plain): string
+    public function translate(string $text, string $to, ?\Preflow\I18n\Machine\TranslationTuning $tuning = null, ?string $from = null, \Preflow\I18n\Machine\TextFormat $format = \Preflow\I18n\Machine\TextFormat::Plain): string
     {
         return strtoupper($text);
     }
@@ -134,5 +154,14 @@ final class UpperTranslator implements MachineTranslator
     public function estimateCost(\Preflow\I18n\Machine\Estimate $size): ?float
     {
         return null;
+    }
+}
+
+/** A package or app that says there is no machine translation (bound after MachineServiceProvider). */
+final class NoMachineTranslationProvider extends \Preflow\Core\Container\ServiceProvider
+{
+    public function register(\Preflow\Core\Container\Container $container): void
+    {
+        $container->singleton(MachineTranslation::class, static fn (): MachineTranslation => new \Preflow\I18n\Machine\ConfiguredMachineTranslation(false));
     }
 }

@@ -7,7 +7,7 @@ namespace Preflow\Folio\Tests\Http;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
-use Preflow\Ai\Tuning;
+use Preflow\I18n\Machine\TranslationTuning;
 use Preflow\Core\Application;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Preflow\I18n\Console\TranslateWorkCommand;
@@ -118,7 +118,7 @@ final class DictionaryTranslator implements MachineTranslator
         return $size->characters * 0.001;
     }
 
-    public function translate(string $text, string $to, ?Tuning $tuning = null, ?string $from = null, TextFormat $format = TextFormat::Plain): string
+    public function translate(string $text, string $to, ?TranslationTuning $tuning = null, ?string $from = null, TextFormat $format = TextFormat::Plain): string
     {
         return self::WORDS[$text] ?? $text;
     }

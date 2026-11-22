@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\Access\Access;
 use Preflow\I18n\Machine\AiPackage;
+use Preflow\I18n\Machine\MachineTranslation;
 use Preflow\Folio\Tests\Support\HiddenAiPackage;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Preflow\Testing\ChecksFrameBalance;
@@ -86,6 +87,7 @@ final class FolioWithoutAiTest extends TestCase
         $this->assertNotContains($this->post('/folio/_ai/draft', ['type' => 'article', 'id' => 'a1', 'brief' => 'x'])->getStatusCode(), [200, 500], 'no draft endpoint');
         $this->assertNotContains($this->post('/folio/post/p1/_ai/queue', ['locales' => ['de']])->getStatusCode(), [200, 500], 'no translate endpoint');
 
+        $this->assertFalse($this->app()->container()->get(MachineTranslation::class)->available(), 'no translator');
         $registry = $this->app()->container()->get(Access::class)->registry();
         foreach (['ai.translate', 'ai.draft', 'ai.settings'] as $permission) {
             $this->assertFalse($registry->isDeclared($permission), "{$permission}: roles do not offer it");
@@ -106,6 +108,7 @@ final class FolioWithoutAiTest extends TestCase
         $this->assertStringContainsString('href="/folio/post/_ai/run"', $pages['list'], 'Translate… on the list');
         $this->assertStringContainsString('formaction="/folio/post/_ai/run"', $pages['list'], 'bulk translate');
         $this->assertSame(200, $this->get('/folio/ai')->getStatusCode());
+        $this->assertTrue($this->app()->container()->get(MachineTranslation::class)->available());
 
         $registry = $this->app()->container()->get(Access::class)->registry();
         foreach (['ai.translate', 'ai.draft', 'ai.settings'] as $permission) {
@@ -142,6 +145,42 @@ final class FolioWithoutAiTest extends TestCase
         }
     }
 
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function test_without_the_ai_package_a_translator_package_that_answers_machine_translation_brings_translate_back(): void
+    {
+        HiddenAiPackage::hide();
+        // A translator package of its own: it binds the translator and says there is one; nothing in config/ai.php.
+        $this->write('config/ai.php', "<?php\nreturn [];\n");
+        $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\" . PlainTranslatorProvider::class . "::class];\n");
+        $this->seed();
+
+        $pages = $this->screens();
+        $this->assertStringContainsString('data-ai-translate', $pages['editor'], 'Translate on the German tab');
+        $this->assertStringContainsString('href="/folio/post/_ai/run"', $pages['list'], 'Translate… on the list');
+
+        $c = $this->app()->container();
+        $this->assertInstanceOf(PlainTranslator::class, $c->get(\Preflow\I18n\Machine\MachineTranslator::class));
+        $this->assertTrue($c->get(\Preflow\I18n\Machine\TextSources::class)->has('post'), 'Folio records are a text source');
+        $registry = $c->get(Access::class)->registry();
+        $this->assertTrue($registry->isDeclared('ai.translate'));
+        $this->assertNull($registry->disabledReason('ai.translate'));
+    }
+
+    public function test_with_the_ai_package_folio_asks_the_container_whether_there_is_machine_translation(): void
+    {
+        // An app that answers "no machine translation" although preflow/ai is installed.
+        $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\" . NoMachineTranslationProvider::class . "::class];\n");
+
+        $c = $this->app()->container();
+        $this->assertTrue(AiPackage::installed());
+        $registry = $c->get(Access::class)->registry();
+        $this->assertFalse($registry->isDeclared('ai.translate'), 'roles do not offer it');
+        $this->assertNotNull($registry->disabledReason('ai.translate'), 'a role that still grants it is denied quietly');
+        $this->assertTrue($registry->isDeclared('ai.draft'), 'drafts ask for the package, not for a translator');
+        $this->assertFalse($c->get(\Preflow\I18n\Machine\TextSources::class)->has('post'), 'no text sources without translation');
+    }
+
     /** @return array<string, string> the dashboard, the editor (both kinds), Settings → Translations and a type list, each answered 200 */
     private function screens(): array
     {
@@ -175,7 +214,7 @@ final class PlainTranslator implements \Preflow\I18n\Machine\MachineTranslator
         return null;
     }
 
-    public function translate(string $text, string $to, ?\Preflow\Ai\Tuning $tuning = null, ?string $from = null, \Preflow\I18n\Machine\TextFormat $format = \Preflow\I18n\Machine\TextFormat::Plain): string
+    public function translate(string $text, string $to, ?\Preflow\I18n\Machine\TranslationTuning $tuning = null, ?string $from = null, \Preflow\I18n\Machine\TextFormat $format = \Preflow\I18n\Machine\TextFormat::Plain): string
     {
         return $text;
     }
@@ -183,5 +222,24 @@ final class PlainTranslator implements \Preflow\I18n\Machine\MachineTranslator
     public function translateUnits(array $units, ?string $note = null): array
     {
         return [];
+    }
+}
+
+/** A translator package of its own: binds its translator and answers that there is machine translation. */
+final class PlainTranslatorProvider extends \Preflow\Core\Container\ServiceProvider
+{
+    public function register(\Preflow\Core\Container\Container $container): void
+    {
+        $container->singleton(\Preflow\I18n\Machine\MachineTranslator::class, static fn (): PlainTranslator => new PlainTranslator());
+        $container->singleton(MachineTranslation::class, static fn (): MachineTranslation => new \Preflow\I18n\Machine\ConfiguredMachineTranslation(true));
+    }
+}
+
+/** An app that says there is no machine translation, whatever is installed. */
+final class NoMachineTranslationProvider extends \Preflow\Core\Container\ServiceProvider
+{
+    public function register(\Preflow\Core\Container\Container $container): void
+    {
+        $container->singleton(MachineTranslation::class, static fn (): MachineTranslation => new \Preflow\I18n\Machine\ConfiguredMachineTranslation(false));
     }
 }

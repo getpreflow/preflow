@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Preflow\I18n\Machine;
 
 use Preflow\Ai\AiUnavailable;
-use Preflow\Ai\Tuning;
 
 /**
  * Translates text by machine. Callers depend on this, not on a provider, so tests and projects can
@@ -30,11 +29,12 @@ interface MachineTranslator
     public function estimateCost(Estimate $size): ?float;
 
     /**
-     * One text on the fly.
+     * One text on the fly. $tuning: instructions for this text (i18n's own type since 0.83.0; it was
+     * preflow/ai's Tuning before).
      *
      * @throws AiUnavailable|TranslationFailed
      */
-    public function translate(string $text, string $to, ?Tuning $tuning = null, ?string $from = null, TextFormat $format = TextFormat::Plain): string;
+    public function translate(string $text, string $to, ?TranslationTuning $tuning = null, ?string $from = null, TextFormat $format = TextFormat::Plain): string;
 
     /**
      * A failing unit becomes a Failed result, never an exception, so one bad text cannot stop a run.

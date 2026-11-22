@@ -364,7 +364,12 @@ available. `translate:work` stays quiet (as with AI off), while `translate:plan`
 stepped say "Machine translation needs preflow/ai (composer require preflow/ai) or a translator of
 your own (config/ai.php translation.translator)." To ask in your own code:
 `Preflow\I18n\Machine\AiPackage::installed()` (is the package there) and
-`MachineServiceProvider::hasTranslator($container)` (is there a translator that can work).
+`$container->get(Preflow\I18n\Machine\MachineTranslation::class)->available()` (is there a
+translator that can work, since 0.83; it replaces the static `MachineServiceProvider::hasTranslator()`).
+The container answers it, so a translator package of its own that binds `MachineTranslator` also
+binds `MachineTranslation` (`ConfiguredMachineTranslation(true)` will do), and Folio offers
+Translate. It is not `MachineTranslator::available()`: that says whether the translator can
+translate now (AI on, key present); this says whether there is one to switch on.
 
 ### Setup
 
@@ -420,7 +425,10 @@ $de = $translator->translate('Welcome back, {name}!', to: 'de', from: 'en');
 $results = $translator->translateUnits($units, note: 'This is a job post for engineers.');
 ```
 
-`translate()` takes an optional `Tuning` and a `TextFormat` (`Plain`, `Html` or `Markdown`).
+`translate()` takes an optional `TranslationTuning` (i18n's own list of instructions, such as
+`new TranslationTuning(['Formal.'])`; since 0.83, before it was preflow/ai's `Tuning`) and a
+`TextFormat` (`Plain`, `Html` or `Markdown`). `AiTranslator` adds the instructions to its
+request's system part.
 `translateUnits()` never throws for one bad text: that unit comes back with status `Failed` and
 an `error`, and the others are still delivered. Only `AiUnavailable` (no key, no credit, provider
 down) ends the whole call. A `note` is a one-off instruction for this call.

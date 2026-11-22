@@ -20,8 +20,9 @@ use Preflow\Core\Container\ServiceProvider;
  * preflow/ai is only suggested (since 0.80.0); only the default AiTranslator needs it. Without it
  * (AiPackage::installed() is false) a translator named in `translation.translator` works as
  * before; with none named the translator is MissingAiTranslator (never available; it says what is
- * missing). The jobs, sources, review index and worker resolve either way; TranslationSettings,
- * which holds preflow/ai's tuning and glossary, is bound only with the package.
+ * missing). MachineTranslation says which (Folio asks it, not this class). The jobs, sources,
+ * review index and worker resolve either way; TranslationSettings, which holds preflow/ai's tuning
+ * and glossary, is bound only with the package.
  */
 final class MachineServiceProvider extends ServiceProvider
 {
@@ -53,6 +54,11 @@ final class MachineServiceProvider extends ServiceProvider
                 ? new AiTranslator($c->get(Ai::class), $c->get(TranslationSettings::class), self::batchChars($c))
                 : new MissingAiTranslator();
         });
+        // Whether there is a translator to offer: asked on every boot (Folio's permissions), so from the
+        // config alone, without building the translator. A provider binding a translator of its own binds this too.
+        $container->singleton(MachineTranslation::class, static fn (Container $c): MachineTranslation => new ConfiguredMachineTranslation(
+            $ai || self::translatorClass($c) !== null,
+        ));
         $container->singleton(Estimator::class, static fn (Container $c): Estimator => new Estimator(
             $c->get(MachineTranslator::class),
             self::batchChars($c),
@@ -77,18 +83,6 @@ final class MachineServiceProvider extends ServiceProvider
             $c->get(MachineTranslator::class),
             self::storage($c) . '/worker.json',
         ));
-    }
-
-    /**
-     * Whether there is a translator that can work: preflow/ai is installed (AiTranslator) or
-     * config/ai.php `translation.translator` names one. False means MissingAiTranslator is bound.
-     * Answers without building the translator, so it is cheap to ask on every boot.
-     *
-     * @since 0.80.0
-     */
-    public static function hasTranslator(Container $container): bool
-    {
-        return AiPackage::installed() || self::translatorClass($container) !== null;
     }
 
     /** A translator class config/ai.php can't mean stops the boot. */

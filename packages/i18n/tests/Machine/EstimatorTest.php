@@ -80,7 +80,7 @@ final class EstimatorTest extends TestCase
                 return $size->characters * 0.00002; // a per-character API
             }
 
-            public function translate(string $text, string $to, ?\Preflow\Ai\Tuning $tuning = null, ?string $from = null, \Preflow\I18n\Machine\TextFormat $format = \Preflow\I18n\Machine\TextFormat::Plain): string
+            public function translate(string $text, string $to, ?\Preflow\I18n\Machine\TranslationTuning $tuning = null, ?string $from = null, \Preflow\I18n\Machine\TextFormat $format = \Preflow\I18n\Machine\TextFormat::Plain): string
             {
                 return $text;
             }

@@ -76,10 +76,11 @@ final class AiTranslator implements MachineTranslator, ReportsCost, ReportsProgr
         $this->progressListener = $listener;
     }
 
-    public function translate(string $text, string $to, ?Tuning $tuning = null, ?string $from = null, TextFormat $format = TextFormat::Plain): string
+    /** $tuning's instructions join the request's system part, after the rules and the project's tuning. */
+    public function translate(string $text, string $to, ?TranslationTuning $tuning = null, ?string $from = null, TextFormat $format = TextFormat::Plain): string
     {
         $unit = new TranslationUnit(id: 'text', label: 'Text', source: $text, to: $to, from: $from ?? '', format: $format);
-        $result = $this->run([$unit], null, $tuning ?? new Tuning())[0];
+        $result = $this->run([$unit], null, new Tuning($tuning->instructions ?? []))[0];
 
         if ($result->status !== UnitStatus::Translated || $result->text === null) {
             throw new TranslationFailed('The translation failed: ' . ($result->error ?? 'no answer') . '.');
