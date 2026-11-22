@@ -259,8 +259,12 @@ final class ListScreenTest extends TestCase
 
     public function test_a_type_hides_the_changed_column_with_list_changed_false(): void
     {
+        $this->writeModel('toy', ['label' => 'Toys', 'fields' => ['title' => ['type' => 'string']]]);
         $this->writeModel('game', ['label' => 'Games', 'list' => ['changed' => false], 'fields' => ['title' => ['type' => 'string']]]);
         $this->working('game', 'g1', ['title' => 'Chess']);
+
+        $this->working('toy', 't1', ['title' => 'Ball']);
+        $this->assertStringContainsString('<th>Changed</th>', $this->html('/folio/toy'), 'a type that does not hide it has the column');
 
         $html = $this->html('/folio/game');
 
@@ -270,12 +274,17 @@ final class ListScreenTest extends TestCase
 
     public function test_a_type_that_lists_its_updated_field_gets_no_second_changed_column(): void
     {
+        $this->writeModel('toy', ['label' => 'Toys', 'fields' => ['title' => ['type' => 'string']]]);
         $this->writeModel('memo', ['label' => 'Memos', 'list' => ['columns' => ['title', 'updated_at']], 'fields' => ['title' => ['type' => 'string'], 'updated_at' => ['type' => 'string']]]);
         $this->working('memo', 'm1', ['title' => 'First', 'updated_at' => '2026-01-02 03:04:05']);
+
+        $this->working('toy', 't1', ['title' => 'Ball']);
+        $this->assertSame(1, substr_count($this->html('/folio/toy'), '<th>Changed</th>'));
 
         $html = $this->html('/folio/memo');
 
         $this->assertStringNotContainsString('folio-cell-changed', $html);
+        $this->assertStringNotContainsString('<th>Changed</th>', $html);
         $this->assertStringContainsString('2026-01-02 03:04:05', $html);
     }
 }

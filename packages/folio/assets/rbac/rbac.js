@@ -145,11 +145,11 @@
             field.addEventListener('click', function (event) {
                 var target = event.target && event.target.closest ? event.target : null;
                 var column = target ? target.closest('[data-rbac-column]') : null;
-                var filter = target ? target.closest('[data-rbac-fresh-filter]') : null;
+                var freshButton = target ? target.closest('[data-rbac-fresh-filter]') : null;
                 if (column) {
                     toggleColumn(field, column);
-                } else if (filter) {
-                    filterFresh(field, filter);
+                } else if (freshButton) {
+                    filterFresh(field, freshButton);
                 }
             });
             // Cancel (Folio.unsaved.discard) put every box back to the page's state: lock again from there.
