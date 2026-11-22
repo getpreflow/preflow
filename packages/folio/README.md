@@ -1495,6 +1495,12 @@ package and binds its rules to the package's hooks. Files and records are stored
 `public/media/Y/m/{id}.{ext}`, the `folio_assets` table, `storage/private-media`, `/media/…`
 and `/files/{id}`.
 
+**Without the storage driver** (since 0.84.0): the library stores its assets in the driver
+`config/media.php` `storage` names (`json` unless set). A site whose `config/data.php` has no such
+driver boots and works without media; every `{prefix}/assets` route answers 503 with the missing driver and
+where to set it (a driver under `drivers` in `config/data.php`, or another `storage` in `config/media.php`),
+translated like Folio's other texts.
+
 **Library screen** at `{prefix}/assets`:
 - grid and list views;
 - search by name, title or alt text, and filters by kind (images, videos, documents);

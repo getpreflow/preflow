@@ -631,6 +631,10 @@ return [
     ],
     // The media library: grid and list, an asset's page, the Edit image screen and the picker.
     'assets' => [
+        // The library has no storage (config/media.php "storage" names a driver config/data.php lacks).
+        'unavailable_title' => 'Assets',
+        'unavailable_card_title' => 'No place for assets yet',
+        'storage_missing' => 'The media library stores its assets in the storage driver ":driver", and this site has no such driver. Add it under "drivers" in config/data.php, or name a driver the site has in config/media.php ("storage").',
         'choose_one' => 'Choose an asset',
         'choose_many' => 'Choose assets',
         'not_uploaded' => 'Some files were not uploaded:',

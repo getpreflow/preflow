@@ -612,6 +612,9 @@ return [
         'singleton_delete' => 'Un singleton ne peut pas être supprimé',
     ],
     'assets' => [
+        'unavailable_title' => 'Médias',
+        'unavailable_card_title' => 'Pas encore de place pour les médias',
+        'storage_missing' => 'La médiathèque enregistre ses médias dans le pilote de stockage « :driver », que ce site n’a pas. Ajoutez-le sous « drivers » dans config/data.php, ou indiquez dans config/media.php (« storage ») un pilote que le site possède.',
         'choose_one' => 'Choisir un média',
         'choose_many' => 'Choisir des médias',
         'not_uploaded' => 'Certains fichiers n’ont pas été importés :',

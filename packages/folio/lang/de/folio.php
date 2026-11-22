@@ -612,6 +612,9 @@ return [
         'singleton_delete' => 'Ein Singleton kann nicht gelöscht werden',
     ],
     'assets' => [
+        'unavailable_title' => 'Medien',
+        'unavailable_card_title' => 'Noch kein Platz für Medien',
+        'storage_missing' => 'Die Mediathek speichert ihre Medien im Speichertreiber „:driver“, und diese Website hat keinen solchen Treiber. Ergänzen Sie ihn unter „drivers“ in config/data.php oder nennen Sie in config/media.php („storage“) einen Treiber, den die Website hat.',
         'choose_one' => 'Medium auswählen',
         'choose_many' => 'Medien auswählen',
         'not_uploaded' => 'Einige Dateien wurden nicht hochgeladen:',

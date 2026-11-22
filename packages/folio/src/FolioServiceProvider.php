@@ -524,6 +524,13 @@ final class FolioServiceProvider extends ServiceProvider
             authors: new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c), static fn (): ?\Preflow\Auth\UserProviderInterface => self::staffProviderOrNone($c), $c->bound(\Preflow\Core\Activity\ActivityActors::class) ? $c->get(\Preflow\Core\Activity\ActivityActors::class) : null),
         ));
 
+        $container->bind(\Preflow\Folio\Http\MediaStorageMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\MediaStorageMiddleware(
+            $c->get(\Preflow\Media\MediaConfig::class),
+            $c->get(DataManager::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
+            $c->get(TypeCatalog::class),
+            $prefix,
+        ));
         $container->bind(\Preflow\Folio\Http\WorkingCopyMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\WorkingCopyMiddleware(
             $c->get(\Preflow\Folio\Http\AdminNav::class),
         ));
