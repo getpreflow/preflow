@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-22 (v0.82.0, not released)
+> Last updated: 2026-11-22 (v0.82.0)
 
 ## Current State
 
-**v0.82.0** (not released) — 10076 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.82.0** — 10076 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -525,7 +525,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
-- **Render context follow-ups (v0.82.0, not released):** the follow-ups from 0.81.0 and 0.81.1. It makes each request cheaper, settles cookies by a frame's outbox policy on every path (error pages included), fills live blocks inside `{% embed %}`, drops the testing contract's need for `#[IgnoreDeprecations]`, fixes the toolbar's nonce and limits, and lets a type say whether its ids are strings or numbers. Deprecated shims stay until 0.83.
+- **Render context follow-ups (v0.82.0, released 2026-11-22):** the follow-ups from 0.81.0 and 0.81.1. It makes each request cheaper, settles cookies by a frame's outbox policy on every path (error pages included), fills live blocks inside `{% embed %}`, drops the testing contract's need for `#[IgnoreDeprecations]`, fixes the toolbar's nonce and limits, and lets a type say whether its ids are strings or numbers. Deprecated shims stay until 0.83.
   - **core:**
     - **New:** `Contexts::runRender($ctx, fn () => …)` opens a frame like `run()`, marked as a render entry's frame (`RenderFrame::$openedByRender`, internal): the frame's response is the caller's result. `Application::render()` uses it, and another runtime that builds a `Kernel` gets the cookie rule by opening its render frames with it.
     - **New:** `CookieQueue::reachesResponse()`, the one rule for whether a response takes the frame's queued cookies: true outside every frame and for a queue made with `new`; inside a frame, when the frame delivers and no render entry opened it. `CookieQueue::isFrameBound()` tells a frame-bound queue (`ofCurrentFrame()`) from one made with `new`.
