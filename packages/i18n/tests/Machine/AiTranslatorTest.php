@@ -18,6 +18,7 @@ use Preflow\I18n\Machine\TranslationTuning;
 use Preflow\I18n\Machine\TranslationFailed;
 use Preflow\I18n\Machine\TranslationResult;
 use Preflow\I18n\Machine\TranslationUnit;
+use Preflow\I18n\Machine\TranslatorUnavailable;
 use Preflow\I18n\Machine\UnitStatus;
 
 /** Batches go out as JSON items and come back mapped by n; failures stay with the unit they belong to. */
@@ -392,9 +393,10 @@ final class AiTranslatorTest extends TestCase
 
         try {
             $this->translator($fake)->translateUnits($units);
-            $this->fail('AiUnavailable expected');
-        } catch (AiUnavailable $e) {
+            $this->fail('TranslatorUnavailable expected');
+        } catch (TranslatorUnavailable $e) {
             $this->assertStringContainsString('not reachable', $e->getMessage());
+            $this->assertInstanceOf(AiUnavailable::class, $e->getPrevious(), 'the AI reason is kept');
             $this->assertStringContainsString('timeout', $e->getMessage());
         }
         $this->assertCount(2, $fake->requests(), 'the run stops instead of trying every batch');
@@ -511,15 +513,16 @@ final class AiTranslatorTest extends TestCase
 
         try {
             $this->translator($fake)->translateUnits([$this->unit('a', 'A', 'de'), $this->unit('b', 'B', 'fr'), $this->unit('c', 'C', 'it')]);
-            $this->fail('AiUnavailable expected');
-        } catch (AiUnavailable $e) {
+            $this->fail('TranslatorUnavailable expected');
+        } catch (TranslatorUnavailable $e) {
             $this->assertSame('quota', $e->getMessage());
+            $this->assertInstanceOf(AiUnavailable::class, $e->getPrevious());
         }
         $this->assertCount(2, $fake->requests(), 'the run stops at once');
 
         $off = new AiTranslator($this->ai(new FakeAiClient([self::echo()]), enabled: false), $this->settings());
         $this->assertSame([], $off->translateUnits([]));
-        $this->expectException(AiUnavailable::class);
+        $this->expectException(TranslatorUnavailable::class);
         $off->translateUnits([$this->unit('a', 'A')]);
     }
 

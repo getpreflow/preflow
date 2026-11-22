@@ -2109,8 +2109,14 @@ final class FolioServiceProvider extends ServiceProvider
             'ai.draft' => \Preflow\I18n\Machine\AiPackage::installed(),
             'ai.settings' => \Preflow\I18n\Machine\AiPackage::installed(),
         ];
+        // The reasons are fragments like the extensions' ("extension x"): translation has two sources, so it names both.
+        $missing = [
+            'ai.translate' => 'no machine translator (preflow/ai or config/ai.php translation.translator)',
+            'ai.draft' => 'package preflow/ai (not installed)',
+            'ai.settings' => 'package preflow/ai (not installed)',
+        ];
         foreach (['ai.translate' => 'Use AI translation', 'ai.draft' => 'Write drafts with AI', 'ai.settings' => 'AI settings'] as $name => $label) {
-            $offered[$name] ? $registry->declare($name, $label, 'AI') : $registry->disable($name, 'package preflow/ai (not installed)');
+            $offered[$name] ? $registry->declare($name, $label, 'AI') : $registry->disable($name, $missing[$name]);
         }
         foreach ($container->get(TypeCatalog::class)->all() as $listing) {
             $registry->declarePattern($listing->key . '.*');

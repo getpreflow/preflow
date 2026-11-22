@@ -344,7 +344,7 @@ $twig->addExtension(new TranslationExtension($translator));
 Machine translation fills missing translations with AI, and keeps a human in the loop. It sits on
 the AI connection in `preflow/ai`, so read that README first for `config/ai.php`, keys and costs.
 Everything here works without Folio. With AI off, the classes still load and resolve; only
-calling the translator throws `AiUnavailable`.
+calling the translator throws `TranslatorUnavailable`.
 
 **Machine translation needs `preflow/ai` or a translator of your own** (since 0.80 this package
 only suggests `preflow/ai`). The default translator, `AiTranslator`, needs the package:
@@ -418,7 +418,7 @@ tokens.
 ```php
 $translator = $container->get(Preflow\I18n\Machine\MachineTranslator::class);
 
-// One text, on the fly. Throws AiUnavailable (AI off or unusable) or TranslationFailed.
+// One text, on the fly. Throws TranslatorUnavailable (AI off or unusable) or TranslationFailed.
 $de = $translator->translate('Welcome back, {name}!', to: 'de', from: 'en');
 
 // Many texts. One TranslationResult per unit, in the same order.
@@ -430,8 +430,11 @@ $results = $translator->translateUnits($units, note: 'This is a job post for eng
 `TextFormat` (`Plain`, `Html` or `Markdown`). `AiTranslator` adds the instructions to its
 request's system part.
 `translateUnits()` never throws for one bad text: that unit comes back with status `Failed` and
-an `error`, and the others are still delivered. Only `AiUnavailable` (no key, no credit, provider
+an `error`, and the others are still delivered. Only `TranslatorUnavailable` (no key, no credit, provider
 down) ends the whole call. A `note` is a one-off instruction for this call.
+`TranslatorUnavailable` is i18n's own (since 0.83; before, preflow/ai's `AiUnavailable`): a
+translator of your own throws it when its service cannot be used, and `AiTranslator` turns
+`AiUnavailable` into it (the AI exception is its `getPrevious()`).
 
 How a batch works:
 
@@ -442,7 +445,7 @@ How a batch works:
   A Gemini recitation block gets one more try with a request to word it freely.
 - A request that gets no answer at all (a timeout, a 5xx or 429 after the provider's own retry)
   is not split: halves would fail the same way. Its units fail once with the reason. When the
-  next request fails that way too, the call throws `AiUnavailable` ("not reachable"), so a run
+  next request fails that way too, the call throws `TranslatorUnavailable` ("not reachable"), so a run
   stops instead of sending request after request to a provider that is down.
 - Requests ask for low reasoning (`AiRequest::$lowReasoning`): translating needs little, and
   thinking tokens are billed as output.
@@ -605,7 +608,7 @@ short:
 - `unfinished($collection, $max = 5)` lists the collection's jobs that are not done, newest
   first (`JobStore::recent()`), so a screen can offer to continue them;
 - `step($jobId, $maxItems = 1)` does the next pending items and saves the state. One item that
-  fails is recorded and does not stop the run. `AiUnavailable` stops the job (state `stopped`,
+  fails is recorded and does not stop the run. `TranslatorUnavailable` stops the job (state `stopped`,
   with the message) and is rethrown;
 - `stop($jobId)` keeps what is done.
 
@@ -625,9 +628,8 @@ A cron script for data that has nothing to do with Folio. `PhraseSource` is your
 // bin/translate-phrases.php, run by cron: */5 * * * * php /path/to/bin/translate-phrases.php
 require __DIR__ . '/../vendor/autoload.php';
 
-use Preflow\Ai\AiUnavailable;
 use Preflow\Core\Application;
-use Preflow\I18n\Machine\{JobRunner, Scope, TextSources};
+use Preflow\I18n\Machine\{JobRunner, Scope, TextSources, TranslatorUnavailable};
 
 $root = dirname(__DIR__);
 $app = Application::create($root);
@@ -649,7 +651,7 @@ if ($id === null) {
 }
 try {
     $job = $runner->step($id, maxItems: 5);          // short: a few items per tick
-} catch (AiUnavailable $e) {
+} catch (TranslatorUnavailable $e) {
     fwrite(STDERR, $e->getMessage() . "\n");
     exit(1);
 }

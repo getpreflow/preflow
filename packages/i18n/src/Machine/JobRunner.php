@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Preflow\I18n\Machine;
 
-use Preflow\Ai\AiUnavailable;
 use Preflow\Ai\Limits\AiLimitReached;
 use Preflow\Ai\Limits\AiLimits;
 use Preflow\Ai\Limits\AiLimitsMisconfigured;
@@ -101,7 +100,7 @@ final class JobRunner
      * for a later step) and releasing each claim when its item is through. Does nothing for a
      * stopped or finished job; a job writing live content without confirmation is stopped before
      * anything is written. The job is "running" while a step works and "queued" again after it,
-     * until nothing is pending. An error other than AiUnavailable fails only the item it happened
+     * until nothing is pending. An error other than TranslatorUnavailable fails only the item it happened
      * on, so one bad record never blocks the run. A stop saved while an item is being processed
      * wins over this step.
      *
@@ -110,7 +109,7 @@ final class JobRunner
      * job never undo each other's results. Without preflow/ai (MissingAiTranslator) the job is stopped
      * with MissingAiTranslator::MESSAGE (since 0.80.0).
      *
-     * @throws AiUnavailable after the job has been stopped and saved; items done so far stay done
+     * @throws TranslatorUnavailable after the job has been stopped and saved; items done so far stay done
      * @throws AiLimitsMisconfigured after the job has been stopped and saved with its message: the limits
      *         need a setting (APP_KEY) the site lacks, so no run can ever count an item
      * @throws AiLimitReached when the item about to be translated passes the limit of the person who
@@ -211,7 +210,7 @@ final class JobRunner
                     }
                     try {
                         $item = $this->processItem($source, $current, $id, $unmergedCost, $costMerged);
-                    } catch (AiUnavailable $e) {
+                    } catch (TranslatorUnavailable $e) {
                         // The item stays pending for a later run, without a progress that no longer moves.
                         $this->update($jobId, static function (Job $stored) use ($id): void {
                             unset($stored->items[$id]['progress']);
@@ -256,7 +255,7 @@ final class JobRunner
                 }
             });
             throw $e;
-        } catch (AiUnavailable $e) {
+        } catch (TranslatorUnavailable $e) {
             $this->update($jobId, static function (Job $stored) use ($e, $mergeCost): void {
                 $mergeCost($stored);
                 if ($stored->state !== 'done') {

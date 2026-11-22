@@ -14,7 +14,7 @@ use Preflow\Core\Container\ServiceProvider;
 
 /**
  * Binds machine translation from config/ai.php. Everything resolves with AI off; only using the
- * translator throws AiUnavailable, so admin screens can depend on it unconditionally. The
+ * translator throws TranslatorUnavailable, so admin screens can depend on it unconditionally. The
  * translator is AiTranslator unless `translation.translator` names a class of the app's own.
  *
  * preflow/ai is only suggested (since 0.80.0); only the default AiTranslator needs it. Without it

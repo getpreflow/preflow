@@ -21,7 +21,7 @@ use Preflow\Ai\Tuning;
  * request in halves, retried down to single units, so one problematic text costs only itself. A
  * request that never got an answer (timeout, 5xx, 429 after the provider's own retry) is not
  * split, since halves would only fail the same way: its units fail once with the reason, and a
- * second such request in a row means the provider is not reachable (AiUnavailable), so a run
+ * second such request in a row means the provider is not reachable (TranslatorUnavailable), so a run
  * stops instead of piling up requests. Each answer is checked: markup and the project's protected
  * tokens must survive (MarkupCheck), and glossary terms not honoured become warnings. Requests
  * ask for low reasoning: translating needs little.
@@ -95,10 +95,28 @@ final class AiTranslator implements MachineTranslator, ReportsCost, ReportsProgr
     }
 
     /**
+     * The AI provider that cannot be used (AiUnavailable) is i18n's TranslatorUnavailable to the
+     * callers, which know no AI; the AI exception is its previous.
+     *
      * @param list<TranslationUnit> $units
      * @return list<TranslationResult>
+     * @throws TranslatorUnavailable
      */
     private function run(array $units, ?string $note, Tuning $extra): array
+    {
+        try {
+            return $this->runWithAi($units, $note, $extra);
+        } catch (AiUnavailable $e) {
+            throw new TranslatorUnavailable($e->getMessage(), 0, $e);
+        }
+    }
+
+    /**
+     * @param list<TranslationUnit> $units
+     * @return list<TranslationResult>
+     * @throws AiUnavailable
+     */
+    private function runWithAi(array $units, ?string $note, Tuning $extra): array
     {
         if ($units === []) {
             return [];

@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Preflow\I18n\Machine;
 
-use Preflow\Ai\AiUnavailable;
-
 /**
  * Translates text by machine. Callers depend on this, not on a provider, so tests and projects can
  * swap it (config/ai.php `translation.translator`). A translator answers its own availability and
@@ -32,7 +30,7 @@ interface MachineTranslator
      * One text on the fly. $tuning: instructions for this text (i18n's own type since 0.83.0; it was
      * preflow/ai's Tuning before).
      *
-     * @throws AiUnavailable|TranslationFailed
+     * @throws TranslatorUnavailable|TranslationFailed
      */
     public function translate(string $text, string $to, ?TranslationTuning $tuning = null, ?string $from = null, TextFormat $format = TextFormat::Plain): string;
 
@@ -42,7 +40,8 @@ interface MachineTranslator
      * @param list<TranslationUnit> $units
      * @param string|null $note a one-off instruction for this run
      * @return list<TranslationResult> one per unit, in the same order
-     * @throws AiUnavailable (only that) the provider cannot be used at all: the whole run stops
+     * @throws TranslatorUnavailable (only that) the translator cannot be used at all: the whole run
+     *         stops (i18n's own exception since 0.83.0; it was preflow/ai's AiUnavailable before)
      */
     public function translateUnits(array $units, ?string $note = null): array;
 }

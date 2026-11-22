@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Preflow\I18n\Tests\Machine;
 
 use PHPUnit\Framework\TestCase;
-use Preflow\Ai\AiUnavailable;
 use Preflow\Core\Application;
 use Preflow\I18n\Machine\AiTranslator;
 use Preflow\I18n\Machine\Estimate;
@@ -55,7 +54,7 @@ final class MachineServiceProviderTest extends TestCase
         $this->assertInstanceOf(Estimator::class, $c->get(Estimator::class));
         $this->assertInstanceOf(TranslationSettings::class, $c->get(TranslationSettings::class));
 
-        $this->expectException(AiUnavailable::class);
+        $this->expectException(\Preflow\I18n\Machine\TranslatorUnavailable::class);
         $translator->translateUnits([new TranslationUnit(id: 'a', label: 'A', source: 'Hi', to: 'de', from: 'en')]);
     }
 

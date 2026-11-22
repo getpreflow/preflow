@@ -93,6 +93,9 @@ final class FolioWithoutAiTest extends TestCase
             $this->assertFalse($registry->isDeclared($permission), "{$permission}: roles do not offer it");
             $this->assertNotNull($registry->disabledReason($permission), "{$permission}: a role that still grants it is denied quietly");
         }
+        // Translation has two sources; the roles editor's reason names both.
+        $this->assertSame('no machine translator (preflow/ai or config/ai.php translation.translator)', $registry->disabledReason('ai.translate'));
+        $this->assertSame('package preflow/ai (not installed)', $registry->disabledReason('ai.draft'));
     }
 
     public function test_with_the_ai_package_every_ai_action_is_offered(): void

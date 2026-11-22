@@ -26,6 +26,7 @@ use Preflow\I18n\Machine\TranslationFailed;
 use Preflow\I18n\Machine\TranslationSettings;
 use Preflow\I18n\Machine\TranslationUnit;
 use Preflow\I18n\Machine\TranslationWorker;
+use Preflow\I18n\Machine\TranslatorUnavailable;
 use Preflow\I18n\Tests\Machine\Support\ArrayTextSource;
 use Preflow\I18n\Tests\Support\HiddenAiPackage;
 use Preflow\I18n\Tests\Support\TempLang;
@@ -143,6 +144,39 @@ final class I18nWithoutAiTest extends TestCase
 
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
+    public function test_without_the_ai_package_a_translator_that_is_unavailable_stops_the_run(): void
+    {
+        HiddenAiPackage::hide();
+        // A translation API that is down: it says so with i18n's exception, as AiTranslator does for AI.
+        $this->file('config/ai.php', "<?php\nreturn ['translation' => ['translator' => \\" . DownTranslator::class . "::class]];\n");
+
+        $app = Application::create($this->tmp());
+        $app->boot();
+        $c = $app->container();
+        $c->get(TextSources::class)->add('games', static fn (): ArrayTextSource => new ArrayTextSource(['1' => ['title' => 'One'], '2' => ['title' => 'Two']]));
+        $runner = $c->get(JobRunner::class);
+        $job = $runner->start($runner->plan('games', ['de'], Scope::Needed)->id);
+
+        try {
+            $runner->step($job->id, 5);
+            $this->fail('TranslatorUnavailable expected');
+        } catch (TranslatorUnavailable $e) {
+            $this->assertSame(DownTranslator::MESSAGE, $e->getMessage());
+        }
+        $saved = $c->get(JobStore::class)->get($job->id);
+        $this->assertSame('stopped', $saved->state);
+        $this->assertSame(DownTranslator::MESSAGE, $saved->message);
+        $this->assertSame(['1', '2'], $saved->pending(), 'nothing failed: the items wait for a later run');
+
+        // The cron worker ends its run with the reason.
+        $runner->start($job->id);
+        $report = $c->get(TranslationWorker::class)->work(5);
+        $this->assertSame(0, $report->records);
+        $this->assertSame(DownTranslator::MESSAGE, $report->stoppedBecause);
+    }
+
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
     public function test_without_the_ai_package_a_misconfigured_translator_still_stops_the_boot(): void
     {
         HiddenAiPackage::hide();
@@ -206,5 +240,31 @@ final class PrefixTranslator implements MachineTranslator
             fn (TranslationUnit $u): \Preflow\I18n\Machine\TranslationResult => new \Preflow\I18n\Machine\TranslationResult($u->id, \Preflow\I18n\Machine\UnitStatus::Translated, $this->translate($u->source, $u->to)),
             $units,
         );
+    }
+}
+
+/** A translator of an app's own whose service is down: the whole run stops (TranslatorUnavailable). */
+final class DownTranslator implements MachineTranslator
+{
+    public const MESSAGE = 'The translation service is down.';
+
+    public function available(): bool
+    {
+        return true;
+    }
+
+    public function estimateCost(Estimate $size): ?float
+    {
+        return null;
+    }
+
+    public function translate(string $text, string $to, ?\Preflow\I18n\Machine\TranslationTuning $tuning = null, ?string $from = null, \Preflow\I18n\Machine\TextFormat $format = \Preflow\I18n\Machine\TextFormat::Plain): string
+    {
+        throw new TranslatorUnavailable(self::MESSAGE);
+    }
+
+    public function translateUnits(array $units, ?string $note = null): array
+    {
+        throw new TranslatorUnavailable(self::MESSAGE);
     }
 }
