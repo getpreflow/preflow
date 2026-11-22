@@ -36,6 +36,7 @@
             {% include '@folio/admin/partials/ai-translate-dialog.twig' %}
         {% endif %}
     </div>
+    <p class="folio-help">{{ t('folio.translations.note') }}</p>
     {% if choose_target|default(false) %}
         <p class="folio-help">{{ t('folio.translations.choose_target') }}</p>
     {% endif %}

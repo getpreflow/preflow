@@ -5,6 +5,7 @@
 {% block subtitle %}{{ t('folio.ai_settings.glossary_intro') }}{% endblock %}
 {% block content %}
     {% include '@folio/admin/ai/_tabs.twig' %}
+    <p class="folio-help">{{ t('folio.ai_settings.glossary_note') }}</p>
     <form class="folio-form" method="post" action="{{ prefix }}/ai/glossary">
         <input type="hidden" name="_csrf_token" value="{{ csrf }}">
         <div class="folio-table-wrap">

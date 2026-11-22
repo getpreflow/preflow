@@ -187,6 +187,23 @@ final class ShellTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_detail_the_one_line_subtitles_dropped_lives_in_help_text(): void
+    {
+        $this->write('config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'fake'];\n");
+        $this->flow = $this->app();
+        $this->signIn();
+
+        $notes = [
+            '/folio/translations' => 'Plain text only',
+            '/folio/ai/glossary' => 'A language left empty is not constrained',
+            '/folio/ai/tuning' => 'The project level applies to every AI request',
+        ];
+        foreach ($notes as $uri => $text) {
+            $help = $this->dom($uri)->query('//main//p[' . self::cls('folio-help') . ']');
+            $this->assertStringContainsString($text, implode(' ', array_map(static fn ($p) => $p->textContent, iterator_to_array($help))), $uri);
+        }
+    }
+
     public function test_help_banners_are_the_subtitle_line_under_the_title(): void
     {
         // AI on (the fake provider needs no key and sends nothing), so the glossary and tuning screens exist.
@@ -197,7 +214,7 @@ final class ShellTest extends TestCase
         $pages = [
             '/folio/translations' => 'Change the interface texts',
             '/folio/cache' => 'Every cache rebuilds on the next request',
-            '/folio/redirects' => 'Old addresses that send visitors on',
+            '/folio/redirects' => 'Old addresses sending visitors on',
             '/folio/redirects?tab=not-found' => 'Addresses visitors asked for',
             '/folio/ai/glossary' => 'Terms that are always translated',
             '/folio/ai/tuning' => 'AI instructions, one per line',

@@ -23,6 +23,7 @@
         {% if missing is empty %}
             {% include '@folio/admin/partials/_empty.twig' with {screen: 'redirects-not-found', title: t('folio.redirects.not_found_empty'), line: t('folio.redirects.not_found_empty_line')} only %}
         {% else %}
+        <p class="folio-help">{{ t('folio.redirects.not_found_note') }}</p>
         <div class="folio-table-wrap">
         <table class="folio-table folio-redirects-table">
             <thead><tr>
