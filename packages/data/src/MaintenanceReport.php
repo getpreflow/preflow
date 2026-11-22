@@ -17,6 +17,7 @@ interface MaintenanceReport extends Maintenance
 {
     /**
      * @return list<string>
+     * @since 0.84.0
      */
     public function report(): array;
 }

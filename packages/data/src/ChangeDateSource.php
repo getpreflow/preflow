@@ -16,7 +16,11 @@ namespace Preflow\Data;
  */
 interface ChangeDateSource
 {
-    /** What migrate's summary calls it ("the publish time"). */
+    /**
+     * What migrate's summary calls it ("the publish time").
+     *
+     * @since 0.84.0
+     */
     public function label(): string;
 
     /**
@@ -26,6 +30,7 @@ interface ChangeDateSource
      *
      * @param list<array<string, mixed>> $rows the records of $def as stored
      * @return array<string, \DateTimeImmutable> record id => the time
+     * @since 0.84.0
      */
     public function changedAt(TypeDefinition $def, array $rows): array;
 }

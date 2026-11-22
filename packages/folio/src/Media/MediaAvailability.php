@@ -22,12 +22,21 @@ final class MediaAvailability
         private readonly DataManager $dm,
     ) {}
 
+    /**
+     * Whether the library's storage driver is configured (config/data.php names it).
+     *
+     * @since 0.84.0
+     */
     public function usable(): bool
     {
         return in_array($this->media->storage, $this->dm->driverNames(), true);
     }
 
-    /** The storage driver name the library needs (for the message that says what is missing). */
+    /**
+     * The storage driver name the library needs (for the message that says what is missing).
+     *
+     * @since 0.84.0
+     */
     public function driver(): string
     {
         return $this->media->storage;

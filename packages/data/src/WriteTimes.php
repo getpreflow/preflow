@@ -18,6 +18,7 @@ interface WriteTimes extends StorageDriver
     /**
      * @param list<string|int> $ids records of $type
      * @return array<string, \DateTimeImmutable> id => when it was last written; ids it cannot tell (missing ones too) left out
+     * @since 0.84.0
      */
     public function writeTimes(string $type, array $ids, string $idField = 'uuid'): array;
 }

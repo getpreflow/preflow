@@ -20,6 +20,7 @@ interface LastChanges extends ActivityLog
      *
      * @param list<string> $ids the records of the subject (a type key)
      * @return array<string, string> record id => time; ids without an event are not in it
+     * @since 0.84.0
      */
     public function lastChanged(string $subject, array $ids): array;
 }

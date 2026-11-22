@@ -33,6 +33,7 @@ final class MediaStorageMiddleware implements MiddlewareInterface
         private readonly string $prefix,
     ) {}
 
+    /** @since 0.84.0 */
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         if ($this->availability->usable()) {
