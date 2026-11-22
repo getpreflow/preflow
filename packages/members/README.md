@@ -444,6 +444,10 @@ with `RenderContext::asRole()`), no account is signed in and none is read:
   shows empty values. A staff role view has no member (`null`) and counts as staff.
 - The member type needs a string id (the default `uuid`): with a number id the reserved id would
   compare as `0` in SQL, so `Members::synthetic()` refuses such a type with a `LogicException`.
+  Since 0.82.0 it asks preflow/data's `DataManager::idKind()`: the model class's id property,
+  else the storage (an SQL table's key column: an integer key is a number), else a declared id
+  field stored as a number. A declared id field of another type (`"text"`, or `"integer"` without
+  Folio) is a string id and gets a member; a class whose table key holds the other kind throws.
 - `Viewer::isSynthetic()` tells code that the member is no account.
 - Saving or deleting that record is skipped by the role view's write policy (and reported), like
   every write there; nothing reaches the store. On the account page a password change or a

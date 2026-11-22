@@ -24,6 +24,7 @@ Requires PHP 8.4+.
 | HTTP exceptions | `NotFoundHttpException`, `ForbiddenHttpException`, `UnauthorizedHttpException` |
 | `NonPublicPaths` | Path prefixes that are not public pages (admin, member area, private files), for features that treat unknown addresses as pages |
 | `SafeReturnPath` | Whether a "next" / "return to" value is a safe path on this site under allowed prefixes |
+| `Http\ContentSecurityPolicy` (0.82) | Reads a policy someone else made: `parse(...$values)` (comma-separated lists, first directive of a name wins), `ofResponse($response)` (enforced, else Report-Only, else null), `policies()`, `nonceFor('script'\|'style')` (`-src-elem`, then `-src`, then `default-src`; the nonce every restricting policy allows, else null). It does not build one: `SecurityHeadersMiddleware` does |
 | `Version` (0.75) | Installed package versions from Composer: `Version::installed('preflow/folio')` ("0.75.0", no "v"; null when not installed), `Version::label()` ("0.75.0"; "dev · 01c613d" for a VCS branch or a package the root replaces; plain "dev" for a path repository, whose reference is no commit) |
 | Route contracts | `Route`, `RouteMode`, `RouterInterface`, `ConfiguredMiddleware` (route middleware with arguments) |
 
@@ -617,7 +618,10 @@ queue made with `new` (whoever holds it sets it) and outside every frame; inside
 it delivers and no render entry opened it. A `Kernel` given the frame-bound queue
 (`CookieQueue::ofCurrentFrame()`) follows that rule by default, so another runtime only opens
 its render frames with `Contexts::runRender()`; with a queue of its own and no
-`setsQueuedCookies`, it sets the queue on the error response only, as before. `isolated(\Closure $render)` (since 0.75, deprecated since
+`setsQueuedCookies`, it sets the queue on the error response only, as before. `isFrameBound()`
+(since 0.82.0) tells the two kinds apart. The settling at close is the frame slot's
+`Preflow\Core\Context\SettlesOnClose` (since 0.82.0, optional): a slot of your own that holds
+something a frame may leave behind implements it and hands what it settles to the parent frame. `isolated(\Closure $render)` (since 0.75, deprecated since
 0.81) runs `$render` with the queue empty, drops what it queued and puts the earlier values back.
 
 ### Auth providers from config

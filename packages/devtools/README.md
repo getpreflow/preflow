@@ -353,6 +353,20 @@ php preflow auth:user EDITOR --email=editor@example.com
 # Set EDITOR_EMAIL=editor@example.com and EDITOR_PASSWORD_HASH in .env.
 ```
 
+## Debug toolbar
+
+In debug mode `DebugToolbarMiddleware` adds the toolbar to HTML responses. Since 0.82.0:
+
+- A "Request limits" section shows what the request frame asked of PHP (`RequestLimits`): each
+  time limit and what came of it, and whether the request goes on when the browser closes the
+  tab. A render in a frame of its own records on that frame, which the toolbar does not show.
+- The toolbar's `<script>` and `<style>` carry the nonces of the response's own policy
+  (`Preflow\Core\Http\ContentSecurityPolicy::ofResponse()`, enforced before Report-Only), else
+  the request's nonce. So a whole-page preview, which brings its own policy, passes it, and the
+  CSP inspector checks the page against its real nonces. `DebugToolbar::render()` and
+  `CspInspector::issues()` take an optional `$styleNonce`; `render()` also an optional
+  `RequestLimits`.
+
 ## Commands from packages and the app
 
 A package brings its own console commands by listing the classes in its `composer.json`
