@@ -187,14 +187,18 @@ final class Query
 
     /**
      * Records where one of $fields holds $term, compared by the matching rule (StorageDriver: case
-     * and accents ignored, since 0.78.1; "uber" finds "Über"). Name the fields: with an empty
-     * list the drivers differ today (the JSON driver searches every field, an SQL driver adds no
-     * condition and so returns every record).
+     * and accents ignored, since 0.78.1; "uber" finds "Über"). Name the fields: an empty list is
+     * refused on every driver (it used to search every field on the JSON driver and match every
+     * record on an SQL one).
      *
      * @param list<string> $fields
+     * @throws \InvalidArgumentException when no field is named (@since 0.84.0)
      */
     public function search(string $term, array $fields = []): self
     {
+        if ($fields === []) {
+            throw new \InvalidArgumentException('search() needs the fields to search: name at least one (a type with no searchable fields cannot be searched this way).');
+        }
         foreach ($fields as $field) {
             self::assertField((string) $field);
         }

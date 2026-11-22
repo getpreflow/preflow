@@ -277,7 +277,9 @@ a boolean as 1/0, a JSON field as text), is in each suite's class docblock:
   `createType()`; `declareUnique()` makes a unique index over one field, for a store whose own
   indexes refuse duplicates (the default skips those tests: DataManager checks unique fields on
   other stores); `textRuleMissing()` gives a reason the store cannot follow the text rule (a
-  MySQL server without the collation), and the exact-comparison tests skip with it. Since 0.78
+  MySQL server without the collation), and the exact-comparison tests skip with it;
+  `accentFreeMatchingMissing()` (0.84.0) does the same for the accent-free matching of `LIKE`, `CONTAINS`
+  and `search()`. Since 0.78
   there is no `supportsRawQuery()` hook: remove an override of it; the raw SQL tests run for
   `RunsSql` drivers only. `search()` is checked in text and list values.
 - **Exact comparisons (0.78):** `=`, `!=`, `IN`, `NOT IN`, ranges and `ORDER BY` on a `text`

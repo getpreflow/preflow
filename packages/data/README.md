@@ -115,7 +115,7 @@ All methods return `$this` for chaining except the terminal methods.
 ->where('status', 'IN', ['draft', 'review'])
 ->orderBy('created_at', SortDirection::Desc)
 ->limit(10)->offset(20)
-->search('php')          // searches all #[Field(searchable: true)] fields
+->search('php')          // searches all #[Field(searchable: true)] fields; none declared: refused (0.84)
 ->get(): ResultSet       // all results
 ->first(): ?Model
 ->paginate(perPage: 15, currentPage: 2): PaginatedResult

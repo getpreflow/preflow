@@ -127,6 +127,10 @@ use Preflow\Testing\PlainDriver;
  *   text rule (a MySQL server without an accent-sensitive, case-insensitive collation, none of
  *   MysqlDialect::MATCH_COLLATIONS; matching does not depend on it); the exact-comparison tests
  *   then skip with it.
+ * - accentFreeMatchingMissing() (default null, @since 0.84.0): a reason the store cannot ignore
+ *   accents in LIKE, CONTAINS and search() (the rule since 0.78.1; a PostgreSQL without the
+ *   unaccent extension, say); the tests of that rule then skip with it. Everything else about
+ *   matching (case, ß, the dot of İ) is still tested.
  *
  * Capabilities are claimed by implementing their interface, and their tests are skipped otherwise:
  * - RunsSql (@since 0.78): rawQuery(), execute() and dialect() tests.
@@ -212,6 +216,17 @@ abstract class StorageDriverContract extends TestCase
      * @since 0.78
      */
     protected function textRuleMissing(): ?string
+    {
+        return null;
+    }
+
+    /**
+     * Why the store cannot ignore accents when matching text (LIKE, CONTAINS, search(), loose
+     * search), or null (the default) when it can. The tests of the accent-free rule skip with it.
+     *
+     * @since 0.84.0
+     */
+    protected function accentFreeMatchingMissing(): ?string
     {
         return null;
     }
@@ -938,6 +953,16 @@ abstract class StorageDriverContract extends TestCase
         $this->assertSame([], $this->wordIds((new Query())->search('nothing', ['title', 'tags'])));
     }
 
+    /** @since 0.84.0 */
+    public function test_search_without_fields_is_refused(): void
+    {
+        $this->seedWords();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('search() needs the fields to search');
+        $this->wordIds((new Query())->search('über', []));
+    }
+
     /** @since 0.78.1 (0.78 respected accents in matching) */
     public function test_like_ignores_accents(): void
     {
@@ -1147,6 +1172,7 @@ abstract class StorageDriverContract extends TestCase
     /** One text field, two rules: "=" respects accents, LIKE ignores them (@since 0.78.1). */
     public function test_equals_still_respects_accents_while_like_ignores_them(): void
     {
+        $this->requireAccentFreeMatching();
         $this->seedPeople();
 
         $this->assertSame(['p3'], $this->people((new Query())->where('name', 'muller')), '"=" finds only "Muller"');
@@ -1551,6 +1577,14 @@ abstract class StorageDriverContract extends TestCase
         }
     }
 
+    private function requireAccentFreeMatching(): void
+    {
+        $reason = $this->accentFreeMatchingMissing();
+        if ($reason !== null) {
+            $this->markTestSkipped($reason);
+        }
+    }
+
     private function requireTextRule(): void
     {
         $reason = $this->textRuleMissing();
@@ -1885,6 +1919,7 @@ abstract class StorageDriverContract extends TestCase
     /** The text-matching rule's edge cases: accents, ß, the Kelvin sign, the long s, dotted and dotless i, width forms. */
     private function seedEdgeWords(): void
     {
+        $this->requireAccentFreeMatching();
         $this->createType('edges', ['uuid' => 'exact', 'title' => 'exact']);
         foreach (['u' => 'Über uns', 'e' => 'ÉTÉ', 's' => 'Straße', 't' => 'İstanbul', 'd' => 'ılık', 'x' => "\u{212A}elvin", 'l' => 'Kelvin', 'f' => "\u{017F}uper", 'o' => 'super', 'w' => 'ＡＢＣ ①'] as $id => $title) {
             $this->driver->save('edges', $id, ['uuid' => $id, 'title' => $title]);
