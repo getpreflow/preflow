@@ -731,7 +731,6 @@ final class FolioServiceProvider extends ServiceProvider
             siteUrl: is_string($appUrl = $app->config()->get('app.url')) && $appUrl !== '' ? $appUrl : null,
             typeActions: $c->get(\Preflow\Folio\Content\TypeActions::class),
             viewAs: $c->get(\Preflow\Folio\Http\ViewAs::class),
-            activity: $c->bound(\Preflow\Core\Activity\ActivityLog::class) ? $c->get(\Preflow\Core\Activity\ActivityLog::class) : null,
             dashboard: new \Preflow\Folio\Dashboard\Dashboard(
                 $c->get(TypeCatalog::class),
                 $c->get(DataManager::class),

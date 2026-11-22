@@ -6,6 +6,7 @@
    menu holds everything else. Without JS it opens in place; admin.js adds the keyboard (menu pattern). #}
 {% import '@folio/admin/partials/_type_icon.twig' as types %}
 {% import '@folio/admin/partials/_languages.twig' as langs %}
+{% import _self as cells %}
 {% set may = may|default({create: folio_can(type ~ '.create'), edit: folio_can(type ~ '.edit'), delete: folio_can(type ~ '.delete')}) %}
 {% set icons = folio_asset('icons.svg') %}
 {% if list.chips is not empty %}
@@ -47,7 +48,7 @@
                 </th>
                 {%- if loop.first and frontend|default(false) %}<th>{{ t('folio.list.address') }}</th>{% endif -%}
             {%- endfor -%}
-            {%- for heading in extra_columns|default([]) %}<th>{{ heading }}</th>{% endfor %}{% if shows_changed|default(false) %}<th>{{ t('folio.list.changed') }}</th>{% endif %}{% if publishing|default(false) %}<th>{{ t('folio.common.status') }}</th>{% endif %}{% if multilingual|default(false) %}<th>{{ t('folio.common.languages') }}</th>{% endif %}<th class="folio-actions-cell"><span class="folio-sr">{{ t('folio.common.actions') }}</span></th></tr></thead>
+            {%- for heading in extra_columns|default([]) %}<th>{{ heading }}</th>{% endfor %}{% if shows_changed|default(false) %}{% set ch = list.changed_header|default(null) %}<th{% if ch and ch.dir %} aria-sort="{{ ch.dir == 'asc' ? 'ascending' : 'descending' }}"{% endif %}>{% if ch %}<a class="folio-sort" href="{{ ch.href }}">{{ t('folio.list.changed') }} {% if ch.dir %}<span class="folio-sort-mark" aria-hidden="true">{{ ch.dir == 'asc' ? '↑' : '↓' }}</span>{% else %}<span class="folio-sort-mark is-idle" aria-hidden="true"></span>{% endif %}</a>{% else %}{{ t('folio.list.changed') }}{% endif %}</th>{% endif %}{% if publishing|default(false) %}<th>{{ t('folio.common.status') }}</th>{% endif %}{% if multilingual|default(false) %}<th>{{ t('folio.common.languages') }}</th>{% endif %}<th class="folio-actions-cell"><span class="folio-sr">{{ t('folio.common.actions') }}</span></th></tr></thead>
         <tbody>
         {% for row in rows %}
             {% set up_disabled = loop.first and list.page == 1 %}
@@ -64,12 +65,14 @@
                             {%- if row.home %}<span class="folio-row-meta">{{ row.home }}</span>{% endif %}</span>
                         </div></td>
                         {%- if frontend|default(false) %}<td class="folio-cell-address folio-mono">{{ row.address|default('') }}</td>{% endif -%}
+                    {%- elseif name == changed_column|default(null) -%}
+                        <td class="folio-cell-changed">{{ cells.changed_cell(row.changed|default('')) }}</td>
                     {%- else -%}
                         <td{% if kinds[name]|default('') == 'number' %} class="is-number"{% endif %}>{{ row.marked[name]|raw }}</td>
                     {%- endif -%}
                 {% endfor %}
                 {%- for cell in row.extra|default([]) %}<td>{% if cell is iterable and cell.href|default(null) %}<a href="{{ cell.href }}">{{ cell.label }}</a>{% elseif cell is iterable %}<span class="folio-badge{% if cell.tone %} is-{{ cell.tone }}{% endif %}">{{ cell.label }}</span>{% else %}{{ cell }}{% endif %}</td>{% endfor %}
-                {% if shows_changed|default(false) %}<td class="folio-cell-changed">{% if row.changed|default('') != '' %}<time datetime="{{ row.changed }}" title="{{ folio_date(row.changed, 'datetime') }}">{{ folio_relative(row.changed) }}</time>{% else %}<span class="folio-muted" aria-hidden="true">–</span>{% endif %}</td>{% endif %}
+                {% if shows_changed|default(false) %}<td class="folio-cell-changed">{{ cells.changed_cell(row.changed|default('')) }}</td>{% endif %}
                 {% if publishing|default(false) %}<td><span class="folio-badge is-{{ row.state.value }}">{{ t('folio.publishing.' ~ row.state.value) }}</span></td>{% endif %}
                 {% if multilingual|default(false) %}<td>{{ langs.languages(row.languages, row.unchecked_url|default(null)) }}</td>{% endif %}
                 <td class="folio-actions-cell">
@@ -173,3 +176,8 @@
         {% endif %}
     </nav>
 {% endif %}
+
+{# A change date as the "Changed" cell shows it (since 0.84): relative, the absolute time as its title, ISO 8601 for machines; a dash without one. #}
+{% macro changed_cell(at) -%}
+    {%- if at != '' %}<time datetime="{{ at }}" title="{{ folio_date(at, 'datetime') }}">{{ folio_relative(at) }}</time>{% else %}<span class="folio-muted" aria-hidden="true">–</span>{% endif -%}
+{%- endmacro %}

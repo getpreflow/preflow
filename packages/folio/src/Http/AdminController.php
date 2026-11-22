@@ -103,8 +103,6 @@ final class AdminController
         ?\Preflow\Folio\Content\TypeActions $typeActions = null,
         // The whole-page preview's "View as" choices (since 0.81); null: only the visitor.
         private readonly ?ViewAs $viewAs = null,
-        // The "Changed" column of a type that keeps no updated timestamp: when the log last saw each record (since 0.84).
-        private readonly ?\Preflow\Core\Activity\ActivityLog $activity = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
@@ -353,7 +351,7 @@ final class AdminController
         }
         $stateOf = $states === null ? null : static fn (DynamicRecord $record): PublishState => $states[(string) $record->getId()] ?? PublishState::Draft;
 
-        $query = ListQuery::fromRequest($request, $typeDef, $listConfig, $typeDef->locales->default, $states !== null);
+        $query = ListQuery::fromRequest($request, $typeDef, $listConfig, $typeDef->locales->default, $states !== null, $this->dm->changeDateOf($typeDef) !== null);
         $result = $query->fetch(
             $this->dm->queryType($type),
             $multilingual ? fn (DynamicRecord $record): bool => $this->hasUnchecked($typeDef, $record) : null,
@@ -377,9 +375,12 @@ final class AdminController
         $route = $this->frontend->routeFor($type);
         $uncheckedUrl = $this->prefix . '/' . $type . '?unchecked=1';
 
-        // The "Changed" column (since 0.84): the type's updated timestamp, else when the activity log last saw the record.
+        // The "Changed" column (since 0.84): each record's change date (ChangeDates). A type that lists
+        // its own updated field gets the same relative cell in that column instead.
         $showsChanged = ListQuery::showsChanged($typeDef, $listConfig);
-        $changedAt = $showsChanged ? $this->changedTimes($typeDef, $records) : [];
+        $changedColumn = $showsChanged ? null : ListQuery::changedField($typeDef);
+        $changedColumn = $changedColumn !== null && isset($columns[$changedColumn]) ? $changedColumn : null;
+        $changedAt = $showsChanged || $changedColumn !== null ? $this->changedTimes($typeDef, $records) : [];
 
         $rows = [];
         foreach ($records as $record) {
@@ -463,6 +464,8 @@ final class AdminController
             'column_kinds' => array_combine(array_keys($columns), array_map(static fn (string $name): string => ListCells::kind($typeDef, $name), array_keys($columns))),
             'extra_columns' => array_column($extraColumns, 'label'),
             'shows_changed' => $showsChanged,
+            // The listed column that is the type's own updated field: shown as the "Changed" cell is.
+            'changed_column' => $changedColumn,
             'rows' => $rows,
             'list' => $list,
             'has_records' => $hasRecords,
@@ -652,7 +655,7 @@ final class AdminController
             }
         } else {
             // The list's own view: its status and "not checked" narrowing too, as the list shows it.
-            $query = ListQuery::fromRequest($request, $typeDef, $listConfig, $typeDef->locales->default, $this->publishes($type));
+            $query = ListQuery::fromRequest($request, $typeDef, $listConfig, $typeDef->locales->default, $this->publishes($type), $this->dm->changeDateOf($typeDef) !== null);
             // The states only when a status is asked for (they read the versions of every record of the type).
             $states = $query->status !== null ? $this->publisher->states($type) : null;
             $records = $exporter->records($type, $query, $query->narrowing(
@@ -1358,7 +1361,7 @@ final class AdminController
      */
     private function bulkReturn(ServerRequestInterface $request, string $type): string
     {
-        return ListQuery::fromPosted($request, $this->registry->get($type), $this->catalog->get($type)?->list ?? [], $this->publishes($type))
+        return ListQuery::fromPosted($request, $this->registry->get($type), $this->catalog->get($type)?->list ?? [], $this->publishes($type), $this->dm->changeDateOf($this->registry->get($type)) !== null)
             ->url($this->prefix . '/' . $type);
     }
 
@@ -2442,37 +2445,22 @@ final class AdminController
     }
 
     /**
-     * When each record of a page was last changed (the "Changed" column): the type's updated
-     * timestamp where it keeps one, else the time the activity log last saw the record (a log
-     * that cannot say, or a record it no longer keeps, leaves it out).
+     * When each record of a page was last changed (the "Changed" column): its change date
+     * (ChangeDates::of(): the system key, or the type's own updated field) as ISO 8601, for
+     * `<time datetime>`. A record without a readable one (written before the date was kept and
+     * not given one by `preflow migrate`) is left out.
      *
      * @param list<DynamicRecord> $records
-     * @return array<string, string> record id => a time AdminFormat reads
+     * @return array<string, string> record id => ISO 8601 time
      */
     private function changedTimes(TypeDefinition $typeDef, array $records): array
     {
-        $field = ListQuery::changedField($typeDef);
+        $key = \Preflow\Data\ChangeDates::of($typeDef);
         $times = [];
-        $missing = [];
         foreach ($records as $record) {
-            $id = (string) $record->getId();
-            $value = $field !== null ? $record->get($field) : null;
-            if ($value instanceof \DateTimeInterface) {
-                $value = $value->format(DATE_ATOM);
-            }
-            if (is_string($value) && trim($value) !== '') {
-                $times[$id] = $value;
-            } elseif (is_int($value) && $value > 0) {
-                $times[$id] = date(DATE_ATOM, $value);
-            } else {
-                $missing[] = $id;
-            }
-        }
-        if ($missing !== [] && $this->activity instanceof \Preflow\Core\Activity\LastChanges) {
-            try {
-                $times += $this->activity->lastChanged($typeDef->key, $missing);
-            } catch (\Throwable $e) {
-                error_log('Folio list: the activity log could not say when records changed: ' . $e->getMessage());
+            $at = \Preflow\Data\ChangeDates::parse($record->get($key));
+            if ($at !== null) {
+                $times[(string) $record->getId()] = $at->format(DATE_ATOM);
             }
         }
 

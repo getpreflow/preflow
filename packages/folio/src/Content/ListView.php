@@ -120,6 +120,21 @@ final class ListView
             $headers[$name] = ['label' => $label, 'dir' => $dir, 'href' => $sortable ? $href($next) : null];
         }
 
+        // The "Changed" column's header (since 0.84.0): sorted as a column is, when the storage holds the dates.
+        $changed = null;
+        if ($query->changedSort !== null) {
+            $key = $query->changedSort;
+            $dir = $query->sort === $key ? ($query->desc ? 'desc' : 'asc') : null;
+            $next = $params;
+            unset($next['sort']);
+            if ($dir === null) {
+                $next['sort'] = '-' . $key; // newest first on the first click
+            } elseif ($dir === 'desc') {
+                $next['sort'] = $key;
+            } // asc: a third click returns to the list's own order
+            $changed = ['dir' => $dir, 'href' => $href($next)];
+        }
+
         // The status links keep the search, filters and sort, and start at page 1.
         $statuses = [];
         if ($statusCounts !== null) {
@@ -169,6 +184,7 @@ final class ListView
             'filters' => $filters,
             'chips' => $chips,
             'headers' => $headers,
+            'changed_header' => $changed,
             'sorted' => $query->sort !== null,
             'filtered' => $query->q !== '' || $query->filters !== [] || $query->unchecked || $query->status !== null,
             'statuses' => $statuses,

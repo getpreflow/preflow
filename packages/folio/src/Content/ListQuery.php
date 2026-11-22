@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Content;
 
+use Preflow\Data\ChangeDates;
 use Preflow\Data\PaginatedResult;
 use Preflow\Data\QueryBuilder;
 use Preflow\Data\SortDirection;
@@ -48,6 +49,8 @@ final readonly class ListQuery
         private string $locale,
         /** "status": only records in this publish state (@since 0.75); null: every state. */
         public ?string $status = null,
+        /** The key the "Changed" column sorts by ("sort=_updated_at"), null when it does not sort (@since 0.84.0). */
+        public ?string $changedSort = null,
     ) {}
 
     /**
@@ -97,26 +100,26 @@ final readonly class ListQuery
     }
 
     /**
-     * The field that keeps when a record was last written (the data layer's #[Timestamps]:
-     * updatedAt or updated_at), or null when the type keeps none. @since 0.84.0
+     * The updated field the type declares (updatedAt or updated_at: the data layer keeps its change
+     * date there, ChangeDates::declared()), or null when it keeps it in the system key. @since 0.84.0
      */
     public static function changedField(TypeDefinition $def): ?string
     {
-        foreach (\Preflow\Data\Attributes\Timestamps::UPDATED_NAMES as $name) {
-            if (isset($def->fields[$name])) {
-                return $name;
-            }
-        }
-
-        return null;
+        return ChangeDates::declared($def);
     }
 
     /**
+     * "sort" takes a list column, and the change date key (ChangeDates::of(): "_updated_at", or the
+     * type's updated field) while the list shows the "Changed" column and $changeDates says the
+     * storage holds it (DataManager::changeDateOf(); since 0.84.0).
+     *
      * @param array<string, mixed> $listConfig
-     * @param bool                 $statuses   whether the type publishes, so "status" may narrow it (@since 0.75)
+     * @param bool                 $statuses    whether the type publishes, so "status" may narrow it (@since 0.75)
+     * @param bool                 $changeDates whether the storage holds the change dates, so the "Changed" column sorts (@since 0.84.0)
      */
-    public static function fromRequest(ServerRequestInterface $request, TypeDefinition $def, array $listConfig, string $locale, bool $statuses = false): self
+    public static function fromRequest(ServerRequestInterface $request, TypeDefinition $def, array $listConfig, string $locale, bool $statuses = false, bool $changeDates = false): self
     {
+        $changedSort = $changeDates && self::showsChanged($def, $listConfig) ? ChangeDates::of($def) : null;
         $params = $request->getQueryParams();
 
         $q = is_string($params['q'] ?? null) ? mb_substr(trim($params['q']), 0, 200) : '';
@@ -139,8 +142,8 @@ final readonly class ListQuery
         if ($rawSort !== '') {
             $field = ltrim($rawSort, '-');
             if (
-                in_array($field, self::columns($def, $listConfig), true)
-                && !self::isRelation($def->fields[$field]->type)
+                $field === $changedSort
+                || (in_array($field, self::columns($def, $listConfig), true) && !self::isRelation($def->fields[$field]->type))
             ) {
                 $sort = $field;
                 $desc = str_starts_with($rawSort, '-');
@@ -154,7 +157,7 @@ final readonly class ListQuery
 
         $status = $statuses && in_array($params['status'] ?? null, self::STATUSES, true) ? (string) $params['status'] : null;
 
-        return new self($q, $filters, $sort, $desc, $page, $unchecked, $def, $listConfig, $locale, $status);
+        return new self($q, $filters, $sort, $desc, $page, $unchecked, $def, $listConfig, $locale, $status, $changedSort);
     }
 
     /**
@@ -166,13 +169,13 @@ final readonly class ListQuery
      *
      * @param array<string, mixed> $listConfig
      */
-    public static function fromPosted(ServerRequestInterface $request, TypeDefinition $def, array $listConfig, bool $statuses = false): self
+    public static function fromPosted(ServerRequestInterface $request, TypeDefinition $def, array $listConfig, bool $statuses = false, bool $changeDates = false): self
     {
         $raw = ((array) $request->getParsedBody())['_query'] ?? '';
         $params = [];
         parse_str(is_string($raw) ? ltrim($raw, '?') : '', $params);
 
-        return self::fromRequest($request->withQueryParams($params), $def, $listConfig, $def->locales->default, $statuses);
+        return self::fromRequest($request->withQueryParams($params), $def, $listConfig, $def->locales->default, $statuses, $changeDates);
     }
 
     /** The list's URL for this view: $base and the validated parameters of query(). @since 0.75 */
@@ -215,7 +218,7 @@ final readonly class ListQuery
         }
 
         if ($this->sort !== null) {
-            $numeric = in_array($this->def->fields[$this->sort]->type, self::NUMERIC_TYPES, true);
+            $numeric = in_array($this->def->fields[$this->sort]->type ?? null, self::NUMERIC_TYPES, true); // the change date key may be no field
             $qb->orderBy($this->sort, $this->desc ? SortDirection::Desc : SortDirection::Asc, $numeric);
         } else {
             ListOrder::apply($qb, $this->def, $this->listConfig);

@@ -230,20 +230,53 @@ final class ListScreenTest extends TestCase
         $this->assertStringContainsString('<span class="folio-row-text"><a class="folio-row-link" href="/folio/note/n1/edit">Remember</a></span>', $html);
     }
 
-    public function test_every_list_ends_in_a_changed_column_from_the_activity_log(): void
+    /** Saves a record through the data layer on a clock at $at, so its change date is $at. */
+    private function savedAt(string $type, string $id, array $data, \DateTimeImmutable $at): void
+    {
+        $dm = $this->dm();
+        $record = \Preflow\Data\DynamicRecord::fromArray($dm->getTypeRegistry()->get($type), ['uuid' => $id] + $data);
+        \Preflow\Core\Context\Contexts::run(
+            \Preflow\Testing\ContextFactory::forTest()->withClock(new \Preflow\Core\Context\FrozenClock($at)),
+            static fn () => $dm->saveType($record, false),
+        );
+    }
+
+    public function test_every_list_ends_in_a_changed_column_from_the_stored_change_date(): void
     {
         $this->writeModel('game', ['label' => 'Games', 'fields' => ['title' => ['type' => 'string']]]);
-        $this->working('game', 'g1', ['title' => 'Chess']);
-        $this->working('game', 'g2', ['title' => 'Go']);
-        $log = $this->app()->container()->get(\Preflow\Core\Activity\ActivityLog::class);
-        $log->record(new \Preflow\Core\Activity\Activity('game', 'g1', 'Chess', \Preflow\Core\Activity\ActivityKind::Saved, at: (new \DateTimeImmutable('-3 hours'))->format(DATE_ATOM)));
+        $at = new \DateTimeImmutable('-3 hours');
+        $this->savedAt('game', 'g1', ['title' => 'Chess'], $at);
+        $this->working('game', 'g2', ['title' => 'Go']); // written past the data layer: no date
 
         $html = $this->html('/folio/game');
 
-        $this->assertMatchesRegularExpression('#</a></th><th>Changed</th>#', $html);
-        $this->assertMatchesRegularExpression('#<td class="folio-cell-changed"><time datetime="[^"]+" title="[^"]+">3 hours ago</time></td>#', $html);
-        $this->assertSame(2, substr_count($html, 'folio-cell-changed'), 'one cell per row; a record the log does not know shows a dash');
+        $this->assertMatchesRegularExpression('#</a></th><th><a class="folio-sort" href="/folio/game\?sort=-_updated_at">Changed <span class="folio-sort-mark is-idle" aria-hidden="true"></span></a></th>#', $html);
+        $iso = $at->setTimezone(new \DateTimeZone('UTC'))->format(DATE_ATOM);
+        $this->assertMatchesRegularExpression('#<td class="folio-cell-changed"><time datetime="' . preg_quote($iso, '#') . '" title="[^"]+">3 hours ago</time></td>#', $html, 'ISO 8601 for machines');
+        $this->assertSame(2, substr_count($html, 'folio-cell-changed'), 'one cell per row; a record without a date shows a dash');
         $this->assertStringContainsString('<span class="folio-muted" aria-hidden="true">–</span>', $html);
+    }
+
+    public function test_the_changed_column_sorts_by_the_change_date(): void
+    {
+        $this->writeModel('game', ['label' => 'Games', 'fields' => ['title' => ['type' => 'string']]]);
+        $this->savedAt('game', 'g1', ['title' => 'Middle'], new \DateTimeImmutable('-2 days'));
+        $this->savedAt('game', 'g2', ['title' => 'Newest'], new \DateTimeImmutable('-1 hour'));
+        $this->savedAt('game', 'g3', ['title' => 'Oldest'], new \DateTimeImmutable('-30 days'));
+
+        $titles = static function (string $html): array {
+            preg_match_all('#<a class="folio-row-link" href="/folio/game/g\d/edit">([^<]+)</a>#', $html, $m);
+
+            return $m[1];
+        };
+
+        $newest = $this->html('/folio/game?sort=-_updated_at');
+        $this->assertSame(['Newest', 'Middle', 'Oldest'], $titles($newest));
+        $this->assertStringContainsString('<th aria-sort="descending"><a class="folio-sort" href="/folio/game?sort=_updated_at">Changed <span class="folio-sort-mark" aria-hidden="true">↓</span></a></th>', $newest);
+
+        $oldest = $this->html('/folio/game?sort=_updated_at');
+        $this->assertSame(['Oldest', 'Middle', 'Newest'], $titles($oldest));
+        $this->assertStringContainsString('<th aria-sort="ascending"><a class="folio-sort" href="/folio/game">Changed', $oldest, 'a third click: the list\'s own order');
     }
 
     public function test_a_type_that_keeps_an_updated_timestamp_shows_it_before_the_log(): void
@@ -253,7 +286,7 @@ final class ListScreenTest extends TestCase
 
         $html = $this->html('/folio/memo');
 
-        $this->assertStringContainsString('<th>Changed</th>', $html);
+        $this->assertMatchesRegularExpression('#<th[^>]*>(?:<a [^>]*>)?Changed\\b#', $html);
         $this->assertMatchesRegularExpression('#<time datetime="[^"]+" title="[^"]+">[^<]+</time>#', $html);
     }
 
@@ -264,11 +297,11 @@ final class ListScreenTest extends TestCase
         $this->working('game', 'g1', ['title' => 'Chess']);
 
         $this->working('toy', 't1', ['title' => 'Ball']);
-        $this->assertStringContainsString('<th>Changed</th>', $this->html('/folio/toy'), 'a type that does not hide it has the column');
+        $this->assertMatchesRegularExpression('#<th[^>]*>(?:<a [^>]*>)?Changed\\b#', $this->html('/folio/toy'), 'a type that does not hide it has the column');
 
         $html = $this->html('/folio/game');
 
-        $this->assertStringNotContainsString('<th>Changed</th>', $html);
+        $this->assertDoesNotMatchRegularExpression('#<th[^>]*>(?:<a [^>]*>)?Changed\\b#', $html);
         $this->assertStringNotContainsString('folio-cell-changed', $html);
     }
 
@@ -279,12 +312,13 @@ final class ListScreenTest extends TestCase
         $this->working('memo', 'm1', ['title' => 'First', 'updated_at' => '2026-01-02 03:04:05']);
 
         $this->working('toy', 't1', ['title' => 'Ball']);
-        $this->assertSame(1, substr_count($this->html('/folio/toy'), '<th>Changed</th>'));
+        $this->assertSame(1, preg_match_all('#<th[^>]*>(?:<a [^>]*>)?Changed\\b#', $this->html('/folio/toy')));
 
         $html = $this->html('/folio/memo');
 
-        $this->assertStringNotContainsString('folio-cell-changed', $html);
-        $this->assertStringNotContainsString('<th>Changed</th>', $html);
-        $this->assertStringContainsString('2026-01-02 03:04:05', $html);
+        $this->assertDoesNotMatchRegularExpression('#<th[^>]*>(?:<a [^>]*>)?Changed\\b#', $html);
+        $iso = (new \DateTimeImmutable('2026-01-02 03:04:05'))->format(DATE_ATOM);
+        $this->assertMatchesRegularExpression('#<td class="folio-cell-changed"><time datetime="' . preg_quote($iso, '#') . '" title="[^"]+">[^<]+</time></td>#', $html, 'its own column, shown as the Changed cell is');
+        $this->assertSame(1, substr_count($html, 'folio-cell-changed'));
     }
 }

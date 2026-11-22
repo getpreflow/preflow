@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Transfer;
 
+use Preflow\Core\Context\Contexts;
 use Preflow\Core\Context\Writes;
 use Preflow\Core\Context\WritesRefused;
+use Preflow\Data\ChangeDates;
 use Preflow\Data\DataManager;
 use Preflow\Data\PartialCommit;
 use Preflow\Data\Query;
@@ -16,6 +18,10 @@ use Preflow\Data\Transactions;
  * Reads a content archive into a temporary directory, validating every entry
  * (manifest first, Folio tables only, content paths only), then diffs it
  * against the local content. Nothing local changes until apply().
+ *
+ * Change dates (ChangeDates, since 0.84.0): a record keeps the change date its archive carries.
+ * An archive from before 0.84 carries none: its records are compared without it (the same content
+ * is no change), and the ones it adds or changes are given the time of the import.
  */
 final class Importer
 {
@@ -126,6 +132,11 @@ final class Importer
                     // Keys an older archive lacks get their stated value, never the local row's
                     // (a snapshot's published version: none, so its record is compared in full).
                     $row += $this->set->importDefaults($table);
+                    // An archive from before change dates (0.84): the record is written now.
+                    $dateKey = $this->dm->changeDateOf($def);
+                    if ($dateKey !== null && !ChangeDates::isSet($row[$dateKey] ?? null)) {
+                        $row[$dateKey] = ChangeDates::value($def, Contexts::clock()->now(), $this->dm->fieldKinds());
+                    }
                     // As saveType() writes it: no empty text in number, yes/no or date columns.
                     $rows[$id] = $this->dm->storageValues($def, $row);
                 }
@@ -364,11 +375,16 @@ final class Importer
             unset($local['']);
 
             $diff = ['added' => [], 'changed' => [], 'removed' => []];
+            $dateKey = ChangeDates::of($def);
             foreach ($incoming as $id => $row) {
                 $id = (string) $id;
                 if (!array_key_exists($id, $local)) {
                     $diff['added'][] = $id;
-                } elseif (self::canonical($row) !== self::canonical($local[$id])) {
+                    continue;
+                }
+                // An archive from before change dates carries none: the content alone decides.
+                $mine = array_key_exists($dateKey, $row) ? $local[$id] : array_diff_key($local[$id], [$dateKey => true]);
+                if (self::canonical($row) !== self::canonical($mine)) {
                     $diff['changed'][] = $id;
                 }
             }
