@@ -57,11 +57,11 @@ final class MigrateCommand implements CommandInterface
                 echo "No SQL storage configured: no schema migrations.\n";
                 $registry = $container->get(MigrationRegistry::class);
                 if ($pretend) {
-                    return $this->runSteps($registry->checks(sql: false)) ? $this->refused() : 0;
+                    return $this->refused($this->runSteps($registry->checks(sql: false)));
                 }
                 $refused = $this->runSteps($registry->steps(sql: false));
                 echo "Done.\n";
-                return $refused ? $this->refused() : 0;
+                return $this->refused($refused);
             }
             if ($dm === null) {
                 throw new \RuntimeException('No data configuration found (config/data.php).');
@@ -94,12 +94,12 @@ final class MigrateCommand implements CommandInterface
             $registry->ranOn($storage);
             if ($pretend) {
                 // The read-only checks: what the steps would refuse, nothing changed.
-                return $this->runSteps($registry->checks(sql: true)) ? $this->refused() : 0;
+                return $this->refused($this->runSteps($registry->checks(sql: true)));
             }
             $refused = $this->runSteps($registry->steps(sql: true));
             echo "Done.\n";
 
-            return $refused ? $this->refused() : 0;
+            return $this->refused($refused);
         } catch (\Throwable $e) {
             fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
             return 1;
@@ -130,26 +130,38 @@ final class MigrateCommand implements CommandInterface
      * Runs every step, printing its lines.
      *
      * @param array<string, \Closure(): list<string>> $steps
-     * @return bool whether a step refused something (a line starting with "refused:", such as a
-     *     text column whose values would collide under the text rule; data README, "Exact comparisons")
+     * @return list<string> the steps that refused something (a line starting with "refused:", such as
+     *     a text column whose values would collide under the text rule, data README "Exact comparisons";
+     *     a table the change-date backfill could not finish, since 0.84)
      */
-    private function runSteps(array $steps): bool
+    private function runSteps(array $steps): array
     {
-        $refused = false;
+        $refused = [];
         foreach ($steps as $name => $step) {
             foreach ($step() as $line) {
                 echo "[{$name}] {$line}\n";
-                $refused = $refused || str_starts_with($line, 'refused:');
+                if (str_starts_with($line, 'refused:')) {
+                    $refused[$name] = true;
+                }
             }
         }
 
-        return $refused;
+        return array_keys($refused);
     }
 
-    /** Exit code 1 after every step ran, with the closing line. */
-    private function refused(): int
+    /**
+     * Exit code 1 after every step ran when one refused something (the text rule's duplicate
+     * values, a table the change-date backfill could not finish), with the closing line naming
+     * the steps; else 0.
+     *
+     * @param list<string> $refused the steps that refused (runSteps())
+     */
+    private function refused(array $refused): int
     {
-        echo "Some values are there more than once under the text rule (see \"refused:\" above); nothing was changed or removed. Rename one record of each group, then run migrate again.\n";
+        if ($refused === []) {
+            return 0;
+        }
+        echo 'Some steps refused something (see "refused:" above); what they refused was left as it is. Fix what each line names (a group of values the text rule takes for one: rename one record of each group), then run migrate again. (' . implode(', ', $refused) . ")\n";
 
         return 1;
     }

@@ -67,4 +67,17 @@ final class PublishedChangeDatesTest extends PublishingAppTestCase
         $this->assertSame('2026-03-02T08:00:00+00:00', $this->snapshotDate('memo', 'm1'));
         $this->assertSame('2026-03-01T08:00:00+00:00', $this->stored('memo', 'm1')->get(ChangeDates::FIELD));
     }
+
+    public function test_migrate_dates_an_old_published_copy_by_its_publish_time(): void
+    {
+        $driver = $this->dm()->driver('json');
+        // A copy from before 0.84 the activity log no longer knows: no change date, its publish stamp only.
+        $driver->save('post__published', 'p2', ['title' => ['en' => 'Old'], 'uuid' => 'p2', '_published_at' => '2025-05-05T07:05:05+02:00']);
+
+        $steps = $this->app()->container()->get(\Preflow\Data\Migration\MigrationRegistry::class)->steps(sql: false);
+        $lines = self::at('2026-11-22T12:00:00Z', static fn (): array => $steps['data.change-dates']());
+
+        $this->assertContains('gave 1 record of post__published a change date (1 from the publish time)', $lines);
+        $this->assertSame('2025-05-05T05:05:05+00:00', $driver->findOne('post__published', 'p2')[ChangeDates::FIELD] ?? null);
+    }
 }

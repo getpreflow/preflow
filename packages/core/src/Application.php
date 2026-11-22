@@ -1351,6 +1351,10 @@ final class Application
         if (class_exists(\Preflow\Data\Schema\RecordTables::class)) {
             $this->container->instance(\Preflow\Data\Schema\RecordTables::class, new \Preflow\Data\Schema\RecordTables());
         }
+        // Where the change-date backfill learns old records' dates besides the data layer's own (0.84).
+        if (class_exists(\Preflow\Data\ChangeDateSources::class)) {
+            $this->container->instance(\Preflow\Data\ChangeDateSources::class, new \Preflow\Data\ChangeDateSources());
+        }
         // The tables migrations make, with each column's intent (text or exact), for `preflow migrate`
         // to give existing ones the text rule (data 0.78): the framework's own here, packages' in theirs.
         if (class_exists(\Preflow\Data\Schema\DeclaredTables::class)) {
@@ -1564,9 +1568,10 @@ final class Application
     /**
      * `data.change-dates` (since 0.84.0): after every table step has made the change-date columns,
      * every record of a type (the registered record tables, the registry's types) without a change
-     * date gets one (ChangeDateBackfill: the activity log's newest event, a published copy's time,
-     * the storage's write time, the creation time, else now). On every storage; a second run
-     * writes nothing.
+     * date gets one (ChangeDateBackfill: the activity log's newest event, the type's own updated
+     * time, the sources packages add to ChangeDateSources, the storage's write time, the creation
+     * time, else now). On every storage; a second run writes nothing; a table it cannot finish is a
+     * "refused:" line, so migrate exits 1.
      */
     private function registerChangeDateStep(\Preflow\Data\DataManager $dataManager, \Preflow\Data\Migration\MigrationRegistry $migrations): void
     {
@@ -1591,7 +1596,9 @@ final class Application
         $migrations->afterMigrate('data.change-dates', static function () use ($container, $dataManager, $types): array {
             $log = $container->bound(\Preflow\Core\Activity\ActivityLog::class) ? $container->get(\Preflow\Core\Activity\ActivityLog::class) : null;
 
-            return (new \Preflow\Data\ChangeDateBackfill($dataManager, $types, $log instanceof \Preflow\Core\Activity\LastChanges ? $log : null))->run();
+            $sources = $container->bound(\Preflow\Data\ChangeDateSources::class) ? $container->get(\Preflow\Data\ChangeDateSources::class)->all() : [];
+
+            return (new \Preflow\Data\ChangeDateBackfill($dataManager, $types, $log instanceof \Preflow\Core\Activity\LastChanges ? $log : null, $sources))->run();
         }, sqlOnly: false, last: true);
     }
 

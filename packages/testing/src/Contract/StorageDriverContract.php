@@ -1936,31 +1936,7 @@ abstract class StorageDriverContract extends TestCase
         $this->driver->save('aged', 'plain', ['uuid' => 'plain', 'title' => 'Nothing known']);
         $this->driver->save('aged', 'dated', ['uuid' => 'dated', 'title' => 'Dated', $field => '2019-01-01T00:00:00+00:00']);
         $this->driver->save('aged', 'blank', ['uuid' => 'blank', 'title' => 'Blank', $field => '']);
-        $log = new class implements \Preflow\Core\Activity\LastChanges {
-            public function lastChanged(string $subject, array $ids): array
-            {
-                return $subject === 'aged' && in_array('logged', $ids, true) ? ['logged' => '2026-02-03T04:05:06+00:00'] : [];
-            }
-
-            public function record(\Preflow\Core\Activity\Activity $activity): void {}
-
-            public function recent(int $limit, ?array $subjects = null, ?string $before = null, ?string $by = null): \Preflow\Core\Activity\ActivityPage
-            {
-                throw new \LogicException('not read');
-            }
-
-            public function people(?array $subjects = null): array
-            {
-                return [];
-            }
-
-            public function prune(): int
-            {
-                return 0;
-            }
-
-            public function forget(string $subject, string $id): void {}
-        };
+        $log = self::activityLog(static fn (string $subject, array $ids): array => $subject === 'aged' && in_array('logged', $ids, true) ? ['logged' => '2026-02-03T04:05:06+00:00'] : []);
         $backfill = new \Preflow\Data\ChangeDateBackfill($dm, static fn (): array => [$def, $def], $log, chunk: 2);
 
         $lines = self::at('2026-11-22T12:00:00Z', static fn (): array => $backfill->run());
@@ -1985,6 +1961,101 @@ abstract class StorageDriverContract extends TestCase
 
         $this->assertSame([], self::at('2026-11-23T12:00:00Z', static fn (): array => $backfill->run()), 'a second run writes nothing');
         $this->assertSame('2026-02-03T04:05:06+00:00', ($this->driver->findOne('aged', 'logged') ?? [])[$field] ?? null);
+    }
+
+    /**
+     * An activity log whose lastChanged() is $lastChanged (the rest unused).
+     *
+     * @param \Closure(string, list<string>): array<string, string> $lastChanged
+     */
+    private static function activityLog(\Closure $lastChanged): \Preflow\Core\Activity\LastChanges
+    {
+        return new class ($lastChanged) implements \Preflow\Core\Activity\LastChanges {
+            public function __construct(private readonly \Closure $lastChanged) {}
+
+            public function lastChanged(string $subject, array $ids): array
+            {
+                return ($this->lastChanged)($subject, $ids);
+            }
+
+            public function record(\Preflow\Core\Activity\Activity $activity): void {}
+
+            public function recent(int $limit, ?array $subjects = null, ?string $before = null, ?string $by = null): \Preflow\Core\Activity\ActivityPage
+            {
+                throw new \LogicException('not read');
+            }
+
+            public function people(?array $subjects = null): array
+            {
+                return [];
+            }
+
+            public function prune(): int
+            {
+                return 0;
+            }
+
+            public function forget(string $subject, string $id): void {}
+        };
+    }
+
+    /**
+     * migrate runs while the site serves requests: between the backfill's read and its write a
+     * record may be deleted (it is not written back as a stub) or saved with a date of its own
+     * (that date stays). Only records that still exist without a date are written.
+     */
+    public function test_the_backfill_writes_only_records_that_still_exist_without_a_date(): void
+    {
+        if (!$this->driver instanceof DescribesColumns) {
+            $this->markTestSkipped('The driver does not implement DescribesColumns: DataManager keeps no change dates on it.');
+        }
+        $field = \Preflow\Data\ChangeDates::FIELD;
+        $this->createType('raced', ['uuid' => 'exact', 'title' => 'text', $field => 'exact']);
+        $def = new TypeDefinition('raced', 'raced', 'default', ['title' => new TypeFieldDefinition('title')]);
+        $dm = new \Preflow\Data\DataManager(['default' => $this->driver], 'default');
+        foreach (['gone', 'saved', 'plain'] as $id) {
+            $this->driver->save('raced', $id, ['uuid' => $id, 'title' => ucfirst($id)]);
+        }
+        $driver = $this->driver;
+        // The log is asked between the read and the write: the site's requests act right then.
+        $log = self::activityLog(static function (string $subject, array $ids) use ($driver, $dm, $def): array {
+            $driver->delete('raced', 'gone');
+            self::at('2026-11-22T12:30:00Z', static fn () => $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'saved', 'title' => 'Saved by a user']), false));
+
+            return [];
+        });
+
+        self::at('2026-11-22T12:00:00Z', static fn (): array => (new \Preflow\Data\ChangeDateBackfill($dm, static fn (): array => [$def], $log))->run());
+
+        $this->assertNull($this->driver->findOne('raced', 'gone'), 'a record deleted meanwhile stays deleted');
+        $this->assertSame('2026-11-22T12:30:00+00:00', ($this->driver->findOne('raced', 'saved') ?? [])[$field] ?? null, 'a date a save gave meanwhile stays');
+        $this->assertSame('Saved by a user', ($this->driver->findOne('raced', 'saved') ?? [])['title'] ?? null);
+        $plain = ($this->driver->findOne('raced', 'plain') ?? [])[$field] ?? null;
+        $this->driver instanceof \Preflow\Data\WriteTimes
+            ? $this->assertNotNull(\Preflow\Data\ChangeDates::parse($plain), 'the storage\'s own write time')
+            : $this->assertSame('2026-11-22T12:00:00+00:00', $plain, 'the time of the migrate');
+        $this->assertSame('Plain', ($this->driver->findOne('raced', 'plain') ?? [])['title'] ?? null, 'only the date is written');
+    }
+
+    /** A source that cannot answer leaves the table for the next run: no weaker source decides for good. */
+    public function test_the_backfill_refuses_a_table_whose_activity_log_cannot_be_read(): void
+    {
+        if (!$this->driver instanceof DescribesColumns) {
+            $this->markTestSkipped('The driver does not implement DescribesColumns: DataManager keeps no change dates on it.');
+        }
+        $field = \Preflow\Data\ChangeDates::FIELD;
+        $this->createType('unlogged', ['uuid' => 'exact', 'title' => 'text', $field => 'exact']);
+        $def = new TypeDefinition('unlogged', 'unlogged', 'default', ['title' => new TypeFieldDefinition('title')]);
+        $dm = new \Preflow\Data\DataManager(['default' => $this->driver], 'default');
+        $this->driver->save('unlogged', 'u1', ['uuid' => 'u1', 'title' => 'One']);
+        $log = self::activityLog(static fn (): array => throw new \RuntimeException('log storage is down'));
+
+        $lines = self::at('2026-11-22T12:00:00Z', static fn (): array => (new \Preflow\Data\ChangeDateBackfill($dm, static fn (): array => [$def], $log))->run());
+
+        $this->assertCount(1, $lines);
+        $this->assertStringStartsWith('refused: unlogged: ', $lines[0]);
+        $this->assertStringContainsString('log storage is down', $lines[0]);
+        $this->assertNull(($this->driver->findOne('unlogged', 'u1') ?? [])[$field] ?? null, 'left for the next run');
     }
 
     // --- insert only if new (InsertsNew, @since 0.79.0) -------------------------------------------

@@ -726,12 +726,23 @@ driver:
   that does not implement `DescribesColumns` is given none). A driver needs nothing new: it stores
   the key as it stores the fields; `StorageDriverContract` pins it on every driver.
 - **Backfill:** the step `data.change-dates` of `preflow migrate` (after every table step, on any
-  storage) gives each record without a date the activity log's newest event for it (a log with
-  `Preflow\Core\Activity\LastChanges`, as the stored one), else the type's own `updatedAt` /
-  `updated_at` value (read, never written), else a published copy's `_published_at`, else the storage's own write time (`WriteTimes`: a JSON file's modification
-  time), else its `createdAt` / `created_at`, else the time of the migrate. It writes only empty
-  dates, 500 records per transaction, so a second run writes nothing and an interrupted one goes
-  on where it stopped.
+  storage) gives each record without a date, in this order: the activity log's newest event for it
+  (a log with `Preflow\Core\Activity\LastChanges`, as the stored one), the type's own `updatedAt` /
+  `updated_at` value (read, never written), the sources packages register with
+  `ChangeDateSources` (`ChangeDateSource`; preflow/publishing adds a published copy's
+  `_published_at`), the storage's own write time (`WriteTimes`: a JSON file's modification time),
+  its `createdAt` / `created_at`, else the time of the migrate.
+  - It runs while the site serves requests: each date is a conditional write of that key alone
+    (`updateIf()`: `UPDATE … WHERE id = ? AND` the date is empty on SQL, a check and write under the
+    type's lock elsewhere). A record deleted meanwhile is not written back; a date a save gave
+    meanwhile stays; a JSON file is written in the bytes a save writes (the change date closes the
+    system keys).
+  - It writes only empty dates, 500 records per transaction: a second run writes nothing, an
+    interrupted one goes on where it stopped.
+  - A table it cannot finish is a `refused:` line and migrate exits 1 (the other tables go on). A
+    source that cannot answer (the activity log unreachable) refuses its table rather than letting
+    a weaker source decide for good; the next run asks again. A table without the column (one a
+    migration made) is a `warning:` line.
 - **Plain models** (no type) keep `#[Timestamps]` for this; their tables are their migrations'.
 
 ## Unique fields and indexes

@@ -1799,7 +1799,8 @@ final class DataManager
      * A row of this type as it is written, the same whoever saves it (Folio, the CLI, a script),
      * so an unchanged record is written to the same bytes:
      * - the keys in the type's field order, then the system keys (the id field when it is no
-     *   field, then the keys starting with "_", in their given order), then any other key in its
+     *   field, then the keys starting with "_", in their given order but the change date last,
+     *   ChangeDates::FIELD, since 0.84), then any other key in its
      *   given order; no key is dropped;
      * - a list field (FieldKinds::list()) holds a list, also when given as JSON text or a comma
      *   string; a number field's numeric text is a number (int when whole); a yes/no field's
@@ -1872,6 +1873,13 @@ final class DataManager
             } else {
                 $rest[$key] = $value;
             }
+        }
+
+        // The change date (0.84) always closes the system keys: one record, one layout, whoever wrote it.
+        if (array_key_exists(ChangeDates::FIELD, $system)) {
+            $date = $system[ChangeDates::FIELD];
+            unset($system[ChangeDates::FIELD]);
+            $system[ChangeDates::FIELD] = $date;
         }
 
         return $first + $system + $rest;

@@ -79,6 +79,10 @@ final class PublishingServiceProvider extends ServiceProvider
         if ($container->bound(RecordTables::class)) {
             $container->get(RecordTables::class)->add('publishing', static fn (): array => $container->get(PublishingTables::class)->tables());
         }
+        // The change-date backfill (data 0.84): a published copy was changed when it was published.
+        if ($container->bound(\Preflow\Data\ChangeDateSources::class)) {
+            $container->get(\Preflow\Data\ChangeDateSources::class)->add('publishing', new PublishedTimeSource());
+        }
         if ($container->bound(MigrationRegistry::class)) {
             $container->get(MigrationRegistry::class)->afterMigrate('publishing.tables', static fn (): array => $container->get(PublishingTables::class)->sync());
             // After the tables have the column: snapshots from before 0.77 get the version they were published from.

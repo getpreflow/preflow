@@ -162,8 +162,19 @@ final class MigrateCommandTest extends TestCase
         $this->assertStringContainsString("[convert] refused: people.title: 1 value is there more than once", $out);
         $this->assertStringContainsString('[convert]   "Müller" in r1, r2', $out);
         $this->assertStringContainsString('[later] ran after it', $out, 'the later steps still ran');
-        $this->assertStringEndsWith("Some values are there more than once under the text rule (see \"refused:\" above); nothing was changed or removed. Rename one record of each group, then run migrate again.\n", $out);
+        $this->assertStringEndsWith('rename one record of each group), then run migrate again. (convert)' . "\n", $out);
         $this->assertStringNotContainsString('Error', $out);
+    }
+
+    public function test_another_steps_refusal_exits_one_with_its_own_closing_line(): void
+    {
+        $this->sqliteConfig();
+        $this->steps = ['app.backfill' => [['refused: post: no change dates given (the activity log: down); nothing weaker decides, run migrate again'], false]];
+
+        [$code, $out] = $this->migrate();
+
+        $this->assertSame(1, $code);
+        $this->assertStringEndsWith('Some steps refused something (see "refused:" above); what they refused was left as it is. Fix what each line names (a group of values the text rule takes for one: rename one record of each group), then run migrate again. (app.backfill)' . "\n", $out);
     }
 
     public function test_a_json_only_site_with_a_refusal_exits_one(): void
@@ -186,7 +197,7 @@ final class MigrateCommandTest extends TestCase
 
         $this->assertSame(1, $code);
         $this->assertStringContainsString('[would]   "Müller" in r1, r2', $out);
-        $this->assertStringContainsString('Rename one record of each group, then run migrate again.', $out);
+        $this->assertStringContainsString('rename one record of each group), then run migrate again. (would)', $out);
         $this->assertStringNotContainsString('seeded', $out, 'no step ran');
         $this->assertNotContains('apps', $this->tables());
     }

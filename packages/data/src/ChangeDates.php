@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Preflow\Data;
 
-
 /**
  * Every record of a type keeps when it was last changed: its change date, in the system key FIELD
  * (`_updated_at`, beside `_version` and `_published_at`), on every driver (@since 0.84.0). It is
@@ -30,21 +29,34 @@ namespace Preflow\Data;
  * (DataManager::changeDateOf()), so a site saves as before until its migrate ran. A storage
  * driver needs nothing new: it stores the key as it stores the fields. The step
  * "data.change-dates" (ChangeDateBackfill) gives the records written before a date.
+ *
+ * @since 0.84.0
  */
 final class ChangeDates
 {
-    /** The system key of the change date. */
+    /**
+     * The system key of the change date.
+     *
+     * @since 0.84.0
+     */
     public const string FIELD = '_updated_at';
 
-    /** $at as a change date is stored: ISO 8601 text in UTC to the second (DATE_ATOM). */
+    /**
+     * $at as a change date is stored: ISO 8601 text in UTC to the second (DATE_ATOM).
+     *
+     * @since 0.84.0
+     */
     public static function text(\DateTimeInterface $at): string
     {
         return \DateTimeImmutable::createFromInterface($at)->setTimezone(new \DateTimeZone('UTC'))->format(DATE_ATOM);
     }
+
     /**
      * A stored change date as a time: ISO 8601 text (any offset, with or without seconds or a
      * fraction), "Y-m-d H:i:s" text (read in the default time zone), a Unix time or a date
      * object; null for an empty or unreadable value.
+     *
+     * @since 0.84.0
      */
     public static function parse(mixed $value): ?\DateTimeImmutable
     {
@@ -64,7 +76,11 @@ final class ChangeDates
         }
     }
 
-    /** Whether $value is a change date at all (not null, '', 0). */
+    /**
+     * Whether $value is a change date at all (not null, '', 0).
+     *
+     * @since 0.84.0
+     */
     public static function isSet(mixed $value): bool
     {
         return $value !== null && $value !== '' && $value !== 0 && $value !== '0';
