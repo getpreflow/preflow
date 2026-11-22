@@ -94,6 +94,29 @@ final class SecurityHeadersMiddlewareTest extends TestCase
         );
     }
 
+    public function test_hsts_subdomains_can_be_left_out(): void
+    {
+        $this->assertSame(
+            'max-age=31536000',
+            $this->process(config: ['hsts' => ['subdomains' => false]], uri: 'https://x.test/')
+                ->getHeaderLine('Strict-Transport-Security'),
+        );
+        $this->assertSame(
+            'max-age=31536000; includeSubDomains',
+            $this->process(config: ['hsts' => ['subdomains' => true]], uri: 'https://x.test/')
+                ->getHeaderLine('Strict-Transport-Security'),
+        );
+        $this->assertSame(
+            'max-age=31536000; includeSubDomains',
+            $this->process(config: ['hsts' => []], uri: 'https://x.test/')
+                ->getHeaderLine('Strict-Transport-Security'),
+        );
+        $this->assertFalse(
+            $this->process(config: ['hsts' => ['enabled' => false]], uri: 'https://x.test/')
+                ->hasHeader('Strict-Transport-Security'),
+        );
+    }
+
     public function test_report_only_mode(): void
     {
         $response = $this->process(reportOnly: true);

@@ -27,5 +27,7 @@ return [
         'Permissions-Policy' => 'camera=(), microphone=(), geolocation=()',
         // set a header to null to stop sending it
     ],
-    'hsts' => true, // Strict-Transport-Security, HTTPS requests only
+    // Strict-Transport-Security, HTTPS requests only. true/false, or
+    // ['subdomains' => false] to send max-age without includeSubDomains.
+    'hsts' => true,
 ];
