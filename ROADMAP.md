@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-22 (v0.82.0)
+> Last updated: 2026-11-22 (v0.83.0)
 
 ## Current State
 
-**v0.82.0** — 10076 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.83.0** — 10014 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -525,7 +525,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
-- **Render context shims removed (v0.83.0, not released):** everything deprecated "for removal in 0.83" is gone, together with the constructor parameters nothing used any more. New next to it: View as works for any address of the site (Folio), Folio's importer obeys the write policy, machine translation is a swappable capability with its own neutral types, HSTS can leave out subdomains, and the roles editor keeps stored grants of disabled permissions.
+- **Render context shims removed (v0.83.0, released 2026-11-22):** everything deprecated "for removal in 0.83" is gone, together with the constructor parameters nothing used any more. New next to it: View as works for any address of the site (Folio), Folio's importer obeys the write policy, machine translation is a swappable capability with its own neutral types, HSTS can leave out subdomains, and the roles editor keeps stored grants of disabled permissions.
   - **core:**
     - **Removed:** `CookieQueue::isolated()`, `InternalRender::mark()` and `InternalRender::ATTRIBUTE` (`handle()` no longer turns a marked request into an Audit render), `PageCache::isolate()`/`isolated()`.
     - **Changed:** `security.hsts` accepts `['enabled' => bool, 'subdomains' => bool]` besides a bool; both keys default to true, and `subdomains => false` sends `max-age=31536000` without `includeSubDomains`. The default output is unchanged (the skeleton's and starters' `config/security.php` document the form).
