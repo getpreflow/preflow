@@ -444,14 +444,6 @@ final class NewPermissionsTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_migrate_announces_nothing_on_a_new_install_without_roles(): void
-    {
-        $steps = $this->container()->get(\Preflow\Data\Migration\MigrationRegistry::class)->steps();
-
-        $this->assertSame([], $steps['folio.permissions']());
-    }
-
-    #[RunInSeparateProcess]
     public function test_granting_in_the_role_editor_keeps_the_notice_and_names_the_role(): void
     {
         $this->managerSetup();

@@ -322,10 +322,12 @@ final class FolioServiceProvider extends ServiceProvider
             $container->singleton(\Preflow\Folio\Permissions\KnownPermissions::class, static fn (Container $c) => new \Preflow\Folio\Permissions\KnownPermissions(
                 $c->get(DataManager::class),
                 $c->get(\Preflow\Auth\Access\Access::class)->registry(),
-                // An upgrade is a site that had its role store (rbac) before Folio first looked.
+                // An upgrade is a site that already had roles when Folio first looked. The role table alone
+                // says nothing: `preflow migrate` creates it (folio.tables) before this list is read, and
+                // the seed that gives a new site its first role runs after.
                 static fn (): bool => class_exists(\Preflow\Rbac\RoleStore::class)
                     && $c->bound(\Preflow\Rbac\RoleStore::class)
-                    && $c->get(\Preflow\Rbac\RoleStore::class)->installed(),
+                    && self::hasRoles($c->get(\Preflow\Rbac\RoleStore::class)),
             ));
             $container->get(\Preflow\Data\Migration\MigrationRegistry::class)->afterMigrate(
                 'folio.permissions',
@@ -456,10 +458,14 @@ final class FolioServiceProvider extends ServiceProvider
             $locales ?? \Preflow\Data\Locales::single('en'),
             // The texts of features this site lacks are not offered: drafts and Settings → AI need
             // preflow/ai, translation needs a translator (the same checks as the permissions below).
-            static fn (): array => [
-                ...(\Preflow\I18n\Machine\AiPackage::installed() ? [] : ['folio.ai_draft.', 'folio.ai_settings.']),
-                ...($c->get(\Preflow\I18n\Machine\TranslatorAvailability::class)->available() ? [] : ['folio.ai_translate.', 'folio.ai_queue.', 'folio.ai_run.']),
-            ],
+            static function () use ($c): array {
+                static $prefixes = null; // asked once per key of a screen: answered once per process
+
+                return $prefixes ??= [
+                    ...(\Preflow\I18n\Machine\AiPackage::installed() ? [] : ['folio.ai_draft.', 'folio.ai_settings.']),
+                    ...($c->get(\Preflow\I18n\Machine\TranslatorAvailability::class)->available() ? [] : ['folio.ai_translate.', 'folio.ai_queue.', 'folio.ai_run.']),
+                ];
+            },
         ));
         $container->bind(\Preflow\Folio\Translations\LabelUnits::class, fn (Container $c) => new \Preflow\Folio\Translations\LabelUnits(
             $c->get(\Preflow\Folio\Translations\EditableTexts::class),
@@ -524,9 +530,12 @@ final class FolioServiceProvider extends ServiceProvider
             authors: new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c), static fn (): ?\Preflow\Auth\UserProviderInterface => self::staffProviderOrNone($c), $c->bound(\Preflow\Core\Activity\ActivityActors::class) ? $c->get(\Preflow\Core\Activity\ActivityActors::class) : null),
         ));
 
-        $container->bind(\Preflow\Folio\Http\MediaStorageMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\MediaStorageMiddleware(
+        $container->singleton(\Preflow\Folio\Media\MediaAvailability::class, static fn (Container $c) => new \Preflow\Folio\Media\MediaAvailability(
             $c->get(\Preflow\Media\MediaConfig::class),
             $c->get(DataManager::class),
+        ));
+        $container->bind(\Preflow\Folio\Http\MediaStorageMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\MediaStorageMiddleware(
+            $c->get(\Preflow\Folio\Media\MediaAvailability::class),
             $c->get(\Preflow\Folio\View\FolioEngine::class),
             $c->get(TypeCatalog::class),
             $prefix,
@@ -613,7 +622,8 @@ final class FolioServiceProvider extends ServiceProvider
                 $uploadsDir,
                 $uploadUrlPrefix,
                 $c->get(\Preflow\Media\ImageTag::class),
-                $c->get(\Preflow\Media\MediaLibrary::class),
+                // Without the library's storage the field works as without a library: plain files.
+                $c->get(\Preflow\Folio\Media\MediaAvailability::class)->usable() ? $c->get(\Preflow\Media\MediaLibrary::class) : null,
                 $prefix,
                 $can,
             ));
@@ -729,7 +739,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(Customizations::class),
                 $c->bound(\Preflow\Folio\Redirects\NotFoundEntries::class) ? static fn (): \Preflow\Folio\Redirects\NotFoundEntries => $c->get(\Preflow\Folio\Redirects\NotFoundEntries::class) : null,
                 // Live assets (not binned, no private copies), counted by the library's own query.
-                $c->bound(\Preflow\Media\MediaLibrary::class) ? static fn (): int => $c->get(\Preflow\Media\MediaLibrary::class)->query(perPage: 1)->total : null,
+                $c->bound(\Preflow\Media\MediaLibrary::class) && $c->get(\Preflow\Folio\Media\MediaAvailability::class)->usable() ? static fn (): int => $c->get(\Preflow\Media\MediaLibrary::class)->query(perPage: 1)->total : null,
                 $c->get(\Preflow\Core\Cache\CacheRegistry::class),
                 $c->get(\Preflow\Folio\Dashboard\RecentChanges::class),
             ),
@@ -1043,7 +1053,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Data\Search\RecordSearch::class),
             $c->get(\Preflow\Folio\Content\DisplayLabels::class),
             self::can($c),
-            static fn (): \Preflow\Media\MediaLibrary => $c->get(\Preflow\Media\MediaLibrary::class),
+            static fn (): ?\Preflow\Media\MediaLibrary => $c->get(\Preflow\Folio\Media\MediaAvailability::class)->usable() ? $c->get(\Preflow\Media\MediaLibrary::class) : null,
             $prefix,
         ));
         // What each type allows (data's "readonly" / "creatable"): asked by every screen and button, refused on every route.
@@ -1965,6 +1975,12 @@ final class FolioServiceProvider extends ServiceProvider
     {
         return \Preflow\I18n\Machine\AiPackage::installed()
             && \Preflow\Folio\Http\AiSettingsController::visible($container->get(\Preflow\Ai\Ai::class));
+    }
+
+    /** Whether the role store holds any role (any population): the site had roles before. */
+    private static function hasRoles(\Preflow\Rbac\RoleStore $store): bool
+    {
+        return $store->rolesFor('staff') !== [] || $store->rolesFor('members') !== [];
     }
 
     /**

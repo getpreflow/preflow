@@ -33,8 +33,9 @@ final class KnownPermissions
     private static ?TypeDefinition $definition = null;
 
     /**
-     * @param (\Closure(): bool)|null $hadRoleStore asked on the first run only: whether the site had
-     *        a role store before (an upgrade). Without it the site counts as new.
+     * @since 0.84.0 $hadRoleStore
+     * @param (\Closure(): bool)|null $hadRoleStore asked on the first run only: whether the site already had
+     *        roles (an upgrade). Without it the site counts as new.
      */
     public function __construct(
         private readonly DataManager $dm,

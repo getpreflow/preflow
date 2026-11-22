@@ -211,7 +211,7 @@ delete or unpublish (see [Redirects](#redirects)).
 Folio keeps the list of permissions this site has seen (`Preflow\Folio\Permissions\KnownPermissions`,
 table `folio_known_permissions`, since 0.53; created by `preflow migrate` or `folio:extensions:apply`
 on SQL storage, JSON storage needs neither). The first time it is
-read, every enabled permission becomes known silently. On a site that had its role store before (an
+read, every enabled permission becomes known silently. On a site that already had roles (an
 upgrade) `redirects.manage` is the exception: it came with 0.52, shortly before the list (0.53), and
 roles with an explicit permission list never received it. A new install announces nothing (since 0.84.0). After that, each new one counts as new until someone dismisses
 it or adds it to a role. A permission of a switched-off extension is new only once the extension is
@@ -1497,8 +1497,8 @@ and `/files/{id}`.
 
 **Without the storage driver** (since 0.84.0): the library stores its assets in the driver
 `config/media.php` `storage` names (`json` unless set). A site whose `config/data.php` has no such
-driver boots and works without media; every `{prefix}/assets` route answers 503 with the missing driver and
-where to set it (a driver under `drivers` in `config/data.php`, or another `storage` in `config/media.php`),
+driver boots and works without media; every `{prefix}/assets` page (and the picker drawer) answers 200 with the missing driver and
+where to set it (htmx and JSON actions answer 503); the admin search, the dashboard count and the asset field leave the library out (a driver under `drivers` in `config/data.php`, or another `storage` in `config/media.php`),
 translated like Folio's other texts.
 
 **Library screen** at `{prefix}/assets`:

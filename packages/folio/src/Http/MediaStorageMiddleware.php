@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
-use Preflow\Data\DataManager;
+use Preflow\Folio\Media\MediaAvailability;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\FolioText;
-use Preflow\Media\MediaConfig;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -18,16 +17,17 @@ use Psr\Http\Server\RequestHandlerInterface;
 /**
  * The media library's routes need the storage driver config/media.php names ("json" unless set).
  * A site whose config/data.php lacks it (no media at all, say) boots and works; here the answer is
- * the missing driver and where to set it, a 503, never the data layer's exception as a 500. For
- * htmx a message the toast shows, as Forbidden does.
+ * the missing driver and where to set it, never the data layer's exception as a 500. A page or
+ * drawer (a GET for HTML) answers 200: no media is a legitimate state, not an outage. An htmx or
+ * fetch/JSON action did not happen, so it gets a 503 (htmx: the message in the toast, as
+ * Forbidden does).
  *
  * @since 0.84.0
  */
 final class MediaStorageMiddleware implements MiddlewareInterface
 {
     public function __construct(
-        private readonly MediaConfig $media,
-        private readonly DataManager $dm,
+        private readonly MediaAvailability $availability,
         private readonly TemplateEngineInterface $engine,
         private readonly TypeCatalog $catalog,
         private readonly string $prefix,
@@ -35,11 +35,11 @@ final class MediaStorageMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        if (in_array($this->media->storage, $this->dm->driverNames(), true)) {
+        if ($this->availability->usable()) {
             return $handler->handle($request);
         }
 
-        $message = FolioText::get('folio.assets.storage_missing', ['driver' => $this->media->storage]);
+        $message = FolioText::get('folio.assets.storage_missing', ['driver' => $this->availability->driver()]);
         if ($request->getHeaderLine('HX-Request') === 'true') {
             return new Response(503, [
                 'Content-Type' => 'text/plain; charset=UTF-8',
@@ -50,7 +50,8 @@ final class MediaStorageMiddleware implements MiddlewareInterface
             return new Response(503, ['Content-Type' => 'text/plain; charset=UTF-8'], $message);
         }
 
-        return new Response(503, ['Content-Type' => 'text/html; charset=UTF-8', 'Cache-Control' => 'private, no-store'], $this->engine->render('@folio/admin/assets/unavailable.twig', [
+        // A form post (no htmx, no JSON) did not happen either; only a page that is read answers 200.
+        return new Response($request->getMethod() === 'GET' || $request->getMethod() === 'HEAD' ? 200 : 503, ['Content-Type' => 'text/html; charset=UTF-8', 'Cache-Control' => 'private, no-store'], $this->engine->render('@folio/admin/assets/unavailable.twig', [
             'prefix' => $this->prefix,
             'types' => $this->catalog->all(),
             'message' => $message,
