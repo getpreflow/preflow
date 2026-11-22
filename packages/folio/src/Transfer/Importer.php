@@ -76,6 +76,8 @@ final class Importer
      */
     public function apply(ImportPlan $plan): void
     {
+        // Asked before any record or file is written, so a refusal leaves nothing half-applied.
+        self::assertFilesAllowed($plan);
         $this->applyRecords($plan);
 
         $roots = $this->set->fileRoots();
@@ -193,6 +195,28 @@ final class Importer
             }
         }
         $this->set->imported($changed);
+    }
+
+    /**
+     * Asks the write policy ('file' writes) for each file root the plan changes.
+     *
+     * @throws TransferException naming the root, code RECORDS_UNCHANGED (nothing is written yet)
+     */
+    private static function assertFilesAllowed(ImportPlan $plan): void
+    {
+        foreach ($plan->files as $root => $diff) {
+            if ($diff['added'] === [] && $diff['changed'] === [] && $diff['removed'] === []) {
+                continue;
+            }
+            try {
+                $allowed = Writes::allowed('files', (string) $root, null, 'file');
+            } catch (WritesRefused) {
+                $allowed = false;
+            }
+            if (!$allowed) {
+                throw new TransferException("{$root}: the write policy of this request does not allow changing files.", self::RECORDS_UNCHANGED);
+            }
+        }
     }
 
     /**
