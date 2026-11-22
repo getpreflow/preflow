@@ -20,17 +20,21 @@ final class NonceGenerator
     /** The nonce outside every render. */
     private ?string $nonce = null;
 
+    /** Makes a frame's FrameNonce slot (one closure for every call). */
+    private ?\Closure $newFrameNonce = null;
+
     /** The nonce every new one gets while a test fixed it (fixedForTests()); null: random. */
     private static ?string $fixed = null;
 
     public function get(): string
     {
-        if (Contexts::depth() === 0) {
+        // One call for the current frame's nonce, or null outside every render (since 0.82.0).
+        $current = Contexts::slot(FrameNonce::class, $this->newFrameNonce ??= static fn (): FrameNonce => new FrameNonce());
+        if ($current === null) {
             return $this->nonce ??= self::fresh();
         }
-        $source = $this->current()->source();
 
-        return $source->value ??= self::fresh();
+        return $current->source()->value ??= self::fresh();
     }
 
     /**
@@ -78,7 +82,7 @@ final class NonceGenerator
         if ($current->value !== null) {
             throw new \LogicException('NonceGenerator::share() comes too late: the render frame has a nonce of its own already.');
         }
-        $current->from = self::of($outer);
+        $current->from = $this->of($outer);
     }
 
     /**
@@ -95,12 +99,12 @@ final class NonceGenerator
 
     private function current(): FrameNonce
     {
-        return self::of(Contexts::frame());
+        return $this->of(Contexts::frame());
     }
 
-    private static function of(RenderFrame $frame): FrameNonce
+    private function of(RenderFrame $frame): FrameNonce
     {
-        return $frame->slot(FrameNonce::class, static fn (): FrameNonce => new FrameNonce());
+        return $frame->slot(FrameNonce::class, $this->newFrameNonce ??= static fn (): FrameNonce => new FrameNonce());
     }
 
     private static function fresh(): string

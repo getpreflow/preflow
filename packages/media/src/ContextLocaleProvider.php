@@ -12,6 +12,9 @@ use Preflow\Core\Context\RenderContext;
  * without it is asked the deprecated current() there and reported once (removed in 0.83, when
  * localeOf() moves into LocaleProvider).
  *
+ * ImageTag may reuse an answer for the same context object within a render frame (since 0.82.0);
+ * localeOf() must depend only on $ctx and immutable configuration.
+ *
  * @since 0.81.0
  */
 interface ContextLocaleProvider extends LocaleProvider

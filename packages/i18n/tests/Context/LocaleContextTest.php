@@ -372,7 +372,7 @@ final class LocaleContextTest extends TestCase
     /** @return array<string, \Preflow\I18n\CatalogueMemo> the translator's text caches, by text locale and overrides switch */
     private static function memos(Translator $t): array
     {
-        return (new \ReflectionProperty(Translator::class, 'memos'))->getValue($t);
+        return (new \ReflectionProperty(Translator::class, 'memos'))->getValue($t)->byKey;
     }
 
     /**
@@ -386,7 +386,7 @@ final class LocaleContextTest extends TestCase
         $t->setScopes(['site' => 'admin']);
 
         foreach ([['public', self::visit()->in('de'), 'de', false, 'Hallo'], ['admin', self::visit()->in('de')->admin('fr'), 'fr', true, 'Override fr']] as [$surface, $ctx, $locale, $overrides, $text]) {
-            (new \ReflectionProperty(Translator::class, 'memos'))->setValue($t, []);
+            (new \ReflectionProperty(Translator::class, 'memos'))->setValue($t, new \Preflow\I18n\CatalogueMemos());
             Contexts::run($ctx, function () use ($t, $surface, $locale, $overrides, $text): void {
                 $this->assertSame($locale, $t->getLocale(), $surface);
                 $this->assertSame($overrides, $t->usesOverrides(), $surface);
@@ -399,6 +399,48 @@ final class LocaleContextTest extends TestCase
                 $this->assertSame([$locale, $overrides], [$memo->locale, $memo->overrides], $surface);
             });
         }
+    }
+
+    /** @return array<string, array{\Closure(Translator, string): void}> every mutator that changes how a key resolves */
+    public static function layerChanges(): array
+    {
+        return [
+            'addDefaults' => [static fn (Translator $t, string $lang): mixed => $t->addDefaults('other', $lang . '/none')],
+            'addDefaultsIfMissing' => [static fn (Translator $t, string $lang): mixed => $t->addDefaultsIfMissing('other', $lang . '/none')],
+            'setScopes' => [static fn (Translator $t, string $lang): mixed => $t->setScopes(['site' => 'public'])],
+            'setOverrides' => [static fn (Translator $t, string $lang): mixed => $t->setOverrides(new \Preflow\I18n\NoTranslationOverrides())],
+            'overridable' => [static fn (Translator $t, string $lang): mixed => $t->overridable('site.')],
+            'alwaysOverride' => [static fn (Translator $t, string $lang): mixed => $t->alwaysOverride('other')],
+        ];
+    }
+
+    /**
+     * Each context finds its text cache again without working out its key, and every change to the
+     * translator's layers drops that too: the same context object then reads a fresh cache.
+     *
+     * @param \Closure(Translator, string): void $change
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('layerChanges')]
+    public function test_a_context_keeps_finding_its_cache_until_the_layers_change(\Closure $change): void
+    {
+        $t = $this->translator();
+        $ctx = self::visit();
+        $lang = $this->lang;
+
+        Contexts::run($ctx, function () use ($t, $change, $lang): void {
+            $this->assertSame('Hello', $t->get('site.hi'));
+            $old = self::memos($t)['en'];
+            $old->texts["en\0site.hi"] = 'From the cache';
+            $this->assertSame('From the cache', $t->get('site.hi'), 'the context reads the cache it made');
+
+            $change($t, $lang);
+            $this->assertSame('Hello', $t->get('site.hi'), 'a layer change drops the cache, also for this context');
+            $this->assertNotSame($old, self::memos($t)['en']);
+        });
+        Contexts::run($ctx, function () use ($t): void {
+            $this->assertSame('Hello', $t->get('site.hi'), 'the same context in a later frame reads the cache of now');
+            $this->assertSame('en', $t->getLocale());
+        });
     }
 
     public function test_catalogue_cache_is_keyed_per_context(): void
