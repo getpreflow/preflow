@@ -715,9 +715,10 @@ driver:
   that wants the date moved includes it: `[ChangeDates::FIELD => ChangeDates::text($now)]`.
 - **Keeping dates:** `$dm->keepingChangeDates(fn () => …)` writes the change date a record carries
   (one without gets now): for imports and copies. A readable date is stored as ISO 8601 UTC text,
-  so the sort holds; an unreadable value is kept as it is. Folio's content import writes an
-  archive's rows as they are (their dates too); an archive from before 0.84 is compared without
-  dates and what it writes is dated with the import.
+  so the sort holds; an unreadable value is kept as it is. Folio's content import compares
+  records without their dates (a record that differs only in its date stays as it is) and writes
+  the rows it adds or changes as they are, their dates too; what an archive from before 0.84 writes
+  is dated with the import.
 - **Published copies** keep their own `_updated_at`: the publish that wrote their content (a
   publish of the same content keeps it).
 - **Storage:** JSON records take the key. On SQL, `preflow migrate` adds the column to every table

@@ -513,6 +513,21 @@ final class ExportImportTest extends TestCase
         $this->assertSame('2026-03-10T08:00:00+00:00', $this->driver()->findOne('site', 'other')['_updated_at'] ?? null, 'an added record: written now');
     }
 
+    public function test_a_record_that_differs_only_in_its_change_date_is_no_change(): void
+    {
+        // Two copies of a site that each dated the same record (each ran migrate's backfill).
+        $dm = $this->app()->container()->get(DataManager::class);
+        $def = $dm->getTypeRegistry()->get('site');
+        self::at('2026-03-01T08:00:00Z', static fn () => $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'site', 'tagline' => ['en' => 'Same']]), false));
+        $archive = $this->export();
+        $this->driver()->save('site', 'site', ['_updated_at' => '2026-03-05T08:00:00+00:00']);
+
+        $summary = self::at('2026-03-10T08:00:00Z', fn () => $this->import($archive));
+
+        $this->assertSame([], $summary['tables']['site']['changed'], 'the dates alone hide no real change');
+        $this->assertSame('2026-03-05T08:00:00+00:00', $this->driver()->findOne('site', 'site')['_updated_at'] ?? null, 'the local date stays');
+    }
+
     private function addMemberType(array $extra = []): void
     {
         $this->writeModel('member', ['users' => 'members', 'fields' => ['email' => ['type' => 'string']]] + $extra);

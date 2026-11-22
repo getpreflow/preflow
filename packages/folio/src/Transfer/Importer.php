@@ -19,9 +19,10 @@ use Preflow\Data\Transactions;
  * (manifest first, Folio tables only, content paths only), then diffs it
  * against the local content. Nothing local changes until apply().
  *
- * Change dates (ChangeDates, since 0.84.0): a record keeps the change date its archive carries.
- * An archive from before 0.84 carries none: its records are compared without it (the same content
- * is no change), and the ones it adds or changes are given the time of the import.
+ * Change dates (ChangeDates, since 0.84.0): records are compared without them (the same content is
+ * no change, whatever the dates: the local record keeps its own). A record the import adds or
+ * changes keeps the change date its archive carries; an archive from before 0.84 carries none, and
+ * those records are given the time of the import.
  */
 final class Importer
 {
@@ -382,9 +383,10 @@ final class Importer
                     $diff['added'][] = $id;
                     continue;
                 }
-                // An archive from before change dates carries none: the content alone decides.
-                $mine = array_key_exists($dateKey, $row) ? $local[$id] : array_diff_key($local[$id], [$dateKey => true]);
-                if (self::canonical($row) !== self::canonical($mine)) {
+                // The content alone decides (the change date is no content): an archive from before
+                // change dates carries none, and two copies of a site date a record each their own way.
+                $skip = [$dateKey => true];
+                if (self::canonical(array_diff_key($row, $skip)) !== self::canonical(array_diff_key($local[$id], $skip))) {
                     $diff['changed'][] = $id;
                 }
             }
