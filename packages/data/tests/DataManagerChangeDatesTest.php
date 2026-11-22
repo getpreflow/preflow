@@ -276,4 +276,54 @@ final class DataManagerChangeDatesTest extends TestCase
         $dm->forgetColumns('notes');
         $this->assertSame(ChangeDates::FIELD, $dm->changeDateOf($def));
     }
+
+    public function test_a_save_reads_the_stored_date_and_writes_under_the_types_lock(): void
+    {
+        // As save() and delete() lock, so a locked backfill between the read and the write is not lost.
+        $driver = new class (new JsonFileDriver($this->dir . '/data')) implements \Preflow\Data\StorageDriver, \Preflow\Data\ExclusiveWrites, \Preflow\Data\DescribesColumns {
+            public int $depth = 0;
+
+            /** @var list<string> */
+            public array $calls = [];
+
+            public function __construct(private readonly JsonFileDriver $inner) {}
+
+            public function exclusive(string $type, \Closure $fn): mixed
+            {
+                $this->depth++;
+                try {
+                    return $this->inner->exclusive($type, $fn);
+                } finally {
+                    $this->depth--;
+                }
+            }
+
+            public function findOne(string $type, string|int $id, string $idField = 'uuid'): ?array
+            {
+                $this->calls[] = 'read ' . ($this->depth > 0 ? 'locked' : 'unlocked');
+
+                return $this->inner->findOne($type, $id, $idField);
+            }
+
+            public function findMany(string $type, \Preflow\Data\Query $query): \Preflow\Data\ResultSet { return $this->inner->findMany($type, $query); }
+
+            public function save(string $type, string|int $id, array $data, string $idField = 'uuid'): void
+            {
+                $this->calls[] = 'write ' . ($this->depth > 0 ? 'locked' : 'unlocked');
+                $this->inner->save($type, $id, $data, $idField);
+            }
+
+            public function delete(string $type, string|int $id, string $idField = 'uuid'): void { $this->inner->delete($type, $id, $idField); }
+            public function exists(string $type, string|int $id, string $idField = 'uuid'): bool { return $this->inner->exists($type, $id, $idField); }
+            public function lastInsertId(): string|int { return ''; }
+            public function hasColumn(string $type, string $column): bool { return true; }
+            public function hasTable(string $type): bool { return $this->inner->hasTable($type); }
+        };
+        $dm = new DataManager(['default' => $driver], 'default');
+        $def = self::note();
+
+        self::at('2026-02-01T10:00:00Z', static fn () => $dm->saveType(DynamicRecord::fromArray($def, ['uuid' => 'a', 'title' => 'One']), false));
+
+        $this->assertSame(['read locked', 'write locked'], $driver->calls);
+    }
 }

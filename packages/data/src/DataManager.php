@@ -1618,12 +1618,20 @@ final class DataManager
         $dateKey = $this->changeDateOf($typeDef);
         $restore = self::keyRestorer($record, $dateKey);
         try {
-            if ($versionField === null) {
-                if ($dateKey !== null) {
-                    // A save that changes nothing keeps the stored date (an unchanged record is written to the same bytes).
-                    $stored = $this->datesFromStore($record->get($dateKey)) ? $driver->findOne($typeDef->table, $id, $typeDef->idField) : null;
+            if ($versionField === null && $dateKey !== null && $this->datesFromStore($record->get($dateKey))) {
+                // A save that changes nothing keeps the stored date (an unchanged record is written to
+                // the same bytes). The read and the write run under the type's lock off SQL, as the
+                // backfill's locked write does (on SQL it is one conditional statement).
+                $step = function () use ($driver, $record, $typeDef, $id, $dateKey): void {
+                    $stored = $driver->findOne($typeDef->table, $id, $typeDef->idField);
                     $changed = $stored === null || $this->contentChanged($typeDef, $this->storageData($record), $stored, '');
                     $record->set($dateKey, $this->changeDateFor($typeDef, $dateKey, $record->get($dateKey), $stored, $changed));
+                    $this->guarded($record, fn () => $driver->save($typeDef->table, $id, $this->storageData($record), $typeDef->idField));
+                };
+                $driver instanceof ExclusiveWrites && !$driver instanceof RunsSql ? $driver->exclusive($typeDef->table, $step) : $step();
+            } elseif ($versionField === null) {
+                if ($dateKey !== null) {
+                    $record->set($dateKey, $this->changeDateFor($typeDef, $dateKey, $record->get($dateKey), null, true));
                 }
                 $this->guarded($record, fn () => $driver->save($typeDef->table, $id, $this->storageData($record), $typeDef->idField));
             } else {
