@@ -229,4 +229,53 @@ final class ListScreenTest extends TestCase
         $this->assertStringNotContainsString('folio-cell-address', $html);
         $this->assertStringContainsString('<span class="folio-row-text"><a class="folio-row-link" href="/folio/note/n1/edit">Remember</a></span>', $html);
     }
+
+    public function test_every_list_ends_in_a_changed_column_from_the_activity_log(): void
+    {
+        $this->writeModel('game', ['label' => 'Games', 'fields' => ['title' => ['type' => 'string']]]);
+        $this->working('game', 'g1', ['title' => 'Chess']);
+        $this->working('game', 'g2', ['title' => 'Go']);
+        $log = $this->app()->container()->get(\Preflow\Core\Activity\ActivityLog::class);
+        $log->record(new \Preflow\Core\Activity\Activity('game', 'g1', 'Chess', \Preflow\Core\Activity\ActivityKind::Saved, at: (new \DateTimeImmutable('-3 hours'))->format(DATE_ATOM)));
+
+        $html = $this->html('/folio/game');
+
+        $this->assertMatchesRegularExpression('#</a></th><th>Changed</th>#', $html);
+        $this->assertMatchesRegularExpression('#<td class="folio-cell-changed"><time datetime="[^"]+" title="[^"]+">3 hours ago</time></td>#', $html);
+        $this->assertSame(2, substr_count($html, 'folio-cell-changed'), 'one cell per row; a record the log does not know shows a dash');
+        $this->assertStringContainsString('<span class="folio-muted" aria-hidden="true">–</span>', $html);
+    }
+
+    public function test_a_type_that_keeps_an_updated_timestamp_shows_it_before_the_log(): void
+    {
+        $this->writeModel('memo', ['label' => 'Memos', 'fields' => ['title' => ['type' => 'string'], 'updated_at' => ['type' => 'string']]]);
+        $this->working('memo', 'm1', ['title' => 'First', 'updated_at' => (new \DateTimeImmutable('-2 days'))->format('Y-m-d H:i:s')]);
+
+        $html = $this->html('/folio/memo');
+
+        $this->assertStringContainsString('<th>Changed</th>', $html);
+        $this->assertMatchesRegularExpression('#<time datetime="[^"]+" title="[^"]+">[^<]+</time>#', $html);
+    }
+
+    public function test_a_type_hides_the_changed_column_with_list_changed_false(): void
+    {
+        $this->writeModel('game', ['label' => 'Games', 'list' => ['changed' => false], 'fields' => ['title' => ['type' => 'string']]]);
+        $this->working('game', 'g1', ['title' => 'Chess']);
+
+        $html = $this->html('/folio/game');
+
+        $this->assertStringNotContainsString('<th>Changed</th>', $html);
+        $this->assertStringNotContainsString('folio-cell-changed', $html);
+    }
+
+    public function test_a_type_that_lists_its_updated_field_gets_no_second_changed_column(): void
+    {
+        $this->writeModel('memo', ['label' => 'Memos', 'list' => ['columns' => ['title', 'updated_at']], 'fields' => ['title' => ['type' => 'string'], 'updated_at' => ['type' => 'string']]]);
+        $this->working('memo', 'm1', ['title' => 'First', 'updated_at' => '2026-01-02 03:04:05']);
+
+        $html = $this->html('/folio/memo');
+
+        $this->assertStringNotContainsString('folio-cell-changed', $html);
+        $this->assertStringContainsString('2026-01-02 03:04:05', $html);
+    }
 }

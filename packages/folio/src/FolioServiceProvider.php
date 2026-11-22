@@ -731,6 +731,7 @@ final class FolioServiceProvider extends ServiceProvider
             siteUrl: is_string($appUrl = $app->config()->get('app.url')) && $appUrl !== '' ? $appUrl : null,
             typeActions: $c->get(\Preflow\Folio\Content\TypeActions::class),
             viewAs: $c->get(\Preflow\Folio\Http\ViewAs::class),
+            activity: $c->bound(\Preflow\Core\Activity\ActivityLog::class) ? $c->get(\Preflow\Core\Activity\ActivityLog::class) : null,
             dashboard: new \Preflow\Folio\Dashboard\Dashboard(
                 $c->get(TypeCatalog::class),
                 $c->get(DataManager::class),
@@ -1614,6 +1615,11 @@ final class FolioServiceProvider extends ServiceProvider
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_date',
                 callable: static fn (mixed $value, string $style = 'date'): string => (new \Preflow\Folio\Http\AdminFormat())->date($value, $style),
+            ));
+            // When something happened, as a person says it ("3 hours ago", "Yesterday", else the date): folio_relative(value). @since 0.84.0
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_relative',
+                callable: static fn (mixed $value): string => (new \Preflow\Folio\Http\AdminFormat())->relative($value),
             ));
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_number',

@@ -8,6 +8,7 @@ use Preflow\Core\Activity\Activity;
 use Preflow\Core\Activity\ActivityKind;
 use Preflow\Core\Activity\ActivityLog;
 use Preflow\Core\Activity\ActivityPage;
+use Preflow\Core\Activity\LastChanges;
 use Preflow\Core\Context\Contexts;
 use Preflow\Data\AggregatingStorage;
 use Preflow\Data\DataManager;
@@ -73,7 +74,7 @@ use Psr\Log\LoggerInterface;
  *
  * @since 0.77
  */
-final class StoredActivityLog implements ActivityLog
+final class StoredActivityLog implements ActivityLog, LastChanges
 {
     public const string TABLE = 'preflow_activity';
 
@@ -354,6 +355,34 @@ final class StoredActivityLog implements ActivityLog
         } while (count($rows) === self::BATCH);
 
         return $people;
+    }
+
+    /** @since 0.84.0 */
+    public function lastChanged(string $subject, array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        return $this->whenStored(function () use ($subject, $ids): array {
+            $heads = [];
+            foreach ($ids as $id) {
+                $heads[self::headId($subject, (string) $id)] = (string) $id;
+            }
+            $times = [];
+            foreach (array_chunk(array_keys($heads), self::IN_CHUNK) as $chunk) {
+                $rows = $this->guarded(fn () => $this->dm->queryIn($this->last)->whereIn('id', $chunk)->get()->items());
+                foreach (is_array($rows) ? $rows : [] as $row) {
+                    $id = $heads[(string) $row->getId()] ?? null;
+                    $at = $row->get('at');
+                    if ($id !== null && is_string($at) && $at !== '') {
+                        $times[$id] = $at;
+                    }
+                }
+            }
+
+            return $times;
+        }, []);
     }
 
     /**

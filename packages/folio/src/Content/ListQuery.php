@@ -52,7 +52,7 @@ final readonly class ListQuery
 
     /**
      * The columns the admin list shows: "list.columns" (known fields only), else the first three
-     * fields of a plain-valued type that are not hidden and not the id field.
+     * fields of a plain-valued type that are not hidden, not the id field and not the updated timestamp (the "Changed" column shows that).
      *
      * @param array<string, mixed> $listConfig
      * @return list<string>
@@ -65,8 +65,9 @@ final readonly class ListQuery
         ));
 
         if ($names === []) {
+            $changed = self::changedField($def); // the "Changed" column shows it (since 0.84), not a plain one
             foreach ($def->fields as $name => $fieldDef) {
-                if ($name !== $def->idField && in_array($fieldDef->type, self::LIST_TYPES, true) && ($fieldDef->config['hidden'] ?? false) !== true) {
+                if ($name !== $def->idField && $name !== $changed && in_array($fieldDef->type, self::LIST_TYPES, true) && ($fieldDef->config['hidden'] ?? false) !== true) {
                     $names[] = $name;
                 }
                 if (count($names) === 3) {
@@ -76,6 +77,38 @@ final readonly class ListQuery
         }
 
         return $names;
+    }
+
+    /**
+     * Whether the list ends in a "Changed" column (@since 0.84.0): every list does, unless the
+     * type's "list" block says `"changed": false` or the type already lists its updated
+     * timestamp among "list.columns".
+     *
+     * @param array<string, mixed> $listConfig
+     */
+    public static function showsChanged(TypeDefinition $def, array $listConfig): bool
+    {
+        if (($listConfig['changed'] ?? true) === false) {
+            return false;
+        }
+        $field = self::changedField($def);
+
+        return $field === null || !in_array($field, self::columns($def, $listConfig), true);
+    }
+
+    /**
+     * The field that keeps when a record was last written (the data layer's #[Timestamps]:
+     * updatedAt or updated_at), or null when the type keeps none. @since 0.84.0
+     */
+    public static function changedField(TypeDefinition $def): ?string
+    {
+        foreach (\Preflow\Data\Attributes\Timestamps::UPDATED_NAMES as $name) {
+            if (isset($def->fields[$name])) {
+                return $name;
+            }
+        }
+
+        return null;
     }
 
     /**

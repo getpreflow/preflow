@@ -59,6 +59,21 @@ trait ActivityLogScenarios
     }
 
     #[DataProvider('storages')]
+    public function test_last_changed_names_each_records_newest_time(string $storage): void
+    {
+        $log = $this->log($storage);
+        $log->record(self::saved('a'));
+        $this->tick('+2 hours');
+        $log->record(self::saved('b', subject: 'post'));
+        $this->tick('+1 hour');
+        $log->record(self::saved('a', 'u2'));
+
+        $this->assertSame(['a' => '2026-11-15T13:00:00+00:00'], $log->lastChanged('page', ['a', 'zz']));
+        $this->assertSame(['b' => '2026-11-15T12:00:00+00:00'], $log->lastChanged('post', ['a', 'b']));
+        $this->assertSame([], $log->lastChanged('page', []));
+    }
+
+    #[DataProvider('storages')]
     public function test_newest_first_with_the_time_set(string $storage): void
     {
         $log = $this->log($storage);

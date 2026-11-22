@@ -103,6 +103,8 @@ final class AdminController
         ?\Preflow\Folio\Content\TypeActions $typeActions = null,
         // The whole-page preview's "View as" choices (since 0.81); null: only the visitor.
         private readonly ?ViewAs $viewAs = null,
+        // The "Changed" column of a type that keeps no updated timestamp: when the log last saw each record (since 0.84).
+        private readonly ?\Preflow\Core\Activity\ActivityLog $activity = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
@@ -375,6 +377,10 @@ final class AdminController
         $route = $this->frontend->routeFor($type);
         $uncheckedUrl = $this->prefix . '/' . $type . '?unchecked=1';
 
+        // The "Changed" column (since 0.84): the type's updated timestamp, else when the activity log last saw the record.
+        $showsChanged = ListQuery::showsChanged($typeDef, $listConfig);
+        $changedAt = $showsChanged ? $this->changedTimes($typeDef, $records) : [];
+
         $rows = [];
         foreach ($records as $record) {
             $id = (string) $record->getId();
@@ -406,6 +412,7 @@ final class AdminController
 
                     return (string) $value;
                 }, $extraColumns),
+                'changed' => $changedAt[$id] ?? '',
                 'languages' => $multilingual ? $this->languageStates($typeDef, $record) : [],
                 'unchecked_url' => $uncheckedUrl,
                 // From the versions, as the status links and the filter (the editor shows the exact state()).
@@ -455,6 +462,7 @@ final class AdminController
             // field => ListCells::kind(): number cells are mono and right-aligned.
             'column_kinds' => array_combine(array_keys($columns), array_map(static fn (string $name): string => ListCells::kind($typeDef, $name), array_keys($columns))),
             'extra_columns' => array_column($extraColumns, 'label'),
+            'shows_changed' => $showsChanged,
             'rows' => $rows,
             'list' => $list,
             'has_records' => $hasRecords,
@@ -2426,6 +2434,44 @@ final class AdminController
         }
 
         return trim(html_entity_decode(strip_tags((string) $value), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    }
+
+    /**
+     * When each record of a page was last changed (the "Changed" column): the type's updated
+     * timestamp where it keeps one, else the time the activity log last saw the record (a log
+     * that cannot say, or a record it no longer keeps, leaves it out).
+     *
+     * @param list<DynamicRecord> $records
+     * @return array<string, string> record id => a time AdminFormat reads
+     */
+    private function changedTimes(TypeDefinition $typeDef, array $records): array
+    {
+        $field = ListQuery::changedField($typeDef);
+        $times = [];
+        $missing = [];
+        foreach ($records as $record) {
+            $id = (string) $record->getId();
+            $value = $field !== null ? $record->get($field) : null;
+            if ($value instanceof \DateTimeInterface) {
+                $value = $value->format(DATE_ATOM);
+            }
+            if (is_string($value) && trim($value) !== '') {
+                $times[$id] = $value;
+            } elseif (is_int($value) && $value > 0) {
+                $times[$id] = date(DATE_ATOM, $value);
+            } else {
+                $missing[] = $id;
+            }
+        }
+        if ($missing !== [] && $this->activity instanceof \Preflow\Core\Activity\LastChanges) {
+            try {
+                $times += $this->activity->lastChanged($typeDef->key, $missing);
+            } catch (\Throwable $e) {
+                error_log('Folio list: the activity log could not say when records changed: ' . $e->getMessage());
+            }
+        }
+
+        return $times;
     }
 
     /**

@@ -47,7 +47,7 @@
                 </th>
                 {%- if loop.first and frontend|default(false) %}<th>{{ t('folio.list.address') }}</th>{% endif -%}
             {%- endfor -%}
-            {%- for heading in extra_columns|default([]) %}<th>{{ heading }}</th>{% endfor %}{% if publishing|default(false) %}<th>{{ t('folio.common.status') }}</th>{% endif %}{% if multilingual|default(false) %}<th>{{ t('folio.common.languages') }}</th>{% endif %}<th class="folio-actions-cell"><span class="folio-sr">{{ t('folio.common.actions') }}</span></th></tr></thead>
+            {%- for heading in extra_columns|default([]) %}<th>{{ heading }}</th>{% endfor %}{% if shows_changed|default(false) %}<th>{{ t('folio.list.changed') }}</th>{% endif %}{% if publishing|default(false) %}<th>{{ t('folio.common.status') }}</th>{% endif %}{% if multilingual|default(false) %}<th>{{ t('folio.common.languages') }}</th>{% endif %}<th class="folio-actions-cell"><span class="folio-sr">{{ t('folio.common.actions') }}</span></th></tr></thead>
         <tbody>
         {% for row in rows %}
             {% set up_disabled = loop.first and list.page == 1 %}
@@ -69,6 +69,7 @@
                     {%- endif -%}
                 {% endfor %}
                 {%- for cell in row.extra|default([]) %}<td>{% if cell is iterable and cell.href|default(null) %}<a href="{{ cell.href }}">{{ cell.label }}</a>{% elseif cell is iterable %}<span class="folio-badge{% if cell.tone %} is-{{ cell.tone }}{% endif %}">{{ cell.label }}</span>{% else %}{{ cell }}{% endif %}</td>{% endfor %}
+                {% if shows_changed|default(false) %}<td class="folio-cell-changed">{% if row.changed|default('') != '' %}<time datetime="{{ row.changed }}" title="{{ folio_date(row.changed, 'datetime') }}">{{ folio_relative(row.changed) }}</time>{% else %}<span class="folio-muted" aria-hidden="true">–</span>{% endif %}</td>{% endif %}
                 {% if publishing|default(false) %}<td><span class="folio-badge is-{{ row.state.value }}">{{ t('folio.publishing.' ~ row.state.value) }}</span></td>{% endif %}
                 {% if multilingual|default(false) %}<td>{{ langs.languages(row.languages, row.unchecked_url|default(null)) }}</td>{% endif %}
                 <td class="folio-actions-cell">
