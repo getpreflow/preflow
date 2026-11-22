@@ -126,6 +126,53 @@ final class NewPermissionsTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_the_role_title_carries_the_population_and_the_new_permissions_it_lacks(): void
+    {
+        $this->managerSetup();
+        $this->forget(['assets.upload']);
+        $this->as('editor');
+
+        // r-helper holds page.view only: both fresh permissions are missing; r-editor's patterns may cover some.
+        $helper = (string) $this->send('GET', '/folio/rbac_role/r-helper/edit')->getBody();
+        $this->assertMatchesRegularExpression('#<span class="folio-title-text">[^<]*</span> <span class="folio-badge">Staff</span> <span class="folio-badge is-changed">2 new permissions</span>#', $helper);
+        $this->assertStringNotContainsString('role_badge', $helper);
+
+        // A new role has no title badges.
+        $new = (string) $this->send('GET', '/folio/rbac_role/new')->getBody();
+        $this->assertStringNotContainsString('<span class="folio-badge">Staff</span>', $new);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_role_title_has_the_population_only_without_rbac_role_edit(): void
+    {
+        $this->managerSetup();
+        $this->forget(['assets.upload']);
+        $this->as('keeper');
+
+        $readOnly = (string) $this->send('GET', '/folio/rbac_role/r-helper/edit')->getBody();
+
+        $this->assertStringContainsString('<span class="folio-badge">Staff</span>', $readOnly);
+        $this->assertStringNotContainsString('new permission', $readOnly);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_permissions_editor_has_a_type_filter_beside_only_new(): void
+    {
+        $this->managerSetup();
+        $this->forget(['assets.upload']);
+        $this->as('editor');
+
+        $form = (string) $this->send('GET', '/folio/rbac_role/r-helper/edit')->getBody();
+
+        $this->assertMatchesRegularExpression('#<label class="folio-select-inline rbac-type-filter" hidden data-rbac-type-filter data-folio-no-edit><span>Type</span><select aria-label="Show one type"><option value="">All types</option>.*?<option value="page">Pages</option>#', $form);
+        $this->assertLessThan(strpos($form, 'data-rbac-fresh-filter'), strpos($form, 'data-rbac-type-filter'), 'beside Only new, before it');
+        $this->assertMatchesRegularExpression('#<tr class="rbac-row[^"]*" data-rbac-row data-rbac-type="page"#', $form);
+        $this->assertMatchesRegularExpression('#<div class="rbac-group" data-rbac-group data-rbac-type="g:#', $form);
+        $this->assertStringContainsString('name="permissions[]"', $form);
+        $this->assertStringNotContainsString('<select aria-label="Show one type" name=', $form, 'the filter is not record data');
+    }
+
+    #[RunInSeparateProcess]
     public function test_the_role_editor_shows_no_new_marks_without_rbac_role_edit(): void
     {
         $this->managerSetup();

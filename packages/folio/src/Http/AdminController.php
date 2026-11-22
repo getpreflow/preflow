@@ -1611,6 +1611,11 @@ final class AdminController
             'types' => $this->catalog->all(),
             'heading' => $heading,
             'record_title' => $editUrl !== null && !str_ends_with($editUrl, '/new') ? self::recordTitle($values, $locales) : null,
+            // #[TitleBadge] pills after the title of a stored record (since 0.84).
+            'title_badges' => $isNew || $this->customizations === null ? [] : array_map(
+                static fn (Badge $badge): array => ['label' => $badge->label, 'tone' => $badge->tone()],
+                $this->customizations->titleBadges($type, DynamicRecord::fromArray($typeDef, $values)),
+            ),
             'action' => $action,
             'record_id' => isset($values[$typeDef->idField]) ? rawurlencode((string) $values[$typeDef->idField]) : '',
             'csrf' => $csrf,

@@ -16,6 +16,8 @@ use Preflow\Folio\Dashboard\NeedsYou;
 use Preflow\Folio\Extension\DashboardItem;
 use Preflow\Folio\Extension\ListNotice;
 use Preflow\Folio\Extension\NavBadge;
+use Preflow\Folio\Extension\Badge;
+use Preflow\Folio\Extension\TitleBadge;
 use Preflow\Folio\Rbac\NewPermissions;
 use Preflow\I18n\Translator;
 use Preflow\Rbac\Messages;
@@ -59,6 +61,46 @@ final class RoleRules
     public function newPermissionsBadge(): ?int
     {
         return $this->newPermissions->count();
+    }
+
+    /**
+     * After the role's title: its population, and (for whoever may edit roles) how many of the new
+     * permissions an update brought the role does not hold yet.
+     *
+     * @return list<Badge>
+     * @since 0.84.0
+     */
+    #[TitleBadge]
+    public function titleBadges(DynamicRecord $record): array
+    {
+        $role = self::role($record);
+        $badges = [];
+        if ($role['population'] !== '') {
+            $key = 'rbac-admin.options.rbac_role.population.' . $role['population'];
+            $label = $this->translator->get($key);
+            $badges[] = new Badge($label === $key ? $role['population'] : $label);
+        }
+        $missing = array_filter(
+            $this->newPermissions->forManager(),
+            static fn (string $permission): bool => !self::holds($role['permissions'], $permission),
+        );
+        if ($missing !== []) {
+            $badges[] = new Badge($this->translator->choice('rbac-admin.new.role_badge', count($missing), ['count' => count($missing)]), 'changed');
+        }
+
+        return $badges;
+    }
+
+    /** @param list<string> $patterns */
+    private static function holds(array $patterns, string $permission): bool
+    {
+        foreach ($patterns as $pattern) {
+            if (Pattern::matches($pattern, $permission)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     #[ListNotice]

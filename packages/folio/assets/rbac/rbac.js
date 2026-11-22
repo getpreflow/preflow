@@ -7,8 +7,9 @@
  *   or off for all when all are on. It changes only boxes that can change: never a locked one, never
  *   one the editor can't grant (data-rbac-denied), which stays disabled whatever else changes.
  * - Each section's "· N granted" (data-rbac-sum) follows the boxes.
- * - "Only new (N)" (data-rbac-fresh-filter) hides every row and chip without a "New" mark; hidden
- *   controls still post.
+ * - "Only new (N)" (data-rbac-fresh-filter) hides every row and chip without a "New" mark, and the type
+ *   select (data-rbac-type-filter, shown by this script) every row, chip and group of another type;
+ *   the two filters combine, and hidden controls still post.
  * - Every change a toggle makes is announced as a "change" event, so the editor's unsaved count and
  *   guard (Folio.unsaved) see it as they see a click. Locked boxes are disabled, so they don't count.
  *   The editor's Cancel (Folio.unsaved.discard) restores every box and sends "folio:discard" on the
@@ -90,23 +91,52 @@
         sums(field);
     }
 
-    /** "Only new": hides what carries no "New" mark (rows, chips, and the blocks left empty); values still post. */
-    function filterFresh(field, button) {
-        var only = button.getAttribute('aria-pressed') !== 'true';
-        var empty = function (el) { return only && all(el, '[data-rbac-new]').length === 0; };
-        button.setAttribute('aria-pressed', only ? 'true' : 'false');
+    /** The two filters together: "Only new" (aria-pressed) and the type select. What they hide, values still post. */
+    function filter(field) {
+        var button = field.querySelector('[data-rbac-fresh-filter]');
+        var select = field.querySelector('[data-rbac-type-filter] select');
+        var only = !!(button && button.getAttribute('aria-pressed') === 'true');
+        var type = select ? select.value : '';
+        var active = only || type !== '';
+        var visible = function (el, selector) {
+            return all(el, selector).some(function (item) { return !item.hidden; });
+        };
+        var typeOf = function (el) {
+            var holder = el.hasAttribute('data-rbac-type') ? el : el.closest('[data-rbac-group]');
+            return holder ? holder.getAttribute('data-rbac-type') : '';
+        };
         all(field, '[data-rbac-row], .rbac-chip').forEach(function (el) {
-            el.hidden = only && !el.hasAttribute('data-rbac-new');
+            el.hidden = (only && !el.hasAttribute('data-rbac-new')) || (type !== '' && typeOf(el) !== type);
         });
-        all(field, '[data-rbac-section], [data-rbac-group], [data-rbac-others], .folio-table-wrap, .rbac-footnote').forEach(function (el) {
-            el.hidden = el.classList.contains('rbac-footnote') ? only : empty(el);
+        all(field, '[data-rbac-section]').forEach(function (el) {
+            el.hidden = active && !visible(el, '[data-rbac-row]');
         });
+        all(field, '[data-rbac-group]').forEach(function (el) {
+            el.hidden = (only && all(el, '[data-rbac-new]').length === 0) || (type !== '' && typeOf(el) !== type);
+        });
+        all(field, '.folio-table-wrap').forEach(function (el) {
+            el.hidden = active && !visible(el, '[data-rbac-section]');
+        });
+        all(field, '[data-rbac-others]').forEach(function (el) {
+            el.hidden = active && !visible(el, '[data-rbac-group]');
+        });
+        all(field, '.rbac-footnote').forEach(function (el) {
+            el.hidden = active;
+        });
+    }
+
+    /** "Only new": toggles the button, then applies both filters. */
+    function filterFresh(field, button) {
+        button.setAttribute('aria-pressed', button.getAttribute('aria-pressed') !== 'true' ? 'true' : 'false');
+        filter(field);
     }
 
     function init() {
         all(document, '[data-rbac-permissions]').forEach(function (field) {
             field.addEventListener('change', function (event) {
-                if (event.target.matches('[data-rbac-everything], [data-rbac-all]')) {
+                if (event.target.matches('[data-rbac-type-filter] select')) {
+                    filter(field);
+                } else if (event.target.matches('[data-rbac-everything], [data-rbac-all]')) {
                     apply(field);
                 } else if (event.target.hasAttribute('data-rbac-verb')) {
                     sums(field);
@@ -130,6 +160,8 @@
                     apply(field);
                 });
             }
+            // The type filter needs this script: it is hidden until here.
+            all(field, '[data-rbac-type-filter]').forEach(function (el) { el.hidden = false; });
             apply(field);
         });
     }

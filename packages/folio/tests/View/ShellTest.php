@@ -196,12 +196,12 @@ final class ShellTest extends TestCase
 
         $pages = [
             '/folio/translations' => 'Change the interface texts',
-            '/folio/cache' => 'Every cache rebuilds itself',
+            '/folio/cache' => 'Every cache rebuilds on the next request',
             '/folio/redirects' => 'Old addresses that send visitors on',
             '/folio/redirects?tab=not-found' => 'Addresses visitors asked for',
             '/folio/ai/glossary' => 'Terms that are always translated',
-            '/folio/ai/tuning' => 'Instructions for the AI',
-            '/folio/seo-audit' => 'The last run of the SEO audit',
+            '/folio/ai/tuning' => 'AI instructions, one per line',
+            '/folio/seo-audit' => 'The last SEO audit',
         ];
         foreach ($pages as $uri => $start) {
             $x = $this->dom($uri);

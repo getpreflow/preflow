@@ -53,6 +53,9 @@ return [
         'footnote' => 'Les en-têtes de colonne basculent toute la colonne.',
         'new' => 'Nouveau',
         'only_new' => 'Nouvelles seulement (:count)',
+        'type' => 'Type',
+        'type_filter' => 'Afficher un seul type',
+        'all_types' => 'Tous les types',
     ],
     'roles_field' => [
         'not_defined' => ':role (non défini)',
@@ -70,6 +73,8 @@ return [
         'dashboard' => ':count nouvelle autorisation à examiner dans Rôles|:count nouvelles autorisations à examiner dans Rôles',
         'needs_you' => '{0} :count nouvelle autorisation dans Rôles|{1} :count nouvelle autorisation dans Rôles|[2,*] :count nouvelles autorisations dans Rôles',
         'needs_you_text' => 'Une mise à jour les a apportées. Décidez rôle par rôle.',
+        // The role editor's title badge: the new permissions the role does not hold (since 0.84; :count).
+        'role_badge' => '{0} :count nouvelle autorisation|{1} :count nouvelle autorisation|[2,*] :count nouvelles autorisations',
         'added' => 'Ajouté au rôle :role.',
         'dismissed' => 'Ignoré.',
         'no_role' => 'Choisissez le rôle auquel l’ajouter.',
