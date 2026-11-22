@@ -12,6 +12,7 @@ use Preflow\Data\DeletedBy;
 use Preflow\Data\DeletePlan;
 use Preflow\Core\Context\RoleView;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\IdKind;
 use Preflow\Data\TypeDefinition;
 use Preflow\Validation\ValidationException;
 use Nyholm\Psr7\ServerRequest;
@@ -91,8 +92,9 @@ final class Members
      * which no account has. Nothing is read or stored: saving or deleting it inside the role view
      * is skipped by its write policy, like every write there.
      *
-     * The member type must have a string id (the default, "uuid"): on a number id the reserved id
-     * would compare as 0 in SQL (MySQL), so a "my records" query could find rows of owner 0.
+     * The member type must have a string id (the default, "uuid"), as DataManager::idKind() answers
+     * it (since 0.82.0): on a number id the reserved id would compare as 0 in SQL (MySQL), so a
+     * "my records" query could find rows of owner 0.
      *
      * @since 0.81.0
      *
@@ -100,9 +102,8 @@ final class Members
      */
     public function synthetic(RoleView $view): DynamicRecord
     {
-        $registry = $this->dm->getTypeRegistry();
-        $type = $registry->get(MembersConfig::TYPE);
-        if (!self::hasStringId($type, $registry->classFor(MembersConfig::TYPE))) {
+        $type = $this->dm->getTypeRegistry()->get(MembersConfig::TYPE);
+        if ($this->dm->idKind($type) !== IdKind::String) {
             throw new \LogicException("The member type's id \"{$type->idField}\" is not a string, so a member role view (view as role) cannot have a member: give the member type a string id (the default uuid).");
         }
         $data = array_fill_keys(array_keys($type->fields), null);
@@ -110,22 +111,6 @@ final class Members
         $data[$type->idField] = $view->identity()->getAuthId();
 
         return DynamicRecord::fromArray($type, $data);
-    }
-
-    /** Whether $type's id is a string: a class-backed type's id property is typed string; a model file's id is unless its field says otherwise. */
-    private static function hasStringId(TypeDefinition $type, ?string $class): bool
-    {
-        if ($class !== null) {
-            if (!property_exists($class, $type->idField)) {
-                return false;
-            }
-            $declared = (new \ReflectionProperty($class, $type->idField))->getType();
-
-            return $declared instanceof \ReflectionNamedType && $declared->getName() === 'string';
-        }
-        $field = $type->fields[$type->idField] ?? null;
-
-        return $field === null || $field->type === 'string';
     }
 
     public function find(string $id): ?DynamicRecord

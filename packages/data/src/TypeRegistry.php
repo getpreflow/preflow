@@ -460,6 +460,7 @@ final class TypeRegistry
             fullText: self::fullText($schema['fullText'] ?? null, (string) $schema['key']),
             readonly: $actions['readonly'],
             creatable: $actions['creatable'],
+            idKind: isset($this->classes[$schema['key']]) ? IdKind::ofModel($this->classes[$schema['key']], $schema['id_field'] ?? 'uuid') : null,
         );
     }
 }

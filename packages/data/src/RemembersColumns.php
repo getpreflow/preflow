@@ -14,6 +14,10 @@ namespace Preflow\Data;
  */
 interface RemembersColumns
 {
-    /** Drops what is remembered of $table (null: of every table); the next query reads it again. */
+    /**
+     * Drops what is remembered of $table (null: of every table); the next query reads it again. A
+     * class that overrides an implementation it inherits (a PdoDriver subclass) calls
+     * parent::forgetColumns($table), so what the parent remembers is dropped too.
+     */
     public function forgetColumns(?string $table = null): void;
 }

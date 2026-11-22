@@ -16,7 +16,7 @@ use Preflow\Data\Text\TextMatch;
  * (SqliteDialect::TEXT_COLLATION): they compare, sort, group and keep a unique index by the text
  * rule. Every other column compares by bytes (BINARY), as before.
  */
-final class SqliteGrammar implements SchemaGrammar, ConvertsCollations
+final class SqliteGrammar implements SchemaGrammar, ConvertsCollations, ClassifiesIdColumns
 {
     use RecordIndexNames;
 
@@ -317,6 +317,24 @@ final class SqliteGrammar implements SchemaGrammar, ConvertsCollations
         $rows = $pdo->query('PRAGMA table_info(' . $this->quote($table) . ')')->fetchAll(\PDO::FETCH_ASSOC);
 
         return array_map(static fn (array $row): string => (string) $row['name'], $rows);
+    }
+
+    /**
+     * SQLite's column affinity rules: a type containing "int" is an integer column (Int); one
+     * containing "char", "clob" or "text" a text column (String); any other (blob, real, numeric,
+     * none) holds no one kind, so null.
+     *
+     * @since 0.82.0
+     */
+    public function idKindOfColumn(string $type): ?\Preflow\Data\IdKind
+    {
+        $type = strtolower($type);
+
+        return match (true) {
+            str_contains($type, 'int') => \Preflow\Data\IdKind::Int,
+            str_contains($type, 'char'), str_contains($type, 'clob'), str_contains($type, 'text') => \Preflow\Data\IdKind::String,
+            default => null,
+        };
     }
 
     public function columnTypes(\PDO $pdo, string $table): array

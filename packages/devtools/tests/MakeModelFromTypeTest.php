@@ -50,6 +50,19 @@ final class MakeModelFromTypeTest extends TestCase
         ];
     }
 
+    /**
+     * A type as its properties without idKind (data 0.82): a class states it, a JSON type does not.
+     *
+     * @return array<string, mixed>
+     */
+    private static function withoutIdKind(\Preflow\Data\TypeDefinition $def): array
+    {
+        $vars = get_object_vars($def);
+        unset($vars['idKind']);
+
+        return $vars;
+    }
+
     #[DataProvider('types')]
     public function test_the_generated_class_round_trips_to_the_same_type(string $fixture, string $class): void
     {
@@ -62,7 +75,11 @@ final class MakeModelFromTypeTest extends TestCase
         $this->assertSame(0, $code, $out . $this->errors());
         require $this->base . "/app/Models/{$class}.php";
         $registry = new TypeRegistry($this->base . '/config/models', null, [$key => 'App\\Models\\' . $class]);
-        $this->assertEquals((new TypeRegistry($this->fixtureDir))->get($key), $registry->get($key));
+        $jsonDef = (new TypeRegistry($this->fixtureDir))->get($key);
+        $this->assertNull($jsonDef->idKind, 'a JSON type states no id kind');
+        $this->assertSame('string', (new \Preflow\Data\DataManager([$jsonDef->storage => new \Preflow\Data\Driver\JsonFileDriver($this->base . '/json')]))->idKind($jsonDef)->value, 'its answer is a string id');
+        $this->assertSame('string', $registry->get($key)->idKind?->value, 'the class states a string id, the kind the JSON type has');
+        $this->assertEquals(self::withoutIdKind((new TypeRegistry($this->fixtureDir))->get($key)), self::withoutIdKind($registry->get($key)));
         $this->assertSame(
             array_keys((new TypeRegistry($this->fixtureDir))->get($key)->fields),
             array_keys($registry->get($key)->fields),

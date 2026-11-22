@@ -69,6 +69,41 @@ final class DataManager
     }
 
     /**
+     * Whether $def's records have string ids or number ids, as they are stored:
+     * - the type's model class decides (TypeDefinition::$idKind, IdKind::ofModel()): a string id
+     *   property gets a string id made by the data layer, any other a number from the storage;
+     * - else a storage that states its own kind for the type (StatesIdKinds; a SQL driver reads its
+     *   table's key column, so a table the sync made, whose key is text, is a string id);
+     * - else the declared id field: a field stored as a number (FieldKinds: "number", or a type an
+     *   extension stores as one) is written as a number, so the id is Int;
+     * - else String: an undeclared id, or one declared as any other field, is text (JSON files
+     *   name the record by it).
+     *
+     * @throws \LogicException when the type's model class states one kind and its storage the
+     *         other (an int id property over a text key, a string one over an integer key): the
+     *         records cannot be written as the class says, so neither answer is given
+     * @since 0.82.0
+     */
+    public function idKind(TypeDefinition $def): IdKind
+    {
+        $driver = $this->resolveDriver($def->storage);
+        $stated = $driver instanceof StatesIdKinds ? $driver->idKindOf($def) : null;
+        if ($def->idKind !== null) {
+            if ($stated !== null && $stated !== $def->idKind) {
+                throw new \LogicException("Type \"{$def->key}\": its model class has a {$def->idKind->value} id, but storage \"{$def->storage}\" holds {$stated->value} ids in {$def->table}.{$def->idField}: make the id property and the key column the same kind.");
+            }
+
+            return $def->idKind;
+        }
+        if ($stated !== null) {
+            return $stated;
+        }
+        $field = $def->fields[$def->idField] ?? null;
+
+        return $field !== null && $this->fieldKinds()->columnKindOf($field) === ColumnKind::Number ? IdKind::Int : IdKind::String;
+    }
+
+    /**
      * The version field records of $def keep (VersionFields), or null.
      *
      * @since 0.77
@@ -1217,12 +1252,7 @@ final class DataManager
     /** Whether the model's id property holds a string (Folio's ids), not an auto-increment number. */
     private static function hasStringId(ModelMetadata $meta): bool
     {
-        if (!property_exists($meta->modelClass, $meta->idField)) {
-            return false;
-        }
-        $type = (new \ReflectionProperty($meta->modelClass, $meta->idField))->getType();
-
-        return $type instanceof \ReflectionNamedType && $type->getName() === 'string';
+        return IdKind::ofModel($meta->modelClass, $meta->idField) === IdKind::String;
     }
 
     /** @var array<class-string, array<string, ?\ReflectionType>> */

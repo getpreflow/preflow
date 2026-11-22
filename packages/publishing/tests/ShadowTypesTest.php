@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace Preflow\Publishing\Tests;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Data\DataManager;
+use Preflow\Data\Driver\SqliteDriver;
+use Preflow\Data\IdKind;
+use Preflow\Data\Schema\RecordTableSync;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Publishing\ShadowTypes;
@@ -62,5 +66,34 @@ final class ShadowTypesTest extends TestCase
                 $this->assertStringStartsWith('Type "page" has the index (', $e->getMessage());
             }
         }
+    }
+
+    /**
+     * A version-column view keeps the id kind a model class states; the published copy states none:
+     * its table is the sync's (a text key) and its records always get the working record's id, so
+     * the class's kind would make up a conflict with that key (DataManager::idKind()).
+     */
+    public function test_copies_and_the_id_kind(): void
+    {
+        foreach ([IdKind::Int, IdKind::String, null] as $kind) {
+            $def = new TypeDefinition('page', 'page', 'sqlite', ['title' => new TypeFieldDefinition('title')], idField: 'id', idKind: $kind);
+
+            $this->assertNull(ShadowTypes::published($def)->idKind, 'published, ' . ($kind->value ?? 'none'));
+            $column = ShadowTypes::versionColumn($def, '_version');
+            $this->assertSame($kind, $column->idKind, 'version column, ' . ($kind->value ?? 'none'));
+            $this->assertSame(['page', 'page', 'sqlite', 'id', ['_version']], [$column->key, $column->table, $column->storage, $column->idField, array_keys($column->fields)]);
+            $this->assertTrue($column->fields['_version']->exact);
+        }
+    }
+
+    /** An int-class type's published copy on SQLite: its synced text key gives a string id, no conflict. */
+    public function test_an_int_class_types_published_copy_has_no_id_kind_conflict(): void
+    {
+        $def = new TypeDefinition('page', 'page', 'sqlite', ['title' => new TypeFieldDefinition('title')], idField: 'id', idKind: IdKind::Int);
+        $dm = new DataManager(['sqlite' => new SqliteDriver(new \PDO('sqlite::memory:'))]);
+        $published = ShadowTypes::published($def);
+        (new RecordTableSync($dm))->sync($published);
+
+        $this->assertSame(IdKind::String, $dm->idKind($published));
     }
 }

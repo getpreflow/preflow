@@ -20,7 +20,7 @@ use Preflow\Data\Schema\ColumnSpec;
  * one upsert target). On a server without the collation, or unbound, text columns are exact too
  * and a migration's string() keeps the table default utf8mb4_unicode_ci.
  */
-final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, ConvertsCollations
+final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, ConvertsCollations, ClassifiesIdColumns
 {
     use RecordIndexNames;
 
@@ -406,6 +406,25 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, ConvertsColl
         $stmt->execute([$table]);
 
         return array_map('strval', $stmt->fetchAll(\PDO::FETCH_COLUMN));
+    }
+
+    /**
+     * Int for the integer types (serial is bigint unsigned) and for the other numbers (decimal,
+     * numeric, float, double, real): MySQL compares a text value with any of them as a number, so
+     * for a reserved text id they are not a string. String for char, varchar and the text types.
+     * Anything else (binary, blob, json, dates, enum, bit) null.
+     *
+     * @since 0.82.0
+     */
+    public function idKindOfColumn(string $type): ?\Preflow\Data\IdKind
+    {
+        $type = strtolower(trim($type));
+
+        return match (true) {
+            preg_match('/^((tiny|small|medium|big)?int(eger)?|serial|dec(imal)?|numeric|fixed|float|double|real)\b/', $type) === 1 => \Preflow\Data\IdKind::Int,
+            preg_match('/^((var)?char|(tiny|medium|long)?text)\b/', $type) === 1 => \Preflow\Data\IdKind::String,
+            default => null,
+        };
     }
 
     public function columnTypes(\PDO $pdo, string $table): array

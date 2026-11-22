@@ -7,6 +7,7 @@ namespace Preflow\Members\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.82.0: data 0.82.0 (DataManager::idKind() and IdKind, which Members::synthetic() asks whether the member type's id is a string).
  * Since 0.81.0: core 0.81.0 (Context\Contexts: a member page renders within its locale, Members reads the
  * render's request and clock; Deprecations for the deprecated PageLocale; Context\RoleView, which Members::synthetic() builds a role view's member from),
  * auth 0.81.0 (SyntheticUser and Access::populationOfRoleView(), which Viewer reads a role view with; Access\AllowsRoles,
@@ -30,7 +31,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/auth' => '<0.81.0', 'preflow/core' => '<0.81.0', 'preflow/data' => '<0.42', 'preflow/folio' => '<0.68', 'preflow/i18n' => '<0.38', 'preflow/notify' => '<0.68', 'preflow/routing' => '<0.59'],
+            ['preflow/auth' => '<0.81.0', 'preflow/core' => '<0.81.0', 'preflow/data' => '<0.82.0', 'preflow/folio' => '<0.68', 'preflow/i18n' => '<0.38', 'preflow/notify' => '<0.68', 'preflow/routing' => '<0.59'],
             $composer['conflict'] ?? null,
         );
         foreach (['preflow/auth', 'preflow/core', 'preflow/data', 'preflow/i18n', 'preflow/notify', 'preflow/routing'] as $package) {

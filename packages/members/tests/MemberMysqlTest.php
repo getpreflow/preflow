@@ -55,4 +55,28 @@ final class MemberMysqlTest extends TestCase
         $this->assertSame('1', (string) $members->find((string) $stored->getId())?->get('auth_epoch'), 'the session epoch moves on');
         $this->assertSame('1', (string) MysqlTestDatabase::pdo()->query('SELECT auth_epoch FROM member')->fetchColumn());
     }
+
+    /**
+     * A member table a migration made with an integer key: the id is a number whatever the member
+     * type declares (DataManager::idKind() reads the key column), so a role view has no member;
+     * the table migrate makes has a text key and does.
+     */
+    public function test_a_number_key_on_mysql_is_refused_for_a_role_view(): void
+    {
+        $this->migrate();
+        $members = $this->container()->get(Members::class);
+        $this->assertSame('preflow:synthetic:member:member', $members->synthetic(new \Preflow\Core\Context\RoleView('member', ['member']))->getId());
+
+        $pdo = MysqlTestDatabase::pdo();
+        $pdo->exec('DROP TABLE member');
+        $pdo->exec('CREATE TABLE member (uuid INT AUTO_INCREMENT PRIMARY KEY, email VARCHAR(320), roles TEXT)');
+        $dm = $this->container()->get(\Preflow\Data\DataManager::class);
+        $driver = $dm->driver($dm->getTypeRegistry()->get(\Preflow\Members\MembersConfig::TYPE)->storage);
+        $this->assertInstanceOf(\Preflow\Data\RemembersColumns::class, $driver);
+        $driver->forgetColumns('member'); // the table changed behind the driver's back
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('is not a string');
+        $members->synthetic(new \Preflow\Core\Context\RoleView('member', ['member']));
+    }
 }

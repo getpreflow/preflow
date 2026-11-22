@@ -14,7 +14,6 @@ use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\QueryBuilder;
 use Preflow\Data\TypeDefinition;
-use Preflow\Data\TypeFieldDefinition;
 use Preflow\Validation\ValidationException;
 use Preflow\Validation\ValidationResult;
 use Psr\Log\LoggerInterface;
@@ -309,13 +308,7 @@ final class Publisher
      */
     private function versions(TypeDefinition $def, string $column, ?array $ids): array
     {
-        $narrow = new TypeDefinition(
-            key: $def->key,
-            table: $def->table,
-            storage: $def->storage,
-            fields: [$column => new TypeFieldDefinition($column, 'string', exact: true)],
-            idField: $def->idField,
-        );
+        $narrow = ShadowTypes::versionColumn($def, $column);
         $query = $this->among($this->dm->queryIn($narrow), $narrow, $ids);
         $version = static fn (mixed $value): ?int => $value === null || $value === '' ? null : (int) $value;
 

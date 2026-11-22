@@ -327,13 +327,14 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 | `PdoConnection::pdo()` (0.78, extends `RunsSql`) | The PDO connection itself, for `preflow migrate`, `Migration\Schema`, the table sync and the convert tool. | `migrate` runs only the steps registered for any storage; the table sync skips the type. | — |
 | `Maintenance::check()`, `compact()` (0.78) | Checks the whole store (structure, indexes, references) and compacts it, through the driver's own prepared connection (`preflow db:check`, `db:vacuum`). For storage whose database tools can't do it once Preflow owns it (SQLite: the `preflow_text` collation). | the commands refuse the storage and point to the database's own tools (MySQL/MariaDB: `mysqlcheck`). | — |
 | `Dumps::dump()`, `restore()` (0.78) | The whole store as text the same driver restores into an empty store (`preflow db:dump`, `db:restore`). | the commands refuse the storage and point to the database's own tools (MySQL/MariaDB: `mysqldump`; JSON: copy the folder). | `restore()` is all or nothing. |
+| `StatesIdKinds::idKindOf()` (0.82) | Says what kind of id the storage holds for a type: `PdoDriver` reads the table's key column and its schema grammar classifies the type (`Migration\Grammar\ClassifiesIdColumns`, 0.82: SQLite by its affinity rules, MySQL a number for every numeric type, as it compares text with them as numbers; a missing table or a grammar without it nothing). `DataManager::idKind()` asks it after the type's model class (a disagreement with the class throws) and before the declared id field. A driver that wraps another must implement it and forward the call. | `idKind()` follows the type: its class, else its declared id field, else a string id. | Read only. |
 | `ChangeTokens::changeToken()` (0.77) | A token that moves with every write of a type, so readers reuse what they computed. | `DataManager::changeToken()` only passes it on (null); its consumer, `StoredActivityLog::people()`, reuses nothing and computes every time. | Read only. |
 
 A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`, `InsertsNew`, `BulkDeletes`,
 `Savepoints`, `DescribesColumns`, `AtomicCounters`, `AggregatingStorage`, `PdoConnection` (so
 `RunsSql`), `Transactions`, `UniqueIndexes`, `SelectsColumns` and `SelectsSubqueries` from it and implements `exclusive()` itself (as
 `SqliteDriver` and `MysqlDriver` do); its `Dialect` may add `PatternMatching` and `InsertIfNew` (0.80). `MysqlDriver` adds
-`RankedSearch`, `SqliteDriver` adds `Maintenance` and `Dumps`. The JSON file driver implements `VersionedStorage`, `ConditionalUpdates`, `InsertsNew`,
+`RankedSearch`, `SqliteDriver` adds `Maintenance` and `Dumps`. Since 0.82 `PdoDriver` also implements `StatesIdKinds` and `RemembersColumns` (a subclass that overrides `forgetColumns()` calls the parent), and both grammars implement `ClassifiesIdColumns`. The JSON file driver implements `VersionedStorage`, `ConditionalUpdates`, `InsertsNew`,
 `ExclusiveWrites`, `BulkDeletes`, `ChangeTokens`, `DescribesColumns`, `AtomicCounters` and
 `AggregatingStorage`.
 
@@ -497,6 +498,28 @@ which numbers itself (without the `AUTOINCREMENT` keyword, so the table can stil
 `convertColumn()`). `integer('id')->primary()` is **not** numbered on MySQL: it is a plain key
 and every insert must set the id itself. `convertColumn()` on an `increments()` column keeps its
 `AUTO_INCREMENT`.
+
+### String or number ids: `idKind()`
+
+`$dm->idKind($typeDefinition)` (since 0.82.0) says whether a type's records have string ids or
+number ids, as an `IdKind` (`IdKind::String`, `IdKind::Int`), the way the data layer stores them:
+
+1. A type's model class decides (`TypeDefinition::$idKind`, `IdKind::ofModel()`): an id property
+   typed `string` (or `?string`) is a string id the data layer makes for a new record; any other
+   (`int`, untyped, a union) is a number the storage gives.
+   A table key of the other kind (an `int` id property over a text key) makes `idKind()` throw a
+   `LogicException`: the records cannot be written as the class says.
+2. Else the storage says (`StatesIdKinds`, optional): a SQL table's key column as its grammar
+   classifies it (`ClassifiesIdColumns`): on SQLite a type containing "int" a number and one
+   containing "char", "clob" or "text" a string; on MySQL every numeric type a number (it compares
+   a text value with them as a number) and char, varchar and text a string. A table the sync made has a text key, so its type has string
+   ids whatever its declared id field says.
+3. Else the declared id field (no table yet, JSON files): one stored as a number
+   (`"type": "number"`, or a field type an extension stores as a number) is a number id.
+4. Else a string id: an undeclared id (a model file's `uuid`) or one declared as any other field.
+
+Code that puts a text id of its own into a type's records asks it first (members' view-as-role
+member refuses a number id).
 
 ### Raw SQL
 

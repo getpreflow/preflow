@@ -12,9 +12,12 @@ use Preflow\Data\ResultSet;
 use Preflow\Data\UniqueViolation;
 use Preflow\Data\VersionedStorage;
 
-abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\ConditionalMeasures, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints, \Preflow\Data\ConditionalUpdates, \Preflow\Data\DescribesColumns, \Preflow\Data\PdoConnection, \Preflow\Data\Transactions, \Preflow\Data\AtomicCounters, \Preflow\Data\UniqueIndexes, \Preflow\Data\InsertsNew, \Preflow\Data\SelectsColumns, \Preflow\Data\SelectsSubqueries
+abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\ConditionalMeasures, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints, \Preflow\Data\ConditionalUpdates, \Preflow\Data\DescribesColumns, \Preflow\Data\PdoConnection, \Preflow\Data\Transactions, \Preflow\Data\AtomicCounters, \Preflow\Data\UniqueIndexes, \Preflow\Data\InsertsNew, \Preflow\Data\SelectsColumns, \Preflow\Data\SelectsSubqueries, \Preflow\Data\StatesIdKinds, \Preflow\Data\RemembersColumns
 {
     private ?\PDO $connection = null;
+
+    /** @var array<string, array<string, ?\Preflow\Data\IdKind>> the id kind read per table and id column */
+    private array $idKinds = [];
     private ?\Closure $connector = null;
 
     /** The connection, opened on first use when the driver was given a closure instead of a PDO. */
@@ -312,6 +315,54 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
                 return false;
             }
             throw $e;
+        }
+    }
+
+    /**
+     * The kind of id the table's key column holds, as the connection's schema grammar classifies
+     * its type (ClassifiesIdColumns: SQLite by its affinity rules, MySQL by how it compares a text
+     * value with the column); null without such a grammar, for a type it does not classify, or for
+     * a column or table that is not there, so the type decides (DataManager::idKind()). The table
+     * sync makes a type's key text, so a type whose table it made has a string id whatever its
+     * declared id field says. Read from the table (the grammar's columnTypes()) and remembered
+     * until forgetColumns(); a missing table or column is read again on the next call (a migrate
+     * may add it).
+     *
+     * @since 0.82.0
+     */
+    public function idKindOf(\Preflow\Data\TypeDefinition $def): ?\Preflow\Data\IdKind
+    {
+        if (isset($this->idKinds[$def->table]) && array_key_exists($def->idField, $this->idKinds[$def->table])) {
+            return $this->idKinds[$def->table][$def->idField];
+        }
+        try {
+            $grammar = \Preflow\Data\Migration\Grammar\Grammars::named((string) $this->pdo->getAttribute(\PDO::ATTR_DRIVER_NAME));
+        } catch (\LogicException) {
+            return null; // a connection no grammar is registered for classifies nothing
+        }
+        if (!$grammar instanceof \Preflow\Data\Migration\Grammar\ClassifiesIdColumns) {
+            return null;
+        }
+        $type = $grammar->columnTypes($this->pdo, $def->table)[$def->idField] ?? null;
+        if ($type === null) {
+            return null; // not remembered: a migrate may make the table
+        }
+
+        return $this->idKinds[$def->table][$def->idField] = $grammar->idKindOfColumn($type);
+    }
+
+    /**
+     * Drops the id kinds read of $table (null: of every table); the table sync calls it after it
+     * changes a table. A subclass that overrides it calls parent::forgetColumns($table).
+     *
+     * @since 0.82.0
+     */
+    public function forgetColumns(?string $table = null): void
+    {
+        if ($table === null) {
+            $this->idKinds = [];
+        } else {
+            unset($this->idKinds[$table]);
         }
     }
 
