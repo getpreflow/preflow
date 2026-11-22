@@ -47,7 +47,7 @@ final class TempRootsTest extends TestCase
                 continue;
             }
             $source = (string) file_get_contents($file->getPathname());
-            if (preg_match('/sys_get_temp_dir\(\)\s*\.\s*\'[^\']*\'\s*\.\s*(?:bin2hex|uniqid)|(?<!TempRoots::track\(\(string\) )tempnam\(\s*sys_get_temp_dir|mkdir\(\s*sys_get_temp_dir/', $source) === 1) {
+            if (preg_match('/sys_get_temp_dir\(\)\s*\.\s*([\'\"])[^\'\"]*\1\s*\.\s*(?:bin2hex|uniqid)|(?<!TempRoots::track\(\(string\) )tempnam\(\s*sys_get_temp_dir|mkdir\(\s*sys_get_temp_dir/', $source) === 1) {
                 $offenders[] = substr($file->getPathname(), strlen(dirname(__DIR__)) + 1);
             }
         }
