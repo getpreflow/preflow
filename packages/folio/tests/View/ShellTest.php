@@ -204,6 +204,7 @@ final class ShellTest extends TestCase
         }
     }
 
+    #[RunInSeparateProcess]
     public function test_help_banners_are_the_subtitle_line_under_the_title(): void
     {
         // AI on (the fake provider needs no key and sends nothing), so the glossary and tuning screens exist.
