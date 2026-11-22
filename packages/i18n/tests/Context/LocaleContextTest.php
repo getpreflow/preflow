@@ -375,6 +375,32 @@ final class LocaleContextTest extends TestCase
         return (new \ReflectionProperty(Translator::class, 'memos'))->getValue($t);
     }
 
+    /**
+     * getLocale(), usesOverrides(), has() and get() read the same text locale, overrides switch and
+     * cache of the current context, on either surface: get() finds the cache getLocale() made.
+     */
+    public function test_every_reader_takes_the_same_locale_switch_and_cache_from_the_context(): void
+    {
+        $t = $this->translator();
+        $t->setOverrides(self::overrides());
+        $t->setScopes(['site' => 'admin']);
+
+        foreach ([['public', self::visit()->in('de'), 'de', false, 'Hallo'], ['admin', self::visit()->in('de')->admin('fr'), 'fr', true, 'Override fr']] as [$surface, $ctx, $locale, $overrides, $text]) {
+            (new \ReflectionProperty(Translator::class, 'memos'))->setValue($t, []);
+            Contexts::run($ctx, function () use ($t, $surface, $locale, $overrides, $text): void {
+                $this->assertSame($locale, $t->getLocale(), $surface);
+                $this->assertSame($overrides, $t->usesOverrides(), $surface);
+                $memos = self::memos($t);
+                $this->assertCount(1, $memos, "{$surface}: getLocale() made the context's cache");
+                $this->assertTrue($t->has('site.hi'), $surface);
+                $this->assertSame($text, $t->get('site.hi'), $surface);
+                $this->assertSame($memos, self::memos($t), "{$surface}: get() read the cache getLocale() made, not one of its own");
+                $memo = array_values($memos)[0];
+                $this->assertSame([$locale, $overrides], [$memo->locale, $memo->overrides], $surface);
+            });
+        }
+    }
+
     public function test_catalogue_cache_is_keyed_per_context(): void
     {
         $t = $this->translator();

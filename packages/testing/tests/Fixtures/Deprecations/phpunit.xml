@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    A site's deprecation settings (failOnDeprecation, Preflow's own silenced notices counted, the
+    Preflow packages as source), for the deprecation fixtures RenderIsolationContractTest runs.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="../../../../../vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="bootstrap.php"
+         cacheResult="false"
+         failOnDeprecation="true"
+>
+    <php>
+        <ini name="error_reporting" value="-1"/>
+    </php>
+    <extensions>
+        <bootstrap class="Preflow\Testing\FrameBalanceExtension"/>
+    </extensions>
+    <source ignoreSuppressionOfDeprecations="true" ignoreIndirectDeprecations="true">
+        <include>
+            <directory>.</directory>
+            <directory>../../../../core/src</directory>
+            <directory>../../../../i18n/src</directory>
+            <directory>../../../../auth/src</directory>
+            <directory>../../../../testing/src</directory>
+        </include>
+        <deprecationTrigger>
+            <method>Preflow\Core\Context\Deprecations::once</method>
+        </deprecationTrigger>
+    </source>
+</phpunit>

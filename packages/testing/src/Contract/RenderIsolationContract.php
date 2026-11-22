@@ -13,6 +13,7 @@ use Preflow\Auth\AuthManager;
 use Preflow\Core\Application;
 use Preflow\Core\Context\CapturedItem;
 use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\RenderResult;
 use Preflow\Core\Context\Viewer;
@@ -115,6 +116,15 @@ use Preflow\View\Seo\SeoContext;
  * that page's (OUTER_NONCE), never one of its own.
  *
  * Superglobals are restored after each test.
+ *
+ * Deprecations (since 0.82.0): the poison calls deprecated setters on purpose (the translator's
+ * setLocale() and useOverrides(), AuthManager::setUser(), LiveContent::showWorkingCopies()). Only
+ * those calls are marked as expected (Deprecations::expected()), so they neither report nor use
+ * up a notice; everything else reports as usual under a site's failOnDeprecation, the site's
+ * page, its poisonApp() and the factories the container runs for the poison included. The
+ * contract forgets what its tests reported (Deprecations::reset() in tearDown()), so a call site
+ * one test reported is reported again by the next test that reaches it. A runner needs neither
+ * #[IgnoreDeprecations] nor a reset of its own.
  *
  * @since 0.81.0
  */
@@ -222,6 +232,9 @@ abstract class RenderIsolationContract extends TestCase
         if (class_exists(NonceGenerator::class)) {
             NonceGenerator::fixedForTests(null);
         }
+        // A call site one test reported reports again in the next test that reaches it, this
+        // contract's or the site's.
+        Deprecations::reset();
         parent::tearDown();
         if ($failure !== null) {
             throw $failure;
@@ -583,9 +596,11 @@ abstract class RenderIsolationContract extends TestCase
             $container->instance(RequestContext::class, new RequestContext('/', 'GET', $this->poisonedRequest()));
         }
         $has = static fn (string $id): bool => class_exists($id) && ($container->bound($id) || $container->resolved($id));
+        // The deprecated setters are called on purpose: only these calls are expected (the
+        // services are resolved outside, so a deprecation of the site's factories still counts).
         if ($has(Translator::class)) {
             $translator = $container->get(Translator::class);
-            $translator->setLocale('xx');
+            Deprecations::expected(static fn () => $translator->setLocale('xx'));
             $translator->setOverrides(new class ($marker) implements TranslationOverrides {
                 public function __construct(private readonly string $marker) {}
 
@@ -594,14 +609,17 @@ abstract class RenderIsolationContract extends TestCase
                     return $this->marker;
                 }
             });
-            $translator->useOverrides(true);
+            Deprecations::expected(static fn () => $translator->useOverrides(true));
         }
         if ($has(AuthManager::class)) {
-            $container->get(AuthManager::class)->setUser($this->markerUser());
+            $auth = $container->get(AuthManager::class);
+            $user = $this->markerUser();
+            Deprecations::expected(static fn () => $auth->setUser($user));
         }
         $live = 'Preflow\\Publishing\\LiveContent';
         if ($has($live)) {
-            $container->get($live)->showWorkingCopies(true);
+            $liveContent = $container->get($live);
+            Deprecations::expected(static fn () => $liveContent->showWorkingCopies(true));
         }
         if ($has(AssetCollector::class)) {
             $assets = $container->get(AssetCollector::class);

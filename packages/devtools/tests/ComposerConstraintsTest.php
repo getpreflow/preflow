@@ -7,6 +7,7 @@ namespace Preflow\DevTools\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.82: core 0.82 (Http\ContentSecurityPolicy, from which the toolbar takes the page's nonces; RequestLimits).
  * Since 0.81: core 0.81 (Contexts, RenderContext, Site, SystemClock and CookieChannel: every command runs in a console frame).
  * Since 0.80: data 0.80 (Seed, the attribute db:seed reads for debug-only seeders).
  * Since 0.78: data 0.78 (PdoConnection, which migrate asks for; the text-rule conversion and the recorded column intent migrate runs);
@@ -24,8 +25,8 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame('^0.81.0 || @dev', $composer['require']['preflow/core'] ?? null);
+        $this->assertSame('^0.82.0 || @dev', $composer['require']['preflow/core'] ?? null);
         $this->assertSame('^0.80.0 || @dev', $composer['require']['preflow/data'] ?? null);
-        $this->assertSame(['preflow/auth' => '<0.62', 'preflow/core' => '<0.81.0', 'preflow/data' => '<0.80.0'], $composer['conflict'] ?? null);
+        $this->assertSame(['preflow/auth' => '<0.62', 'preflow/core' => '<0.82.0', 'preflow/data' => '<0.80.0'], $composer['conflict'] ?? null);
     }
 }

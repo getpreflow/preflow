@@ -8,7 +8,8 @@ namespace Preflow\Core\Http;
  * What a render asked of PHP's process-wide limits (a longer time limit, going on after the
  * browser closed the tab), recorded on its frame for the debug toolbar. The limits themselves
  * are process-wide and cannot be scoped to a render, so they stay an edge call; this only says
- * which render asked. A frame slot (RenderFrame::slot()).
+ * which render asked. A frame slot (RenderFrame::slot()). The debug toolbar shows only the request
+ * frame's: a render in a frame of its own records on that frame, which it does not see.
  *
  * @since 0.81.0
  */

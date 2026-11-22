@@ -74,6 +74,41 @@ final class DeprecationsTest extends TestCase
 
         $this->assertCount(2, $this->notices, 'tests see the notice whatever ran before them');
     }
+
+    /** A deliberate call (a test exercising a shim on purpose) neither warns nor uses up the call site's notice. */
+    public function test_expected_calls_neither_warn_nor_record(): void
+    {
+        $result = Deprecations::expected(static function (): string {
+            Deprecations::once(LoopShim::MESSAGE, 1);
+
+            return 'done';
+        });
+
+        $this->assertSame('done', $result, 'the closure\'s result is passed back');
+        $this->assertSame([], $this->notices);
+        Deprecations::once(LoopShim::MESSAGE, 1);
+        $this->assertCount(1, $this->notices, 'the same call site outside warns: nothing was recorded');
+    }
+
+    public function test_expected_nests_and_restores_after_a_throw(): void
+    {
+        Deprecations::expected(static function (): void {
+            Deprecations::expected(static function (): void {
+                Deprecations::once('inner', 1);
+            });
+            Deprecations::once('outer', 1);
+        });
+        $this->assertSame([], $this->notices, 'the outer stretch is still expected after the inner one ended');
+
+        try {
+            Deprecations::expected(static function (): void {
+                throw new \RuntimeException('failed');
+            });
+        } catch (\RuntimeException) {
+        }
+        Deprecations::once('after', 1);
+        $this->assertCount(1, $this->notices, 'a throw ends the expected stretch');
+    }
 }
 
 /** A shim as 0.81 writes them: it warns once per call site and still does its work. */

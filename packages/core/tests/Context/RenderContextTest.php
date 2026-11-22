@@ -275,16 +275,17 @@ final class RenderContextTest extends TestCase
         $this->assertFalse($rebuild->delivering()->isStorable(), 'a rebuild never sends');
     }
 
-    /** memoKey() is computed once per context (MemoKeys) and stays what a fresh computation gives. */
+    /** memoKey() is computed once per context and stays what a fresh, equal context gives. */
     public function test_memo_key_is_kept_per_context_and_equals_a_fresh_computation(): void
     {
         $base = self::visit()->with(new VariantFacet('b', true));
         $first = $base->memoKey();
         $this->assertSame($first, $base->memoKey());
-        $this->assertSame($base->computeMemoKey(), $first);
+        $this->assertSame(self::visit()->with(new VariantFacet('b', true))->memoKey(), $first, 'an equal context computes the same key');
         $de = $base->in('de');
         $this->assertNotSame($first, $de->memoKey(), 'a derivation gets its own key');
-        $this->assertSame($de->computeMemoKey(), $de->memoKey());
+        $this->assertSame(self::visit()->with(new VariantFacet('b', true))->in('de')->memoKey(), $de->memoKey());
+        $this->assertTrue((new \ReflectionMethod(RenderContext::class, 'computeMemoKey'))->isPrivate(), 'computing the key is the context\'s own business');
     }
 
     /** A derivation changes only the field it names; a role view stays at Skip and Capture. */
@@ -292,9 +293,19 @@ final class RenderContextTest extends TestCase
     {
         $base = self::visit()->with(new VariantFacet('b', true))->at(new \DateTimeImmutable('2026-02-03T04:05:06Z'))->workingCopies();
         $de = $base->in('de');
-        foreach (['request', 'purpose', 'viewer', 'surface', 'reads', 'site', 'clock', 'now', 'outbox', 'writes', 'extensions'] as $field) {
-            $this->assertSame($base->{$field}, $de->{$field}, $field);
+        // Every property the class declares, private ones included: a new one cannot be left out.
+        $fields = [];
+        foreach ((new \ReflectionClass(RenderContext::class))->getProperties() as $property) {
+            if ($property->isStatic()) {
+                continue;
+            }
+            $fields[] = $property->getName();
+            if ($property->getName() !== 'locale') {
+                $this->assertSame($property->getValue($base), $property->getValue($de), $property->getName());
+            }
         }
+        $this->assertContains('locale', $fields);
+        $this->assertContains('frozen', $fields, 'the private fields are compared too');
         $this->assertTrue($de->isFrozen());
         $this->assertSame('de', $de->locale);
         $this->assertNull($base->forRecipient('de')->request, 'a named null is kept');

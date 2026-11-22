@@ -443,13 +443,25 @@ final class Translator
         if ($ctx === null) {
             return [$this->locale, $this->overridesOn, null];
         }
-        // Only the text locale and the overrides switch change how a key resolves (the fallback
-        // chain and the layers are the translator's own; the surface counts through these two).
-        $locale = $ctx->surface->admin ? (string) $ctx->surface->uiLocale : $ctx->locale;
-        $overrides = $ctx->surface->overrides;
-        $memo = $this->memos[$overrides ? $locale . "\x01" : $locale] ??= new CatalogueMemo($locale, $overrides);
+        $memo = $this->memoOf($ctx);
 
-        return [$locale, $overrides, $memo];
+        return [$memo->locale, $memo->overrides, $memo];
+    }
+
+    /**
+     * The text cache of $ctx, which names its text locale and overrides switch: on the admin
+     * surface its interface locale and the overrides it asks for, else the context's locale.
+     * Only these two change how a key resolves (the fallback chain and the layers are the
+     * translator's own; the surface counts through these two), so contexts that agree on them
+     * share one cache.
+     */
+    private function memoOf(RenderContext $ctx): CatalogueMemo
+    {
+        $surface = $ctx->surface;
+        $locale = $surface->admin ? (string) $surface->uiLocale : $ctx->locale;
+        $overrides = $surface->overrides;
+
+        return $this->memos[$overrides ? $locale . "\x01" : $locale] ??= new CatalogueMemo($locale, $overrides);
     }
 
     /** Drops every context's text cache: what resolves a key changed (files, scopes, overrides, the default). */
@@ -471,10 +483,9 @@ final class Translator
             $current = $this->locale;
             $overrides = $this->overridesOn;
         } else {
-            $surface = $ctx->surface;
-            $current = $surface->admin ? (string) $surface->uiLocale : $ctx->locale;
-            $overrides = $surface->overrides;
-            $memo = $this->memos[$overrides ? $current . "\x01" : $current] ??= new CatalogueMemo($current, $overrides);
+            $memo = $this->memoOf($ctx);
+            $current = $memo->locale;
+            $overrides = $memo->overrides;
         }
         $locale ??= $current;
         $memoKey = $locale . "\0" . $key;

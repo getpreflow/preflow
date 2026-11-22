@@ -362,11 +362,15 @@ final readonly class RenderContext implements \JsonSerializable
      */
     public function memoKey(): string
     {
-        return MemoKeys::of($this);
+        // Computed once per context: a context is immutable, so its key never changes, and the
+        // memos of a render ask for it on every read. A WeakMap: an entry goes with its context.
+        static $keys = new \WeakMap();
+
+        return $keys[$this] ??= $this->computeMemoKey();
     }
 
-    /** memoKey() computed (MemoKeys keeps it per context). @internal MemoKeys */
-    public function computeMemoKey(): string
+    /** memoKey() computed afresh. */
+    private function computeMemoKey(): string
     {
         $parts = [$this->locale, $this->reads->key(), $this->viewer->key(), $this->surface->key()];
         $extensions = $this->extensions;

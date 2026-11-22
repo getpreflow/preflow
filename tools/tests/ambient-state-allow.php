@@ -192,11 +192,12 @@ return [
     'core/src/Context/Deprecations.php' => [
         'static-state' => [
             'private static array $reported = [];' => 'call sites that already reported a deprecation: once per process by design',
+            'private static int $expecting = 0;' => 'how many Deprecations::expected() stretches are open (tests only); back to 0 when each ends, also on a throw',
         ],
     ],
-    'core/src/Context/MemoKeys.php' => [
+    'core/src/Context/RenderContext.php' => [
         'static-state' => [
-            'private static ?\\WeakMap $keys = null;' => 'each context\'s memoKey(), computed once: a context is immutable, so its key never changes; keyed by the context and gone with it, so nothing reaches another render',
+            'static $keys = new \\WeakMap();' => 'each context\'s memoKey(), computed once: a context is immutable, so its key never changes; keyed by the context and gone with it, so nothing reaches another render',
         ],
     ],
     'core/src/Context/Preview/PreviewToken.php' => [

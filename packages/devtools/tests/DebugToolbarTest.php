@@ -6,6 +6,7 @@ namespace Preflow\DevTools\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Debug\DebugCollector;
+use Preflow\Core\Http\RequestLimits;
 use Preflow\DevTools\DebugToolbar;
 
 final class DebugToolbarTest extends TestCase
@@ -178,6 +179,17 @@ final class DebugToolbarTest extends TestCase
         $this->assertStringContainsString('<script nonce="n0nce">', $html);
     }
 
+    public function test_style_tags_carry_a_style_nonce_of_their_own(): void
+    {
+        $page = '<html><body><script nonce="c2NyaXB0">ok()</script><style nonce="c3R5bGU">p{}</style></body></html>';
+
+        $html = (new DebugToolbar())->render(new DebugCollector(), 'c2NyaXB0', $page, styleNonce: 'c3R5bGU');
+
+        $this->assertStringContainsString('<style nonce="c3R5bGU">', $html);
+        $this->assertStringContainsString('<script nonce="c2NyaXB0">', $html);
+        $this->assertStringContainsString('0 issues', $html, 'the page\'s styles are checked against the style nonce');
+    }
+
     public function test_csp_section_lists_markup_the_policy_will_block(): void
     {
         $page = '<html><body><script>alert(1)</script><script nonce="n0nce">ok()</script>'
@@ -212,6 +224,28 @@ final class DebugToolbarTest extends TestCase
         $this->assertStringContainsString('<div class="pdt-section-title">Deprecations</div>', $html);
         $this->assertStringContainsString('<div class="pdt-row">config/folio.php &quot;assets&quot; is deprecated; move it to config/media.php</div>', $html);
         $this->assertStringContainsString('folio_image() is &lt;deprecated&gt;', $html);
+    }
+
+    public function test_shows_each_time_limit_the_render_asked_for(): void
+    {
+        $limits = new RequestLimits();
+        $limits->timeLimit(300, 30, true);
+        $limits->timeLimit(300, 0, false);
+        $limits->timeLimit(300, 600, false);
+        $limits->timeLimit(300, 30, false);
+
+        $html = (new DebugToolbar())->render(new DebugCollector(), limits: $limits);
+
+        $this->assertStringContainsString('Time limit 300 s: raised from 30 s', $html);
+        $this->assertStringContainsString('Time limit 300 s: kept, there is none', $html);
+        $this->assertStringContainsString('Time limit 300 s: kept, 600 s is longer', $html);
+        $this->assertStringContainsString('Time limit 300 s: not raised from 30 s (set_time_limit is disabled)', $html);
+        $this->assertStringNotContainsString('ignore_user_abort', $html);
+    }
+
+    public function test_empty_request_limits_add_nothing(): void
+    {
+        $this->assertStringNotContainsString('Request limits', (new DebugToolbar())->render(new DebugCollector(), limits: new RequestLimits()));
     }
 
     public function test_no_deprecations_adds_nothing(): void
