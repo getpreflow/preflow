@@ -332,4 +332,45 @@ final class PermissionsFieldTest extends TestCase
             $this->removeScaffold();
         }
     }
+
+    private function disabledField(PermissionRegistry $registry): PermissionsFieldType
+    {
+        $registry->declare('folio.dashboard', 'Dashboard', 'Folio');
+
+        return new PermissionsFieldType($registry, new TypeCatalog('/no/such/models'));
+    }
+
+    public function test_a_grant_of_a_disabled_permission_survives_a_save_and_is_back_when_enabled(): void
+    {
+        $registry = new PermissionRegistry();
+        $registry->declare('ai.translate', 'Use AI translation', 'AI');
+        $field = $this->disabledField($registry);
+        $stored = ['folio.dashboard', 'ai.translate'];
+
+        // Disabled (not declared any more, as Folio does it), then saved.
+        $off = new PermissionRegistry();
+        $off->disable('ai.translate', 'no translator');
+        $field = $this->disabledField($off);
+        $form = $field->renderEditor(new FieldContext(name: 'permissions', value: $stored));
+        $this->assertStringContainsString('no translator', $form);
+        $this->assertStringNotContainsString('Unknown, removed on save', $form);
+        $this->assertMatchesRegularExpression('#<input type="hidden" name="permissions\[\]" value="ai\.translate" data-rbac-kept>#', $form);
+        $this->assertDoesNotMatchRegularExpression('#<input type="checkbox"[^>]*value="ai\.translate"#', $form);
+        $saved = $field->normalizeInput(['', 'folio.dashboard', 'ai.translate'], []);
+        $this->assertSame(['folio.dashboard', 'ai.translate'], $saved);
+
+        // Enabled again: the grant is a normal checked box.
+        $on = new PermissionRegistry();
+        $on->declare('ai.translate', 'Use AI translation', 'AI');
+        $form = $this->disabledField($on)->renderEditor(new FieldContext(name: 'permissions', value: $saved));
+        $this->assertMatchesRegularExpression('#<input type="checkbox" name="permissions\[\]" value="ai\.translate" checked>#', $form);
+    }
+
+    public function test_a_grant_that_is_neither_declared_nor_disabled_is_still_dropped(): void
+    {
+        $field = $this->disabledField(new PermissionRegistry());
+        $this->assertSame(['folio.dashboard'], $field->normalizeInput(['folio.dashboard', 'ghost.view'], []));
+        $form = $field->renderEditor(new FieldContext(name: 'permissions', value: ['ghost.view']));
+        $this->assertStringContainsString('Unknown, removed on save: <code>ghost.view</code>', $form);
+    }
 }

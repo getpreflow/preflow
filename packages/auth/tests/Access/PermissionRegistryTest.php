@@ -31,4 +31,13 @@ final class PermissionRegistryTest extends TestCase
         $this->assertFalse($r->isDeclared('page.pubish'));
         $this->assertSame(['page.*'], $r->patterns());
     }
+
+    public function test_disabled_lists_every_disabled_name_with_its_reason(): void
+    {
+        $r = new PermissionRegistry();
+        $this->assertSame([], $r->disabled());
+        $r->disable('ai.translate', 'no translator');
+        $this->assertSame(['ai.translate' => 'no translator'], $r->disabled());
+        $this->assertFalse($r->isDeclared('ai.translate'));
+    }
 }
