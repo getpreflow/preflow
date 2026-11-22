@@ -178,4 +178,23 @@ final class ChangeDateBackfillTest extends TestCase
         );
         $this->assertSame([['uuid' => 'a', 'title' => 'A']], $pdo->query('SELECT * FROM page')->fetchAll(\PDO::FETCH_ASSOC));
     }
+
+    public function test_records_whose_write_never_takes_do_not_stop_the_rest_of_the_table(): void
+    {
+        $pdo = new \PDO('sqlite:' . $this->dir . '/db.sqlite');
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $pdo->exec('CREATE TABLE page (uuid TEXT PRIMARY KEY, title TEXT, _updated_at TEXT)');
+        // A row no write reaches (an empty id): it keeps matching "no date" on every chunk.
+        $pdo->exec("INSERT INTO page (uuid, title) VALUES ('', 'stuck'), ('b', 'B'), ('c', 'C')");
+        $dm = new DataManager(['default' => new SqliteDriver($pdo)], 'default');
+        $def = new TypeDefinition('page', 'page', 'default', ['title' => new TypeFieldDefinition('title')]);
+
+        $lines = Contexts::run(
+            ContextFactory::forTest()->withClock(new FrozenClock(new \DateTimeImmutable('2026-11-22T12:00:00Z'))),
+            static fn (): array => (new ChangeDateBackfill($dm, static fn (): array => [$def], chunk: 1))->run(),
+        );
+
+        $this->assertSame(['gave 2 records of page a change date (2 from now)'], $lines);
+        $this->assertSame(['' => null, 'b' => '2026-11-22T12:00:00+00:00', 'c' => '2026-11-22T12:00:00+00:00'], $pdo->query('SELECT uuid, _updated_at FROM page ORDER BY uuid')->fetchAll(\PDO::FETCH_KEY_PAIR));
+    }
 }

@@ -26,7 +26,7 @@ use Preflow\Data\Attributes\Timestamps;
  * a date a save gave meanwhile stays, no version moves, and the record is written as a save writes
  * it (a JSON file in its canonical bytes). Only empty dates (null or '') are written, so a second
  * run changes nothing. Records are read CHUNK at a time, each chunk in one transaction where the
- * storage has them; a run cut short leaves the rest for the next migrate.
+ * storage has them, in the order of their ids; a run cut short leaves the rest for the next migrate.
  *
  * What it says, one line per table: how many records got a date, from which sources; a warning for
  * a table that holds no change dates (no column: a table a migration made); a "refused:" line (so
@@ -118,20 +118,21 @@ final class ChangeDateBackfill
             'now',
         ], 0);
         $lines = [];
-        $tried = [];
         try {
             foreach ([null, ''] as $empty) {
+                // Paged by id: a record whose write does not take (it waits for the next run) is
+                // passed over, never read again in this run, so it cannot hold up the rest.
+                $after = null;
                 while (true) {
                     $query = $empty === null ? (new Query())->where($key, null) : (new Query())->where($key, '=', $empty);
-                    $rows = $driver->findMany($def->table, $query->limit($this->chunk))->items();
-                    // A record tried in this run is not tried again (one whose write did not take waits for the next run).
-                    $rows = array_values(array_filter($rows, static fn (array $row): bool => !isset($tried[(string) ($row[$def->idField] ?? '')])));
+                    if ($after !== null) {
+                        $query->where($def->idField, '>', $after);
+                    }
+                    $rows = $driver->findMany($def->table, $query->orderBy($def->idField)->limit($this->chunk))->items();
                     if ($rows === []) {
                         break;
                     }
-                    foreach ($rows as $row) {
-                        $tried[(string) ($row[$def->idField] ?? '')] = true;
-                    }
+                    $after = $rows[count($rows) - 1][$def->idField] ?? null;
                     [$dates, $labels] = $this->dates($def, $driver, $rows, $now);
                     $write = function () use ($def, $key, $dates, $labels, &$counts): void {
                         foreach ($dates as $id => $value) {
@@ -141,6 +142,9 @@ final class ChangeDateBackfill
                         }
                     };
                     $driver instanceof Transactions ? $this->dm->transaction([$def->storage], $write) : $write();
+                    if ($after === null || count($rows) < $this->chunk) {
+                        break;
+                    }
                 }
             }
         } catch (ChangeDateSourceFailed $e) {
