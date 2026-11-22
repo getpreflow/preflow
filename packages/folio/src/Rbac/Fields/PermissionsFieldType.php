@@ -75,9 +75,19 @@ final class PermissionsFieldType implements FieldType
         $held = $this->coverage?->held();
         $denied = static fn (string $value): string => $held !== null && !PermissionCoverage::covers($held, $value)
             ? ' disabled data-rbac-denied title="' . $e($deniedText) . '"' : '';
-        $input = static fn (string $value, ?string $title = null, string $attrs = '') => '<input type="checkbox" name="' . $name . '" value="' . $e($value) . '"'
-            . ($title !== null && $denied($value) === '' ? ' title="' . $e($title) . '"' : '') . $attrs . $denied($value)
-            . (in_array($value, $selected, true) ? ' checked' : '') . '>';
+        $input = function (string $value, ?string $title = null, string $attrs = '') use ($name, $e, $denied, $selected): string {
+            // A disabled permission (declared or not) is not editable: shown with the registry's reason, its stored grant posted by a hidden input.
+            $reason = $this->registry->disabledReason($value);
+            if ($reason !== null) {
+                return (in_array($value, $selected, true) ? '<input type="hidden" name="' . $name . '" value="' . $e($value) . '" data-rbac-kept>' : '')
+                    . '<input type="checkbox" name="' . $name . '" value="' . $e($value) . '"' . $attrs . ' disabled data-rbac-denied title="' . $e($reason) . '"'
+                    . (in_array($value, $selected, true) ? ' checked' : '') . '>';
+            }
+
+            return '<input type="checkbox" name="' . $name . '" value="' . $e($value) . '"'
+                . ($title !== null && $denied($value) === '' ? ' title="' . $e($title) . '"' : '') . $attrs . $denied($value)
+                . (in_array($value, $selected, true) ? ' checked' : '') . '>';
+        };
         [$sections, $others] = $this->layout();
         $fresh = array_flip(array_intersect($this->fresh(), $this->controlled($sections, $others)));
         $newBadge = '<span class="folio-badge is-warning rbac-fresh-badge">' . $e($t('new')) . '</span>';

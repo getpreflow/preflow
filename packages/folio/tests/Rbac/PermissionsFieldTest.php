@@ -373,4 +373,18 @@ final class PermissionsFieldTest extends TestCase
         $form = $field->renderEditor(new FieldContext(name: 'permissions', value: ['ghost.view']));
         $this->assertStringContainsString('Unknown, removed on save: <code>ghost.view</code>', $form);
     }
+
+    public function test_a_declared_and_disabled_permission_is_not_editable_shows_its_reason_and_keeps_its_grant(): void
+    {
+        $registry = new PermissionRegistry();
+        $registry->declare('members.access', 'Use the members area', 'Members');
+        $registry->disable('members.access', 'extension members (off)');
+        $field = $this->disabledField($registry);
+        $form = $field->renderEditor(new FieldContext(name: 'permissions', value: ['members.access']));
+
+        $this->assertStringContainsString('extension members (off)', $form);
+        $this->assertMatchesRegularExpression('#<input type="checkbox"[^>]*value="members\.access"[^>]* disabled#', $form);
+        $this->assertMatchesRegularExpression('#<input type="hidden" name="permissions\[\]" value="members\.access" data-rbac-kept>#', $form);
+        $this->assertSame(['members.access'], $field->normalizeInput(['', 'members.access'], []));
+    }
 }
