@@ -101,13 +101,11 @@ final class AdminLocaleMiddleware implements MiddlewareInterface
      * the frontend's texts: within the public surface in the request's content locale. Outside
      * an admin request it just runs it.
      *
-     * @param Translator $translator not used since 0.81.0 (the translator follows the render context)
-     *
      * @template T
      * @param \Closure(): T $render
      * @return T
      */
-    public static function asFrontend(Translator $translator, ServerRequestInterface $request, \Closure $render): mixed
+    public static function asFrontend(ServerRequestInterface $request, \Closure $render): mixed
     {
         $frontend = $request->getAttribute(self::FRONTEND_LOCALE);
         if (!is_string($frontend)) {
