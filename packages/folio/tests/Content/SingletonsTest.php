@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Content;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Context\Contexts;
 use Preflow\Data\DataManager;
@@ -28,7 +29,7 @@ final class SingletonsTest extends TestCase
 
     public function test_memoized_per_request(): void
     {
-        $dir = sys_get_temp_dir() . '/sgl_' . bin2hex(random_bytes(4));
+        $dir = TempRoots::path('sgl_');
         mkdir($dir . '/models', 0777, true);
         file_put_contents($dir . '/models/site.json', json_encode([
             'key' => 'site', 'table' => 'site', 'storage' => 'json', 'id_field' => 'uuid', 'singleton' => true,
@@ -72,7 +73,7 @@ final class SingletonsTest extends TestCase
 
     public function test_memoised_settings_are_still_a_read_of_every_page(): void
     {
-        $dir = sys_get_temp_dir() . '/sgl_' . bin2hex(random_bytes(4));
+        $dir = TempRoots::path('sgl_');
         mkdir($dir . '/models', 0777, true);
         file_put_contents($dir . '/models/site.json', json_encode([
             'key' => 'site', 'table' => 'site', 'storage' => 'json', 'id_field' => 'uuid', 'singleton' => true,

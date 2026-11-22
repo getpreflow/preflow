@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Http;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -27,7 +28,7 @@ final class NavPreferenceControllerTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->base = sys_get_temp_dir() . '/folio_navpref_' . bin2hex(random_bytes(4));
+        $this->base = TempRoots::path('folio_navpref_');
         mkdir($this->base . '/m', 0777, true);
         mkdir($this->base . '/s', 0777, true);
         $dm = new DataManager(['default' => new JsonFileDriver($this->base . '/s')], 'default', new TypeRegistry($this->base . '/m'), new ValidatorFactory(new RuleFactory()));

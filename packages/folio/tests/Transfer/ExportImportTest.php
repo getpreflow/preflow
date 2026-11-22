@@ -262,7 +262,9 @@ final class ExportImportTest extends TestCase
         $summary = $this->import($this->craft('media/2026/10/a1.jpg', 'JPEGBYTES'));
 
         $this->assertSame('PRIVATEPDF', file_get_contents($this->dir . '/storage/private-media/2026/10/p1.pdf'));
-        $this->assertSame([], $this->importer()->read($this->craft('media/2026/10/a1.jpg', 'JPEGBYTES'))->files['private-media']['removed'] ?? []);
+        $again = $this->importer()->read($this->craft('media/2026/10/a1.jpg', 'JPEGBYTES'));
+        $this->assertSame([], $again->files['private-media']['removed'] ?? []);
+        $again->cleanup();
 
         // A current archive carries the root, so a file only here is removed as before.
         $archive = $this->export();

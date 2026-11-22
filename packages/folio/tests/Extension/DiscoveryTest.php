@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Extension;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Data\TypeRegistry;
@@ -27,7 +28,7 @@ final class DiscoveryTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/folio_ext_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('folio_ext_');
         mkdir($this->dir . '/app/Folio', 0777, true);
         $root = $this->dir . '/app/Folio/';
         $this->autoload = static function (string $class) use ($root): void {

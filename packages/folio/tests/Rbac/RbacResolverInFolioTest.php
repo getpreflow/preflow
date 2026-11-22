@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Rbac;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
@@ -23,7 +24,7 @@ final class RbacResolverInFolioTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/rbac_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('rbac_');
         mkdir($this->dir, 0777, true);
     }
 

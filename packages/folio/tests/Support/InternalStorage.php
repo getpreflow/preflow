@@ -34,7 +34,7 @@ trait InternalStorage
 
             return $dm;
         }
-        $this->storageDir = sys_get_temp_dir() . '/folio_internal_' . bin2hex(random_bytes(4));
+        $this->storageDir = TempRoots::path('folio_internal_');
 
         return new DataManager(drivers: ['default' => new JsonFileDriver($this->storageDir)]);
     }

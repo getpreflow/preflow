@@ -41,7 +41,7 @@ trait StaffScaffold
     private function staffSite(array $guard = ['remember' => ['cookie' => 'folio_remember', 'days' => 30, 'path' => '/folio']], array $folio = [], ?string $locale = null, string $sql = 'sqlite', ?string $url = 'https://site.test', array $data = [], array $models = []): void
     {
         putenv('APP_DEBUG=1');
-        $this->dir = sys_get_temp_dir() . '/folio_staff_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('folio_staff_');
         @mkdir($this->dir . '/storage/data', 0777, true);
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log');
         $this->write('config/app.php', "<?php\nreturn " . var_export(['name' => 'Staff Site', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-staff-test-key-0123456789abcdef'] + ($url === null ? [] : ['url' => $url]), true) . ";\n");

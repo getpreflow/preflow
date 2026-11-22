@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Content;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use OpenSpout\Common\Entity\Cell\NumericCell;
 use OpenSpout\Reader\XLSX\Reader;
@@ -31,7 +32,7 @@ final class ListExportTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->base = sys_get_temp_dir() . '/folio_export_' . bin2hex(random_bytes(4));
+        $this->base = TempRoots::path('folio_export_');
         mkdir($this->base . '/m', 0777, true);
         mkdir($this->base . '/s', 0777, true);
         $models = [

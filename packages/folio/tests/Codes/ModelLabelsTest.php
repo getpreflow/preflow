@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Codes;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\ModelLabelKeys;
 use Preflow\Folio\Extension\Attributes\FolioExtension;
@@ -21,7 +22,7 @@ final class ModelLabelsTest extends TestCase
     {
         $root = dirname(__DIR__, 2);
         $composer = json_decode((string) file_get_contents($root . '/composer.json'), true);
-        $installed = sys_get_temp_dir() . '/preflow_installed_' . bin2hex(random_bytes(4)) . '.json';
+        $installed = TempRoots::path('preflow_installed_') . '.json';
         file_put_contents($installed, (string) json_encode(['packages' => [[...$composer, 'install-path' => $root]]]));
         try {
             $registry = TranslationRegistry::fromInstalled($installed);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Seo;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\Attributes\RequiresFunction;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
@@ -31,7 +32,7 @@ final class FolioPageMetaTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/folio_page_meta_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('folio_page_meta_');
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Meta', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-page-meta-test-key-01234-0123456789abcdef'];\n");
         $this->write('config/data.php', "<?php\nreturn ['drivers' => ['json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data']], 'default' => 'json', 'models_path' => __DIR__ . '/models'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class];\n");

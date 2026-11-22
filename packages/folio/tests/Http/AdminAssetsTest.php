@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Http;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Http\AdminAssets;
@@ -17,7 +18,7 @@ final class AdminAssetsTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/folio_admin_assets_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('folio_admin_assets_');
         mkdir($this->dir, 0777, true);
         file_put_contents($this->dir . '/pkg.css', '.pkg { color: red; }');
     }

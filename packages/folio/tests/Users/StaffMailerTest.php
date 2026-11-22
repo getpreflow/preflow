@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Users;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Users\StaffMailer;
 use Preflow\I18n\Translator;
@@ -75,7 +76,7 @@ final class StaffMailerTest extends TestCase
         $factory = new TransportFactory(['mail' => ['driver' => 'memory']], sys_get_temp_dir());
         $notifier = new Notifier($factory, ['email' => ['transport' => 'mail', 'from' => 'hello@site.test']], defer: false);
         $mailer = new Mailer($notifier, new BasicMailLayout(), new MailConfig());
-        $site = sys_get_temp_dir() . '/staffmailer_' . bin2hex(random_bytes(4));
+        $site = TempRoots::path('staffmailer_');
         mkdir($site . '/de', 0777, true);
         // A site's word for rbac's reset mail shows: the mail comes from rbac-mail.*, not folio.mail.*.
         file_put_contents($site . '/de/rbac-mail.php', "<?php\nreturn ['reset' => ['subject' => 'Neues Passwort für {site}']];\n");
@@ -123,7 +124,7 @@ final class StaffMailerTest extends TestCase
     {
         $factory = new TransportFactory(['mail' => ['driver' => 'memory']], sys_get_temp_dir());
         $notifier = new Notifier($factory, ['email' => ['transport' => 'missing', 'from' => 'hello@site.test']]);
-        $log = tempnam(sys_get_temp_dir(), 'staffmailer');
+        $log = TempRoots::track((string) tempnam(sys_get_temp_dir(), 'staffmailer'));
         $previous = ini_set('error_log', $log);
 
         try {

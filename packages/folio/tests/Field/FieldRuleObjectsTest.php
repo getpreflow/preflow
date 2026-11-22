@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Field;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
@@ -57,7 +58,7 @@ final class FieldRuleObjectsTest extends TestCase
 
     public function test_the_record_validator_runs_a_rule_object_of_a_field_type(): void
     {
-        $dir = sys_get_temp_dir() . '/fro_' . bin2hex(random_bytes(4));
+        $dir = TempRoots::path('fro_');
         mkdir($dir, 0777, true);
         file_put_contents($dir . '/page.json', json_encode([
             'key' => 'page', 'table' => 'page', 'storage' => 'json',

@@ -20,7 +20,7 @@ trait AssetFixtures
 
     private function makeAssetRoot(): void
     {
-        $this->assetRoot = sys_get_temp_dir() . '/assets_' . bin2hex(random_bytes(4));
+        $this->assetRoot = TempRoots::path('assets_');
         mkdir($this->assetRoot, 0777, true);
     }
 

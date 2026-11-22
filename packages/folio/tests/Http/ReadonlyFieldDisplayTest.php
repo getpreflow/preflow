@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Http;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Preflow\Folio\Tests\Support\RecordWriters;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
@@ -44,7 +45,7 @@ final class ReadonlyFieldDisplayTest extends TestCase
     {
         $this->tz = date_default_timezone_get();
         date_default_timezone_set('UTC');
-        $this->base = sys_get_temp_dir() . '/folio_ro_' . bin2hex(random_bytes(4));
+        $this->base = TempRoots::path('folio_ro_');
         mkdir($this->base . '/m', 0777, true);
         mkdir($this->base . '/s', 0777, true);
         file_put_contents($this->base . '/m/author.json', json_encode([

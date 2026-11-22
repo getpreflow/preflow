@@ -29,7 +29,7 @@ trait PublishingScaffold
     {
         $this->storage = $storage;
         putenv('APP_DEBUG=1');
-        $this->dir = sys_get_temp_dir() . '/folio_pub_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('folio_pub_');
 
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key-0123456789abcdef'];\n");
         $sqlite = $storage === 'sqlite' ? "'sqlite' => ['path' => __DIR__ . '/../storage/app.sqlite']," : '';

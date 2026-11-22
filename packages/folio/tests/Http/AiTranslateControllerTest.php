@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Http;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
@@ -330,7 +331,7 @@ final class AiTranslateControllerTest extends TestCase
     /** The limits as an app without a usable APP_KEY gets them (sign-in needs a key, so the binding is swapped after it). */
     private function limitsWithoutKey(): void
     {
-        $dir = sys_get_temp_dir() . '/preflow-nokey-' . bin2hex(random_bytes(4));
+        $dir = TempRoots::path('preflow-nokey-');
         $throttle = new \Preflow\Core\Throttle\Throttle(new \Preflow\Data\DataManager(['default' => new \Preflow\Data\Driver\JsonFileDriver($dir)]), '');
         $this->session->container()->instance(\Preflow\Ai\Limits\AiLimits::class, new \Preflow\Ai\Limits\AiLimits($throttle, ['translate' => ['max' => 5]]));
     }

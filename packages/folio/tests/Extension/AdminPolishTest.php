@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Extension;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
@@ -155,7 +156,7 @@ final class AdminPolishTest extends TestCase
 
         $res = $this->send('GET', '/folio/member/_export');
         $this->assertSame(200, $res->getStatusCode());
-        $file = tempnam(sys_get_temp_dir(), 'folio_x');
+        $file = TempRoots::track((string) tempnam(sys_get_temp_dir(), 'folio_x'));
         file_put_contents($file, (string) $res->getBody());
         $reader = new \OpenSpout\Reader\XLSX\Reader();
         $reader->open($file);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Extension;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\Access\Access;
@@ -92,7 +93,7 @@ final class PermissionsTest extends TestCase
     {
         $this->crm(enabled: false);
 
-        $log = (string) tempnam(sys_get_temp_dir(), 'perm');
+        $log = TempRoots::track((string) tempnam(sys_get_temp_dir(), 'perm'));
         ini_set('error_log', $log);
         $app = $this->app(); // no throw, even in debug
         $access = $app->container()->get(Access::class);

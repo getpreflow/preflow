@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Content;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Preflow\Folio\Tests\Support\RecordWriters;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
@@ -63,7 +64,7 @@ final class UniqueFieldFormTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/folio_unique_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('folio_unique_');
         mkdir($this->dir . '/m', 0777, true);
         foreach (['page' => false, 'post' => true] as $key => $publishing) {
             file_put_contents($this->dir . "/m/{$key}.json", json_encode([

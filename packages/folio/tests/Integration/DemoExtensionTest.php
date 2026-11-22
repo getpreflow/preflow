@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Integration;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
@@ -63,7 +64,7 @@ final class DemoExtensionTest extends TestCase
     #[RunInSeparateProcess]
     public function test_note_panel_and_action(): void
     {
-        $this->copy = sys_get_temp_dir() . '/folio_demo_ext_' . bin2hex(random_bytes(4));
+        $this->copy = TempRoots::path('folio_demo_ext_');
         mkdir($this->copy, 0777, true);
         foreach (['config', 'resources', 'app'] as $dir) {
             exec('cp -R ' . escapeshellarg(self::DEMO . '/' . $dir) . ' ' . escapeshellarg($this->copy . '/' . $dir));

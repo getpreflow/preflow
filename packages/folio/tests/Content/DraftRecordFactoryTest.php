@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Content;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Locales;
@@ -28,7 +29,7 @@ final class DraftRecordFactoryTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/drf_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('drf_');
         mkdir($this->dir . '/models', 0777, true);
         mkdir($this->dir . '/uploads', 0777, true);
         file_put_contents($this->dir . '/models/page.json', json_encode([

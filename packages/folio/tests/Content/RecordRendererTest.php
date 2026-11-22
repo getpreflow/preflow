@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Content;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
@@ -52,7 +53,7 @@ final class RecordRendererTest extends TestCase
 
     private function record(): DynamicRecord
     {
-        $dir = sys_get_temp_dir() . '/rr_' . bin2hex(random_bytes(4));
+        $dir = TempRoots::path('rr_');
         mkdir($dir . '/m', 0777, true);
         mkdir($dir . '/s', 0777, true);
         file_put_contents($dir . '/m/note.json', json_encode([

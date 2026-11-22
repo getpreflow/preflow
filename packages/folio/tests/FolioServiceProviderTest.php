@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Tests\Support\TempWorkingDirectory;
 use Preflow\Core\Application;
@@ -136,7 +137,7 @@ final class FolioServiceProviderTest extends TestCase
         $this->assertSame(['folio', 'media', 'copies'], $c->get(\Preflow\Media\Usage\AssetUsage::class)->sourceNames()); // poster use and copies asked last
 
         // One ImageTag, Folio's: legacy upload paths resolve under {prefix}/_uploads.
-        $c->instance(\Preflow\Data\DataManager::class, new \Preflow\Data\DataManager(drivers: ['json' => new \Preflow\Data\Driver\JsonFileDriver(sys_get_temp_dir() . '/folio_order_' . bin2hex(random_bytes(4)))], defaultDriver: 'json'));
+        $c->instance(\Preflow\Data\DataManager::class, new \Preflow\Data\DataManager(drivers: ['json' => new \Preflow\Data\Driver\JsonFileDriver(TempRoots::path('folio_order_'))], defaultDriver: 'json'));
         $tag = $c->get(\Preflow\Media\ImageTag::class);
         $this->assertSame($tag, $c->get(\Preflow\Media\ImageTag::class));
         $legacy = '2024/05/' . str_repeat('a', 32) . '.pdf';
@@ -158,7 +159,7 @@ final class FolioServiceProviderTest extends TestCase
     /** @param array<string, string> $files more files of the app, by path */
     private function appWith(array $folio, array $files = []): array
     {
-        $dir = sys_get_temp_dir() . '/folio_sp_' . bin2hex(random_bytes(5));
+        $dir = TempRoots::path('folio_sp_');
         $w = static function (string $rel, string $content) use ($dir): void {
             @mkdir(dirname($dir . '/' . $rel), 0777, true);
             file_put_contents($dir . '/' . $rel, $content);
@@ -279,7 +280,7 @@ final class FolioServiceProviderTest extends TestCase
 
     public function test_cache_path_moves_folio_caches(): void
     {
-        $fc = sys_get_temp_dir() . '/folio_fc_' . bin2hex(random_bytes(5));
+        $fc = TempRoots::path('folio_fc_');
         [$app, $dir] = $this->appWith(['cache_path' => $fc]);
         $this->renderPages($app);
 
@@ -358,7 +359,7 @@ final class FolioServiceProviderTest extends TestCase
     /** @return array<string, mixed> the sections by name */
     private function navSections(array $folio, bool $signedIn = true): array
     {
-        $base = sys_get_temp_dir() . '/folio_navcfg_' . bin2hex(random_bytes(5));
+        $base = TempRoots::path('folio_navcfg_');
         mkdir($base . '/config', 0777, true);
         file_put_contents($base . '/config/folio.php', '<?php return ' . var_export($folio, true) . ';');
         try {
@@ -432,7 +433,7 @@ final class FolioServiceProviderTest extends TestCase
 
     public function test_folio_config_is_read_once(): void
     {
-        $base = sys_get_temp_dir() . '/folio_cfgonce_' . bin2hex(random_bytes(5));
+        $base = TempRoots::path('folio_cfgonce_');
         mkdir($base . '/config', 0777, true);
         file_put_contents($base . '/config/folio.php', '<?php return ' . var_export(['password_min' => 12], true) . ';');
         try {

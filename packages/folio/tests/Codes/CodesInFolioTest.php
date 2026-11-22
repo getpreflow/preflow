@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Codes;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
@@ -34,7 +35,7 @@ final class CodesInFolioTest extends TestCase
     protected function setUp(): void
     {
         putenv('APP_DEBUG=1');
-        $this->dir = sys_get_temp_dir() . '/codes_folio_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('codes_folio_');
         @mkdir($this->dir . '/storage/data', 0777, true);
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log'); // stderr fails a separate-process test
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Codes', 'debug' => 1, 'engine' => 'twig', 'key' => 'codes-app-test-key-0123456789abcdef'];\n");

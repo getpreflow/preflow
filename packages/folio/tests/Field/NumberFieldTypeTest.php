@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Field;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Content\FrontendConfigException;
 use Preflow\Folio\Content\TypeCatalog;
@@ -58,7 +59,7 @@ final class NumberFieldTypeTest extends TestCase
     public function test_an_invalid_unit_is_a_boot_error(): void
     {
         foreach (['number', 'int', 'float', 'integer'] as $type) {
-            $dir = sys_get_temp_dir() . '/folio_unit_' . bin2hex(random_bytes(4));
+            $dir = TempRoots::path('folio_unit_');
             mkdir($dir);
             file_put_contents($dir . '/thing.json', (string) json_encode(['key' => 'thing', 'fields' => ['qty' => ['type' => $type, 'unit' => '']]]));
             try {

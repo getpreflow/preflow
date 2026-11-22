@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Users;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
@@ -45,7 +46,7 @@ final class RecordUserProviderTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/recuser_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('recuser_');
         mkdir($this->dir . '/models', 0777, true);
         $this->build('sqlite');
     }
@@ -313,7 +314,7 @@ final class RecordUserProviderTest extends TestCase
     private function loginThroughSessionGuard(string $storage): void
     {
         $this->rmTree($this->dir);
-        $dir = $this->dir = sys_get_temp_dir() . '/recuser_app_' . bin2hex(random_bytes(4));
+        $dir = $this->dir = TempRoots::path('recuser_app_');
         $w = function (string $rel, string $content) use ($dir): void {
             @mkdir(dirname($dir . '/' . $rel), 0777, true);
             file_put_contents($dir . '/' . $rel, $content);

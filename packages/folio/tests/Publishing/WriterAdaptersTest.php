@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Publishing;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Publishing\FolioRecordAddresses;
@@ -17,7 +18,7 @@ final class WriterAdaptersTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/folio_writer_adapters_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('folio_writer_adapters_');
         mkdir($this->dir . '/models', 0777, true);
         foreach (['song' => ['list' => ['orderable' => true]], 'album' => ['list' => ['orderable' => 'yes']], 'band' => []] as $key => $model) {
             file_put_contents($this->dir . "/models/{$key}.json", (string) json_encode(['key' => $key, 'fields' => ['title' => ['type' => 'string']]] + $model));

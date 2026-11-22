@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Http;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Content\FrontendConfigException;
@@ -188,7 +189,7 @@ final class EditorSidePanelTest extends TestCase
     public function test_an_unknown_panel_or_width_is_a_boot_error(): void
     {
         foreach ([['panel', 'left', '"panel" must be "main" or "side"'], ['width', 'third', '"width" must be "full" or "half"'], ['width', true, '"width" must be "full" or "half"']] as [$option, $value, $message]) {
-            $dir = sys_get_temp_dir() . '/folio_layout_' . bin2hex(random_bytes(4));
+            $dir = TempRoots::path('folio_layout_');
             mkdir($dir);
             file_put_contents($dir . '/thing.json', (string) json_encode(['key' => 'thing', 'fields' => ['name' => ['type' => 'string', $option => $value]]]));
             try {
@@ -202,7 +203,7 @@ final class EditorSidePanelTest extends TestCase
             }
         }
 
-        $dir = sys_get_temp_dir() . '/folio_layout_' . bin2hex(random_bytes(4));
+        $dir = TempRoots::path('folio_layout_');
         mkdir($dir);
         file_put_contents($dir . '/thing.json', (string) json_encode(['key' => 'thing', 'fields' => ['name' => ['type' => 'string', 'panel' => 'side', 'width' => 'half']]]));
         $this->assertCount(1, (new TypeCatalog($dir))->all(), 'the two values each key allows');

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Users;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\Record\RecordUser;
@@ -46,7 +47,7 @@ final class LegacyRecordUserNamesTest extends TestCase
     /** @return list<string> the deprecations the booted app logged */
     private function boot(string $providerClass): array
     {
-        $dir = $this->dir = sys_get_temp_dir() . '/legacy_recuser_' . bin2hex(random_bytes(4));
+        $dir = $this->dir = TempRoots::path('legacy_recuser_');
         $w = function (string $rel, string $content) use ($dir): void {
             @mkdir(dirname($dir . '/' . $rel), 0777, true);
             file_put_contents($dir . '/' . $rel, $content);

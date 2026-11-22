@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Translations;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Translations\StoredOverrides;
 use Preflow\I18n\OverrideRules;
@@ -35,7 +36,7 @@ final class StoredOverridesTextTest extends TestCase
 
     public function test_compiled_texts_are_still_a_read_of_the_overrides(): void
     {
-        $dir = sys_get_temp_dir() . '/ovr_' . bin2hex(random_bytes(4));
+        $dir = TempRoots::path('ovr_');
         mkdir($dir);
         try {
             $dm = new \Preflow\Data\DataManager(['default' => new \Preflow\Data\Driver\JsonFileDriver($dir . '/store')]);

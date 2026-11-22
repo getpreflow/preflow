@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Rbac;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Preflow\Core\Application;
 use Preflow\Data\DataManager;
@@ -28,7 +29,7 @@ trait RbacAppScaffold
     private function scaffold(): void
     {
         putenv('APP_DEBUG=1');
-        $this->dir = sys_get_temp_dir() . '/rbac_app_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('rbac_app_');
         @mkdir($this->dir, 0777, true);
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log'); // stderr fails a separate-process test
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key-0123456789abcdef'];\n");

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Dashboard;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
@@ -258,7 +259,7 @@ final class DashboardTest extends TestCase
 
     public function test_counts_are_aggregates_not_loaded_records(): void
     {
-        $base = sys_get_temp_dir() . '/folio_dash_' . bin2hex(random_bytes(4));
+        $base = TempRoots::path('folio_dash_');
         mkdir($base . '/m', 0777, true);
         mkdir($base . '/s', 0777, true);
         file_put_contents($base . '/m/page.json', (string) json_encode(['key' => 'page', 'table' => 'page', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Pages', 'frontend' => ['route' => '/{slug}'], 'fields' => ['title' => ['type' => 'string']]]));
