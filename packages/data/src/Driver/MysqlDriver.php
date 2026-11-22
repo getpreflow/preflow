@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Driver;
 
+use Preflow\Data\MaintenanceReport;
 use Preflow\Data\Migration\Grammar\MysqlGrammar;
 use Preflow\Data\RankedSearch;
 use Preflow\Data\RemembersColumns;
 
-final class MysqlDriver extends PdoDriver implements RankedSearch, RemembersColumns
+final class MysqlDriver extends PdoDriver implements RankedSearch, RemembersColumns, MaintenanceReport
 {
     /** Strict, portable session mode; ANSI_QUOTES is deliberately absent (we quote with backticks). */
     public const SQL_MODE = 'STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';
@@ -134,6 +135,77 @@ final class MysqlDriver extends PdoDriver implements RankedSearch, RemembersColu
         }
 
         return $this->searchCollation;
+    }
+
+    /**
+     * CHECK TABLE on every base table of the database: one line per error or warning the server
+     * answers with. References between records are not checked (see report()).
+     *
+     * @since 0.84.0
+     */
+    public function check(): array
+    {
+        $problems = [];
+        foreach ($this->tables() as $table) {
+            foreach ($this->pdo->query('CHECK TABLE ' . $this->dialect->quoteIdentifier($table))->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+                $row = array_change_key_case($row);
+                $type = strtolower((string) ($row['msg_type'] ?? ''));
+                $text = (string) ($row['msg_text'] ?? '');
+                if (in_array($type, ['error', 'warning'], true) || ($type === 'status' && !in_array(strtolower($text), ['ok', 'table is already up to date'], true))) {
+                    $problems[] = "{$table}: {$text}";
+                }
+            }
+        }
+
+        return $problems;
+    }
+
+    /**
+     * OPTIMIZE TABLE on every base table (InnoDB rebuilds it and updates its statistics).
+     *
+     * @since 0.84.0
+     */
+    public function compact(): void
+    {
+        if ($this->inTransaction()) {
+            throw new \LogicException('compact() cannot run inside a transaction.');
+        }
+        foreach ($this->tables() as $table) {
+            foreach ($this->pdo->query('OPTIMIZE TABLE ' . $this->dialect->quoteIdentifier($table))->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+                $row = array_change_key_case($row);
+                if (strtolower((string) ($row['msg_type'] ?? '')) === 'error') {
+                    throw new \RuntimeException("Could not compact {$table}: " . (string) ($row['msg_text'] ?? ''));
+                }
+            }
+        }
+    }
+
+    /**
+     * The text columns of the database by collation (the text rule lives in a column's
+     * collation), and what MySQL has no check for.
+     *
+     * @since 0.84.0
+     */
+    public function report(): array
+    {
+        $lines = [];
+        $rows = $this->pdo->query(
+            "SELECT c.COLLATION_NAME, COUNT(*) FROM information_schema.COLUMNS c JOIN information_schema.TABLES t ON t.TABLE_SCHEMA = c.TABLE_SCHEMA AND t.TABLE_NAME = c.TABLE_NAME "
+            . "WHERE c.TABLE_SCHEMA = DATABASE() AND t.TABLE_TYPE = 'BASE TABLE' AND c.COLLATION_NAME IS NOT NULL GROUP BY c.COLLATION_NAME ORDER BY c.COLLATION_NAME",
+        )->fetchAll(\PDO::FETCH_NUM);
+        foreach ($rows as [$collation, $count]) {
+            $lines[] = "collation {$collation}: {$count} column(s)";
+        }
+        $lines[] = 'text comparison collation of this server: ' . ($this->matchCollation() ?? 'none of the usual ones (columns compare exactly)');
+        $lines[] = 'not applicable: foreign key references (MySQL enforces them as records are written and has no command to verify them afterwards)';
+
+        return $lines;
+    }
+
+    /** @return list<string> */
+    private function tables(): array
+    {
+        return array_map('strval', $this->pdo->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME")->fetchAll(\PDO::FETCH_COLUMN));
     }
 
     protected function configure(\PDO $pdo): void

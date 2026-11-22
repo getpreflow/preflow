@@ -79,17 +79,19 @@ A SQLite database's text columns use the collation `preflow_text`, which only Pr
 connection has, so the `sqlite3` tool can't check, compact or restore it. These commands can:
 
 ```
-php preflow db:check                  # PRAGMA integrity_check + foreign_key_check; exit 1 on a problem
-php preflow db:vacuum                 # VACUUM
+php preflow db:check                  # SQLite: PRAGMA integrity_check + foreign_key_check; MySQL/MariaDB (0.84): CHECK TABLE
+                                      # + a collation report; exit 1 on a problem
+php preflow db:vacuum                 # SQLite: VACUUM; MySQL/MariaDB (0.84): OPTIMIZE TABLE
 php preflow db:dump backup.sql        # the database as SQL (no file: standard output; an existing file is refused)
 php preflow db:restore backup.sql --storage=copy   # into an empty database only ("-" reads standard input)
 ```
 
 Each takes `--storage=<name>`; without it, the default storage when it can, else the one storage
 that can. They ask the storage's driver for `Preflow\Data\Maintenance` (`check`, `vacuum`) and
-`Preflow\Data\Dumps` (`dump`, `restore`); `SqliteDriver` implements both. On MySQL/MariaDB, whose
-own tools work on Preflow's tables, and on JSON storage they exit 1 naming the tools to use
-(`mysqlcheck`, `mysqldump`, a copy of the folder). Messages go to standard error.
+`Preflow\Data\Dumps` (`dump`, `restore`); `SqliteDriver` implements both, `MysqlDriver` `Maintenance` (since 0.84; what MySQL
+has no check for, such as references between records, is listed as "not applicable", never faked).
+On MySQL/MariaDB dump and restore, and on JSON storage, they exit 1 naming the tools to use
+(`mysqldump`, a copy of the folder). Messages go to standard error.
 
 ### `activity:prune` — apply the activity log's retention (since 0.77)
 

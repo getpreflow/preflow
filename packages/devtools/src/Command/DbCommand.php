@@ -8,6 +8,7 @@ use Preflow\Core\Application;
 use Preflow\Data\DataManager;
 use Preflow\Data\Dumps;
 use Preflow\Data\Maintenance;
+use Preflow\Data\MaintenanceReport;
 use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\Schema\TextRuleConversion;
 
@@ -16,7 +17,9 @@ use Preflow\Data\Schema\TextRuleConversion;
  * database's tools cannot (a SQLite file's text columns use the preflow_text collation, which the
  * sqlite3 tool lacks: its VACUUM, PRAGMA integrity_check and restoring a .dump fail there):
  *
- *   db:check    Maintenance::check(): every problem found, exit 1 when there is one; then, as
+ *   db:check    Maintenance::check(): every problem found, exit 1 when there is one; then the
+ *               MaintenanceReport lines of a store that has them (MySQL: CHECK TABLE is the check,
+ *               a collation report and what is not applicable follow); then, as
  *               warnings, the text columns of Preflow's tables that compare neither by the text
  *               rule nor exactly (TextRuleConversion::unconverted())
  *   db:vacuum   Maintenance::compact()
@@ -24,8 +27,8 @@ use Preflow\Data\Schema\TextRuleConversion;
  *   db:restore  Dumps::restore() from a file ("-": standard input) into an empty database
  *
  * Each takes --storage=<name>; without it, the default storage when it has the capability, else
- * the one storage that has it. A storage without the capability (MySQL/MariaDB, whose own tools
- * work on Preflow's tables; JSON files) is refused with a pointer to those tools. Messages go to
+ * the one storage that has it. A storage without the capability (JSON files; MySQL/MariaDB has db:check and
+ * db:vacuum since 0.84, not dump and restore: mysqldump works on Preflow's tables) is refused with a pointer to those tools. Messages go to
  * standard error, so a dump to standard output stays clean.
  *
  * @since 0.78
@@ -133,6 +136,11 @@ final class DbCommand implements CommandInterface
         $problems = $driver->check();
         foreach ($problems as $problem) {
             $this->say("[{$storage}] {$problem}");
+        }
+        if ($driver instanceof MaintenanceReport) {
+            foreach ($driver->report() as $line) {
+                $this->say("[{$storage}] {$line}"); // information, not problems: never fails the check (0.84)
+            }
         }
         foreach ($collations?->unconverted($storage) ?? [] as $warning) {
             $this->say("[{$storage}] {$warning}");
