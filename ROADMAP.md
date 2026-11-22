@@ -587,7 +587,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   - **Not in 0.83:**
     - 0.84: `search()` with no fields throws a clear error on every driver (the contract suite pins it), and the other follow-ups targeted at 0.84.0.
     - Later: published-from counts, a snapshot-only index, relations and assets as real lists, a condition grammar for conditional writes (one condition each driver compiles), DashboardItem lists, select options from another field, the site origin in `memoKey()`.
-    - `AdminLocaleMiddleware::asFrontend()`'s unused `Translator` parameter stays (no removal version); a candidate for a later release.
+    - `AdminLocaleMiddleware::asFrontend()`'s unused `Translator` parameter is removed in 0.84.0.
 - **Render context follow-ups (v0.82.0, released 2026-11-22):** the follow-ups from 0.81.0 and 0.81.1. It makes each request cheaper, settles cookies by a frame's outbox policy on every path (error pages included), fills live blocks inside `{% embed %}`, drops the testing contract's need for `#[IgnoreDeprecations]`, fixes the toolbar's nonce and limits, and lets a type say whether its ids are strings or numbers. Deprecated shims stay until 0.83.
   - **core:**
     - **New:** `Contexts::runRender($ctx, fn () => …)` opens a frame like `run()`, marked as a render entry's frame (`RenderFrame::$openedByRender`, internal): the frame's response is the caller's result. `Application::render()` uses it, and another runtime that builds a `Kernel` gets the cookie rule by opening its render frames with it.
