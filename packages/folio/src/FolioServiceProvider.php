@@ -454,6 +454,12 @@ final class FolioServiceProvider extends ServiceProvider
             self::translator($c, $app),
             $c->bound(\Preflow\I18n\DerivedKeys::class) ? $c->get(\Preflow\I18n\DerivedKeys::class) : null,
             $locales ?? \Preflow\Data\Locales::single('en'),
+            // The texts of features this site lacks are not offered: drafts and Settings → AI need
+            // preflow/ai, translation needs a translator (the same checks as the permissions below).
+            static fn (): array => [
+                ...(\Preflow\I18n\Machine\AiPackage::installed() ? [] : ['folio.ai_draft.', 'folio.ai_settings.']),
+                ...($c->get(\Preflow\I18n\Machine\TranslatorAvailability::class)->available() ? [] : ['folio.ai_translate.', 'folio.ai_queue.', 'folio.ai_run.']),
+            ],
         ));
         $container->bind(\Preflow\Folio\Translations\LabelUnits::class, fn (Container $c) => new \Preflow\Folio\Translations\LabelUnits(
             $c->get(\Preflow\Folio\Translations\EditableTexts::class),

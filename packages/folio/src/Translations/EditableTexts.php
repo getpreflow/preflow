@@ -34,6 +34,15 @@ final class EditableTexts
         private readonly Translator $translator,
         private readonly ?DerivedKeys $derivedKeys = null,
         private readonly ?Locales $siteLocales = null,
+        /**
+         * Key prefixes of texts whose feature is not available on this site (e.g. "folio.ai_draft."
+         * without preflow/ai), asked on every use; such texts are not offered, so no override can
+         * be stored for them either.
+         *
+         * @since 0.84.0
+         * @var (\Closure(): list<string>)|null
+         */
+        private readonly ?\Closure $unavailable = null,
     ) {}
 
     /** Whether the group is one of the site's editable groups (its overrides apply on every request). */
@@ -239,7 +248,7 @@ final class EditableTexts
         if (preg_match('/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)+$/', $key) !== 1) {
             return false; // the record id "{locale}:{key}" must travel in an export
         }
-        foreach (self::CONFIGURATION as $prefix) {
+        foreach ([...self::CONFIGURATION, ...($this->unavailable !== null ? ($this->unavailable)() : [])] as $prefix) {
             if (str_starts_with($key, $prefix)) {
                 return false;
             }
