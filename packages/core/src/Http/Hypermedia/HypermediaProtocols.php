@@ -102,6 +102,37 @@ final class HypermediaProtocols
         return self::unique(array_merge(...array_map(static fn (HypermediaProtocol $p): array => $p->varyHeaders(), $this->protocols)));
     }
 
+    /**
+     * $response told to vary on the request headers of the client that sent $request
+     * (HypermediaProtocol::varyHeaders(); htmx: HX-Request…), when $request is a fragment request:
+     * a fragment answers on the same URL as its page, so a cache (the browser's back/forward
+     * cache included) must not show it for the page. Names already in Vary stay, each once; any
+     * other response is returned as it is.
+     *
+     * @since 0.84.0
+     */
+    public function varying(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
+    {
+        if (!$this->wantsFragment($request)) {
+            return $response;
+        }
+        $names = [];
+        foreach (explode(',', $response->getHeaderLine('Vary')) as $name) {
+            $name = trim($name);
+            if ($name !== '') {
+                $names[strtolower($name)] = $name;
+            }
+        }
+        if (isset($names['*'])) {
+            return $response;
+        }
+        foreach ($this->for($request)?->varyHeaders() ?? [] as $name) {
+            $names[strtolower($name)] ??= $name;
+        }
+
+        return $response->withHeader('Vary', implode(', ', $names));
+    }
+
     /** @return list<string> every client's nonceHeaders(), each name once (case-insensitive) */
     public function nonceHeaders(): array
     {

@@ -275,6 +275,19 @@ final class RenderContextTest extends TestCase
         $this->assertFalse($rebuild->delivering()->isStorable(), 'a rebuild never sends');
     }
 
+    /** @since 0.84.0 a frozen time is part of the key: a memo of one date never answers another. */
+    public function test_memo_key_includes_a_frozen_time(): void
+    {
+        $base = self::visit();
+        $may = $base->at(new \DateTimeImmutable('2026-05-01 10:00:00', new \DateTimeZone('UTC')));
+        $june = $base->at(new \DateTimeImmutable('2026-06-01 10:00:00', new \DateTimeZone('UTC')));
+
+        $this->assertNotSame($may->memoKey(), $june->memoKey());
+        $this->assertNotSame($base->memoKey(), $may->memoKey());
+        $this->assertSame($may->memoKey(), $base->at(new \DateTimeImmutable('2026-05-01 12:00:00', new \DateTimeZone('Europe/Zurich')))->memoKey(), 'the same instant is the same key');
+        $this->assertSame($base->memoKey(), $base->withClock(new SystemClock())->memoKey(), 'a running clock adds nothing');
+    }
+
     /** memoKey() is computed once per context and stays what a fresh, equal context gives. */
     public function test_memo_key_is_kept_per_context_and_equals_a_fresh_computation(): void
     {

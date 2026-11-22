@@ -27,4 +27,23 @@ final class HypermediaProtocolsTest extends TestCase
         $protocols->add(new HtmxDriver(new ResponseHeaders()));
         $this->assertCount(2, $protocols->all(), 'htmx once: the wrapper stands for it');
     }
+
+    /** @since 0.84.0 */
+    public function test_a_fragment_answer_varies_on_the_clients_request_headers(): void
+    {
+        $protocols = new HypermediaProtocols();
+        $protocols->add(new HtmxDriver(new ResponseHeaders()));
+        $factory = new \Nyholm\Psr7\Factory\Psr17Factory();
+
+        $fragment = $protocols->varying($factory->createServerRequest('GET', '/x')->withHeader('HX-Request', 'true'), new \Nyholm\Psr7\Response(200, ['Vary' => 'Accept-Encoding']));
+        $names = array_map(trim(...), explode(',', strtolower($fragment->getHeaderLine('Vary'))));
+        $this->assertContains('hx-request', $names);
+        $this->assertContains('accept-encoding', $names, 'what was there stays');
+
+        $again = $protocols->varying($factory->createServerRequest('GET', '/x')->withHeader('HX-Request', 'true'), $fragment);
+        $this->assertSame($fragment->getHeaderLine('Vary'), $again->getHeaderLine('Vary'), 'each name once');
+
+        $page = new \Nyholm\Psr7\Response(200);
+        $this->assertSame($page, $protocols->varying($factory->createServerRequest('GET', '/x'), $page), 'a whole page is left alone');
+    }
 }

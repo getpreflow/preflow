@@ -70,4 +70,28 @@ final class AdminAuthMiddlewareTest extends TestCase
             $this->assertSame($user, $am->user());
         });
     }
+
+    /** @since 0.84.0 a staff screen, or a part of one, is never stored by the browser (back/forward would show the bare part). */
+    public function test_staff_screens_and_their_parts_are_not_stored(): void
+    {
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $user = new \Preflow\Auth\ArrayUser('a@b.test', 'a@b.test', 'H', ['admin']);
+            $am = new AuthManager(['session' => $this->guard($user)], 'session');
+            $mw = new AdminAuthMiddleware($am, '/folio', new \Preflow\Folio\Http\AdminNav(new \Preflow\Folio\Content\TypeCatalog(sys_get_temp_dir() . '/folio_none'), static fn (): bool => true, '/folio'));
+            $factory = new Psr17Factory();
+
+            $page = $mw->process($factory->createServerRequest('GET', '/folio'), $this->handler());
+            $part = $mw->process($factory->createServerRequest('GET', '/folio?part=needs')->withHeader('HX-Request', 'true'), $this->handler());
+            $this->assertSame('no-store', $page->getHeaderLine('Cache-Control'));
+            $this->assertSame('no-store', $part->getHeaderLine('Cache-Control'));
+
+            $own = new class implements RequestHandlerInterface {
+                public function handle(ServerRequestInterface $request): ResponseInterface
+                {
+                    return new Response(200, ['Cache-Control' => 'private, max-age=60'], 'OK');
+                }
+            };
+            $this->assertSame('private, max-age=60', $mw->process($factory->createServerRequest('GET', '/folio'), $own)->getHeaderLine('Cache-Control'), 'a screen that says its own caching keeps it');
+        });
+    }
 }
