@@ -572,8 +572,8 @@ final class ArchitectureGuardsTest extends TestCase
                             $require = $composer['require'][$owner] ?? null;
                             $conflict = $composer['conflict'][$owner] ?? null;
                             $requireOk = $require === null
-                                || (preg_match('/\^(\d+\.\d+(?:\.\d+)?)/', (string) $require, $r) === 1 && version_compare($r[1], $since, '>='));
-                            $conflictOk = $conflict !== null && version_compare(ltrim((string) $conflict, '<'), $since, '>=');
+                                || (preg_match('/\^(\d+\.\d+(?:\.\d+)?)/', (string) $require, $r) === 1 && self::versionAtLeast($r[1], $since));
+                            $conflictOk = $conflict !== null && self::versionAtLeast(ltrim((string) $conflict, '<'), $since);
                             if (!$requireOk || !$conflictOk) {
                                 $missing[] = sprintf(
                                     '%s names %s (@since %s): require %s, conflict %s',
@@ -595,6 +595,14 @@ final class ArchitectureGuardsTest extends TestCase
         $this->assertSame([], array_values(array_unique($missing)), 'raise the require and conflict to the version the named class arrived in');
     }
 
+    /** Whether $have is $since or later; `0.80` and `0.80.0` are the same version (version_compare ranks the short form lower). */
+    private static function versionAtLeast(string $have, string $since): bool
+    {
+        $pad = static fn (string $v): string => implode('.', array_pad(explode('.', $v), 3, '0'));
+
+        return version_compare($pad($have), $pad($since), '>=');
+    }
+
     /** The @since version in a class-like declaration's docblock, or null. */
     private static function classSince(string $file): ?string
     {
@@ -607,6 +615,17 @@ final class ArchitectureGuardsTest extends TestCase
         }
 
         return preg_match('/@since\s+(\d+\.\d+(?:\.\d+)?)/', $doc[1], $since) === 1 ? $since[1] : null;
+    }
+
+    public function test_since_matching_treats_short_and_long_versions_alike(): void
+    {
+        $this->assertTrue(self::versionAtLeast('0.80', '0.80.0'));
+        $this->assertTrue(self::versionAtLeast('0.80.0', '0.80'));
+        $this->assertTrue(self::versionAtLeast('0.80', '0.80'));
+        $this->assertTrue(self::versionAtLeast('0.81', '0.80.2'));
+        $this->assertFalse(self::versionAtLeast('0.79', '0.80.0'));
+        $this->assertFalse(self::versionAtLeast('0.80', '0.80.1'));
+        $this->assertFalse(self::versionAtLeast('0.80.0', '0.81'));
     }
 
     /** Starters and the skeleton are apps (they require released versions; the release checklist raises them). */
