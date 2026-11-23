@@ -10,8 +10,8 @@ use Preflow\Publishing\LiveContent;
 /**
  * Records of a collection for public templates and app code (folio_list,
  * folio_find): live content only (published snapshots of publishing types;
- * working copies where the render reads them), localized to the content locale, in
- * the type's list order. Memoized per render frame and context (ContentMemo: by type and
+ * working copies where the render reads them), localized to the content locale and
+ * only those public in it (DynamicRecord::isVisibleIn(), the detail page's rule), in the type's list order. Memoized per render frame and context (ContentMemo: by type and
  * RenderContext::memoKey()); not memoized outside every render. A type gated by
  * frontend.permission lists nothing for visitors without it (FrontendGate).
  */
@@ -55,6 +55,9 @@ final class Collections
         $locale = $this->locale->get();
         $records = [];
         foreach (ListOrder::apply($this->live->query($type), $this->live->definition($type), $listing->list)->get()->items() as $record) {
+            if (!$record->isVisibleIn($locale)) {
+                continue; // the page of this language could not open it
+            }
             $records[] = $this->safe($record->localized($locale)->toArray(), $type);
         }
 
@@ -69,7 +72,9 @@ final class Collections
             return null;
         }
 
-        $values = $this->live->find($type, $id)?->localized($this->locale->get())->toArray();
+        $locale = $this->locale->get();
+        $record = $this->live->find($type, $id);
+        $values = $record !== null && $record->isVisibleIn($locale) ? $record->localized($locale)->toArray() : null;
 
         return $values !== null ? $this->safe($values, $type) : null;
     }

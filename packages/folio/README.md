@@ -2635,9 +2635,18 @@ return ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url
 - An empty translation shows the default-language text as a placeholder ("Falls back to
   English"), and a collapsible reference shows the default-language text.
 - **Visible in** checkboxes set the record's `_locales`. The default language is always
-  on.
+  on. A record saved by code without `_locales` is public in the default language only; list
+  every language it is public in. Records of a publishing type that code seeded need
+  `php preflow publish <type>` before a page shows them.
 - The list shows a badge per language: `de · 2 missing`, `de · 1 outdated` or just `de`
   (see "Missing and outdated" below). The form's language tabs carry the same counts.
+
+**Upgrading to 0.84.2:** `folio_list()` and `folio_find()` now apply the rule the detail page
+applies. A record that the page's language cannot open (no `_locales` entry for it, on a type with
+translatable fields) is no longer listed on that page. Before, such a record was listed, but its
+`folio_url()` was empty and its page was a 404. A site that lists records saved by code without
+`_locales` on a non-default-language page sees them disappear from that page's lists: set
+`_locales` on them (and publish them, for a publishing type).
 
 **Website:**
 - `/` and `/about` serve the default language; `/de/…` serves German, with translated

@@ -46,4 +46,21 @@ final class CollectionsAppTest extends TestCase
 
         $this->assertStringContainsString('<p class="q">-</p>', (string) $this->get('/hello')->getBody());
     }
+
+    public function test_a_page_lists_only_records_its_language_can_open(): void
+    {
+        $this->write('resources/folio/frontend/post.twig', '<p class="names">{% for p in folio_list("post") %}{{ p.slug }};{% endfor %}</p>'
+            . '<p class="find">{{ folio_find("post", "p1").slug|default("none") }}|{{ folio_find("post", "p2").slug|default("none") }}</p>');
+        // p1 is public in English only (no _locales), p2 in English and German.
+        $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'One'], 'slug' => ['en' => 'one']]), null);
+        $this->publisher()->publish($this->working('post', 'p2', ['title' => ['en' => 'Two', 'de' => 'Zwei'], 'slug' => ['en' => 'two', 'de' => 'zwei'], '_locales' => ['en', 'de']]), null);
+
+        $de = (string) $this->get('/de/zwei')->getBody();
+        $this->assertStringContainsString('<p class="names">zwei;</p>', $de);
+        $this->assertStringContainsString('<p class="find">none|zwei</p>', $de);
+        $this->assertSame(404, $this->get('/de/one')->getStatusCode());
+
+        $en = (string) $this->get('/one')->getBody();
+        $this->assertStringContainsString('<p class="names">one;two;</p>', $en);
+    }
 }

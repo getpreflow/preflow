@@ -70,6 +70,18 @@ final class DynamicRecord
         return array_values(array_unique([$locales->default, ...$listed]));
     }
 
+    /**
+     * Whether the record is public in a language: the one rule a page of that language
+     * (the detail page, a listing) applies. A type without translatable fields is public in
+     * every language; else the language must be one of availableLocales().
+     *
+     * @since 0.84.2
+     */
+    public function isVisibleIn(string $locale): bool
+    {
+        return $this->type->translatableFields() === [] || in_array($locale, $this->availableLocales(), true);
+    }
+
     public function toArray(): array
     {
         $out = $this->data;
