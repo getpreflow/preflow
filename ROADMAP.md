@@ -527,21 +527,29 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       The rest is the host's floor, which only the page cache (step 3) removes.
 - **First-hour patch (v0.84.2):** follow-ups from a first hour on a new site.
   - **Fixed:** a site's own forms validate in the visitor's language. Validation messages follow the render context's locale on public pages too (before, only on the admin surface). `form_begin(rules: ...)` without a model now infers the input type from the rules: `type="email"`, `url`, `number`, or a `<select>` for `in:` rules.
-  - **Fixed:** a crash while booting (a wrong provider line, a weak key, a broken config file) or an Error that escapes `run()` answers 500 with an error page. Before, PHP printed "Fatal error: Uncaught ..." with status 200. `Application::create()` installs the guard on web SAPIs.
+  - **Fixed:** a crash while booting (a provider that fails while booting, a weak key, a broken config file) or an Error that escapes `run()` answers 500 with an error page. Before, PHP printed "Fatal error: Uncaught ..." with status 200. `Application::create()` installs the guard on web SAPIs.
   - **Fixed:** a clean starter install. `User::$passwordHash` is `#[Field(exact: true)]` in starter and starter-folio, so migrate no longer warns on a new app. `php preflow serve` checks its port first.
   - **Fixed:** `translations:check` knows dynamic key prefixes: `t('group.prefix_' ~ value)` is no longer listed as missing when a text starts with the prefix.
   - **Fixed:** `folio_list()` matches the detail page's visibility. A record the page's language cannot open is no longer listed.
   - **Docs:** the data README says how to publish records saved by code (seeding). The Folio README explains `_locales` ("Visible in") and has an "Upgrading to 0.84.2" paragraph.
   - **Upgrading:**
     - Validation messages inside any render now follow the render context's locale, on public pages too (before: only on the admin surface). This covers a site's own forms (`ValidatorFactory::make()`) and also model saves through `DataManager` on public pages (members' and profile areas, Folio-typed records saved from public components): their error messages are translated.
-    - On a site whose default or only locale is not English, every public page's validation messages change language (a translation must exist in the package's or the site's `lang/{locale}/validation.php`; otherwise the English text stays). Outside every render (scripts, jobs) messages stay English.
+    - On a site whose default or only locale is not English, every public page's validation messages change language (a translation must exist in the package's or the site's `lang/{locale}/validation.php`; otherwise the site's fallback language is used, then English). Outside every render (scripts, jobs) messages stay English.
+    - A site that offers a language the package does not ship (`preflow/validation` ships en, de, fr and it) adds `lang/{locale}/validation.php` for it, or accepts the fallback language's text (with `fallback => 'de'`, a visitor in a language without a file now reads German where 0.84.1 showed English).
     - Site tests that match English message strings on those pages need updating (assert the translated text, or the error key).
     - To keep English (or any other translator) for forms and for the data layer, bind your own factory before boot, because `DataManager` takes the factory at boot. Since 0.84.2 `Application` keeps a `ValidatorFactory` already bound when `boot()` runs. In `public/index.php` (and the console entry point):
       ```php
       $app = Application::create(__DIR__ . '/..');
-      $app->container()->instance(
+      $container = $app->container();
+      $container->instance(
           \Preflow\Validation\ValidatorFactory::class,
-          new \Preflow\Validation\ValidatorFactory(new \Preflow\Validation\RuleFactory()), // no translator: English
+          new \Preflow\Validation\ValidatorFactory(
+              new \Preflow\Validation\RuleFactory(),
+              // English everywhere except the admin, which keeps its interface language (the 0.84.1 behaviour)
+              contextTranslator: static fn (): ?\Preflow\I18n\Translator => \Preflow\Core\Context\Contexts::peek()?->surface->admin === true && $container->bound(\Preflow\I18n\Translator::class)
+                  ? $container->get(\Preflow\I18n\Translator::class)
+                  : null,
+          ),
       );
       $app->boot();
       ```

@@ -297,6 +297,17 @@ final class FormBuilder
 
         $type = $options['type'] ?? 'text';
 
+        // ---- step ----
+        // A number input steps by 1 unless told otherwise, so "12.50" would be blocked by the
+        // browser although a numeric rule accepts it (since 0.84.2); integer keeps the default.
+        if ($type === 'number' && !isset($options['attrs']['step'])) {
+            $fieldRules = $this->rules[$name]
+                ?? ($modelClass !== null ? $this->introspector->getFields($modelClass, $this->scenario)[$name] ?? [] : []);
+            if (in_array('numeric', $fieldRules, true) && !in_array('integer', $fieldRules, true)) {
+                $options['attrs']['step'] = 'any';
+            }
+        }
+
         // ---- required ----
         if (!isset($options['required'])) {
             if (isset($this->rules[$name])) {

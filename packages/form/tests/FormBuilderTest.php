@@ -205,6 +205,22 @@ final class FormBuilderTest extends TestCase
         $this->assertStringNotContainsString('form-required', $html);
     }
 
+    /** @since 0.84.2 a numeric field takes decimals: the browser's default step of 1 must not block them */
+    public function test_a_numeric_rule_renders_step_any_unless_integer_or_set(): void
+    {
+        $builder = $this->createBuilder(['rules' => [
+            'price' => ['required', 'numeric'],
+            'age' => ['integer'],
+            'ratio' => ['numeric'],
+        ]]);
+
+        $this->assertStringContainsString('type="number"', $builder->field('price'));
+        $this->assertStringContainsString('step="any"', $builder->field('price'));
+        $this->assertStringNotContainsString('step=', $builder->field('age'));
+        $this->assertStringContainsString('step="0.5"', $builder->field('ratio', ['attrs' => ['step' => '0.5']]));
+        $this->assertStringNotContainsString('step="any"', $builder->field('ratio', ['attrs' => ['step' => '0.5']]));
+    }
+
     public function test_a_form_without_a_model_infers_the_type_from_its_rules(): void
     {
         $builder = $this->createBuilder(['rules' => [
