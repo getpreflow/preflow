@@ -23,7 +23,7 @@ final class User extends Model implements Authenticatable
     #[Field(searchable: true, unique: true)]
     public string $email = '';
 
-    #[Field]
+    #[Field(exact: true)]
     public string $passwordHash = '';
 
     #[Field(transform: JsonTransformer::class)]
