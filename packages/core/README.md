@@ -445,6 +445,8 @@ request.
 | `ownedHeaders()` (0.81, optional interface `OwnsResponseHeaders`) | `ResponseHeaderHints`: a page or component may not set the headers a client owns (htmx: `HX-*`; a trailing `*` is a prefix), nor its nonce headers. A client without the interface gets only its nonce headers reserved |
 | `pageNonce($request)` | `handle()`: a client that sends its page's CSP nonce back is answered with it (`NonceGenerator::adoptInFrame()`, for that request's frame), so the scripts and styles the response puts into the page pass the page's policy |
 
+Every HTML answer says `Vary` for the client's request headers (`varyHeaders()`; added by `SecurityHeadersMiddleware`). `Preflow\Core\Http\Vary::add($response, ...$names)` (0.84) is the one `Vary` merge: names already there stay, each is listed once (case-insensitive), several lines become one, and `Vary: *` is left alone. Use it when your own middleware varies a response.
+
 The configured driver (`hypermedia` other than htmx) is built eagerly at the end of the boot, right
 after the service providers (also on the CLI), so its constructor may only depend on services bound
 by then; a driver that can't be built stops the boot.
@@ -589,6 +591,7 @@ $people = $log->people(['page', 'post']);                // who did something, t
   or text) by the package that writes the marker; a reader asks `label($by)` before looking the
   value up as a user. members registers its account-deletion marker.
 - `recent()` and `people()` check no permission: show a person only the subjects they may read.
+- `Activity\LastChanges` (0.84, an optional capability of an `ActivityLog`, implemented by `StoredActivityLog`) answers when each of a type's records last changed. The change-date backfill reads it first.
 
 ### Cookie queue
 

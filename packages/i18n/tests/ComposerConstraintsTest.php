@@ -28,8 +28,8 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(['preflow/ai' => '<0.78', 'preflow/core' => '<0.83.0', 'preflow/folio' => '<0.83.0', 'preflow/testing' => '<0.83.0'], $composer['conflict'] ?? null);
-        $this->assertSame('^0.83.0 || @dev', $composer['require']['preflow/core'] ?? null);
+        $this->assertSame(['preflow/ai' => '<0.78', 'preflow/core' => '<0.84.0', 'preflow/folio' => '<0.83.0', 'preflow/testing' => '<0.83.0'], $composer['conflict'] ?? null);
+        $this->assertSame('^0.84.0 || @dev', $composer['require']['preflow/core'] ?? null);
         $this->assertArrayNotHasKey('preflow/ai', $composer['require']);
         $this->assertArrayHasKey('preflow/ai', $composer['suggest'] ?? []);
         $this->assertSame('^0.78 || @dev', $composer['require-dev']['preflow/ai'] ?? null, 'its own tests use it');

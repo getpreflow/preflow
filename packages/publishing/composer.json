@@ -6,7 +6,7 @@
     "require": {
         "php": ">=8.4",
         "preflow/core": "^0.81.0 || @dev",
-        "preflow/data": "^0.82.0 || @dev",
+        "preflow/data": "^0.84.0 || @dev",
         "preflow/validation": "^0.70 || @dev"
     },
     "require-dev": {
@@ -21,7 +21,7 @@
     },
     "conflict": {
         "preflow/core": "<0.81.0",
-        "preflow/data": "<0.82.0",
+        "preflow/data": "<0.84.0",
         "preflow/devtools": "<0.81.0",
         "preflow/folio": "<0.72",
         "preflow/testing": "<0.83.0",

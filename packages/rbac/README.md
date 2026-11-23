@@ -308,6 +308,10 @@ Before the extension is installed, the same check applies: the first role you sa
 grant yourself `rbac_role.view` and `rbac_role.edit` (or run `folio:extensions:apply`,
 which creates `admin`).
 
+## Is there any role yet?
+
+`RoleStore::hasRoles()` (0.84) says whether any role is stored, of any population. Folio asks it to tell a brand-new install (nothing to announce as new) from a site that already holds roles. Folio 0.84 conflicts with an older rbac.
+
 ## New permissions
 
 When an update brings a permission (a Folio release, a new package, extension or content

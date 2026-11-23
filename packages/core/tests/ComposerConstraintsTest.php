@@ -67,7 +67,7 @@ final class ComposerConstraintsTest extends TestCase
         $this->assertSame([
             'preflow/auth' => '<0.81.0',
             'preflow/components' => '<0.60',
-            'preflow/data' => '<0.81.0',
+            'preflow/data' => '<0.84.0',
             'preflow/htmx' => '<0.65',
             'preflow/i18n' => '<0.83.0',
             'preflow/routing' => '<0.78.2',

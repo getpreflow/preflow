@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-22 (v0.83.0)
+> Last updated: 2026-11-23 (v0.84.0)
 
 ## Current State
 
-**v0.83.0** — 10014 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.84.0** — 10248 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -525,7 +525,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
-- **Stable ground (v0.84.0):** the cleanup release after the render context. Every typed record keeps a change date that Folio lists and sorts by. HTML answers say what they vary on. Folio copes with a site that lacks AI, media storage or a translator. Folio's lists and screens get a polish pass. `search()` without fields is refused on every driver. MySQL gets maintenance checks.
+- **Stable ground (v0.84.0, released 2026-11-23):** the cleanup release after the render context. Every typed record keeps a change date that Folio lists and sorts by. HTML answers say what they vary on. Folio copes with a site that lacks AI, media storage or a translator. Folio's lists and screens get a polish pass. `search()` without fields is refused on every driver. MySQL gets maintenance checks.
   - **data:**
     - **New: every typed record stores its change date** in the system key `_updated_at`. The value is UTC ISO 8601 text, last among the system keys. It moves on a save that changes the record. A save that changes nothing leaves it, so an unchanged JSON file keeps its bytes. It is never content: states, `changes()`, restore and duplicates ignore it. A published copy carries its own date. Counters, `updateIf()` and named-field writes leave it. A type's own `updatedAt` / `updated_at` stays the site's content and is never touched. Plain models (no type) keep the opt-in `#[Timestamps]`. A type opts out with `changeDates: false` on its `TypeDefinition`. The activity log's tables do.
     - **New API:** `ChangeDates`, `DataManager::keepingChangeDates()`, `changeDateOf()` and `forgetColumns()` (`hasColumn()` now remembers a missing column too, until the table sync or migrate forgets it), the optional `WriteTimes` capability (JSON implements it with file times), `ChangeDateSource` and the `ChangeDateSources` registry (core binds it), `ChangeDateBackfill`, `MaintenanceReport`. A driver needs nothing new: a date is written only where the driver implements `DescribesColumns` and says the table has the column. The storage contract states and tests this.
@@ -552,7 +552,8 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   - **rbac:** **New:** `RoleStore::hasRoles()`: whether any role is stored, of any population.
   - **testing, notify, tools:** `StorageDriverContract` gains the hook `accentFreeMatchingMissing(): ?string` (default null): a driver without accent-free matching returns the reason, and only the accent tests skip. Folio's tests remove their temp roots and session files. The `@since` guard treats `0.80` and `0.80.0` alike. notify's dev dependencies gain `preflow/routing` so its boot tests find a router.
   - **Upgrading:**
-    - **Upgrade every `preflow/*` package together, to `^0.84`.** The packages that name 0.84 classes need each other's 0.84: data (change dates, `MaintenanceReport`, `LastChanges` in core), core (`ChangeDateSources`, `varying()`), publishing (`ChangeDateSource`), folio (`ChangeDates`, `LastChanges`, `HypermediaProtocols::varying()`), devtools (`MaintenanceReport`), testing (the contract hook). The starters go to `^0.84`.
+    - **Upgrade every `preflow/*` package together, to `^0.84`.** The packages that name 0.84 classes need each other's 0.84, and the constraints say so: core conflicts with data before 0.84.0 (`ChangeDateSources`); data requires core `^0.84.0` (`LastChanges`); devtools requires data `^0.84.0` (`MaintenanceReport`); folio requires data `^0.84.0` (`ChangeDates`); publishing requires data `^0.84.0` (`ChangeDateSource`); testing requires core and data `^0.84.0` (the contract hook, `ChangeDates`). **i18n and view need core 0.84** (`Preflow\Core\Http\Vary`): they require core `^0.84.0` and conflict with core before 0.84.0. **folio conflicts with rbac before 0.84.0** (it uses `RoleStore::hasRoles()`). The starters go to `^0.84`.
+    - **A long-running worker started before migrate keeps "no change-date column" until it restarts.** It remembers that a table lacked the column, so it writes no date and the Changed column stays empty for its saves. Restart queue workers and any other long-lived process after migrate. Web and cron processes start fresh and are unaffected.
     - **Run `php preflow migrate` once after the upgrade.** Until then SQL saves work as before (no date written) and the Changed column is not sortable. The first migrate adds `_updated_at` (and its index) to every record table and backfills every record in the order above. JSON content files gain `"_updated_at"` on migrate (or on their next save that changes them), a one-time diff in git-tracked content.
     - **The backfill may rewrite a legacy JSON row once, in canonical form** (types normalised, `''` becomes `null`), as its next save would.
     - **Git-deployed JSON sites:** file times are the checkout time, so a record with no activity-log event, own updated time, published time or creation time is dated to the last deploy. Run migrate on a server that kept the original file times, or accept that date as a floor. The dates are approximate.

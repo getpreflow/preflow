@@ -180,6 +180,10 @@ Titles come from `RecordTitle::of()` in the default language, at the time of the
 failing log is logged as a warning and never fails a write. With the log on, a save reads the
 stored record once more (by id) to name the changed fields.
 
+### Change dates (0.84)
+
+Every typed record keeps its change date in `_updated_at` (see the data README). A working copy and its published snapshot each keep their own date, and `_updated_at` is never content: `Publisher::META` lists it with the other system keys. `PublishedTimeSource` is registered as a `ChangeDateSource`, so the backfill that `preflow migrate` runs dates an existing record by its published time. It needs preflow/data 0.84.
+
 ## Reading what is live
 
 - **`LiveContent`** reads records for rendering: the snapshots of a publishing type on public pages,
