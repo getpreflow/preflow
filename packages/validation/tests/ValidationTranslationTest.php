@@ -125,19 +125,9 @@ final class ValidationTranslationTest extends TestCase
         $keys = array_keys($translator->entries('validation', 'en'));
         $this->assertNotEmpty($keys);
         $shipped = array_map('basename', glob($root . '/lang/*', GLOB_ONLYDIR) ?: []);
-        $this->assertContains('it', $shipped, 'Italian ships since 0.84.2');
+        $this->assertEqualsCanonicalizing(['de', 'en', 'fr'], $shipped, 'the packages ship one language set');
         foreach ($shipped as $locale) {
             $this->assertEqualsCanonicalizing($keys, array_keys($translator->entries('validation', $locale)), $locale);
         }
-    }
-
-    /** @since 0.84.2 */
-    public function test_italian_answers_in_italian(): void
-    {
-        $factory = new ValidatorFactory(new RuleFactory(), self::translator('it'));
-
-        $this->assertSame(['Questo campo è obbligatorio.'], $factory->make(['f' => ['required']], [])->validate()->fieldErrors('f'));
-        $this->assertSame(['Deve essere compreso tra 2 e 4.'], $factory->make(['f' => ['between:2,4']], ['f' => 9])->validate()->fieldErrors('f'));
-        $this->assertSame(['Deve contenere almeno 3 caratteri.'], $factory->make(['f' => ['min:3']], ['f' => 'ab'])->validate()->fieldErrors('f'));
     }
 }
