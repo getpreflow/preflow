@@ -36,6 +36,7 @@ final class Console
         $this->register(new Command\CacheListCommand());
         $this->register(new Command\PagesWorkCommand());
         $this->register(new Command\PagesRefreshCommand());
+        $this->register(new Command\PagesWhyCommand());
         $this->register(new Command\OptimizeCommand($basePath));
         $this->register(new Command\SeedCommand());
         $this->register(new Command\KeyGenerateCommand());

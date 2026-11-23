@@ -57,6 +57,11 @@ use Psr\Http\Server\RequestHandlerInterface;
  * is no hit and nothing is stored: $applyPending is asked to apply it first, and only when that
  * succeeds is the page served. One more stat per hit.
  *
+ * A probe (PROBE, a CacheProbe; Cacheability, `pages:why`) is rendered and verified as a miss
+ * would be, in every mode (the console's and a debug app's too), and answered with what the miss
+ * would have been refused for (`differs` with where, or one of the words below); nothing is
+ * stored, recorded or served, and nothing is logged for it.
+ *
  * A rebuild (REBUILD, Rebuild::request(); from Refresher::work()) is never served from the cache,
  * only stored. With Rebuild::EXPECTED_ID it is rendered only when it gives that key (else
  * `X-Page-Cache: rebuild-key`, logged); verify 'first' renders it twice only when its key was
@@ -98,8 +103,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  *   'always' for every store), the page rendered once more as another anonymous visitor
  *   (another REMOTE_ADDR, no cookies) has another body, other stored headers outside its live
  *   parts and per-request values, or other carried state (SEO's page meta) (logged with where
- *   it differs first: a header and both values, the body's first differing byte with some
- *   context from each render, or both page meta). The second render runs in a frame of its own
+ *   it differs first: a header and both values, the body's first differing byte, in the component
+ *   or element it lies in, with some context from each render, or both page meta). The second render runs in a frame of its own
  *   ($render: the way Application::render() renders) under the visitor's context, discarding
  *   what it would send and skipping what it would write, for the purpose Verify: nothing of it
  *   reaches the visitor's response, mail or data;
@@ -133,6 +138,16 @@ final class PageCacheMiddleware implements MiddlewareInterface
      * @since 0.81.0
      */
     public const string SERVE_STORED = 'preflow.page_cache.serve_stored';
+
+    /**
+     * Request attribute: a CacheProbe. The request is a probe (Cacheability): rendered once and
+     * once more as another visitor, compared as verify compares, and never stored or served; the
+     * probe says what the render would have been refused for. It is answered in every mode
+     * (also the console's and a debug app's, where the cache itself does not run).
+     *
+     * @since 0.85.0
+     */
+    public const string PROBE = 'preflow.page_cache.probe';
 
     /** Bodies larger than this (bytes) are not stored. */
     public const int MAX_BODY = 8 * 1024 * 1024;
@@ -239,6 +254,10 @@ final class PageCacheMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
+        $probe = $request->getAttribute(self::PROBE);
+        if ($probe instanceof CacheProbe) {
+            return $this->probe($request, $handler, $probe);
+        }
         if (self::previews($request)) {
             return $handler->handle($request); // never from the store, never into it
         }
@@ -298,6 +317,38 @@ final class PageCacheMiddleware implements MiddlewareInterface
         }
 
         return \Preflow\Core\Context\Preview\PreviewUrls::withVary($this->render($request, $handler, $key, $store));
+    }
+
+    /**
+     * Answers a probe: the page's first render and its verify render, as a miss would make them,
+     * with nothing stored, recorded in the index or served. What stops a miss before it renders
+     * (no key, not a public page, a context that may not be stored) is said without rendering.
+     */
+    private function probe(ServerRequestInterface $request, RequestHandlerInterface $handler, CacheProbe $probe): ResponseInterface
+    {
+        $probe->reached = true;
+        $key = $this->key($request);
+        $code = $key === null ? 'key' : $this->probeRefusal($request, $key);
+        if ($code !== null || $key === null) {
+            $probe->code = $code;
+            $response = $handler->handle($request);
+            $probe->status = $response->getStatusCode();
+
+            return $response;
+        }
+
+        return $this->render($request, $handler, $key, $probe);
+    }
+
+    /** Why a probe is answered without rendering (no key was handled by the caller), null when it is rendered. */
+    private function probeRefusal(ServerRequestInterface $request, PageKey $key): ?string
+    {
+        return match (true) {
+            $this->nonPublic !== null && ($this->nonPublic)($request->getUri()->getPath()) => 'non-public',
+            !self::storable(Contexts::current(), $key, $request->getAttribute(self::REBUILD) === true) => 'context',
+            $this->carriesSignIn($request) => 'signed-in',
+            default => null,
+        };
     }
 
     /** Whether $request carries a preview token (the query parameter or the header). */
@@ -455,14 +506,21 @@ final class PageCacheMiddleware implements MiddlewareInterface
         return new Response(200, $headers, $body);
     }
 
-    private function render(ServerRequestInterface $request, RequestHandlerInterface $handler, PageKey $key, PageStore $store): ResponseInterface
+    /**
+     * Renders a miss and stores it when it may be. With a CacheProbe in place of the store it
+     * only finds out why it would not be (the probe's code), verifying the page whatever
+     * page_cache.verify says, and stores nothing.
+     */
+    private function render(ServerRequestInterface $request, RequestHandlerInterface $handler, PageKey $key, PageStore|CacheProbe $target): ResponseInterface
     {
+        $probe = $target instanceof CacheProbe ? $target : null;
+        $store = $target instanceof PageStore ? $target : null;
         $started = ($this->clock)();
         $frame = $this->recorder->start($started);
         $before = $this->cache->begin($key->isHead() ? null : $key);
         $carried = [];
         $reason = null;
-        $verify = !$key->isHead() && $this->verifies($request, $key, $store);
+        $verify = !$key->isHead() && ($store === null || $this->verifies($request, $key, $store));
         $rebuild = $request->getAttribute(self::REBUILD) === true;
         try {
             // Published reads for the rest of the frame (a storable context reads them already).
@@ -511,13 +569,22 @@ final class PageCacheMiddleware implements MiddlewareInterface
         if ($content !== null && !$html && LivePlaceholder::in($content)) {
             $reason ??= 'live-non-html';
         }
+        $difference = null;
         if ($reason === null && $content !== null && $verify) {
-            $difference = null;
             // The second render's page meta stays in its own frame: nothing to put back here.
-            if ($this->differs($request, $handler, $key, $response, $content, $carried, $difference)) {
-                $this->log('page cache: ' . $key->url() . ' differs per visitor outside live parts' . ($difference !== null ? ' (' . $difference . ')' : ''));
+            if ($this->differs($request, $handler, $key, $response, $content, $carried, $difference, $probe)) {
+                if ($probe === null) {
+                    $this->log('page cache: ' . $key->url() . ' differs per visitor outside live parts' . ($difference !== null ? ' (' . $difference . ')' : ''));
+                }
                 $reason = 'differs';
             }
+        }
+        if ($probe !== null) {
+            $probe->status = $response->getStatusCode();
+            $probe->code = $reason;
+            $probe->difference = $reason === 'differs' ? $difference : null;
+
+            return $response;
         }
         if ($reason === null && $content !== null) {
             if ($pastExpiry !== null) {
@@ -611,11 +678,14 @@ final class PageCacheMiddleware implements MiddlewareInterface
      *
      * @param array<string, mixed> $carried PageCache::captureState() of the first render
      */
-    private function differs(ServerRequestInterface $request, RequestHandlerInterface $handler, PageKey $key, ResponseInterface $first, string $content, array $carried, ?string &$difference = null): bool
+    private function differs(ServerRequestInterface $request, RequestHandlerInterface $handler, PageKey $key, ResponseInterface $first, string $content, array $carried, ?string &$difference = null, ?CacheProbe $probe = null): bool
     {
         if (session_status() === PHP_SESSION_ACTIVE) {
             // A cacheable render never has a session; one that does can't be verified.
             $this->log('page cache: ' . $key->url() . ' could not be verified: a session is open');
+            if ($probe !== null) {
+                $difference = 'a session is open, so the second render cannot be made';
+            }
 
             return true;
         }
@@ -651,6 +721,9 @@ final class PageCacheMiddleware implements MiddlewareInterface
             $this->render !== null ? ($this->render)($ctx, $other, $render) : Contexts::run($ctx, $render);
         } catch (\Throwable $e) {
             $this->log('page cache: ' . $key->url() . ' could not be verified: ' . $e->getMessage());
+            if ($probe !== null) {
+                $difference = 'the second render failed: ' . $e->getMessage();
+            }
 
             return true;
         }
@@ -705,7 +778,10 @@ final class PageCacheMiddleware implements MiddlewareInterface
             return null;
         }
 
-        return 'body at byte ' . strspn($body ^ $other, "\0") . ': ' . self::around($body, $other);
+        $at = strspn($body ^ $other, "\0");
+        $part = Regions::at($body, min($at, max(0, strlen($body) - 1)));
+
+        return 'body at byte ' . $at . ($part !== null ? ' in ' . $part : '') . ': ' . self::around($body, $other);
     }
 
     /** Both texts from 40 bytes before their first difference, 120 bytes long; … marks a cut. */

@@ -46,4 +46,27 @@ final class WebApplicationTest extends TestCase
         $this->assertSame('miss', $response->getHeaderLine('X-Page-Cache'));
         $this->assertSame('hit', WebApplication::boot($this->dir)->handle(new ServerRequest('GET', 'https://example.com/page'))->getHeaderLine('X-Page-Cache'));
     }
+
+    #[RunInSeparateProcess]
+    public function test_assert_page_cacheable_passes_for_a_page_every_visitor_gets_alike(): void
+    {
+        WebApplication::assertPageCacheable(WebApplication::boot($this->dir), '/page');
+
+        $this->assertNull(WebApplication::boot($this->dir)->handle(new ServerRequest('GET', 'https://example.com/page'))->getHeaderLine('X-Page-Cache-Skip') ?: null);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_assert_page_cacheable_fails_with_reason(): void
+    {
+        file_put_contents($this->dir . '/app/pages/random.twig', '<p>{{ random(1000000000) }}</p>');
+
+        try {
+            WebApplication::assertPageCacheable(WebApplication::boot($this->dir), '/random');
+            $this->fail('A page that differs per visitor must fail the assertion.');
+        } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+            $this->assertStringContainsString('/random', $e->getMessage());
+            $this->assertStringContainsString('differs', $e->getMessage(), 'the reason');
+            $this->assertStringContainsString('live block', $e->getMessage(), 'the hint');
+        }
+    }
 }

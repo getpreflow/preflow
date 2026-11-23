@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Preflow\Testing;
 
+use PHPUnit\Framework\Assert;
 use Preflow\Core\Application;
+use Preflow\Core\PageCache\Cacheability;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\PageCache\PageCacheConfig;
 use Psr\Http\Message\ServerRequestInterface;
@@ -42,6 +44,27 @@ final class WebApplication
         $app->boot();
 
         return $app;
+    }
+
+    /**
+     * Fails unless the page cache would store the page at $path: it renders it as the cache does,
+     * once more as another anonymous visitor, and compares the two. The failure says why (the
+     * differing part of the page, or the refusal such as a cookie, a status, a session) and what
+     * usually fixes it, as `php preflow pages:why` does. Nothing is stored or served, and it works
+     * with app.debug on.
+     *
+     *     WebApplication::assertPageCacheable(WebApplication::boot($basePath), '/club');
+     *
+     * @since 0.85.0
+     */
+    public static function assertPageCacheable(Application $app, string $path, ?string $locale = null): void
+    {
+        $result = $app->container()->get(Cacheability::class)->check($path, $locale);
+        Assert::assertTrue(
+            $result->cacheable,
+            "The page cache would not store {$path}" . ($locale !== null ? " ({$locale})" : '') . ": {$result->reason}"
+                . ($result->hint !== null ? "\nHint: {$result->hint}" : ''),
+        );
     }
 
     /**

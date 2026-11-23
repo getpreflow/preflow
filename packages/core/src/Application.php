@@ -2126,6 +2126,13 @@ final class Application
         if (session_status() === PHP_SESSION_ACTIVE) {
             return new \Nyholm\Psr7\Response(200, [\Preflow\Core\PageCache\PageCacheMiddleware::SKIP_HEADER => 'session']);
         }
+
+        return $this->renderAsRebuild($request);
+    }
+
+    /** $request as the internal Rebuild render renderRebuild() makes of it (also for a Cacheability probe). */
+    private function renderAsRebuild(ServerRequestInterface $request): ResponseInterface
+    {
         $site = $this->site();
         $path = $request->getUri()->getPath();
         $path = $path === '' ? '/' : $path;
@@ -2207,9 +2214,12 @@ final class Application
     private function bootPageCacheServing(DebugLevel $debug): void
     {
         $config = $this->container->get(\Preflow\Core\PageCache\PageCacheConfig::class);
-        if (!$config->enabled || $this->pageChanges === null || $debug->isDebug()) {
+        if (!$config->enabled || $this->pageChanges === null) {
             return;
         }
+        // In debug mode the cache does not serve or store, but the middleware stays in the pipeline
+        // for Cacheability's probes (`pages:why`): it passes every other request on, as in the console.
+        $probeOnly = $debug->isDebug();
         $container = $this->container;
         $source = $this->pageCacheSource;
         $logger = $this->pageCacheLogger();
@@ -2236,7 +2246,7 @@ final class Application
             live: $container->get(\Preflow\Core\PageCache\LiveParts::class),
             verify: $config->verify,
             applyPending: static fn (): bool => $container->get(\Preflow\Core\PageCache\Refresher::class)->applyPending(),
-            rebuildOnly: $this->runningInConsole(),
+            rebuildOnly: $probeOnly || $this->runningInConsole(),
             hypermedia: $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
             // Verify's second render: in a frame of its own as render() opens one (its own page
             // meta and nonce, the assets boot registered, nobody signed in, its queued mail
@@ -2247,8 +2257,20 @@ final class Application
             // A cookie a render left queued keeps its page out of the store (since 0.81.1).
             cookies: $container->get(\Preflow\Core\Http\CookieQueue::class),
         );
-        $this->container->instance(\Preflow\Core\PageCache\PageCacheMiddleware::class, $middleware);
+        if (!$probeOnly) {
+            $this->container->instance(\Preflow\Core\PageCache\PageCacheMiddleware::class, $middleware);
+        }
         $this->addMiddleware($middleware);
+        // pages:why and the page-cache test assertion: why a page would not be stored, in any mode.
+        $origin = $this->config->get('app.url');
+        $this->container->singleton(
+            \Preflow\Core\PageCache\Cacheability::class,
+            fn (): \Preflow\Core\PageCache\Cacheability => new \Preflow\Core\PageCache\Cacheability(
+                $this->renderAsRebuild(...),
+                is_string($origin) && $origin !== '' ? $origin : null,
+                fn (): array => $this->site()->locales,
+            ),
+        );
     }
 
     /** Minified CSS and JS live in storage/cache/assets, keyed by content. */
