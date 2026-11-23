@@ -14,8 +14,8 @@ use Preflow\Publishing\LiveContent;
  * type's list order. list() keeps only the records public in that locale
  * (DynamicRecord::isVisibleIn(), the detail page's rule); find() is a lookup by key and
  * returns the record whatever its languages. Memoized per render frame and context
- * (ContentMemo: by type and RenderContext::memoKey()); not memoized outside every render. A type gated by
- * frontend.permission lists nothing for visitors without it (FrontendGate).
+ * (ContentMemo: by type and RenderContext::memoKey()); not memoized outside every render. A type
+ * gated by frontend.permission lists nothing for visitors without it (FrontendGate).
  */
 final class Collections
 {

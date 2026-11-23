@@ -1608,9 +1608,9 @@ shows nothing on a public page until it is published, so run `php preflow publis
 seeding it (`preflow/publishing`).
 
 `_locales` lists the languages a record is public in. A record without it is public in the default
-language only (a type without translatable fields is public in every language): on a page of another language the record is neither listed nor opened. Set
-`_locales` to every language the record has texts in. `DynamicRecord::isVisibleIn($locale)` is the
-rule pages use (since 0.84.2).
+language only (a type without translatable fields is public in every language): on a page of
+another language the record is neither listed nor opened. Set `_locales` to every language the
+record has texts in. `DynamicRecord::isVisibleIn($locale)` is the rule pages use (since 0.84.2).
 
 ## Read-only and no-create types (0.78)
 
