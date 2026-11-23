@@ -15,6 +15,16 @@ declare(strict_types=1);
 return [
     // superglobal: the edges where PHP's request becomes a value, and the adapters for code
     // outside the packages that still reads superglobals.
+    'core/src/Error/FailureGuard.php' => [
+        'superglobal' => [
+            'return (new \\Nyholm\\Psr7Server\\ServerRequestCreator($factory, $factory, $factory, $factory))->fromGlobals();' => 'an HTTP edge: a failure outside the kernel (boot, a fatal) has no request frame yet, so the error page is built from the request PHP received',
+        ],
+        'static-state' => [
+            'private static ?Application $app = null;' => 'PHP\'s exception and shutdown handlers are process-wide: they need the one app that installed them',
+            'private static bool $installed = false;' => 'the PHP handlers are registered once per process',
+            'private static ?string $reserve = null;' => 'memory held back for the shutdown function after a memory-exhaustion fatal, process-wide by nature',
+        ],
+    ],
     'core/src/Application.php' => [
         'superglobal' => [
             '$request = $creator->fromGlobals();' => 'the HTTP edge: the one place that turns the superglobals into the request',

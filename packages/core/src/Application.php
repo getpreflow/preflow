@@ -156,6 +156,11 @@ final class Application
         EnvLoader::load(rtrim($basePath, '/') . '/.env');
 
         $app = new self(new Config(), $basePath);
+        // A web request that fails before the kernel (a broken config file, boot, a PHP Error, a
+        // fatal) answers 500, not PHP's raw output; the console keeps its own exception output.
+        if (!in_array(PHP_SAPI, ['cli', 'phpdbg'], true)) {
+            \Preflow\Core\Error\FailureGuard::install($app);
+        }
         $app->config->replace(self::configItems($app->configFile(...)));
 
         return $app;
