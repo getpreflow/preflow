@@ -90,6 +90,21 @@ final class PruneMembersTest extends TestCase
         $this->assertSame(['u-8'], $this->ids(), 'a skipped run deletes nothing');
     }
 
+    public function test_a_lock_that_cannot_be_opened_fails_with_exit_1_and_deletes_nothing(): void
+    {
+        $this->migrate();
+        $this->member('u-8', [], 8);
+        // A directory where the lock file belongs: fopen() fails on every OS, with no permission tricks.
+        mkdir($this->dir . '/storage/locks/members-prune.lock', 0777, true);
+
+        [$code, $out] = $this->command(new PruneMembersCommand(fn () => $this->app()));
+        rmdir($this->dir . '/storage/locks/members-prune.lock');
+
+        $this->assertSame(1, $code);
+        $this->assertSame('', $out, 'the message goes to STDERR and PHP adds no warning of its own');
+        $this->assertSame(['u-8'], $this->ids(), 'nothing is deleted');
+    }
+
     public function test_the_lock_lives_under_the_apps_own_storage_not_a_shared_path(): void
     {
         $this->migrate();

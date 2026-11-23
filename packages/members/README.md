@@ -412,6 +412,11 @@ throttle hits are pruned. It prints counts only (no addresses or names) and a lo
 `storage/locks` keeps two runs from overlapping. An account a self rule or a hook keeps is
 counted (`; kept N (refused by a self rule or a hook)`, only when N > 0).
 
+Exit codes: a run that finds another one holding the lock prints
+`members:prune — skipped: another run holds <path>` and exits 0 (a cron that mails output mails
+that line). A lock directory it cannot create or a lock file it cannot open (for example one made
+by another user) fails with a message on STDERR and exit 1, and nothing is pruned.
+
 `members:decide <email> accept|decline` decides a member waiting for the owner (`OwnerApproval`
 without Folio's panel): the accepted or declined mail goes out first (the Members settings'
 message, else the lang files'), and only when it was sent the role changes.

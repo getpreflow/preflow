@@ -19,9 +19,14 @@ use Preflow\Members\MembersConfig;
 /**
  * Nightly from cron: unconfirmed accounts go after retention.unconfirmed_days (7) from registration,
  * declined ones after retention.declined_days (30) from the decision (config/members.php), and
- * expired tokens, remember rows, throttle hits and activity rows past their retention are pruned. Deletions go through Members::delete() (the self
- * rules, the DELETING / DELETED hooks); an account a restrict rule or a hook keeps is counted as kept. Prints counts only, never an email
- * or a name. A run that finds the lock held (storage/locks/members-prune.lock under the app's base path) prints a line naming it and exits 0. The package lists it in composer.json (extra.preflow.commands), so it needs no setup.
+ * expired tokens, remember rows, throttle hits and activity rows past their retention are pruned.
+ * Deletions go through Members::delete() (the self rules, the DELETING / DELETED hooks); an account
+ * a restrict rule or a hook keeps is counted as kept. Prints counts only, never an email or a name.
+ *
+ * A run that finds the lock held (storage/locks/members-prune.lock under the app's base path) prints
+ * a line naming it and exits 0. A lock it cannot open fails with a message and exit 1.
+ *
+ * The package lists it in composer.json (extra.preflow.commands), so it needs no setup.
  */
 final class PruneMembersCommand implements CommandInterface
 {
@@ -43,7 +48,7 @@ final class PruneMembersCommand implements CommandInterface
             return 1;
         }
         $path = $dir . '/members-prune.lock';
-        $lock = fopen($path, 'c');
+        $lock = @fopen($path, 'c'); // the message below is the report; PHP's own warning would double it
         if ($lock === false) {
             fwrite(STDERR, "members:prune — cannot open {$path}\n");
             return 1;
