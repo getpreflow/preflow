@@ -23,7 +23,8 @@ use Psr\Http\Message\ServerRequestInterface;
  * on and the plain page (no trace) when off. A fatal error, which PHP cannot hand to a handler,
  * is answered 500 from a shutdown function where no output has gone out yet. Output that has gone
  * out already (headers sent) cannot change the status, but the error page is still printed, never
- * silence. The full exception, trace included, goes to the site's logger (else the PHP log). An
+ * silence, unless the response sent is not HTML (JSON, a download): then only the log, so a client
+ * is not handed HTML inside its payload. The full exception, trace included, goes to the site's logger (else the PHP log). An
  * exception handler set before create() is kept and called after the answer.
  *
  * @since 0.84.2
@@ -89,13 +90,40 @@ final class FailureGuard
 
     private static function builtIn(Application $app): ErrorRendererInterface
     {
-        return (int) $app->config()->get('app.debug', 0) !== 0 ? new DevErrorRenderer() : new ProdErrorRenderer();
+        return self::debugOn($app) ? new DevErrorRenderer() : new ProdErrorRenderer();
+    }
+
+    /**
+     * app.debug from the config; when config/app.php did not load (it is what failed, the guard is
+     * installed before it is read) the APP_DEBUG of the environment, which EnvLoader has filled.
+     */
+    private static function debugOn(Application $app): bool
+    {
+        if ($app->config()->has('app')) {
+            return (int) $app->config()->get('app.debug', 0) !== 0;
+        }
+
+        return filter_var($_ENV['APP_DEBUG'] ?? '0', FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /** False when the response already sent is of a known non-HTML type (JSON, a download): HTML would only corrupt it. */
+    private static function sentContentIsHtml(): bool
+    {
+        foreach (headers_list() as $header) {
+            if (stripos($header, 'Content-Type:') === 0) {
+                $type = strtolower(trim(explode(';', substr($header, 13))[0]));
+
+                return $type === 'text/html' || $type === 'application/xhtml+xml';
+            }
+        }
+
+        return true;
     }
 
     /**
      * Answers an exception nothing caught: logs it in full, then sends the page (status and
      * headers too while nothing has gone out; after output started only the page, so the error
-     * is never silent). $previous, the handler set before the guard, runs after the answer: it
+     * is never silent, unless the response sent is not HTML: then only the log). $previous, the handler set before the guard, runs after the answer: it
      * may report the error (a tracker) but must not decide the page; its output is dropped.
      */
     private static function answer(\Throwable $e, ?callable $previous): void
@@ -111,7 +139,7 @@ final class FailureGuard
                 }
                 header_remove();
                 (new Emitter())->emit($response);
-            } else {
+            } elseif (self::sentContentIsHtml()) {
                 echo $response->getBody();
             }
         } catch (\Throwable) {

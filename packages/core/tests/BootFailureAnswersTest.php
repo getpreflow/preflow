@@ -125,6 +125,41 @@ final class BootFailureAnswersTest extends TestCase
         $this->assertStringContainsString('noSuchMethod', $res['body'], 'the dev page is still printed once headers are sent');
     }
 
+    /** @since 0.84.2 config/app.php is what failed, so APP_DEBUG from the environment decides */
+    public function test_a_broken_config_file_shows_the_dev_page_when_app_debug_is_on(): void
+    {
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => ;\n");
+        file_put_contents($this->dir . '/.env', "APP_DEBUG=1\n");
+
+        $res = $this->cgi();
+
+        $this->assertSame(500, $res['status']);
+        $this->assertStringContainsString('syntax error', $res['body'], 'the dev page names the parse error');
+    }
+
+    public function test_a_broken_config_file_shows_the_plain_page_without_app_debug(): void
+    {
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => ;\n");
+
+        $res = $this->cgi();
+
+        $this->assertSame(500, $res['status']);
+        $this->assertStringContainsString('Internal Server Error', $res['body']);
+        $this->assertStringNotContainsString('syntax error', $res['body']);
+    }
+
+    /** @since 0.84.2 HTML appended to a truncated JSON or download would only break its client */
+    public function test_output_that_is_not_html_gets_no_error_page_appended(): void
+    {
+        $this->config(1);
+        $this->provider('header("Content-Type: application/json"); echo "{\"items\":["; $container->noSuchMethod();');
+
+        $res = $this->cgi(1, 0);
+
+        $this->assertSame('{"items":[', $res['body']);
+        $this->assertStringContainsString('noSuchMethod', (string) file_get_contents($this->dir . '/php.log'), 'still logged');
+    }
+
     public function test_an_error_escaping_run_after_a_good_boot_answers_500(): void
     {
         $this->config(0);
