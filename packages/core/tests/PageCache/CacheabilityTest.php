@@ -146,6 +146,31 @@ final class CacheabilityTest extends TestCase
         $this->assertSame(0, $this->stored());
     }
 
+    #[RunInSeparateProcess]
+    public function test_a_debug_app_does_not_rebuild_or_store_a_rebuild_request(): void
+    {
+        $this->site(debug: 2);
+        $app = Application::create($this->dir);
+        $app->setRunningInConsole(false);
+        $app->boot();
+
+        $response = $app->handle(\Preflow\Core\PageCache\Rebuild::request('https://example.com/static'));
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('', $response->getHeaderLine('X-Page-Cache'), 'the cache took no part');
+        $this->assertSame(0, $this->stored());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_probe_logs_nothing(): void
+    {
+        $this->site();
+
+        $this->check('/stamped');
+
+        $this->assertSame('', (string) @file_get_contents($this->dir . '/php.log'));
+    }
+
     private function write(string $rel, string $content): void
     {
         $path = $this->dir . '/' . $rel;

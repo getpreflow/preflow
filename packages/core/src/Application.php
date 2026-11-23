@@ -2218,7 +2218,7 @@ final class Application
             return;
         }
         // In debug mode the cache does not serve or store, but the middleware stays in the pipeline
-        // for Cacheability's probes (`pages:why`): it passes every other request on, as in the console.
+        // for Cacheability's probes (`pages:why`) only: it passes every other request on, rebuilds included.
         $probeOnly = $debug->isDebug();
         $container = $this->container;
         $source = $this->pageCacheSource;
@@ -2246,7 +2246,8 @@ final class Application
             live: $container->get(\Preflow\Core\PageCache\LiveParts::class),
             verify: $config->verify,
             applyPending: static fn (): bool => $container->get(\Preflow\Core\PageCache\Refresher::class)->applyPending(),
-            rebuildOnly: $probeOnly || $this->runningInConsole(),
+            rebuildOnly: $this->runningInConsole(),
+            probeOnly: $probeOnly,
             hypermedia: $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
             // Verify's second render: in a frame of its own as render() opens one (its own page
             // meta and nonce, the assets boot registered, nobody signed in, its queued mail

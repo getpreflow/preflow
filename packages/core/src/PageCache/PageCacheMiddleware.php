@@ -57,6 +57,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  * is no hit and nothing is stored: $applyPending is asked to apply it first, and only when that
  * succeeds is the page served. One more stat per hit.
  *
+ * With $probeOnly (a debug app, where the cache does not run) every request but a probe goes straight to the handler.
+ *
  * A probe (PROBE, a CacheProbe; Cacheability, `pages:why`) is rendered and verified as a miss
  * would be, in every mode (the console's and a debug app's too), and answered with what the miss
  * would have been refused for (`differs` with where, or one of the words below); nothing is
@@ -241,6 +243,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
         private readonly ?\Closure $render = null,
         private readonly ?\Preflow\Core\Http\ResponseHeaderHints $hints = null,
         private readonly ?\Preflow\Core\Http\CookieQueue $cookies = null,
+        private readonly bool $probeOnly = false,
     ) {
         $this->sentHeaders = $sentHeaders ?? static fn (): array => headers_sent() ? [] : headers_list();
         $this->clock = $clock ?? static fn (): float => (float) Contexts::clock()->now()->format('U.u');
@@ -257,6 +260,9 @@ final class PageCacheMiddleware implements MiddlewareInterface
         $probe = $request->getAttribute(self::PROBE);
         if ($probe instanceof CacheProbe) {
             return $this->probe($request, $handler, $probe);
+        }
+        if ($this->probeOnly) {
+            return $handler->handle($request); // debug mode: the cache neither serves, stores nor rebuilds
         }
         if (self::previews($request)) {
             return $handler->handle($request); // never from the store, never into it
@@ -682,9 +688,10 @@ final class PageCacheMiddleware implements MiddlewareInterface
     {
         if (session_status() === PHP_SESSION_ACTIVE) {
             // A cacheable render never has a session; one that does can't be verified.
-            $this->log('page cache: ' . $key->url() . ' could not be verified: a session is open');
             if ($probe !== null) {
                 $difference = 'a session is open, so the second render cannot be made';
+            } else {
+                $this->log('page cache: ' . $key->url() . ' could not be verified: a session is open');
             }
 
             return true;
@@ -720,9 +727,10 @@ final class PageCacheMiddleware implements MiddlewareInterface
         try {
             $this->render !== null ? ($this->render)($ctx, $other, $render) : Contexts::run($ctx, $render);
         } catch (\Throwable $e) {
-            $this->log('page cache: ' . $key->url() . ' could not be verified: ' . $e->getMessage());
             if ($probe !== null) {
                 $difference = 'the second render failed: ' . $e->getMessage();
+            } else {
+                $this->log('page cache: ' . $key->url() . ' could not be verified: ' . $e->getMessage());
             }
 
             return true;

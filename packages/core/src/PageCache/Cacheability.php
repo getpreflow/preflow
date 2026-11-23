@@ -45,9 +45,6 @@ final class Cacheability
         'content-type' => ['the response is not text, JSON, XML or JavaScript', null],
         'size' => ['the body is larger than the cache stores', null],
         'live-non-html' => ['the body holds live placeholders but is not HTML (they are filled into HTML only)', 'Use live blocks in HTML pages only.'],
-        'index' => ['the page cache index cannot be used (pdo_sqlite missing, or the index unreadable)', null],
-        'pending' => ['an invalidation that could not reach the index is still pending', 'Run php preflow pages:work, or clear the pages cache.'],
-        'invalidated' => ['a write changed what the page read while it rendered', null],
         'error' => ['the page could not be written or its state could not be captured (see the log)', null],
     ];
 
