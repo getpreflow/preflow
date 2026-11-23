@@ -8,10 +8,13 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Core\Error\FailureGuard;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** Application::create() installs the web FailureGuard by runningInConsole(), not by PHP_SAPI. */
 final class FailureGuardConsoleTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void
