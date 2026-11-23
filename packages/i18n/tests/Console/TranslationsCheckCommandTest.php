@@ -95,6 +95,20 @@ final class TranslationsCheckCommandTest extends TestCase
         $this->assertStringNotContainsString('g.kind_', $out);
     }
 
+    /** @since 0.84.2 Blade joins with PHP's dot, Twig with a tilde */
+    public function test_a_dynamic_key_prefix_joined_with_a_dot_in_blade_is_fine(): void
+    {
+        $this->langFile('vendor/acme/g/lang', 'fr', 'g', ['a' => 'A fr', 'nest' => ['b' => 'B fr'], 'kind_x' => 'X fr']);
+        $this->langFile('vendor/acme/g/lang', 'en', 'g', ['a' => 'A', 'nest' => ['b' => 'B'], 'kind_x' => 'X']);
+        $this->langFile('vendor/acme/g/lang', 'de', 'g', ['a' => 'A de', 'nest' => ['b' => 'B de'], 'kind_x' => 'X de']);
+        $this->file('vendor/acme/g/templates/dyn.blade.php', "{{ t('g.kind_' . \$row->kind) }}");
+
+        [$code, $out] = $this->check();
+
+        $this->assertSame(0, $code, $out);
+        $this->assertStringNotContainsString('g.kind_', $out);
+    }
+
     public function test_a_dynamic_key_prefix_no_key_starts_with_is_reported(): void
     {
         $this->langFile('vendor/acme/g/lang', 'fr', 'g', ['a' => 'A fr', 'nest' => ['b' => 'B fr']]);

@@ -21,7 +21,7 @@ use Preflow\I18n\Translator;
  * from other files (DerivedKeys: model files' labels, which Folio registers) are checked
  * for package groups only: each needs a text in every delivered language other than English,
  * from a language file or the file's own map; a site type's plain label is a valid fallback.
- * A key literal followed by ~, t('group.kind_' ~ value), is a dynamic prefix: fine when any text
+ * A key literal followed by ~ (Twig) or . (Blade, PHP), t('group.kind_' ~ value), is a dynamic prefix: fine when any text
  * starts with it (since 0.84.2). Exits 1 when anything is missing. The package lists it in composer.json (extra.preflow.commands).
  */
 final class TranslationsCheckCommand implements CommandInterface
@@ -188,7 +188,7 @@ final class TranslationsCheckCommand implements CommandInterface
 
     /**
      * t('key') uses in templates and model files: key => first "file:line", and the dynamic ones
-     * (t('group.kind_' ~ value): a key literal followed by ~) as prefix => first "file:line".
+     * (t('group.kind_' ~ value): a key literal followed by ~ or .) as prefix => first "file:line".
      *
      * @param list<string> $groups
      * @return array{0: array<string, string>, 1: array<string, string>}
@@ -212,7 +212,7 @@ final class TranslationsCheckCommand implements CommandInterface
             foreach (self::files($root) as $file) {
                 $lines = file($file) ?: [];
                 foreach ($lines as $i => $line) {
-                    if (!preg_match_all('/(?<![\w$>:])t\(\s*([\'"])([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+)\1(\s*~)?/', $line, $matches)) {
+                    if (!preg_match_all('/(?<![\w$>:])t\(\s*([\'"])([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+)\1(\s*[~.])?/', $line, $matches)) {
                         continue;
                     }
                     foreach ($matches[2] as $n => $key) {
