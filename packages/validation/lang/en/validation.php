@@ -1,9 +1,11 @@
 <?php
 
-// Messages of preflow/validation's rules (scope public: site forms use them too, once they
-// pass a translator). A site changes single keys in its own lang/en/validation.php; that file
-// only takes effect where a translator is passed (Folio's admin does; a site form must pass one).
-// Without a translator the validator answers with these English texts.
+// Messages of preflow/validation's rules (scope public). Inside a render they follow the render
+// context's language, on a public page too (since 0.84.2); outside every render, and for a
+// validator built without a translator, these English texts are used. A site changes single keys
+// in its own lang/en/validation.php, and adds a language this package does not ship with
+// lang/{locale}/validation.php. A language without a text falls back to the site's fallback
+// language, then English.
 // :min, :max, :step are the rule's numbers; :values the allowed values, comma-separated.
 return [
     'required' => 'This field is required.',

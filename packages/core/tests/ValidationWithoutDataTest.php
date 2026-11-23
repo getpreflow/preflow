@@ -117,4 +117,30 @@ final class ValidationWithoutDataTest extends TestCase
         $errors = \Preflow\Core\Context\Contexts::run($visit->in('de'), static fn (): array => $english->make(['name' => ['required']], [])->validate()->fieldErrors('name'));
         $this->assertSame(['This field is required.'], $errors);
     }
+
+    /** @since 0.84.2 the documented opt-out (ROADMAP, Upgrading): English on public pages, the admin keeps its interface language */
+    #[RunInSeparateProcess]
+    public function test_the_documented_opt_out_keeps_the_admins_language(): void
+    {
+        mkdir($this->dir . '/lang/de', 0777, true);
+        copy(dirname(__DIR__, 2) . '/validation/lang/de/validation.php', $this->dir . '/lang/de/validation.php');
+        file_put_contents($this->dir . '/config/i18n.php', "<?php\nreturn ['locales' => ['en', 'de'], 'default' => 'en'];\n");
+        $app = Application::create($this->dir);
+        $container = $app->container();
+        $container->instance(ValidatorFactory::class, new ValidatorFactory(
+            new RuleFactory(),
+            contextTranslator: static fn (): ?\Preflow\I18n\Translator => \Preflow\Core\Context\Contexts::peek()?->surface->admin === true && $container->bound(\Preflow\I18n\Translator::class)
+                ? $container->get(\Preflow\I18n\Translator::class) : null,
+        ));
+        $app->boot();
+        $factory = $container->get(ValidatorFactory::class);
+        $required = static fn (): array => $factory->make(['name' => ['required']], [])->validate()->fieldErrors('name');
+        $visit = \Preflow\Core\Context\RenderContext::fromRequest(new \Nyholm\Psr7\ServerRequest('GET', '/de/contact'), $app->site(), new \Preflow\Core\Context\SystemClock());
+
+        $public = \Preflow\Core\Context\Contexts::run($visit->in('de'), $required);
+        $admin = \Preflow\Core\Context\Contexts::run($visit->in('de')->admin('de'), $required);
+
+        $this->assertSame(['This field is required.'], $public);
+        $this->assertSame(['Dieses Feld ist erforderlich.'], $admin);
+    }
 }

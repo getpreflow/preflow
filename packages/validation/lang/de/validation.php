@@ -1,8 +1,11 @@
 <?php
 
-// Meldungen der Regeln von preflow/validation (öffentlich: auch Formulare der Site nutzen sie,
-// sobald sie einen Translator übergeben). Eine Site ändert einzelne Schlüssel in ihrer lang/de/validation.php;
-// diese Datei wirkt nur, wo ein Translator übergeben wird (Folios Admin tut das; ein Formular der Site muss einen übergeben).
+// Meldungen der Regeln von preflow/validation (öffentlich). In einem Render folgen sie dessen
+// Sprache, auch auf öffentlichen Seiten (seit 0.84.2); ausserhalb jedes Renders und für einen
+// Validator ohne Translator gelten die englischen Texte. Eine Site ändert einzelne Schlüssel in
+// ihrer lang/de/validation.php und ergänzt eine Sprache, die das Paket nicht mitbringt, mit
+// lang/{locale}/validation.php. Fehlt der Text einer Sprache, gilt die Rückfallsprache der Site,
+// dann Englisch.
 return [
     'required' => 'Dieses Feld ist erforderlich.',
     'email' => 'Muss eine gültige E-Mail-Adresse sein.',

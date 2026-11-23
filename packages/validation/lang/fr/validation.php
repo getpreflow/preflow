@@ -1,8 +1,11 @@
 <?php
 
-// Messages des règles de preflow/validation (publics : les formulaires du site les utilisent aussi,
-// dès qu’ils passent un traducteur). Un site change des clés dans son propre lang/fr/validation.php ;
-// ce fichier n’agit que là où un traducteur est passé (l’admin de Folio le fait ; un formulaire du site doit en passer un).
+// Messages des règles de preflow/validation (publics). Dans un rendu, ils suivent la langue de
+// celui-ci, sur une page publique aussi (depuis 0.84.2) ; hors de tout rendu, et pour un
+// validateur créé sans traducteur, les textes anglais s’appliquent. Un site change des clés dans
+// son propre lang/fr/validation.php et ajoute une langue que le paquet ne fournit pas avec
+// lang/{locale}/validation.php. Sans texte pour une langue, la langue de repli du site s’applique,
+// puis l’anglais.
 return [
     'required' => 'Ce champ est obligatoire.',
     'email' => 'Doit être une adresse e-mail valide.',
