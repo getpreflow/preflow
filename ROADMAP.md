@@ -525,6 +525,11 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Stable ground patch (v0.84.1):** three small follow-ups from 0.84.0.
+  - **Fixed:** role tables made by rbac's install now get the change-date column on migrate, so their records get dated. The migrate warning's wording is corrected.
+  - **Fixed:** `members:prune` prints one line naming the lock when another run holds it (exit 0), and exits 1 with a message when the lock can't be opened.
+  - **Docs:** i18n declares every config key it reads (`packages/i18n/config/i18n.php`), so the reference lists them. A guard test keeps that true.
+  - **Upgrading:** run migrate after upgrading (it adds the column to role tables that lack it). Nothing else.
 - **Stable ground (v0.84.0, released 2026-11-23):** the cleanup release after the render context. Every typed record keeps a change date that Folio lists and sorts by. HTML answers say what they vary on. Folio copes with a site that lacks AI, media storage or a translator. Folio's lists and screens get a polish pass. `search()` without fields is refused on every driver. MySQL gets maintenance checks.
   - **data:**
     - **New: every typed record stores its change date** in the system key `_updated_at`. The value is UTC ISO 8601 text, last among the system keys. It moves on a save that changes the record. A save that changes nothing leaves it, so an unchanged JSON file keeps its bytes. It is never content: states, `changes()`, restore and duplicates ignore it. A published copy carries its own date. Counters, `updateIf()` and named-field writes leave it. A type's own `updatedAt` / `updated_at` stays the site's content and is never touched. Plain models (no type) keep the opt-in `#[Timestamps]`. A type opts out with `changeDates: false` on its `TypeDefinition`. The activity log's tables do.
