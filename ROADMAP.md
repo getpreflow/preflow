@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-23 (v0.84.1)
+> Last updated: 2026-11-23 (v0.84.2)
 
 ## Current State
 
-**v0.84.1** — 10257 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.84.2** — 10292 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -525,7 +525,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
-- **First-hour patch (v0.84.2):** follow-ups from a first hour on a new site.
+- **First-hour patch (v0.84.2, released 2026-11-23):** follow-ups from a first hour on a new site.
   - **Fixed:** a site's own forms validate in the visitor's language. Validation messages follow the render context's locale on public pages too (before, only on the admin surface). `form_begin(rules: ...)` without a model now infers the input type from the rules: `type="email"`, `url`, `number`, or a `<select>` for `in:` rules. A `numeric` rule (without `integer`) adds `step="any"` so decimals are not blocked by the browser.
   - **Fixed:** a crash while booting (a provider that fails while booting, a weak key, a broken config file) or an Error that escapes `run()` answers 500 with an error page. Before, PHP printed "Fatal error: Uncaught ..." with status 200. `Application::create()` installs the guard on web SAPIs.
   - **Fixed:** a clean starter install. `User::$passwordHash` is `#[Field(exact: true)]` in starter and starter-folio, so migrate no longer warns on a new app. `php preflow serve` checks its port first (taken, or outside 1-65535).
