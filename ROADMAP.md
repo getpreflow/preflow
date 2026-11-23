@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-23 (v0.84.2)
+> Last updated: 2026-11-23 (v0.84.3)
 
 ## Current State
 
-**v0.84.2** — 10292 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.84.3** — 10293 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -525,7 +525,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
-- **PHP 8.4 patch (v0.84.3, unreleased):** Preflow supports PHP 8.4, and now tests it.
+- **PHP 8.4 patch (v0.84.3, released 2026-11-23):** Preflow supports PHP 8.4, and now tests it.
   - **Fixed:** pages with a table had no `.md` view on PHP 8.4. `MarkdownConverter` read table rows through `Dom\Element::$children`, which exists only in PHP 8.5, so every table threw. It now reads rows in a way that works on both.
   - **Fixed:** three tests used 8.5-only syntax or behaviour (the pipe operator, `eval` of a file that starts with `declare(strict_types=1)`, and a .docx fixture that 8.4 reads as a zip). They now run on 8.4 and 8.5.
   - **Why nothing caught it:** every suite ran on PHP 8.5 only.
