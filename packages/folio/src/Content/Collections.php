@@ -10,9 +10,11 @@ use Preflow\Publishing\LiveContent;
 /**
  * Records of a collection for public templates and app code (folio_list,
  * folio_find): live content only (published snapshots of publishing types;
- * working copies where the render reads them), localized to the content locale and
- * only those public in it (DynamicRecord::isVisibleIn(), the detail page's rule), in the type's list order. Memoized per render frame and context (ContentMemo: by type and
- * RenderContext::memoKey()); not memoized outside every render. A type gated by
+ * working copies where the render reads them), localized to the content locale, in the
+ * type's list order. list() keeps only the records public in that locale
+ * (DynamicRecord::isVisibleIn(), the detail page's rule); find() is a lookup by key and
+ * returns the record whatever its languages. Memoized per render frame and context
+ * (ContentMemo: by type and RenderContext::memoKey()); not memoized outside every render. A type gated by
  * frontend.permission lists nothing for visitors without it (FrontendGate).
  */
 final class Collections
@@ -72,9 +74,7 @@ final class Collections
             return null;
         }
 
-        $locale = $this->locale->get();
-        $record = $this->live->find($type, $id);
-        $values = $record !== null && $record->isVisibleIn($locale) ? $record->localized($locale)->toArray() : null;
+        $values = $this->live->find($type, $id)?->localized($this->locale->get())->toArray();
 
         return $values !== null ? $this->safe($values, $type) : null;
     }

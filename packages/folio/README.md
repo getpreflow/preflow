@@ -2641,12 +2641,12 @@ return ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url
 - The list shows a badge per language: `de · 2 missing`, `de · 1 outdated` or just `de`
   (see "Missing and outdated" below). The form's language tabs carry the same counts.
 
-**Upgrading to 0.84.2:** `folio_list()` and `folio_find()` now apply the rule the detail page
-applies. A record that the page's language cannot open (no `_locales` entry for it, on a type with
-translatable fields) is no longer listed on that page. Before, such a record was listed, but its
-`folio_url()` was empty and its page was a 404. A site that lists records saved by code without
-`_locales` on a non-default-language page sees them disappear from that page's lists: set
-`_locales` on them (and publish them, for a publishing type).
+**Upgrading to 0.84.2:** `folio_list()` now applies the rule the detail page applies. A record that
+the page's language cannot open (no `_locales` entry for it, on a type with translatable fields) is
+no longer listed on that page. Before, it was listed while its `folio_url()` was empty and its page
+a 404. A site that lists records saved by code without `_locales` on a non-default-language page
+sees them disappear from that page's lists: set `_locales` on them (and publish them, for a
+publishing type). `folio_find()` is a lookup by key and is unchanged: it still returns the record.
 
 **Website:**
 - `/` and `/about` serve the default language; `/de/…` serves German, with translated
