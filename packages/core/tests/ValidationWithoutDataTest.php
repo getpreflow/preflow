@@ -77,4 +77,26 @@ final class ValidationWithoutDataTest extends TestCase
         $this->assertFalse($result->passes());
         $this->assertSame(['Too low.'], $result->errors()['to'] ?? null);
     }
+
+    /** @since 0.84.2 a site's own form answers in the visitor's language on a public page, with no wiring */
+    #[RunInSeparateProcess]
+    public function test_a_public_page_validates_in_the_visitors_language_with_no_setup(): void
+    {
+        // The package's own texts reach an app through its installed.json; the fixture has none, so it ships them as its lang/.
+        mkdir($this->dir . '/lang/de', 0777, true);
+        copy(dirname(__DIR__, 2) . '/validation/lang/de/validation.php', $this->dir . '/lang/de/validation.php');
+        file_put_contents($this->dir . '/config/i18n.php', "<?php\nreturn ['locales' => ['en', 'de'], 'default' => 'en'];\n");
+        $app = Application::create($this->dir);
+        $app->boot();
+        $factory = $app->container()->get(ValidatorFactory::class);
+        $site = $app->site();
+        $required = static fn (): array => $factory->make(['name' => ['required']], [])->validate()->fieldErrors('name');
+        $visit = \Preflow\Core\Context\RenderContext::fromRequest(new \Nyholm\Psr7\ServerRequest('GET', '/de/contact'), $site, new \Preflow\Core\Context\SystemClock());
+
+        $german = \Preflow\Core\Context\Contexts::run($visit->in('de'), $required);
+        $english = \Preflow\Core\Context\Contexts::run($visit->in('en'), $required);
+
+        $this->assertSame(['Dieses Feld ist erforderlich.'], $german);
+        $this->assertSame(['This field is required.'], $english);
+    }
 }

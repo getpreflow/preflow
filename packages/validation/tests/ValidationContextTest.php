@@ -68,7 +68,7 @@ final class ValidationContextTest extends TestCase
     public function test_a_context_translator_is_asked_for_each_validator(): void
     {
         $translator = self::translator();
-        // As the application wires it: the translator on the admin surface, English on the public one.
+        // A site's own wiring: the translator on the admin surface only, English on the public one.
         $factory = new ValidatorFactory(
             new RuleFactory(),
             contextTranslator: static fn (): ?Translator => Contexts::current()->surface->admin ? $translator : null,

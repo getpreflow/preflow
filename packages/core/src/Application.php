@@ -2376,12 +2376,13 @@ final class Application
         }
 
         $this->container->instance(\Preflow\Validation\RuleFactory::class, $ruleFactory);
-        // The admin's forms answer in its interface language (the admin surface), a site's own in
-        // English unless the site passes a translator (as before 0.81).
+        // Inside a render the forms answer in the translator's language, which follows the render
+        // context: the visitor's locale on a public page, the interface language on the admin
+        // surface (since 0.84.2 for a site's own forms too). Outside every render: English.
         $container = $this->container;
         $this->container->instance(\Preflow\Validation\ValidatorFactory::class, new \Preflow\Validation\ValidatorFactory(
             $ruleFactory,
-            contextTranslator: static fn (): ?\Preflow\I18n\Translator => Contexts::peek()?->surface->admin === true && $container->bound(\Preflow\I18n\Translator::class)
+            contextTranslator: static fn (): ?\Preflow\I18n\Translator => Contexts::peek() !== null && $container->bound(\Preflow\I18n\Translator::class)
                 ? $container->get(\Preflow\I18n\Translator::class)
                 : null,
         ));

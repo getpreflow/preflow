@@ -13,8 +13,9 @@ use Preflow\I18n\Translator;
  *
  * $contextTranslator (since 0.81.0) is asked at each make() when no translator was given: the
  * translator for the current render, or null for English. The application passes one that gives
- * its translator on the admin surface, so the admin's forms answer in its interface language
- * and a site's own forms keep English messages, as before 0.81.
+ * its translator inside any render (since 0.84.2): a site's own forms answer in the visitor's
+ * locale on a public page, the admin's in its interface language, with no wiring. Outside every
+ * render they stay English. A translator given to the constructor wins.
  */
 final class ValidatorFactory
 {

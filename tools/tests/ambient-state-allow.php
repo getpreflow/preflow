@@ -25,7 +25,7 @@ return [
         ],
         'peek' => [
             '$this->container->bind(RequestContext::class, static fn (): ?RequestContext => Contexts::peek()?->request);' => 'outside every render there is no request: RequestContext is null, as before the first request',
-            'contextTranslator: static fn (): ?\\Preflow\\I18n\\Translator => Contexts::peek()?->surface->admin === true && $container->bound(\\Preflow\\I18n\\Translator::class)' => 'outside every render there is no admin surface: validators answer in English (the documented default)',
+            'contextTranslator: static fn (): ?\\Preflow\\I18n\\Translator => Contexts::peek() !== null && $container->bound(\\Preflow\\I18n\\Translator::class)' => 'outside every render there is no locale to follow: validators answer in English (the documented default)',
         ],
     ],
     'core/src/Http/InternalRender.php' => [
