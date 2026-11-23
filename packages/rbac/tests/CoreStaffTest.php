@@ -630,6 +630,29 @@ final class CoreStaffTest extends TestCase
         $this->assertSame(0, $this->command('staff:create', ['ada@site.test', '--role=admin'])[0], 'migrate made the staff table again');
     }
 
+    /**
+     * A role table made before 0.84 (by rbac:install, which no site migration names) has no change
+     * date column: migrate adds it and dates the roles, instead of warning that it keeps none.
+     */
+    #[RunInSeparateProcess]
+    public function test_migrate_gives_a_role_table_made_before_change_dates_its_column_and_dates(): void
+    {
+        $this->assertSame(0, $this->command('rbac:install')[0]);
+        $this->assertSame(0, $this->command('rbac:role', ['reporter', '--grant=reports.view'])[0]);
+        $pdo = new \PDO('sqlite:' . $this->dir . '/storage/site.sqlite');
+        foreach ($pdo->query("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'rbac_role' AND sql LIKE '%_updated_at%'")->fetchAll(\PDO::FETCH_COLUMN) as $index) {
+            $pdo->exec('DROP INDEX "' . $index . '"');
+        }
+        $pdo->exec('ALTER TABLE rbac_role DROP COLUMN _updated_at');
+
+        [$code, $out] = $this->command('migrate');
+        $this->assertSame(0, $code, $out);
+        $this->assertStringNotContainsString('keeps no change dates', $out);
+        $this->assertStringContainsString('added column rbac_role._updated_at', $out);
+        $this->assertSame(0, (int) $pdo->query("SELECT COUNT(*) FROM rbac_role WHERE _updated_at IS NULL OR _updated_at = ''")->fetchColumn(), 'every role is dated');
+        $this->assertGreaterThan(0, (int) $pdo->query('SELECT COUNT(*) FROM rbac_role')->fetchColumn());
+    }
+
     #[RunInSeparateProcess]
     public function test_before_install_the_staff_commands_say_so(): void
     {

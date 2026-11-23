@@ -172,7 +172,7 @@ final class ChangeDateBackfillTest extends TestCase
         $missing = new TypeDefinition('gone', 'gone', 'default', ['title' => new TypeFieldDefinition('title')]);
 
         $this->assertSame(
-            ['warning: page keeps no change dates: its table has no _updated_at column (a table a migration made: add the column there)'],
+            ['warning: page keeps no change dates: its table has no _updated_at column (a table no package syncs, such as one a migration made: add the column there)'],
             self::backfill($dm, [new TypeDefinition('page', 'page', 'default', ['title' => new TypeFieldDefinition('title')]), $missing]),
             'a missing table has nothing to date',
         );

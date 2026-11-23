@@ -11,6 +11,7 @@ use Preflow\Data\DataManager;
 use Preflow\Data\Locales;
 use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\Schema\RecordTables;
+use Preflow\Data\Schema\RecordTableSync;
 use Preflow\Data\TypeRegistry;
 
 /**
@@ -19,7 +20,8 @@ use Preflow\Data\TypeRegistry;
  * model adds what its admin needs). Its table is made by `php preflow rbac:install`
  * (RoleStore::install()) or by Folio's table sync when its rbac admin is on, not by rbac's own
  * `preflow migrate` step: the table being there is what tells RbacResolver that rbac is
- * installed. Once it is, `preflow migrate` seeds the roles (RoleStore::seed()) on every deploy.
+ * installed. Once it is, `preflow migrate` keeps the table current (step "rbac.roles", since 0.84.1:
+ * columns and the change date) and seeds the roles (RoleStore::seed()) on every deploy.
  */
 final class RoleType
 {
@@ -67,6 +69,16 @@ final class RoleType
             }
         }
         if ($c->bound(MigrationRegistry::class)) {
+            // The table of an installed rbac is kept current on every deploy (columns, the change date and its
+            // index), whoever defined the type: rbac:install made it, no site migration names it, and a
+            // site without Folio's rbac admin has no table step of its own. A missing table is not made
+            // here (the table being there is what installed means). @since 0.84.1
+            $c->get(MigrationRegistry::class)->afterMigrate('rbac.roles', static function () use ($c): array {
+                $store = $c->get(RoleStore::class);
+                $definition = $c->get(DataManager::class)->getTypeRegistry()?->get(self::KEY);
+
+                return $definition !== null && $store->installed() ? (new RecordTableSync($c->get(DataManager::class)))->sync($definition) : [];
+            });
             // The hint prints once per process, however often the step runs.
             $told = false;
             $c->get(MigrationRegistry::class)->afterMigrate('rbac.seed', static function () use ($c, &$told): array {
