@@ -525,6 +525,13 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **PHP 8.4 patch (v0.84.3, unreleased):** Preflow supports PHP 8.4, and now tests it.
+  - **Fixed:** pages with a table had no `.md` view on PHP 8.4. `MarkdownConverter` read table rows through `Dom\Element::$children`, which exists only in PHP 8.5, so every table threw. It now reads rows in a way that works on both.
+  - **Fixed:** three tests used 8.5-only syntax or behaviour (the pipe operator, `eval` of a file that starts with `declare(strict_types=1)`, and a .docx fixture that 8.4 reads as a zip). They now run on 8.4 and 8.5.
+  - **Why nothing caught it:** every suite ran on PHP 8.5 only.
+  - **Added:** a tools test that every PHP file, including extensionless PHP scripts, parses on the running PHP. CI runs the tools tests on 8.4 and 8.5.
+  - **Added:** the root `composer.json` sets `config.platform.php` to `8.4.1` (the locked `symfony/http-client` needs 8.4.1), so the lock never takes a dependency that needs 8.5. Releases now run the full suites on 8.4 too.
+  - **Upgrading:** nothing to do. Sites just update.
 - **First-hour patch (v0.84.2, released 2026-11-23):** follow-ups from a first hour on a new site.
   - **Fixed:** a site's own forms validate in the visitor's language. Validation messages follow the render context's locale on public pages too (before, only on the admin surface). `form_begin(rules: ...)` without a model now infers the input type from the rules: `type="email"`, `url`, `number`, or a `<select>` for `in:` rules. A `numeric` rule (without `integer`) adds `step="any"` so decimals are not blocked by the browser.
   - **Fixed:** a crash while booting (a provider that fails while booting, a weak key, a broken config file) or an Error that escapes `run()` answers 500 with an error page. Before, PHP printed "Fatal error: Uncaught ..." with status 200. `Application::create()` installs the guard on web SAPIs.

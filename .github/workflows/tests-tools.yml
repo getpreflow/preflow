@@ -6,13 +6,19 @@ on:
 
 jobs:
   guards:
+    # 8.4 is the floor in composer.json, 8.5 the newest: both must pass.
+    name: guards (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.4', '8.5']
     steps:
       - uses: actions/checkout@v4
 
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.5'
+          php-version: ${{ matrix.php }}
           # Every extension the lock file requires (composer check-platform-reqs --lock), plus intl.
           extensions: ctype, dom, fileinfo, filter, gd, iconv, intl, json, libxml, mbstring, pcre, pdo, pdo_sqlite, phar, sodium, tokenizer, xml, xmlreader, xmlwriter, zip, zlib
           coverage: none
