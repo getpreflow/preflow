@@ -12,8 +12,10 @@ use PHPUnit\Framework\TestCase;
  * uses newer syntax (for example the pipe operator `|>`, PHP 8.5) fails here with its file and
  * line, instead of only when a suite happens to load it.
  *
- * Scanned: every .php file, and every extensionless file whose first line is a php shebang, under the repository except vendor, node_modules, .git, .worktrees
- * and .superpowers (hidden folders are skipped as a whole).
+ * Scanned: every .php file, and every extensionless file whose first line is a php
+ * shebang, under the repository root. Skipped: the folders named in SKIPPED (vendor,
+ * node_modules, .git, .worktrees, .superpowers) wherever they occur; every other folder,
+ * hidden ones such as .github included, is scanned.
  */
 final class ParsesOnRunningPhpGuardTest extends TestCase
 {
