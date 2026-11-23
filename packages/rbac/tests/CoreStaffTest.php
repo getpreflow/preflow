@@ -651,6 +651,12 @@ final class CoreStaffTest extends TestCase
         $this->assertStringContainsString('added column rbac_role._updated_at', $out);
         $this->assertSame(0, (int) $pdo->query("SELECT COUNT(*) FROM rbac_role WHERE _updated_at IS NULL OR _updated_at = ''")->fetchColumn(), 'every role is dated');
         $this->assertGreaterThan(0, (int) $pdo->query('SELECT COUNT(*) FROM rbac_role')->fetchColumn());
+        $this->assertContains('idx_rbac_role__updated_at', $pdo->query("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'rbac_role'")->fetchAll(\PDO::FETCH_COLUMN), 'the index is back');
+
+        [$code, $again] = $this->command('migrate');
+        $this->assertSame(0, $code, $again);
+        $this->assertStringNotContainsString('[rbac.roles]', $again, 'a second migrate has nothing to say about the role table');
+        $this->assertStringNotContainsString('keeps no change dates', $again);
     }
 
     #[RunInSeparateProcess]

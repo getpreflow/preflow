@@ -18,10 +18,10 @@ use Preflow\Data\TypeRegistry;
  * The role type ("rbac_role"), rbac's own: models/rbac_role.json, on the default storage.
  * rbac defines it with the data layer unless something did already (Folio's rbac admin, whose
  * model adds what its admin needs). Its table is made by `php preflow rbac:install`
- * (RoleStore::install()) or by Folio's table sync when its rbac admin is on, not by rbac's own
- * `preflow migrate` step: the table being there is what tells RbacResolver that rbac is
- * installed. Once it is, `preflow migrate` keeps the table current (step "rbac.roles", since 0.84.1:
- * columns and the change date) and seeds the roles (RoleStore::seed()) on every deploy.
+ * (RoleStore::install()) or by Folio's table sync when its rbac admin is on. `preflow migrate`
+ * never creates it: the table being there is what tells RbacResolver that rbac is installed. Once
+ * it is, migrate keeps it current (step "rbac.roles", since 0.84.1: missing columns, the change
+ * date and its index, MySQL collations) and seeds the roles (step "rbac.seed", RoleStore::seed()).
  */
 final class RoleType
 {
@@ -46,8 +46,9 @@ final class RoleType
     /**
      * Defines the role type with the data layer when nothing has (and the site has a data
      * config; without a models directory it gives the data layer a registry), and lists its
-     * table with the data layer's record tables. Either way `preflow migrate` seeds the roles
-     * where rbac is installed (step "rbac.seed", after Folio's table sync).
+     * table with the data layer's record tables. Either way `preflow migrate`, where rbac is
+     * installed, keeps the role table current (step "rbac.roles", since 0.84.1) and seeds the roles
+     * (step "rbac.seed"), both after Folio's table sync.
      */
     public static function define(Container $c): void
     {
@@ -74,10 +75,10 @@ final class RoleType
             // site without Folio's rbac admin has no table step of its own. A missing table is not made
             // here (the table being there is what installed means). @since 0.84.1
             $c->get(MigrationRegistry::class)->afterMigrate('rbac.roles', static function () use ($c): array {
-                $store = $c->get(RoleStore::class);
-                $definition = $c->get(DataManager::class)->getTypeRegistry()?->get(self::KEY);
+                $dm = $c->get(DataManager::class);
+                $definition = $dm->getTypeRegistry()?->get(self::KEY);
 
-                return $definition !== null && $store->installed() ? (new RecordTableSync($c->get(DataManager::class)))->sync($definition) : [];
+                return $definition !== null && $c->get(RoleStore::class)->installed() ? (new RecordTableSync($dm))->sync($definition) : [];
             });
             // The hint prints once per process, however often the step runs.
             $told = false;
