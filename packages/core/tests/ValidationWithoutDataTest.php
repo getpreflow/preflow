@@ -99,4 +99,22 @@ final class ValidationWithoutDataTest extends TestCase
         $this->assertSame(['Dieses Feld ist erforderlich.'], $german);
         $this->assertSame(['This field is required.'], $english);
     }
+
+    /** @since 0.84.2 a factory bound before boot() is kept: the opt-out for the English messages */
+    #[RunInSeparateProcess]
+    public function test_a_factory_bound_before_boot_is_kept(): void
+    {
+        mkdir($this->dir . '/lang/de', 0777, true);
+        copy(dirname(__DIR__, 2) . '/validation/lang/de/validation.php', $this->dir . '/lang/de/validation.php');
+        file_put_contents($this->dir . '/config/i18n.php', "<?php\nreturn ['locales' => ['en', 'de'], 'default' => 'en'];\n");
+        $app = Application::create($this->dir);
+        $english = new ValidatorFactory(new RuleFactory());
+        $app->container()->instance(ValidatorFactory::class, $english);
+        $app->boot();
+
+        $this->assertSame($english, $app->container()->get(ValidatorFactory::class));
+        $visit = \Preflow\Core\Context\RenderContext::fromRequest(new \Nyholm\Psr7\ServerRequest('GET', '/de/contact'), $app->site(), new \Preflow\Core\Context\SystemClock());
+        $errors = \Preflow\Core\Context\Contexts::run($visit->in('de'), static fn (): array => $english->make(['name' => ['required']], [])->validate()->fieldErrors('name'));
+        $this->assertSame(['This field is required.'], $errors);
+    }
 }

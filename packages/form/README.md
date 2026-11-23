@@ -36,7 +36,7 @@ Requires `preflow/validation` and `preflow/view`. Optionally integrates with `pr
 </form>
 ```
 
-The form builder reads `#[Validate]` attributes from the model to infer input types (`email` rule = `type="email"`), detect required fields, and populate select options from `in:` rules.
+The form builder reads `#[Validate]` attributes from the model to infer input types (`email` rule = `type="email"`), detect required fields, and populate select options from `in:` rules. A form without a model does the same from its own `rules:` option (since 0.84.2): `form_begin({rules: {email: ['required', 'email']}})` renders `type="email"`.
 
 ## Field Methods
 

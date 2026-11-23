@@ -7,6 +7,10 @@ namespace Preflow\Form;
 use Preflow\Data\Model;
 use Preflow\Data\ModelMetadata;
 
+/**
+ * What a form reads from rules: a model's (inferType(), isRequired(), getInOptions()) or, since 0.84.2,
+ * a form's own rules: list for a form without a model (typeFromRules(), inOptionsFromRules()).
+ */
 final class ModelIntrospector
 {
     /** @param class-string<Model> $modelClass

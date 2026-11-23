@@ -2379,6 +2379,11 @@ final class Application
         // Inside a render the forms answer in the translator's language, which follows the render
         // context: the visitor's locale on a public page, the interface language on the admin
         // surface (since 0.84.2 for a site's own forms too). Outside every render: English.
+        // A factory the site bound before boot() stays (the one way to keep English messages, or any
+        // other translator, for the data layer's model validation too: it takes the factory at boot).
+        if ($this->container->bound(\Preflow\Validation\ValidatorFactory::class)) {
+            return;
+        }
         $container = $this->container;
         $this->container->instance(\Preflow\Validation\ValidatorFactory::class, new \Preflow\Validation\ValidatorFactory(
             $ruleFactory,
