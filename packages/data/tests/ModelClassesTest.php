@@ -59,7 +59,7 @@ final class ModelClassesTest extends TestCase
         $this->fixture('Job');
         $twin = str_replace(['final class Job', 'namespace Preflow\Data\Tests\Fixtures\ModelSchema;'], ['final class JobTwin', 'namespace Preflow\Data\Tests\Twin;'], file_get_contents(__DIR__ . '/Fixtures/ModelSchema/Job.php'));
         file_put_contents($this->dir . '/JobTwin.php', $twin);
-        eval('?>' . $twin);
+        require_once $this->dir . '/JobTwin.php';
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage(Job::class);

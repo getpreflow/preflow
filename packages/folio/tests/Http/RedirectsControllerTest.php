@@ -437,7 +437,9 @@ final class RedirectsControllerTest extends TestCase
 
         $this->send('/folio/redirects', ['address' => '/blog', 'area' => '1', 'mode' => 'prefix', 'target' => '/journal', 'status' => '301']);
 
-        $this->assertSame(['de /blog/one', 'en /blogger'], array_map(static fn (array $r): string => $r['locale'] . ' ' . $r['path'], $this->notFound()->visible()) |> (static function (array $rows): array { sort($rows); return $rows; }));
+        $left = array_map(static fn (array $r): string => $r['locale'] . ' ' . $r['path'], $this->notFound()->visible());
+        sort($left);
+        $this->assertSame(['de /blog/one', 'en /blogger'], $left);
     }
 
     public function test_typed_address_with_umlauts_matches_the_browser_form(): void

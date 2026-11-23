@@ -386,13 +386,13 @@ final class MarkdownConverter
             }
             $name = $node->localName;
             $trs = $name === 'tr' ? [$node] : (in_array($name, ['thead', 'tbody', 'tfoot'], true)
-                ? array_filter(iterator_to_array($node->children), fn (Element $e) => $e->localName === 'tr')
+                ? array_filter(iterator_to_array($node->childNodes, false), fn (Node $e) => $e instanceof Element && $e->localName === 'tr')
                 : []);
 
             foreach ($trs as $tr) {
                 $cells = [];
-                foreach ($tr->children as $cell) {
-                    if (in_array($cell->localName, ['td', 'th'], true)) {
+                foreach ($tr->childNodes as $cell) {
+                    if ($cell instanceof Element && in_array($cell->localName, ['td', 'th'], true)) {
                         $text = str_replace("\n", ' ', $this->children($cell));
                         $cells[] = str_replace('|', '\\|', $this->line($text));
                     }

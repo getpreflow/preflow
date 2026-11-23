@@ -81,6 +81,7 @@ final class AssetLibraryTest extends TestCase
         $zip = new \ZipArchive();
         $zip->open($file, \ZipArchive::CREATE);
         $zip->addFromString('[Content_Types].xml', '<Types/>');
+        $zip->addFromString('_rels/.rels', '<Relationships/>');
         $zip->addFromString('word/document.xml', '<w/>');
         $zip->close();
 
