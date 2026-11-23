@@ -16,6 +16,7 @@
         "mpdf/mpdf": "^8.2",
         "nyholm/psr7-server": "^1.1",
         "openspout/openspout": "^4",
+        "phpstan/phpstan": "^2",
         "phpunit/phpunit": "^11.0",
         "preflow/ai": "@dev",
         "preflow/auth": "@dev",
@@ -46,6 +47,7 @@
         "symfony/notifier": "^7.3 || ^8.0"
     },
     "scripts": {
+        "analyse": "phpstan analyse --memory-limit=2G --no-progress",
         "test:mysql": "bin/test-mysql",
         "test:starters": "bin/starter test starter && bin/starter test starter-folio"
     },
@@ -175,6 +177,7 @@
     "autoload-dev": {
         "psr-4": {
             "App\\": "packages/skeleton/app/",
+            "Preflow\\Tools\\Phpstan\\": "tools/phpstan/",
             "Tests\\": "packages/skeleton/tests/",
             "Preflow\\Ai\\Tests\\": "packages/ai/tests/",
             "Preflow\\Auth\\Tests\\": "packages/auth/tests/",

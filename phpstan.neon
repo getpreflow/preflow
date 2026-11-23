@@ -1,0 +1,40 @@
+includes:
+    - phpstan-baseline.neon
+
+parameters:
+    # The floor in composer.json: a call to anything newer than 8.4 is an error. CI runs this
+    # on the 8.4 leg; run it locally under php@8.4 as well.
+    phpVersion: 80400
+    level: 8
+    paths:
+        - packages/ai/src
+        - packages/auth/src
+        - packages/blade/src
+        - packages/blocks/src
+        - packages/codes/src
+        - packages/components/src
+        - packages/core/src
+        - packages/data/src
+        - packages/devtools/src
+        - packages/folio/src
+        - packages/form/src
+        - packages/htmx/src
+        - packages/i18n/src
+        - packages/media/src
+        - packages/members/src
+        - packages/notify/src
+        - packages/publishing/src
+        - packages/rbac/src
+        - packages/roles/src
+        - packages/routing/src
+        - packages/testing/src
+        - packages/twig/src
+        - packages/validation/src
+        - packages/view/src
+    excludePaths:
+        analyse:
+            - */vendor/*
+            - */node_modules/*
+
+rules:
+    - Preflow\Tools\Phpstan\NoPolyfilledFunctionsRule
