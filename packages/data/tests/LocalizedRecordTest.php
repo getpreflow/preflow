@@ -93,4 +93,13 @@ final class LocalizedRecordTest extends TestCase
 
         $this->assertSame(['en', 'de'], $this->record($locales, ['uuid' => '1', '_locales' => '["en","de"]'])->availableLocales());
     }
+
+    public function test_a_record_without_locales_is_visible_in_the_default_language_only(): void
+    {
+        $locales = new Locales(['en', 'de'], 'en');
+
+        $this->assertTrue($this->record($locales, ['uuid' => '1'])->isVisibleIn('en'));
+        $this->assertFalse($this->record($locales, ['uuid' => '1'])->isVisibleIn('de'));
+        $this->assertTrue($this->record($locales, ['uuid' => '1', '_locales' => ['de']])->isVisibleIn('de'));
+    }
 }

@@ -525,6 +525,46 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **First-hour patch (v0.84.2):** follow-ups from a first hour on a new site.
+  - **Fixed:** a site's own forms validate in the visitor's language. Validation messages follow the render context's locale on public pages too (before, only on the admin surface). `form_begin(rules: ...)` without a model now infers the input type from the rules: `type="email"`, `url`, `number`, or a `<select>` for `in:` rules. A `numeric` rule (without `integer`) adds `step="any"` so decimals are not blocked by the browser.
+  - **Fixed:** a crash while booting (a provider that fails while booting, a weak key, a broken config file) or an Error that escapes `run()` answers 500 with an error page. Before, PHP printed "Fatal error: Uncaught ..." with status 200. `Application::create()` installs the guard on web SAPIs.
+  - **Fixed:** a clean starter install. `User::$passwordHash` is `#[Field(exact: true)]` in starter and starter-folio, so migrate no longer warns on a new app. `php preflow serve` checks its port first (taken, or outside 1-65535).
+  - **Fixed:** `translations:check` knows dynamic key prefixes: `t('group.prefix_' ~ value)` (Twig) and `t('group.prefix_' . $value)` (Blade) is no longer listed as missing when a text starts with the prefix.
+  - **Fixed:** `folio_list()` matches the detail page's visibility. A record the page's language cannot open is no longer listed.
+  - **Docs:** the data README says how to publish records saved by code (seeding). The Folio README explains `_locales` ("Visible in") and has an "Upgrading to 0.84.2" paragraph.
+  - **Upgrading:**
+    - Validation messages inside any render now follow the render context's locale, on public pages too (before: only on the admin surface). This covers a site's own forms (`ValidatorFactory::make()`) and also model saves through `DataManager` on public pages (members' and profile areas, Folio-typed records saved from public components): their error messages are translated.
+    - On a site whose default or only locale is not English, every public page's validation messages change language (a translation must exist in the package's or the site's `lang/{locale}/validation.php`; otherwise the site's fallback language is used, then English). Outside every render (scripts, jobs) messages stay English.
+    - A site that offers a language the package does not ship (the packages ship en, de and fr) adds `lang/{locale}/validation.php` for it; otherwise messages fall back to the site's fallback language, then English (with `fallback => 'de'`, a visitor in a language without a file now reads German where 0.84.1 showed English).
+    - Site tests that match English message strings on those pages need updating (assert the translated text, or the error key).
+    - To keep English (or any other translator) for forms and for the data layer, bind your own factory before boot, because `DataManager` takes the factory at boot. Since 0.84.2 `Application` keeps a `ValidatorFactory` already bound when `boot()` runs. In `public/index.php` (and the console entry point):
+      ```php
+      $app = Application::create(__DIR__ . '/..');
+      $container = $app->container();
+      $container->instance(
+          \Preflow\Validation\ValidatorFactory::class,
+          new \Preflow\Validation\ValidatorFactory(
+              new \Preflow\Validation\RuleFactory(),
+              // English everywhere except the admin, which keeps its interface language (the 0.84.1 behaviour)
+              contextTranslator: static fn (): ?\Preflow\I18n\Translator => \Preflow\Core\Context\Contexts::peek()?->surface->admin === true && $container->bound(\Preflow\I18n\Translator::class)
+                  ? $container->get(\Preflow\I18n\Translator::class)
+                  : null,
+          ),
+      );
+      $app->boot();
+      ```
+      Binding it in a service provider is too late for `DataManager` (providers run after the data layer is built). A factory you build yourself has no `app/Rules/` rules unless you `discover()` them on the `RuleFactory`.
+    - `form_begin(rules: ...)` without a model renders `type="email"`, `url`, `number`, or a `<select>` for `in:` rules, where it rendered `type="text"`. Pass `type:` on the field to override.
+    - A crash while booting or an Error that escapes `run()` now answers 500 with an error page: the dev error page when `app.debug` is on, a plain page without a trace when off. Before, PHP printed "Fatal error: Uncaught ..." with the trace, status 200. No change to `public/index.php` is needed: `Application::create()` installs the guard on web SAPIs (not the console).
+    - The guard installs an exception handler. An exception handler set before `Application::create()` is chained: it is called after the answer, its output is dropped. One set after `create()` replaces the guard's.
+    - Uncaught exceptions are now logged by Preflow, not PHP: the whole exception with trace ("Uncaught <class>: ...") through the bound PSR-3 logger (level error) or else `error_log`. The old "PHP Fatal error: Uncaught" lines no longer appear.
+    - Not covered: code running before `Application::create()`, and apps built with the array form `create([...])` (tests).
+    - Output printed before the failure keeps its 200 status (headers are gone); the error page is appended, not silent, unless the response already sent is not HTML (JSON, a download): then the failure is only logged. When `config/app.php` itself fails to load, `APP_DEBUG` from the environment decides between the dev page and the plain one. With `display_errors=1` an engine fatal (memory exhausted, ...) stays 200 as PHP shows it itself; with `display_errors` off it answers 500 with a page.
+    - A site's own `try/catch (Throwable)` around `boot()` / `run()` keeps working and is now redundant but harmless.
+    - Apps from older starters: mark `App\Models\User::$passwordHash` with `#[Field(exact: true)]` to silence the model-exactness warning on migrate (new installs have it).
+    - `php preflow serve` now exits 1 with a one-line message when the port is taken or is not a number from 1 to 65535, before printing "started".
+    - `translations:check` no longer lists dynamic key prefixes (`t('group.prefix_' ~ value)`, in Blade `.`) as missing when a text starts with the prefix.
+    - `folio_list()` no longer lists a record the page's language cannot open (no `_locales` entry for it, on a type with translatable fields). Before, it was listed while its page was a 404. Fix: set `_locales` on records saved by code, and publish them for a publishing type (`php preflow publish <type>`). `folio_find()` is unchanged. A type without translatable fields lists in every language.
 - **Stable ground patch (v0.84.1, released 2026-11-23):** follow-ups from 0.84.0.
   - **Fixed:** migrate keeps rbac's role table current wherever rbac is installed, whoever defined the type. The new step `rbac.roles` (the name migrate prints) adds missing columns, the change-date column and its index `idx_rbac_role__updated_at`, and on MySQL fixes the text collations. The roles are dated in the same run. The step never creates the table: the table being there is what tells rbac it is installed. The migrate warning's wording is corrected.
   - **Fixed:** `members:prune`: a run that finds another one holding the lock prints one line naming it and exits 0 (before: silent). A lock file it cannot open now fails with a message and exit 1 (before: a silent exit 0, so nothing was ever pruned).

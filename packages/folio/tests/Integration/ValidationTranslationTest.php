@@ -15,8 +15,8 @@ use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Validation messages in Folio's forms (Ruling 2): an admin request validates with the
- * translator, in the user's interface language; the site's own forms (no admin request, no
- * translator) keep the English messages, also after an admin request in the same process.
+ * translator, in the user's interface language; outside every render (no request around
+ * the validator) the messages stay English, also after an admin request in the same process.
  */
 final class ValidationTranslationTest extends TestCase
 {
@@ -40,7 +40,7 @@ final class ValidationTranslationTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_a_required_field_left_empty_says_so_in_german_and_the_frontend_stays_english(): void
+    public function test_a_required_field_left_empty_says_so_in_german_and_outside_a_render_stays_english(): void
     {
         $ada = $this->makeStaff();
         $this->flow->container()->get(UserPreferences::class)->setLocale((string) $ada->getId(), 'de');
@@ -52,7 +52,7 @@ final class ValidationTranslationTest extends TestCase
         $this->assertStringContainsString('Dieses Feld ist erforderlich.', $body);
         $this->assertStringNotContainsString('This field is required.', $body);
 
-        // A frontend form: the shared validator, no admin request around it.
+        // The shared validator outside every render (a script, a job).
         $factory = $this->flow->container()->get(ValidatorFactory::class);
         $this->assertSame(['This field is required.'], $factory->make(['name' => ['required']], [])->validate()->fieldErrors('name'));
         try {

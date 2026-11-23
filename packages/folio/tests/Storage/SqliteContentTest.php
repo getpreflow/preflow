@@ -82,7 +82,7 @@ final class SqliteContentTest extends TestCase
         rmdir($this->dir);
     }
 
-    public function test_collection_list_sorted_and_localized(): void
+    public function test_collection_list_sorted_localized_and_visible_in_the_language(): void
     {
         $this->publishPost('a', ['en' => 'Ten', 'de' => 'Zehn'], 10);
         $this->publishPost('b', ['en' => 'Two', 'de' => 'Zwei'], 2);
@@ -93,7 +93,8 @@ final class SqliteContentTest extends TestCase
 
         \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->in('de'), function (): void {
             $collections = new Collections($this->live, $this->catalog, $this->locale);
-            $this->assertSame(['Zwei', 'Zehn', 'Thirty'], array_column($collections->list('post'), 'title'));
+            // 'Thirty' is public in English only: a German page could not open it, so it does not list it
+            $this->assertSame(['Zwei', 'Zehn'], array_column($collections->list('post'), 'title'));
             $this->assertSame('Zehn', $collections->find('post', 'a')['title'] ?? null);
         });
     }

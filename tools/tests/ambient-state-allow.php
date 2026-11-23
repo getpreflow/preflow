@@ -15,17 +15,24 @@ declare(strict_types=1);
 return [
     // superglobal: the edges where PHP's request becomes a value, and the adapters for code
     // outside the packages that still reads superglobals.
-    'core/src/Application.php' => [
-        'superglobal' => [
-            '$request = $creator->fromGlobals();' => 'the HTTP edge: the one place that turns the superglobals into the request',
+    'core/src/Error/FailureGuard.php' => [
+        'static-state' => [
+            'private static ?Application $app = null;' => 'PHP\'s exception and shutdown handlers are process-wide: they need the one app that installed them',
         ],
+    ],
+    'core/src/Http/GlobalRequest.php' => [
+        'superglobal' => [
+            'return (new \\Nyholm\\Psr7Server\\ServerRequestCreator($factory, $factory, $factory, $factory))->fromGlobals();' => 'the HTTP edge: the one place that turns the superglobals into the request (run() and FailureGuard)',
+        ],
+    ],
+    'core/src/Application.php' => [
         'request-binding' => [
             '$this->container->bind(RequestContext::class, static fn (): ?RequestContext => Contexts::peek()?->request);' => 'the one sanctioned RequestContext binding: a factory that reads the current frame\'s request, so no render finds another\'s',
             '$this->container->instance(\\Preflow\\Core\\Http\\CookieQueue::class, \\Preflow\\Core\\Http\\CookieQueue::ofCurrentFrame());' => 'the one sanctioned CookieQueue binding: bound once at boot, it works on the current frame\'s own queue (a frame slot)',
         ],
         'peek' => [
             '$this->container->bind(RequestContext::class, static fn (): ?RequestContext => Contexts::peek()?->request);' => 'outside every render there is no request: RequestContext is null, as before the first request',
-            'contextTranslator: static fn (): ?\\Preflow\\I18n\\Translator => Contexts::peek()?->surface->admin === true && $container->bound(\\Preflow\\I18n\\Translator::class)' => 'outside every render there is no admin surface: validators answer in English (the documented default)',
+            'contextTranslator: static fn (): ?\\Preflow\\I18n\\Translator => Contexts::peek() !== null && $container->bound(\\Preflow\\I18n\\Translator::class)' => 'outside every render there is no locale to follow: validators answer in English (the documented default)',
         ],
     ],
     'core/src/Http/InternalRender.php' => [

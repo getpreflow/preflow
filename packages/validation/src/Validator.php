@@ -10,8 +10,9 @@ use Preflow\Validation\Rules\Required;
 
 /**
  * Validates data against rules. A rule's Message is translated when the validator has a
- * translator (Folio passes one for its forms); without one it is the English text, so a site's
- * forms keep their messages until the site passes a translator itself.
+ * translator (the application's ValidatorFactory passes one inside every render, since 0.84.2: the
+ * visitor's locale on a public page, the interface language in the admin); without one it is the
+ * English text (a validator made outside a render, or by hand).
  */
 final class Validator
 {

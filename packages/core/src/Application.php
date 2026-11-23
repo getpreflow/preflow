@@ -156,6 +156,11 @@ final class Application
         EnvLoader::load(rtrim($basePath, '/') . '/.env');
 
         $app = new self(new Config(), $basePath);
+        // A web request that fails before the kernel (a broken config file, boot, a PHP Error, a
+        // fatal) answers 500, not PHP's raw output; the console keeps its own exception output.
+        if (!in_array(PHP_SAPI, ['cli', 'phpdbg'], true)) {
+            \Preflow\Core\Error\FailureGuard::install($app);
+        }
         $app->config->replace(self::configItems($app->configFile(...)));
 
         return $app;
@@ -1290,9 +1295,7 @@ final class Application
     {
         if (class_exists(\Nyholm\Psr7\Factory\Psr17Factory::class)
             && class_exists(\Nyholm\Psr7Server\ServerRequestCreator::class)) {
-            $factory = new \Nyholm\Psr7\Factory\Psr17Factory();
-            $creator = new \Nyholm\Psr7Server\ServerRequestCreator($factory, $factory, $factory, $factory);
-            $request = $creator->fromGlobals();
+            $request = \Preflow\Core\Http\GlobalRequest::create();
             // Built once the request carries its hypermedia clients: a header-only fragment is no Visit.
             $clients = $this->withHypermedia($request);
             $ctx = $this->requestContext($request, $clients);
@@ -2376,12 +2379,18 @@ final class Application
         }
 
         $this->container->instance(\Preflow\Validation\RuleFactory::class, $ruleFactory);
-        // The admin's forms answer in its interface language (the admin surface), a site's own in
-        // English unless the site passes a translator (as before 0.81).
+        // Inside a render the forms answer in the translator's language, which follows the render
+        // context: the visitor's locale on a public page, the interface language on the admin
+        // surface (since 0.84.2 for a site's own forms too). Outside every render: English.
+        // A factory the site bound before boot() stays (the one way to keep English messages, or any
+        // other translator, for the data layer's model validation too: it takes the factory at boot).
+        if ($this->container->bound(\Preflow\Validation\ValidatorFactory::class)) {
+            return;
+        }
         $container = $this->container;
         $this->container->instance(\Preflow\Validation\ValidatorFactory::class, new \Preflow\Validation\ValidatorFactory(
             $ruleFactory,
-            contextTranslator: static fn (): ?\Preflow\I18n\Translator => Contexts::peek()?->surface->admin === true && $container->bound(\Preflow\I18n\Translator::class)
+            contextTranslator: static fn (): ?\Preflow\I18n\Translator => Contexts::peek() !== null && $container->bound(\Preflow\I18n\Translator::class)
                 ? $container->get(\Preflow\I18n\Translator::class)
                 : null,
         ));

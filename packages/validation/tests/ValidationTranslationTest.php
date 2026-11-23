@@ -124,7 +124,9 @@ final class ValidationTranslationTest extends TestCase
         $translator = self::translator('en');
         $keys = array_keys($translator->entries('validation', 'en'));
         $this->assertNotEmpty($keys);
-        foreach (['de', 'fr'] as $locale) {
+        $shipped = array_map('basename', glob($root . '/lang/*', GLOB_ONLYDIR) ?: []);
+        $this->assertEqualsCanonicalizing(['de', 'en', 'fr'], $shipped, 'the packages ship one language set');
+        foreach ($shipped as $locale) {
             $this->assertEqualsCanonicalizing($keys, array_keys($translator->entries('validation', $locale)), $locale);
         }
     }

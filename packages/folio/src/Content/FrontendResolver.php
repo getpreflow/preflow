@@ -178,7 +178,7 @@ final class FrontendResolver
             }
 
             foreach ($query->get()->items() as $record) {
-                if ($locale === null || $record->getType()->translatableFields() === [] || in_array($locale, $record->availableLocales(), true)) {
+                if ($locale === null || $record->isVisibleIn($locale)) {
                     $found = new ResolvedRecord($record, $route);
                     if ($published !== null) {
                         $this->dm->reportRead($published->storage, $published->table, (string) $record->getId());
@@ -270,8 +270,7 @@ final class FrontendResolver
         if ($route === null || !$locales->has($locale)) {
             return null;
         }
-        $multilingual = $record->getType()->translatableFields() !== [];
-        if ($multilingual && !in_array($locale, $record->availableLocales(), true)) {
+        if (!$record->isVisibleIn($locale)) {
             return null;
         }
 

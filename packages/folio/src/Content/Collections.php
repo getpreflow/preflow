@@ -10,10 +10,12 @@ use Preflow\Publishing\LiveContent;
 /**
  * Records of a collection for public templates and app code (folio_list,
  * folio_find): live content only (published snapshots of publishing types;
- * working copies where the render reads them), localized to the content locale, in
- * the type's list order. Memoized per render frame and context (ContentMemo: by type and
- * RenderContext::memoKey()); not memoized outside every render. A type gated by
- * frontend.permission lists nothing for visitors without it (FrontendGate).
+ * working copies where the render reads them), localized to the content locale, in the
+ * type's list order. list() keeps only the records public in that locale
+ * (DynamicRecord::isVisibleIn(), the detail page's rule); find() is a lookup by key and
+ * returns the record whatever its languages. Memoized per render frame and context
+ * (ContentMemo: by type and RenderContext::memoKey()); not memoized outside every render. A type
+ * gated by frontend.permission lists nothing for visitors without it (FrontendGate).
  */
 final class Collections
 {
@@ -55,6 +57,9 @@ final class Collections
         $locale = $this->locale->get();
         $records = [];
         foreach (ListOrder::apply($this->live->query($type), $this->live->definition($type), $listing->list)->get()->items() as $record) {
+            if (!$record->isVisibleIn($locale)) {
+                continue; // the page of this language could not open it
+            }
             $records[] = $this->safe($record->localized($locale)->toArray(), $type);
         }
 

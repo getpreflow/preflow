@@ -84,10 +84,34 @@ do_install() {
     fi
 }
 
+# A fresh install's migrate prints no warning line (`warning: ...`, the model/migration checks).
+# Runs it on a copy of what Git would ship, with its own storage and the starter's vendor/, so the
+# starter's own storage/data is not touched.
+assert_clean_migrate() {
+    local copy output
+    copy="$(mktemp -d "${TMPDIR:-/tmp}/starter-migrate.XXXXXX")"
+    (cd "$dir" && git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf -) | tar -xf - -C "$copy"
+    ln -s "$dir/vendor" "$copy/vendor"
+    (cd "$copy" && cp .env.example .env && php preflow key:generate >/dev/null)
+    output="$(cd "$copy" && php preflow migrate 2>&1)" || {
+        echo "A fresh install's migrate failed: $name" >&2
+        echo "$output" >&2
+        rm -rf "$copy"
+        exit 1
+    }
+    rm -rf "$copy"
+    if printf '%s\n' "$output" | grep -qi 'warning'; then
+        echo "A fresh install's migrate printed a warning: $name" >&2
+        printf '%s\n' "$output" | grep -i 'warning' >&2
+        exit 1
+    fi
+}
+
 do_test() {
     if [ ! -d "$dir/vendor" ]; then
         do_install
     fi
+    assert_clean_migrate
     cd "$dir"
     exec vendor/bin/phpunit "$@"
 }

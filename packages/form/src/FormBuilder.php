@@ -290,9 +290,23 @@ final class FormBuilder
         // ---- type ----
         if (!isset($options['type']) && $modelClass !== null) {
             $options['type'] = $this->introspector->inferType($name, $modelClass, $this->scenario);
+        } elseif (!isset($options['type']) && isset($this->rules[$name])) {
+            // No model: the form's own rules say what the field is (since 0.84.2).
+            $options['type'] = $this->introspector->typeFromRules($this->rules[$name]) ?? 'text';
         }
 
         $type = $options['type'] ?? 'text';
+
+        // ---- step ----
+        // A number input steps by 1 unless told otherwise, so "12.50" would be blocked by the
+        // browser although a numeric rule accepts it (since 0.84.2); integer keeps the default.
+        if ($type === 'number' && !isset($options['attrs']['step'])) {
+            $fieldRules = $this->rules[$name]
+                ?? ($modelClass !== null ? $this->introspector->getFields($modelClass, $this->scenario)[$name] ?? [] : []);
+            if (in_array('numeric', $fieldRules, true) && !in_array('integer', $fieldRules, true)) {
+                $options['attrs']['step'] = 'any';
+            }
+        }
 
         // ---- required ----
         if (!isset($options['required'])) {
@@ -313,6 +327,11 @@ final class FormBuilder
         // Fall back to 'in:' rule from model when no explicit options provided
         if ($type === 'select' && !isset($options['attrs']['options']) && $modelClass !== null) {
             $inOptions = $this->introspector->getInOptions($name, $modelClass, $this->scenario);
+            if ($inOptions !== null) {
+                $options['attrs']['options'] = array_combine($inOptions, $inOptions);
+            }
+        } elseif ($type === 'select' && !isset($options['attrs']['options']) && isset($this->rules[$name])) {
+            $inOptions = $this->introspector->inOptionsFromRules($this->rules[$name]);
             if ($inOptions !== null) {
                 $options['attrs']['options'] = array_combine($inOptions, $inOptions);
             }
