@@ -71,6 +71,20 @@
     },
     "extra": {
         "preflow": {
+            "commands": [
+                "Preflow\\Folio\\Console\\ReviewIndexCommand",
+                "Preflow\\Folio\\Console\\AssetsVariantsCommand",
+                "Preflow\\Folio\\Console\\AssetsImportCommand",
+                "Preflow\\Folio\\Console\\ExportCommand",
+                "Preflow\\Folio\\Console\\ImportCommand",
+                "Preflow\\Folio\\Console\\PullCommand",
+                "Preflow\\Folio\\Console\\ExtensionsListCommand",
+                "Preflow\\Folio\\Console\\ExtensionsEnableCommand",
+                "Preflow\\Folio\\Console\\ExtensionsDisableCommand",
+                "Preflow\\Folio\\Console\\ExtensionsApplyCommand",
+                "Preflow\\Folio\\Console\\ExtensionsCheckCommand",
+                "Preflow\\Folio\\Console\\ExtensionsUninstallCommand"
+            ],
             "runtime": [
                 "config/folio/extensions.json"
             ],
