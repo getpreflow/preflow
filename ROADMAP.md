@@ -526,10 +526,11 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
 - **First-hour patch (v0.84.2):** follow-ups from a first hour on a new site.
-  - **Fixed:** a site's own forms validate in the visitor's language. Validation messages follow the render context's locale on public pages too (before, only on the admin surface). `form_begin(rules: ...)` without a model now infers the input type from the rules: `type="email"`, `url`, `number`, or a `<select>` for `in:` rules.
+  - **Fixed:** a site's own forms validate in the visitor's language. Validation messages follow the render context's locale on public pages too (before, only on the admin surface). `form_begin(rules: ...)` without a model now infers the input type from the rules: `type="email"`, `url`, `number`, or a `<select>` for `in:` rules. A `numeric` rule (without `integer`) adds `step="any"` so decimals are not blocked by the browser.
+  - **Added:** Italian validation messages (`preflow/validation` now ships en, de, fr and it).
   - **Fixed:** a crash while booting (a provider that fails while booting, a weak key, a broken config file) or an Error that escapes `run()` answers 500 with an error page. Before, PHP printed "Fatal error: Uncaught ..." with status 200. `Application::create()` installs the guard on web SAPIs.
-  - **Fixed:** a clean starter install. `User::$passwordHash` is `#[Field(exact: true)]` in starter and starter-folio, so migrate no longer warns on a new app. `php preflow serve` checks its port first.
-  - **Fixed:** `translations:check` knows dynamic key prefixes: `t('group.prefix_' ~ value)` is no longer listed as missing when a text starts with the prefix.
+  - **Fixed:** a clean starter install. `User::$passwordHash` is `#[Field(exact: true)]` in starter and starter-folio, so migrate no longer warns on a new app. `php preflow serve` checks its port first (taken, or outside 1-65535).
+  - **Fixed:** `translations:check` knows dynamic key prefixes: `t('group.prefix_' ~ value)` (Twig) and `t('group.prefix_' . $value)` (Blade) is no longer listed as missing when a text starts with the prefix.
   - **Fixed:** `folio_list()` matches the detail page's visibility. A record the page's language cannot open is no longer listed.
   - **Docs:** the data README says how to publish records saved by code (seeding). The Folio README explains `_locales` ("Visible in") and has an "Upgrading to 0.84.2" paragraph.
   - **Upgrading:**
@@ -559,11 +560,11 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - The guard installs an exception handler. An exception handler set before `Application::create()` is chained: it is called after the answer, its output is dropped. One set after `create()` replaces the guard's.
     - Uncaught exceptions are now logged by Preflow, not PHP: the whole exception with trace ("Uncaught <class>: ...") through the bound PSR-3 logger (level error) or else `error_log`. The old "PHP Fatal error: Uncaught" lines no longer appear.
     - Not covered: code running before `Application::create()`, and apps built with the array form `create([...])` (tests).
-    - Output printed before the failure keeps its 200 status (headers are gone); the error page is appended, not silent. With `display_errors=1` an engine fatal (memory exhausted, ...) stays 200 as PHP shows it itself; with `display_errors` off it answers 500 with a page.
+    - Output printed before the failure keeps its 200 status (headers are gone); the error page is appended, not silent, unless the response already sent is not HTML (JSON, a download): then the failure is only logged. When `config/app.php` itself fails to load, `APP_DEBUG` from the environment decides between the dev page and the plain one. With `display_errors=1` an engine fatal (memory exhausted, ...) stays 200 as PHP shows it itself; with `display_errors` off it answers 500 with a page.
     - A site's own `try/catch (Throwable)` around `boot()` / `run()` keeps working and is now redundant but harmless.
     - Apps from older starters: mark `App\Models\User::$passwordHash` with `#[Field(exact: true)]` to silence the model-exactness warning on migrate (new installs have it).
-    - `php preflow serve` now exits 1 with a one-line message when the port is taken, before printing "started".
-    - `translations:check` no longer lists dynamic key prefixes (`t('group.prefix_' ~ value)`) as missing when a text starts with the prefix.
+    - `php preflow serve` now exits 1 with a one-line message when the port is taken or is not a number from 1 to 65535, before printing "started".
+    - `translations:check` no longer lists dynamic key prefixes (`t('group.prefix_' ~ value)`, in Blade `.`) as missing when a text starts with the prefix.
     - `folio_list()` no longer lists a record the page's language cannot open (no `_locales` entry for it, on a type with translatable fields). Before, it was listed while its page was a 404. Fix: set `_locales` on records saved by code, and publish them for a publishing type (`php preflow publish <type>`). `folio_find()` is unchanged. A type without translatable fields lists in every language.
 - **Stable ground patch (v0.84.1, released 2026-11-23):** follow-ups from 0.84.0.
   - **Fixed:** migrate keeps rbac's role table current wherever rbac is installed, whoever defined the type. The new step `rbac.roles` (the name migrate prints) adds missing columns, the change-date column and its index `idx_rbac_role__updated_at`, and on MySQL fixes the text collations. The roles are dated in the same run. The step never creates the table: the table being there is what tells rbac it is installed. The migrate warning's wording is corrected.
