@@ -115,10 +115,14 @@ final class FailureGuard
                 echo $response->getBody();
             }
         } catch (\Throwable) {
+            if (!headers_sent()) {
+                http_response_code(500);
+            }
             echo 'Internal Server Error';
         }
         if ($previous !== null) {
-            ob_start();
+            // A discarding callback, not ob_end_clean() alone: a handler that exits flushes its buffers.
+            ob_start(static fn (): string => '');
             try {
                 $previous($e);
             } catch (\Throwable) {

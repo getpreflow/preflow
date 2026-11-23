@@ -64,14 +64,14 @@ final class BootFailureAnswersTest extends TestCase
     }
 
     /** @return array{status: int, headers: string, body: string} */
-    private function cgi(int $displayErrors = 1, int $buffering = 4096): array
+    private function cgi(int $displayErrors = 1, int $buffering = 4096, string $disable = ''): array
     {
         // CI runs only tools/tests, so this skip shows on a machine without php-cgi, never hides a CI run.
         if (trim((string) shell_exec('command -v php-cgi')) === '') {
             $this->markTestSkipped('php-cgi is not installed: the web-SAPI failure tests cannot run.');
         }
         $process = proc_open(
-            ['php-cgi', '-q', '-d', 'display_errors=' . $displayErrors, '-d', 'html_errors=0', '-d', 'output_buffering=' . $buffering, '-d', 'error_log=' . $this->dir . '/php.log', '-f', $this->dir . '/public/index.php'],
+            ['php-cgi', '-q', '-d', 'display_errors=' . $displayErrors, '-d', 'html_errors=0', '-d', 'disable_functions=' . $disable, '-d', 'output_buffering=' . $buffering, '-d', 'error_log=' . $this->dir . '/php.log', '-f', $this->dir . '/public/index.php'],
             [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes,
             null,
@@ -165,6 +165,34 @@ final class BootFailureAnswersTest extends TestCase
         $this->assertStringContainsString('Internal Server Error', $res['body']);
         $this->assertStringNotContainsString('tracker noise', $res['body']);
         $this->assertSame('Error', (string) @file_get_contents($marker));
+    }
+
+    public function test_a_chained_handler_that_exits_cannot_leak_its_output(): void
+    {
+        $this->config(0);
+        $index = (string) file_get_contents($this->dir . '/public/index.php');
+        file_put_contents($this->dir . '/public/index.php', str_replace(
+            '$app = ',
+            'set_exception_handler(static function (Throwable $e): void { echo "SECRET TRACE " . $e->getTraceAsString(); exit(1); });' . "\n" . '$app = ',
+            $index,
+        ));
+
+        $res = $this->cgi();
+
+        $this->assertSame(500, $res['status']);
+        $this->assertStringContainsString('Internal Server Error', $res['body']);
+        $this->assertStringNotContainsString('SECRET TRACE', $res['body']);
+    }
+
+    public function test_when_building_the_answer_fails_the_fallback_is_still_a_500(): void
+    {
+        $this->config(0);
+
+        // A host that disables header_remove(): sending the answer throws, the fallback must still be a 500.
+        $res = $this->cgi(1, 4096, 'header_remove');
+
+        $this->assertSame(500, $res['status']);
+        $this->assertStringContainsString('Internal Server Error', $res['body']);
     }
 
     public function test_a_fatal_error_answers_500_with_a_page_when_php_shows_no_errors(): void
