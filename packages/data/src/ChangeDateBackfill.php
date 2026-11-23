@@ -29,10 +29,10 @@ use Preflow\Data\Attributes\Timestamps;
  * storage has them, in the order of their ids; a run cut short leaves the rest for the next migrate.
  *
  * What it says, one line per table: how many records got a date, from which sources; a warning for
- * a table that holds no change dates (no column: a table a migration made); a "refused:" line (so
- * migrate exits 1) for a table it could not finish: a source that could not answer (the activity
- * log unreachable: no weaker source decides for those records; they are tried again next run), or a
- * failing read or write. The other tables go on.
+ * a table that holds no change dates (no column: a table no package syncs, such as one a migration
+ * made); a "refused:" line (so migrate exits 1) for a table it could not finish: a source that could
+ * not answer (the activity log unreachable: no weaker source decides for those records; they are
+ * tried again next run), or a failing read or write. The other tables go on.
  *
  * The types: every record table the packages register (RecordTables) and every type of the
  * registry, each storage and table once.
@@ -104,7 +104,7 @@ final class ChangeDateBackfill
         $key = $this->dm->changeDateOf($def);
         if ($key === null) {
             return $driver instanceof DescribesColumns
-                ? ["warning: {$def->table} keeps no change dates: its table has no " . ChangeDates::FIELD . ' column (a table a migration made: add the column there)']
+                ? ["warning: {$def->table} keeps no change dates: its table has no " . ChangeDates::FIELD . ' column (a table no package syncs, such as one a migration made: add the column there)']
                 : []; // a storage that cannot say: DataManager keeps no dates on it
         }
         $now = Contexts::clock()->now();

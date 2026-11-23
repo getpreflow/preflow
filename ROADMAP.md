@@ -525,6 +525,16 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Stable ground patch (v0.84.1):** follow-ups from 0.84.0.
+  - **Fixed:** migrate keeps rbac's role table current wherever rbac is installed, whoever defined the type. The new step `rbac.roles` (the name migrate prints) adds missing columns, the change-date column and its index `idx_rbac_role__updated_at`, and on MySQL fixes the text collations. The roles are dated in the same run. The step never creates the table: the table being there is what tells rbac it is installed. The migrate warning's wording is corrected.
+  - **Fixed:** `members:prune`: a run that finds another one holding the lock prints one line naming it and exits 0 (before: silent). A lock file it cannot open now fails with a message and exit 1 (before: a silent exit 0, so nothing was ever pruned).
+  - **Fixed:** the transient tables (auth's tokens and remember-me rows, core's throttle hits) declare `changeDates: false`. They never got the column, so each first save asked the database for it, and on JSON storage the rows carried a change date nothing reads.
+  - **Docs:** i18n declares every config key it reads (`packages/i18n/config/i18n.php`), so the reference lists them, and says what `cookie` and `redirect_bare` do with the language switch `/--locale/{code}`. A guard test keeps that true. The members README states the prune exit codes.
+  - **Upgrading:**
+    - Run migrate after upgrading (it adds the column to role tables that lack it).
+    - auth now conflicts with `preflow/data` below 0.84.0 (core already does); upgrade the packages together.
+    - Check that the cron user can open `storage/locks/members-prune.lock`. A lock file made by another user (a manual run as the deploy user) used to make the nightly prune do nothing, silently. It now exits 1.
+    - A cron that mails output now mails the skip line when two prune runs overlap.
 - **Stable ground (v0.84.0, released 2026-11-23):** the cleanup release after the render context. Every typed record keeps a change date that Folio lists and sorts by. HTML answers say what they vary on. Folio copes with a site that lacks AI, media storage or a translator. Folio's lists and screens get a polish pass. `search()` without fields is refused on every driver. MySQL gets maintenance checks.
   - **data:**
     - **New: every typed record stores its change date** in the system key `_updated_at`. The value is UTC ISO 8601 text, last among the system keys. It moves on a save that changes the record. A save that changes nothing leaves it, so an unchanged JSON file keeps its bytes. It is never content: states, `changes()`, restore and duplicates ignore it. A published copy carries its own date. Counters, `updateIf()` and named-field writes leave it. A type's own `updatedAt` / `updated_at` stays the site's content and is never touched. Plain models (no type) keep the opt-in `#[Timestamps]`. A type opts out with `changeDates: false` on its `TypeDefinition`. The activity log's tables do.

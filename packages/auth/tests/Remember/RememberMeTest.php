@@ -28,7 +28,9 @@ use Preflow\Core\Routing\Route;
 use Preflow\Core\Routing\RouterInterface;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Core\Http\Session\SessionMiddleware;
+use Preflow\Data\ChangeDates;
 use Preflow\Data\DataManager;
+use Preflow\Data\Query;
 use Preflow\Data\Migration\Migration;
 use Preflow\Data\Migration\Schema;
 use Preflow\Testing\ArraySession;
@@ -258,6 +260,15 @@ final class RememberMeTest extends DataTestCase
         $this->assertStringEndsWith('; HttpOnly; SameSite=Lax', implode(', ', self::cookies($response)));
         [$response] = $this->handle($plain, then: fn (ServerRequestInterface $r) => $plain->login(new TestUser(uuid: 'user-1'), $r));
         $this->assertSame([], self::cookies($response));
+    }
+
+    public function test_a_remember_row_on_json_storage_carries_no_change_date(): void
+    {
+        $this->remember('json')->issue('member', 'user-1');
+
+        $rows = $this->getJsonDriver()->findMany('auth_remember', new Query())->items();
+        $this->assertCount(1, $rows);
+        $this->assertArrayNotHasKey(ChangeDates::FIELD, $rows[0]);
     }
 
     public function test_cookie_restores_user_and_rotates(): void

@@ -19,9 +19,14 @@ use Preflow\Members\MembersConfig;
 /**
  * Nightly from cron: unconfirmed accounts go after retention.unconfirmed_days (7) from registration,
  * declined ones after retention.declined_days (30) from the decision (config/members.php), and
- * expired tokens, remember rows, throttle hits and activity rows past their retention are pruned. Deletions go through Members::delete() (the self
- * rules, the DELETING / DELETED hooks); an account a restrict rule or a hook keeps is counted as kept. Prints counts only, never an email
- * or a name. The package lists it in composer.json (extra.preflow.commands), so it needs no setup.
+ * expired tokens, remember rows, throttle hits and activity rows past their retention are pruned.
+ * Deletions go through Members::delete() (the self rules, the DELETING / DELETED hooks); an account
+ * a restrict rule or a hook keeps is counted as kept. Prints counts only, never an email or a name.
+ *
+ * A run that finds the lock held (storage/locks/members-prune.lock under the app's base path) prints
+ * a line naming it and exits 0. A lock it cannot open fails with a message and exit 1.
+ *
+ * The package lists it in composer.json (extra.preflow.commands), so it needs no setup.
  */
 final class PruneMembersCommand implements CommandInterface
 {
@@ -42,9 +47,18 @@ final class PruneMembersCommand implements CommandInterface
             fwrite(STDERR, "members:prune — cannot create {$dir}\n");
             return 1;
         }
-        $lock = fopen($dir . '/members-prune.lock', 'c');
-        if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
-            return 0; // another run is active
+        $path = $dir . '/members-prune.lock';
+        $lock = @fopen($path, 'c'); // the message below is the report; PHP's own warning would double it
+        if ($lock === false) {
+            fwrite(STDERR, "members:prune — cannot open {$path}\n");
+            return 1;
+        }
+        if (!flock($lock, LOCK_EX | LOCK_NB)) {
+            fclose($lock);
+            // A cron run that overlaps another is skipped, not failed: exit 0, but say so (since 0.84.1).
+            echo "members:prune — skipped: another run holds {$path}\n";
+
+            return 0;
         }
 
         try {
