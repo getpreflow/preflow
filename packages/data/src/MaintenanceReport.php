@@ -16,6 +16,8 @@ namespace Preflow\Data;
 interface MaintenanceReport extends Maintenance
 {
     /**
+     * What the last `check()` on this instance found; call `check()` first.
+     *
      * @return list<string>
      * @since 0.84.0
      */

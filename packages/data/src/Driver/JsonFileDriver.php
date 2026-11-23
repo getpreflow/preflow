@@ -534,11 +534,40 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
      */
     private static function compare(mixed $a, mixed $b, bool $text = false): int
     {
-        if (is_string($a) && is_string($b)) {
-            return $text ? TextMatch::compare($a, $b) : strcmp($a, $b) <=> 0;
+        if (is_string($a) && is_string($b) && $text) {
+            return TextMatch::compare($a, $b);
+        }
+        if (is_string($a) || is_int($a) || is_float($a)) {
+            if (is_string($b) || is_int($b) || is_float($b)) {
+                return self::order($a, $b);
+            }
         }
 
         return $a <=> $b;
+    }
+
+    /**
+     * The one total order of the JSON driver's scalar values, used by orderBy and by the range
+     * conditions (>, >=, <, <=), so a page walked with "id > last" meets every record once: the
+     * empty string first (a missing value sorts as '', null first as in SQL), then numbers (and
+     * numeric text), compared by value; everything else follows, compared by its bytes (strcmp).
+     * PHP's own comparison of "10" with "1a" and "9" is not transitive.
+     */
+    private static function order(string|int|float $a, string|int|float $b): int
+    {
+        if ($a === '' || $b === '') {
+            return ($a !== '') <=> ($b !== '');
+        }
+        $aNumber = is_numeric($a);
+        $bNumber = is_numeric($b);
+        if ($aNumber && $bNumber) {
+            return $a <=> $b;
+        }
+        if ($aNumber !== $bNumber) {
+            return $aNumber ? -1 : 1;
+        }
+
+        return strcmp((string) $a, (string) $b) <=> 0;
     }
 
     public function save(string $type, string|int $id, array $data, string $idField = 'uuid'): void
@@ -909,10 +938,10 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             '=' => self::equalsAs($given, $fieldValue, $condValue),
             // As SQL: != null is IS NOT NULL, and a NULL field is never "not equal" to a value.
             '!=', '<>' => $condValue === null ? $fieldValue !== null : $fieldValue !== null && !self::equalsAs($given, $fieldValue, $condValue),
-            '>' => $fieldValue > $condValue,
-            '>=' => $fieldValue >= $condValue,
-            '<' => $fieldValue < $condValue,
-            '<=' => $fieldValue <= $condValue,
+            '>' => self::compare($fieldValue, $condValue) > 0,
+            '>=' => self::compare($fieldValue, $condValue) >= 0,
+            '<' => self::compare($fieldValue, $condValue) < 0,
+            '<=' => self::compare($fieldValue, $condValue) <= 0,
             'LIKE' => $fieldValue !== null && $this->matchLike((string) $fieldValue, (string) $condValue),
             'NOT LIKE' => $fieldValue !== null && !$this->matchLike((string) $fieldValue, (string) $condValue),
             default => false,
@@ -1172,7 +1201,7 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
                 $bVal = $values[$b][$o];
                 $cmp = match (true) {
                     isset($keys[$a][$o], $keys[$b][$o]) => strcmp($keys[$a][$o], $keys[$b][$o]) <=> 0,
-                    is_numeric($aVal) && is_numeric($bVal) => $aVal <=> $bVal,
+                    is_scalar($aVal) && is_scalar($bVal) && !is_bool($aVal) && !is_bool($bVal) => self::order($aVal, $bVal),
                     default => strcmp((string) $aVal, (string) $bVal),
                 };
 

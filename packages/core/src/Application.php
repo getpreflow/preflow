@@ -145,8 +145,9 @@ final class Application
      * Create and auto-configure the application.
      *
      * @param string|array $basePath Project root directory, or config array for testing
+     * @param bool|null $console Overrides runningInConsole() from the start (see setRunningInConsole()); null follows PHP_SAPI. The web FailureGuard is installed when the app is not the console.
      */
-    public static function create(string|array $basePath = '.'): self
+    public static function create(string|array $basePath = '.', ?bool $console = null): self
     {
         if (is_array($basePath)) {
             // Legacy/testing: pass config directly
@@ -156,9 +157,12 @@ final class Application
         EnvLoader::load(rtrim($basePath, '/') . '/.env');
 
         $app = new self(new Config(), $basePath);
+        if ($console !== null) {
+            $app->setRunningInConsole($console);
+        }
         // A web request that fails before the kernel (a broken config file, boot, a PHP Error, a
         // fatal) answers 500, not PHP's raw output; the console keeps its own exception output.
-        if (!in_array(PHP_SAPI, ['cli', 'phpdbg'], true)) {
+        if (!$app->runningInConsole()) {
             \Preflow\Core\Error\FailureGuard::install($app);
         }
         $app->config->replace(self::configItems($app->configFile(...)));
@@ -3088,14 +3092,37 @@ final class Application
         $providers = $this->configFile('providers');
         if ($providers !== null) {
             foreach ($providers as $providerClass) {
-                if (class_exists($providerClass)) {
-                    $provider = new $providerClass();
-                    $this->registerProvider($provider);
+                if (!class_exists($providerClass)) {
+                    $this->reportMissingProvider((string) $providerClass);
+
+                    continue;
                 }
+                $provider = new $providerClass();
+                $this->registerProvider($provider);
             }
         }
 
         $this->container->bootProviders();
+    }
+
+    /**
+     * A class listed in config/providers.php that does not exist (a typo, a package not installed):
+     * with app.debug on the boot stops naming it; in production it goes to the site's logger
+     * (error level; PHP's error log when none is bound yet) and the boot goes on, so one wrong
+     * line does not take the site down.
+     */
+    private function reportMissingProvider(string $class): void
+    {
+        $message = sprintf('config/providers.php lists "%s", which does not exist (misspelt, or its package is not installed).', $class);
+        if (DebugLevel::from((int) $this->config->get('app.debug', 0))->isDebug()) {
+            throw new \RuntimeException($message);
+        }
+        if ($this->container->bound(\Psr\Log\LoggerInterface::class)) {
+            $this->container->get(\Psr\Log\LoggerInterface::class)->error($message);
+
+            return;
+        }
+        error_log($message);
     }
 
     private function bootMiddleware(): void

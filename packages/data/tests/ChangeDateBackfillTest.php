@@ -152,6 +152,27 @@ final class ChangeDateBackfillTest extends TestCase
         $this->assertSame('2023-03-03T03:03:03+00:00', $driver->findOne('memo', 'empty')[ChangeDates::FIELD]);
     }
 
+    public function test_backfill_pages_mixed_ids_once(): void
+    {
+        $driver = new JsonFileDriver($this->dir . '/data');
+        $dm = new DataManager(['default' => $driver], 'default');
+        $def = new TypeDefinition('page', 'page', 'default', ['title' => new TypeFieldDefinition('title')]);
+        $ids = ['1a', '11', '3', '100', '5', 'b', '2', 'a'];
+        foreach ($ids as $id) {
+            $driver->save('page', $id, ['uuid' => $id, 'title' => $id]);
+        }
+
+        $lines = Contexts::run(
+            ContextFactory::forTest()->withClock(new FrozenClock(new \DateTimeImmutable('2026-11-22T12:00:00Z'))),
+            static fn (): array => (new ChangeDateBackfill($dm, static fn (): array => [$def], chunk: 2))->run(),
+        );
+
+        $this->assertSame(['gave 8 records of page a change date (8 from the file time)'], $lines);
+        foreach ($ids as $id) {
+            $this->assertArrayHasKey(ChangeDates::FIELD, $driver->findOne('page', $id), "{$id} has its date");
+        }
+    }
+
     public function test_a_type_without_change_dates_is_left_out(): void
     {
         $driver = new JsonFileDriver($this->dir . '/data');
