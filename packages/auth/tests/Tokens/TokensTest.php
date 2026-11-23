@@ -6,7 +6,9 @@ namespace Preflow\Auth\Tests\Tokens;
 
 use PHPUnit\Framework\Attributes\Group;
 use Preflow\Auth\Tokens\Tokens;
+use Preflow\Data\ChangeDates;
 use Preflow\Data\DataManager;
+use Preflow\Data\Query;
 use Preflow\Data\Driver\MysqlDriver;
 use Preflow\Data\Migration\Migration;
 use Preflow\Data\Migration\Schema;
@@ -70,6 +72,15 @@ final class TokensTest extends DataTestCase
         $this->lockDirs[] = $lockDir;
 
         return new Tokens($this->dataManager(), $storage, $clock ?? fn (): int => $this->now, $lockDir);
+    }
+
+    public function test_a_token_row_on_json_storage_carries_no_change_date(): void
+    {
+        $this->tokens('json')->issue('confirm', 'user-1', 3600);
+
+        $rows = $this->getJsonDriver()->findMany('auth_tokens', new Query())->items();
+        $this->assertCount(1, $rows);
+        $this->assertArrayNotHasKey(ChangeDates::FIELD, $rows[0]);
     }
 
     public function test_issue_and_consume_once(): void

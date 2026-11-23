@@ -8,6 +8,8 @@ use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use Preflow\Core\Throttle\Throttle;
+use Preflow\Data\ChangeDates;
+use Preflow\Data\Query;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\Dialect;
 use Preflow\Data\Driver\PdoDriver;
@@ -69,6 +71,16 @@ final class ThrottleTest extends DataTestCase
         } finally {
             \Preflow\Core\Context\Contexts::reset();
         }
+    }
+
+    public function test_a_throttle_row_on_json_storage_carries_no_change_date(): void
+    {
+        $this->throttle('json')->hit('code', 'c1', 60);
+
+        $rows = $this->getJsonDriver()->findMany(Throttle::TABLE, new Query())->items();
+        $this->assertCount(1, $rows);
+        $this->assertArrayNotHasKey(ChangeDates::FIELD, $rows[0]);
+        $this->assertFalse($this->throttle()->definition()->changeDates);
     }
 
     public function test_allows_until_max_then_blocks(): void

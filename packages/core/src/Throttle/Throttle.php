@@ -83,6 +83,7 @@ final class Throttle
                 'expires_at' => new TypeFieldDefinition('expires_at', 'number'),
             ],
             idField: 'id',
+            changeDates: false, // short-lived rows: nothing lists or sorts them by a change date (since 0.84.1)
         );
     }
 
