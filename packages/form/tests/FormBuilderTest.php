@@ -205,6 +205,26 @@ final class FormBuilderTest extends TestCase
         $this->assertStringNotContainsString('form-required', $html);
     }
 
+    public function test_a_form_without_a_model_infers_the_type_from_its_rules(): void
+    {
+        $builder = $this->createBuilder(['rules' => [
+            'email' => ['required', 'email'],
+            'site' => ['url'],
+            'age' => ['nullable', 'integer'],
+            'name' => ['required', 'min:2'],
+            'topic' => ['in:a,b'],
+        ]]);
+
+        $this->assertStringContainsString('type="email"', $builder->field('email'));
+        $this->assertStringContainsString('type="url"', $builder->field('site'));
+        $this->assertStringContainsString('type="number"', $builder->field('age'));
+        $this->assertStringContainsString('type="text"', $builder->field('name'));
+        $this->assertStringContainsString('<select', $builder->field('topic'));
+        $this->assertStringContainsString('<option value="b"', $builder->field('topic'));
+        $this->assertStringContainsString('type="text"', $builder->field('other'));
+        $this->assertStringContainsString('type="text"', $builder->field('email', ['type' => 'text']));
+    }
+
     public function test_form_level_rules_override(): void
     {
         $model = new TestFormModel();
