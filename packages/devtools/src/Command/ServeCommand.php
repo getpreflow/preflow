@@ -30,12 +30,35 @@ final class ServeCommand implements CommandInterface
             return 1;
         }
 
+        $problem = $this->portProblem($host, (int) $port);
+        if ($problem !== null) {
+            fwrite(STDERR, $problem . "\n");
+            return 1;
+        }
+
         echo "Preflow dev server started on http://{$host}:{$port}\n";
         echo "Press Ctrl+C to stop.\n\n";
 
         $router = __DIR__ . '/../router.php';
         passthru($this->buildCommand($host, (int) $port, $docRoot, $router), $exitCode);
         return $exitCode;
+    }
+
+    /**
+     * One line naming the port and --port when nothing can listen there (taken, or not allowed),
+     * else null. Checked before "started" is printed, so the message never follows a claim.
+     *
+     * @since 0.84.2
+     */
+    public function portProblem(string $host, int $port): ?string
+    {
+        $socket = @stream_socket_server("tcp://{$host}:{$port}", $code, $message);
+        if ($socket === false) {
+            return "Error: {$host}:{$port} is not available ({$message}). Stop what uses it or pick another port with --port=<number>.";
+        }
+        fclose($socket);
+
+        return null;
     }
 
     /** Every dynamic part is quoted: a project path with a space must not split into arguments. */
