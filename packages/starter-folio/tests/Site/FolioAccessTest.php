@@ -174,6 +174,15 @@ final class FolioAccessTest extends TestCase
         $this->assertNotContains($editor, $by[1], 'not the raw id');
     }
 
+    /** The folio:* commands come from Folio's composer extra; config/commands.php no longer lists them. */
+    public function test_folio_commands_arrive_through_composer_extra(): void
+    {
+        [$code, $output] = $this->runConsole('help');
+
+        $this->assertSame(0, $code);
+        $this->assertStringContainsString('folio:extensions:apply', $output);
+    }
+
     /** @return array{int, string} exit code and output */
     private function runConsole(string ...$command): array
     {
