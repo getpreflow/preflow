@@ -255,10 +255,11 @@ final class SearchLooseTest extends TestCase
         }
     }
 
-    public function test_search_is_unchanged(): void
+    public function test_search_without_searchable_fields_is_refused(): void
     {
         $dm = $this->dm('sqlite', 'json');
-        $this->assertCount(3, $dm->queryType('game')->search('zoo')->get()->items(), 'search() with no searchable:true fields keeps its old behaviour');
+        $this->expectException(\InvalidArgumentException::class);
+        $dm->queryType('game')->search('zoo');
     }
 
     public function test_without_data_manager_relations_are_skipped(): void

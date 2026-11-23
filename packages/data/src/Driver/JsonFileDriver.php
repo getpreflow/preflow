@@ -15,7 +15,7 @@ use Preflow\Data\SortDirection;
 use Preflow\Data\Text\TextMatch;
 use Preflow\Data\VersionedStorage;
 
-final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\ConditionalMeasures, \Preflow\Data\BulkDeletes, \Preflow\Data\ConditionalUpdates, \Preflow\Data\ChangeTokens, \Preflow\Data\DescribesColumns, \Preflow\Data\AtomicCounters, \Preflow\Data\InsertsNew
+final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\ConditionalMeasures, \Preflow\Data\BulkDeletes, \Preflow\Data\ConditionalUpdates, \Preflow\Data\ChangeTokens, \Preflow\Data\DescribesColumns, \Preflow\Data\AtomicCounters, \Preflow\Data\InsertsNew, \Preflow\Data\WriteTimes
 {
     /** How a record file is encoded (0.78): the same bytes for the same record, whoever writes it. */
     private const int RECORD_FLAGS = JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR;
@@ -748,6 +748,24 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
     public function exists(string $type, string|int $id, string $idField = 'uuid'): bool
     {
         return self::safeName($type) && self::safeName((string) $id) && file_exists($this->filePath($type, $id));
+    }
+
+    /** Each record file's modification time (WriteTimes, for the change-date backfill). @since 0.84.0 */
+    public function writeTimes(string $type, array $ids, string $idField = 'uuid'): array
+    {
+        $times = [];
+        foreach ($ids as $id) {
+            if (!self::safeName($type) || !self::safeName((string) $id)) {
+                continue;
+            }
+            clearstatcache(true, $path = $this->filePath($type, $id));
+            $mtime = @filemtime($path);
+            if ($mtime !== false) {
+                $times[(string) $id] = new \DateTimeImmutable('@' . $mtime);
+            }
+        }
+
+        return $times;
     }
 
     /** Any key is a column: a JSON record takes every key. */

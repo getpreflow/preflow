@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Http;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Http\AssetController;
@@ -49,7 +50,7 @@ final class AssetControllerTest extends TestCase
     {
         // map a js file that exists (use admin.css contents via a .js alias is not valid;
         // instead assert extension-based type using a temp dir)
-        $dir = sys_get_temp_dir() . '/folio_assets_' . bin2hex(random_bytes(4));
+        $dir = TempRoots::path('folio_assets_');
         mkdir($dir, 0777, true);
         file_put_contents($dir . '/x.js', '/* js */');
         $c = new AssetController($dir, ['x.js' => 'x.js']);

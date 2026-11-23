@@ -38,7 +38,7 @@ final class SearchController
         private readonly RecordSearch $search,
         private readonly DisplayLabels $labels,
         private readonly Closure $can,
-        private readonly Closure $library,
+        private readonly Closure $library, // returns the library, or null where there is none (since 0.84.0)
         private readonly string $prefix,
     ) {}
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Http;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Response;
 use PHPUnit\Framework\TestCase;
@@ -36,7 +37,7 @@ final class AdminLocaleMiddlewareTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/folio_admin_locale_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('folio_admin_locale_');
         mkdir($this->dir . '/lang', 0777, true);
         $this->translator = new Translator($this->dir . '/lang', 'it', 'it');
         $this->translator->addDefaultsIfMissing('folio', dirname(__DIR__, 2) . '/lang', 'admin');
@@ -186,7 +187,7 @@ final class AdminLocaleMiddlewareTest extends TestCase
 
         $this->frame(function () use ($ada, &$seen): void {
             $this->middleware()->process($this->request($ada), $this->handler(function (ServerRequestInterface $request) use (&$seen): void {
-            $seen[] = AdminLocaleMiddleware::asFrontend($this->translator, $request, fn (): array => [
+            $seen[] = AdminLocaleMiddleware::asFrontend($request, fn (): array => [
                 $this->translator->getLocale(),
                 $this->translator->get('folio.layout.log_out', [], 'fr'),
             ]);

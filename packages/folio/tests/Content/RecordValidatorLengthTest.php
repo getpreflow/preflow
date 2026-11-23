@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Content;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
@@ -23,7 +24,7 @@ final class RecordValidatorLengthTest extends TestCase
 {
     public function test_number_like_slugs_pass_and_digit_overflow_fails_as_text(): void
     {
-        $dir = sys_get_temp_dir() . '/rvl_' . bin2hex(random_bytes(4));
+        $dir = TempRoots::path('rvl_');
         mkdir($dir, 0777, true);
         file_put_contents($dir . '/page.json', json_encode([
             'key' => 'page', 'table' => 'page', 'storage' => 'json',
@@ -62,7 +63,7 @@ final class RecordValidatorLengthTest extends TestCase
 
     public function test_unique_and_indexed_strings_get_a_length_rule(): void
     {
-        $dir = sys_get_temp_dir() . '/rvl_' . bin2hex(random_bytes(4));
+        $dir = TempRoots::path('rvl_');
         mkdir($dir, 0777, true);
         file_put_contents($dir . '/page.json', json_encode([
             'key' => 'page', 'table' => 'page', 'storage' => 'json',

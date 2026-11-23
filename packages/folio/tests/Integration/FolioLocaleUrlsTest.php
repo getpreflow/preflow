@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Integration;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
@@ -28,7 +29,7 @@ final class FolioLocaleUrlsTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/folio_locale_urls_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('folio_locale_urls_');
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Club', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-locale-urls-test-key-01234', 'url' => 'https://club.test'];\n");
         $this->write('config/data.php', "<?php\nreturn ['drivers' => ['json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data']], 'default' => 'json', 'models_path' => __DIR__ . '/models'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class];\n");

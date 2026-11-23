@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Http;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Http\UploadController;
@@ -14,7 +15,7 @@ final class UploadControllerTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/folio_up_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('folio_up_');
         mkdir($this->dir . '/2026/06', 0777, true);
         file_put_contents($this->dir . '/2026/06/pic.png', 'PNGDATA');
     }

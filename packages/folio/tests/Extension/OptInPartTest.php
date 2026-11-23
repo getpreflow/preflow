@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Extension;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\Access\Access;
@@ -30,7 +31,7 @@ final class OptInPartTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/folio_optin_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('folio_optin_');
         $source = __DIR__ . '/../Fixtures/extensions/app/Crew';
         foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($source, \FilesystemIterator::SKIP_DOTS)) as $f) {
             $this->write('app/Folio/Crew' . substr($f->getPathname(), strlen($source)), (string) file_get_contents($f->getPathname()));

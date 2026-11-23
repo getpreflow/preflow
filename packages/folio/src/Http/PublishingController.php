@@ -189,7 +189,8 @@ final class PublishingController
 
         // From the list's row menu: back to the same view (its posted "_query", read and checked again).
         if ((((array) $request->getParsedBody())['_from'] ?? null) === 'list' && $this->catalog->get($type)?->singleton !== true) {
-            $view = \Preflow\Folio\Content\ListQuery::fromPosted($request, $this->dm->getTypeRegistry()->get($type), $this->catalog->get($type)?->list ?? [], true);
+            $def = $this->dm->getTypeRegistry()->get($type);
+            $view = \Preflow\Folio\Content\ListQuery::fromPosted($request, $def, $this->catalog->get($type)?->list ?? [], true, $this->dm->changeDateOf($def) !== null);
 
             return new Response(302, ['Location' => $view->url($this->prefix . '/' . $type)]);
         }

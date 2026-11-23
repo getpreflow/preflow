@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Integration;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
@@ -260,7 +261,7 @@ final class AdminOnDemandTest extends TestCase
     private function site(string $prefix = '/folio'): void
     {
         putenv('APP_DEBUG=1');
-        $this->dir = sys_get_temp_dir() . '/folio_on_demand_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('folio_on_demand_');
         @mkdir($this->dir . '/storage/data', 0777, true);
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log');
         $this->write('config/app.php', "<?php\nreturn ['name' => 'On demand', 'debug' => 0, 'engine' => 'twig', 'key' => 'on-demand-test-key-0123456789abcdef', 'url' => 'https://site.test'];\n");

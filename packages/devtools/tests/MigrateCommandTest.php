@@ -8,7 +8,10 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Core\Container\Container;
 use Preflow\Core\Container\ServiceProvider;
+use Preflow\Data\ChangeDates;
+use Preflow\Data\DataManager;
 use Preflow\Data\Migration\MigrationRegistry;
+use Preflow\Data\TypeDefinition;
 use Preflow\DevTools\Command\MigrateCommand;
 
 final class MigrateCommandTest extends TestCase
@@ -162,8 +165,19 @@ final class MigrateCommandTest extends TestCase
         $this->assertStringContainsString("[convert] refused: people.title: 1 value is there more than once", $out);
         $this->assertStringContainsString('[convert]   "Müller" in r1, r2', $out);
         $this->assertStringContainsString('[later] ran after it', $out, 'the later steps still ran');
-        $this->assertStringEndsWith("Some values are there more than once under the text rule (see \"refused:\" above); nothing was changed or removed. Rename one record of each group, then run migrate again.\n", $out);
+        $this->assertStringEndsWith('rename one record of each group), then run migrate again. (convert)' . "\n", $out);
         $this->assertStringNotContainsString('Error', $out);
+    }
+
+    public function test_another_steps_refusal_exits_one_with_its_own_closing_line(): void
+    {
+        $this->sqliteConfig();
+        $this->steps = ['app.backfill' => [['refused: post: no change dates given (the activity log: down); nothing weaker decides, run migrate again'], false]];
+
+        [$code, $out] = $this->migrate();
+
+        $this->assertSame(1, $code);
+        $this->assertStringEndsWith('Some steps refused something (see "refused:" above); what they refused was left as it is. Fix what each line names (a group of values the text rule takes for one: rename one record of each group), then run migrate again. (app.backfill)' . "\n", $out);
     }
 
     public function test_a_json_only_site_with_a_refusal_exits_one(): void
@@ -186,7 +200,7 @@ final class MigrateCommandTest extends TestCase
 
         $this->assertSame(1, $code);
         $this->assertStringContainsString('[would]   "Müller" in r1, r2', $out);
-        $this->assertStringContainsString('Rename one record of each group, then run migrate again.', $out);
+        $this->assertStringContainsString('rename one record of each group), then run migrate again. (would)', $out);
         $this->assertStringNotContainsString('seeded', $out, 'no step ran');
         $this->assertNotContains('apps', $this->tables());
     }
@@ -293,5 +307,48 @@ final class MigrateCommandTest extends TestCase
         ob_end_clean();
 
         $this->assertSame(1, $code);
+    }
+
+    public function test_the_steps_see_the_columns_the_apps_migrations_added(): void
+    {
+        $this->sqliteConfig();
+        file_put_contents($this->dir . '/migrations/2026_01_01_000003_create_dated.php', <<<'PHP'
+        <?php
+        use Preflow\Data\Migration\Migration;
+        use Preflow\Data\Migration\Schema;
+        return new class extends Migration {
+            public function up(Schema $schema): void
+            {
+                $schema->create('dated', function ($t) { $t->uuid('uuid')->primary(); $t->text('_updated_at')->nullable(); });
+            }
+        };
+        PHP);
+        $dir = $this->dir;
+        $command = new MigrateCommand(static function () use ($dir): Application {
+            $app = Application::create($dir);
+            $app->registerProvider(new class extends ServiceProvider {
+                public function register(Container $container): void {}
+                public function boot(Container $container): void
+                {
+                    $dm = $container->get(DataManager::class);
+                    $def = new TypeDefinition('dated', 'dated', 'sqlite', []);
+                    // Asked before the migrations ran (a provider that reads a table at boot).
+                    $dm->hasColumn($def, ChangeDates::FIELD);
+                    $container->get(MigrationRegistry::class)->afterMigrate('probe', static fn (): array => [
+                        'change dates: ' . ($dm->changeDateOf($def) ?? 'none'),
+                    ]);
+                }
+            });
+            $app->boot();
+
+            return $app;
+        });
+
+        ob_start();
+        $code = $command->execute([]);
+        $out = (string) ob_get_clean();
+
+        $this->assertSame(0, $code);
+        $this->assertStringContainsString('[probe] change dates: _updated_at', $out);
     }
 }

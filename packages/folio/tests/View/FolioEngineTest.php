@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\View;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\View\FolioEngine;
 use Preflow\Twig\TwigEngine;
@@ -20,7 +21,7 @@ final class FolioEngineTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/folio_engine_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('folio_engine_');
         @mkdir($this->dir . '/folio', 0777, true);
         @mkdir($this->dir . '/app', 0777, true);
         file_put_contents($this->dir . '/folio/page.twig', '<h1>{{ title }}</h1>{{ shout(title) }}');

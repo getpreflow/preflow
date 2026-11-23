@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Extension;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Extension\ExtensionException;
 use Preflow\Folio\Extension\ExtensionsFile;
@@ -14,7 +15,7 @@ final class ExtensionsFileTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/folio_extfile_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('folio_extfile_');
     }
 
     protected function tearDown(): void

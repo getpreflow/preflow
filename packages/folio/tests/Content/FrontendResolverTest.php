@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Content;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
@@ -23,8 +24,8 @@ final class FrontendResolverTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->models = sys_get_temp_dir() . '/folio_fr_models_' . bin2hex(random_bytes(4));
-        $this->store = sys_get_temp_dir() . '/folio_fr_store_' . bin2hex(random_bytes(4));
+        $this->models = TempRoots::path('folio_fr_models_');
+        $this->store = TempRoots::path('folio_fr_store_');
         mkdir($this->models, 0777, true);
         mkdir($this->store, 0777, true);
 

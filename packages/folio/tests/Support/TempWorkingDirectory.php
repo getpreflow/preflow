@@ -16,7 +16,7 @@ trait TempWorkingDirectory
     private function enterTempDirectory(): string
     {
         $this->previousCwd = getcwd() ?: '.';
-        $this->tempCwd = sys_get_temp_dir() . '/folio_boot_' . bin2hex(random_bytes(5));
+        $this->tempCwd = TempRoots::path('folio_boot_');
         mkdir($this->tempCwd, 0777, true);
         chdir($this->tempCwd);
 

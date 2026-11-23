@@ -1,0 +1,11 @@
+{% extends layout|default('@folio/admin/_layout.twig') %}
+{% block title %}Folio — {{ t('folio.assets.unavailable_title') }}{% endblock %}
+{% block page_title %}{{ t('folio.assets.unavailable_title') }}{% endblock %}
+{% block content %}
+    {% include '@folio/admin/partials/_ink_error.twig' with {
+        title: t('folio.assets.unavailable_card_title'),
+        message: message,
+        line: null,
+        line_link: null,
+    } only %}
+{% endblock %}

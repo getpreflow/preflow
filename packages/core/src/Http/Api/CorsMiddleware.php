@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Core\Http\Api;
 
 use Nyholm\Psr7\Response;
+use Preflow\Core\Http\Vary;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -95,12 +96,7 @@ final class CorsMiddleware implements MiddlewareInterface
 
     private function withVary(ResponseInterface $response): ResponseInterface
     {
-        // Appended: the response may already vary on other headers (Accept-Encoding).
-        $vary = array_map(trim(...), explode(',', strtolower($response->getHeaderLine('Vary'))));
-        if (!in_array('origin', $vary, true) && !in_array('*', $vary, true)) {
-            $response = $response->withAddedHeader('Vary', 'Origin');
-        }
-
-        return $response;
+        // Merged: the response may already vary on other headers (Accept-Encoding).
+        return Vary::add($response, 'Origin');
     }
 }

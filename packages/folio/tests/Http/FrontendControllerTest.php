@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Http;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Exceptions\NotFoundHttpException;
@@ -63,7 +64,7 @@ final class FrontendControllerTest extends TestCase
 
     public function test_renders_published_record(): void
     {
-        $base = sys_get_temp_dir() . '/folio_fc_' . bin2hex(random_bytes(4));
+        $base = TempRoots::path('folio_fc_');
         $dm = $this->dm($base . '/m', $base . '/s');
         $registry = $this->registry();
         $engine = $this->engine();
@@ -78,7 +79,7 @@ final class FrontendControllerTest extends TestCase
 
     public function test_unknown_slug_throws_not_found(): void
     {
-        $base = sys_get_temp_dir() . '/folio_fc_' . bin2hex(random_bytes(4));
+        $base = TempRoots::path('folio_fc_');
         $dm = $this->dm($base . '/m', $base . '/s');
         $registry = $this->registry();
         $engine = $this->engine();
@@ -110,7 +111,7 @@ final class FrontendControllerTest extends TestCase
 
     public function test_alternates_use_app_url_not_the_request_host(): void
     {
-        $controller = $this->alternatesController(sys_get_temp_dir() . '/folio_fc_' . bin2hex(random_bytes(4)), 'https://example.test/');
+        $controller = $this->alternatesController(TempRoots::path('folio_fc_'), 'https://example.test/');
         $req = (new Psr17Factory())->createServerRequest('GET', 'https://www.example.test/home')->withAttribute('path', 'home');
 
         $this->assertSame('https://example.test/', (string) self::inFrame(fn () => $controller->show($req))->getBody());
@@ -119,7 +120,7 @@ final class FrontendControllerTest extends TestCase
     public function test_alternates_fall_back_to_the_request_without_an_absolute_app_url(): void
     {
         foreach ([null, '', '/relative'] as $appUrl) {
-            $controller = $this->alternatesController(sys_get_temp_dir() . '/folio_fc_' . bin2hex(random_bytes(4)), $appUrl);
+            $controller = $this->alternatesController(TempRoots::path('folio_fc_'), $appUrl);
             $req = (new Psr17Factory())->createServerRequest('GET', 'https://www.example.test/home')->withAttribute('path', 'home');
 
             $this->assertSame('https://www.example.test/', (string) self::inFrame(fn () => $controller->show($req))->getBody());

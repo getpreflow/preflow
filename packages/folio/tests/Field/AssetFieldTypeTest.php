@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Field;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Field\FieldContext;
@@ -24,7 +25,7 @@ final class AssetFieldTypeTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/folio_asset_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('folio_asset_');
         mkdir($this->dir, 0777, true);
     }
 

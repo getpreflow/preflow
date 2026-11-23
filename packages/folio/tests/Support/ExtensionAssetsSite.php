@@ -19,7 +19,7 @@ trait ExtensionAssetsSite
 
     private function assetsSite(): ExtensionRegistry
     {
-        $this->site = sys_get_temp_dir() . '/folio_xassets_' . bin2hex(random_bytes(4));
+        $this->site = TempRoots::path('folio_xassets_');
         $shop = $this->site . '/shop';
         $source = dirname(__DIR__) . '/Fixtures/extensions/Shop/assets';
         $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($source, \FilesystemIterator::SKIP_DOTS));

@@ -41,10 +41,10 @@ final class KnownPermissionsTest extends TestCase
     }
 
     #[DataProvider('storages')]
-    public function test_first_run_knows_everything_but_the_announced_ones(string $storage): void
+    public function test_first_run_of_an_upgraded_site_knows_everything_but_the_announced_ones(string $storage): void
     {
         $dm = $this->internalStorage($storage, KnownPermissions::definition());
-        $known = new KnownPermissions($dm, self::registry());
+        $known = new KnownPermissions($dm, self::registry(), static fn (): bool => true);
 
         $this->assertSame(['redirects.manage'], $known->fresh());
         $this->assertSame(['page.view'], self::stored($dm, $known), 'the baseline');
@@ -54,19 +54,32 @@ final class KnownPermissionsTest extends TestCase
     }
 
     #[DataProvider('storages')]
+    public function test_first_run_of_a_new_install_announces_nothing(string $storage): void
+    {
+        $dm = $this->internalStorage($storage, KnownPermissions::definition());
+        foreach ([null, static fn (): bool => false] as $hadRoleStore) {
+            $known = new KnownPermissions($dm, self::registry(), $hadRoleStore);
+            $this->assertSame([], $known->fresh());
+            $this->assertSame(['page.view', 'redirects.manage'], self::stored($dm, $known), 'everything is the baseline');
+            $this->removeInternalStorage();
+            $dm = $this->internalStorage($storage, KnownPermissions::definition());
+        }
+    }
+
+    #[DataProvider('storages')]
     public function test_a_later_declaration_is_new_until_marked_known(string $storage): void
     {
         $dm = $this->internalStorage($storage, KnownPermissions::definition());
-        $this->assertSame(['redirects.manage'], (new KnownPermissions($dm, self::registry()))->fresh());
+        $this->assertSame(['redirects.manage'], (new KnownPermissions($dm, self::registry(), static fn (): bool => true))->fresh());
 
         $registry = self::registry();
         $registry->declare('events.view', 'View', 'Events');
-        $known = new KnownPermissions($dm, $registry);
+        $known = new KnownPermissions($dm, $registry, static fn (): bool => true);
         $this->assertSame(['events.view', 'redirects.manage'], $known->fresh());
 
         $known->markKnown(['redirects.manage']);
         $this->assertSame(['events.view'], $known->fresh());
-        $this->assertSame(['events.view'], (new KnownPermissions($dm, $registry))->fresh(), 'known for good');
+        $this->assertSame(['events.view'], (new KnownPermissions($dm, $registry, static fn (): bool => true))->fresh(), 'known for good');
     }
 
     #[DataProvider('storages')]
@@ -76,7 +89,7 @@ final class KnownPermissionsTest extends TestCase
         $registry = self::registry();
         $registry->declare('members.view', 'View', 'Members');
         $registry->disable('members.view', 'extension members');
-        $known = new KnownPermissions($dm, $registry);
+        $known = new KnownPermissions($dm, $registry, static fn (): bool => true);
 
         $this->assertSame(['redirects.manage'], $known->fresh());
         $this->assertNotContains('members.view', self::stored($dm, $known), 'not part of the baseline either');
@@ -84,7 +97,7 @@ final class KnownPermissionsTest extends TestCase
         // The extension switched on: the next boot declares it without disabling it.
         $enabled = self::registry();
         $enabled->declare('members.view', 'View', 'Members');
-        $this->assertSame(['members.view', 'redirects.manage'], (new KnownPermissions($dm, $enabled))->fresh());
+        $this->assertSame(['members.view', 'redirects.manage'], (new KnownPermissions($dm, $enabled, static fn (): bool => true))->fresh());
     }
 
     #[DataProvider('storages')]
@@ -92,7 +105,7 @@ final class KnownPermissionsTest extends TestCase
     {
         $dm = $this->internalStorage($storage, KnownPermissions::definition());
         $registry = self::registry();
-        $known = new KnownPermissions($dm, $registry);
+        $known = new KnownPermissions($dm, $registry, static fn (): bool => true);
 
         $this->assertSame(['New permissions to review in Settings → Roles: redirects.manage (Redirects)'], $known->migrateLines());
 

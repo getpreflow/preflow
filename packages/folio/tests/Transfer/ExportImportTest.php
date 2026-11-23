@@ -24,9 +24,9 @@ final class ExportImportTest extends TestCase
         $this->scaffoldPublishing();
         $post = $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello']]);
         $this->publisher()->publish($post, 'tester');
-        $this->working('site', 'site', ['tagline' => ['en' => 'Live tagline']]);
+        $this->working('site', 'site', ['tagline' => ['en' => 'Live tagline'], '_updated_at' => '2026-10-01T00:00:00+00:00']);
         // In the canonical order an import writes (0.78: the type's fields, then the id), so a round trip gives the same bytes.
-        $this->driver()->save('folio_assets', 'a1', ['path' => '2026/10/a1.jpg', 'mime' => 'image/jpeg', 'uuid' => 'a1']);
+        $this->driver()->save('folio_assets', 'a1', ['path' => '2026/10/a1.jpg', 'mime' => 'image/jpeg', 'uuid' => 'a1', '_updated_at' => '2026-10-01T00:00:00+00:00']);
         $this->driver()->save('user_tokens', 't1', ['uuid' => 't1', 'name' => 'not content']);
         $this->put('public/media/2026/10/a1.jpg', 'JPEGBYTES');
         $this->put('public/media/2026/10/a1-480.webp', 'WEBP');
@@ -262,7 +262,9 @@ final class ExportImportTest extends TestCase
         $summary = $this->import($this->craft('media/2026/10/a1.jpg', 'JPEGBYTES'));
 
         $this->assertSame('PRIVATEPDF', file_get_contents($this->dir . '/storage/private-media/2026/10/p1.pdf'));
-        $this->assertSame([], $this->importer()->read($this->craft('media/2026/10/a1.jpg', 'JPEGBYTES'))->files['private-media']['removed'] ?? []);
+        $again = $this->importer()->read($this->craft('media/2026/10/a1.jpg', 'JPEGBYTES'));
+        $this->assertSame([], $again->files['private-media']['removed'] ?? []);
+        $again->cleanup();
 
         // A current archive carries the root, so a file only here is removed as before.
         $archive = $this->export();
@@ -470,6 +472,60 @@ final class ExportImportTest extends TestCase
 
         $this->assertTrue($plan->isEmpty());
         $plan->cleanup();
+    }
+
+    /** $write on a clock at $at (ISO 8601): the change date the data layer gives (0.84). */
+    private static function at(string $at, \Closure $write): mixed
+    {
+        return Contexts::run(ContextFactory::forTest()->withClock(new \Preflow\Core\Context\FrozenClock(new \DateTimeImmutable($at))), $write);
+    }
+
+    public function test_an_import_keeps_the_change_dates_its_archive_carries(): void
+    {
+        $dm = $this->app()->container()->get(DataManager::class);
+        $def = $dm->getTypeRegistry()->get('site');
+        self::at('2026-03-01T08:00:00Z', static fn () => $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'site', 'tagline' => ['en' => 'Archived']]), false));
+        $archive = $this->export();
+        self::at('2026-03-09T08:00:00Z', static fn () => $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'site', 'tagline' => ['en' => 'Later']]), false));
+
+        $summary = self::at('2026-03-10T08:00:00Z', fn () => $this->import($archive));
+
+        $this->assertSame(['site'], $summary['tables']['site']['changed']);
+        $this->assertSame('2026-03-01T08:00:00+00:00', $this->driver()->findOne('site', 'site')['_updated_at'] ?? null, 'the date it was archived with');
+    }
+
+    public function test_an_archive_without_change_dates_compares_content_and_dates_what_it_writes(): void
+    {
+        // As before 0.84: no change dates anywhere.
+        $this->driver()->delete('site', 'site');
+        $this->driver()->save('site', 'site', ['tagline' => ['en' => 'Live tagline'], 'uuid' => 'site']);
+        $this->driver()->save('site', 'other', ['tagline' => ['en' => 'Second'], 'uuid' => 'other']);
+        $archive = $this->export();
+        // The local record got its date since (as migrate's backfill gives it): the same content.
+        $this->driver()->save('site', 'site', ['_updated_at' => '2026-03-01T08:00:00+00:00']);
+        $this->driver()->delete('site', 'other');
+
+        $summary = self::at('2026-03-10T08:00:00Z', fn () => $this->import($archive));
+
+        $this->assertSame([], $summary['tables']['site']['changed'], 'the same content is no change');
+        $this->assertSame(['other'], $summary['tables']['site']['added']);
+        $this->assertSame('2026-03-01T08:00:00+00:00', $this->driver()->findOne('site', 'site')['_updated_at'] ?? null, 'left as it is');
+        $this->assertSame('2026-03-10T08:00:00+00:00', $this->driver()->findOne('site', 'other')['_updated_at'] ?? null, 'an added record: written now');
+    }
+
+    public function test_a_record_that_differs_only_in_its_change_date_is_no_change(): void
+    {
+        // Two copies of a site that each dated the same record (each ran migrate's backfill).
+        $dm = $this->app()->container()->get(DataManager::class);
+        $def = $dm->getTypeRegistry()->get('site');
+        self::at('2026-03-01T08:00:00Z', static fn () => $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'site', 'tagline' => ['en' => 'Same']]), false));
+        $archive = $this->export();
+        $this->driver()->save('site', 'site', ['_updated_at' => '2026-03-05T08:00:00+00:00']);
+
+        $summary = self::at('2026-03-10T08:00:00Z', fn () => $this->import($archive));
+
+        $this->assertSame([], $summary['tables']['site']['changed'], 'the dates alone hide no real change');
+        $this->assertSame('2026-03-05T08:00:00+00:00', $this->driver()->findOne('site', 'site')['_updated_at'] ?? null, 'the local date stays');
     }
 
     private function addMemberType(array $extra = []): void

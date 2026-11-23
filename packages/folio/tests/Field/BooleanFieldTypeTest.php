@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Field;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Content\FrontendConfigException;
 use Preflow\Folio\Content\TypeCatalog;
@@ -38,7 +39,7 @@ final class BooleanFieldTypeTest extends TestCase
 
     public function test_the_boot_check_names_the_type_and_field(): void
     {
-        $dir = sys_get_temp_dir() . '/folio_bool_' . bin2hex(random_bytes(4));
+        $dir = TempRoots::path('folio_bool_');
         mkdir($dir);
         file_put_contents($dir . '/thing.json', (string) json_encode(['key' => 'thing', 'fields' => ['on' => ['type' => 'boolean', 'display' => 'radio']]]));
         try {

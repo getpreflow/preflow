@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Content;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
@@ -65,7 +66,7 @@ final class RecordDeleterTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/folio_deleter_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('folio_deleter_');
         mkdir($this->dir . '/models', 0777, true);
     }
 

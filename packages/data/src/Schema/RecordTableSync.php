@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Schema;
 
+use Preflow\Data\ChangeDates;
 use Preflow\Data\DataManager;
 use Preflow\Data\PdoConnection;
 use Preflow\Data\RemembersColumns;
@@ -68,9 +69,13 @@ final class RecordTableSync
         }
     }
 
-    /** A driver that remembers column facts is told the table may have changed (RemembersColumns). */
+    /**
+     * The DataManager (hasColumn()) and a driver that remembers column facts (RemembersColumns) are
+     * told the table may have changed.
+     */
     private function forgetColumns(TypeDefinition $def): void
     {
+        $this->dm->forgetColumns($def->table);
         $driver = $this->dm->driver($def->storage);
         if ($driver instanceof RemembersColumns) {
             $driver->forgetColumns($def->table);
@@ -336,7 +341,8 @@ final class RecordTableSync
     /**
      * The columns besides the id, each with its kind: the field's (a scope field of a unique
      * field and a field of a composite index count as indexed), free text for extra columns and
-     * in untyped tables. A text field's column (TextColumns) is marked text, in untyped tables
+     * in untyped tables, and the change date (ChangeDates::FIELD, a date; since 0.84.0) of a type
+     * that keeps them. A text field's column (TextColumns) is marked text, in untyped tables
      * too (they hold copies of the records, queried by the same type), so it compares by the
      * text rule; every other column exactly. On a grammar with full-text indexes the exact fields
      * and lists a full-text type's index covers (TextColumns::exactInFullText()) take the rule's
@@ -371,6 +377,11 @@ final class RecordTableSync
         foreach ($extraColumns as $name) {
             $specs[$name] ??= new ColumnSpec($name);
         }
+        // The change date (ChangeDates, since 0.84.0) of a type that keeps them: ISO 8601 text,
+        // compared exactly (free text in an untyped table, as every column there).
+        if ($def->changeDates) {
+            $specs[ChangeDates::FIELD] ??= new ColumnSpec(ChangeDates::FIELD, $typed ? ColumnKind::Date : ColumnKind::Text);
+        }
         unset($specs[$def->idField]);
 
         return $specs;
@@ -399,7 +410,12 @@ final class RecordTableSync
                 }
             }
         }
-        foreach ([...array_map(static fn (string $field): array => [$field], $def->indexedFields()), ...$def->indexes] as $columns) {
+        $plain = [...array_map(static fn (string $field): array => [$field], $def->indexedFields()), ...$def->indexes];
+        // The change date (since 0.84.0): lists sort by it (Folio's Changed column).
+        if (($specs[ChangeDates::FIELD] ?? null)?->kind === ColumnKind::Date) {
+            $plain[] = [ChangeDates::FIELD];
+        }
+        foreach ($plain as $columns) {
             $freeText = self::freeText($specs, $columns);
             $indexes[] = new RecordIndex(
                 $grammar->indexName('idx', $def->table, implode('_', $columns)),

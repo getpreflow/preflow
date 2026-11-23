@@ -7,6 +7,7 @@ namespace Preflow\Folio\Tests\Integration;
 require_once dirname(__DIR__) . '/Fixtures/PhpEngine/PhtmlEngine.php';
 require_once dirname(__DIR__) . '/Fixtures/PhpEngine/PhtmlEngineFactory.php';
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
@@ -31,7 +32,7 @@ final class FolioOnOwnEngineTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/folio_own_engine_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('folio_own_engine_');
         $w = function (string $rel, string $content): void {
             $path = $this->dir . '/' . $rel;
             @mkdir(dirname($path), 0777, true);

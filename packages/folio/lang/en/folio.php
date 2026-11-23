@@ -167,6 +167,7 @@ return [
     // A type's list: search, filters, bulk bar, table, pager.
     'list' => [
         'search_label' => 'Search :label',
+        'changed' => 'Changed',
         'add_filter' => '+ Filter',
         'from' => ':label from',
         'until' => ':label until',
@@ -318,7 +319,7 @@ return [
         'locked_click' => 'Switched off in this preview.',
         'other_address' => 'View another address as a role',
         'address_title' => 'View as',
-        'address_intro' => 'Any page of the site, also one that is no record, as a role or a visitor sees it, with the working copies.',
+        'address_intro' => 'Any page of the site, as a role or a visitor sees it, with working copies.',
         'address' => 'Address',
         'address_help' => 'A path of this site, such as /account or /de/kontakt.',
         'address_show' => 'Show',
@@ -559,6 +560,7 @@ return [
         'no_longer_option' => ':value (no longer an option)',
         'rows' => ':count row|:count rows',
         'public_file' => ':label is a public file; upload it here to make it private.',
+        'library_unavailable' => ':label was not uploaded: the media library has no storage on this site (see Assets).',
         'private_file' => ':label is a private file; it can only be used in a private field.',
         // The redesigned field controls (0.75).
         'copy_address' => 'Copy the address',
@@ -631,6 +633,10 @@ return [
     ],
     // The media library: grid and list, an asset's page, the Edit image screen and the picker.
     'assets' => [
+        // The library has no storage (config/media.php "storage" names a driver config/data.php lacks).
+        'unavailable_title' => 'Assets',
+        'unavailable_card_title' => 'No place for assets yet',
+        'storage_missing' => 'The media library stores its assets in the storage driver ":driver", and this site has no such driver. Add it under "drivers" in config/data.php, or name a driver the site has in config/media.php ("storage").',
         'choose_one' => 'Choose an asset',
         'choose_many' => 'Choose assets',
         'not_uploaded' => 'Some files were not uploaded:',
@@ -883,7 +889,8 @@ return [
         'tokens_out' => 'Tokens out',
         'cost' => 'Cost (USD)',
         'saved' => 'Saved.',
-        'tuning_intro' => 'Instructions for the AI, one per line. The project level applies to every AI request (translations and drafts); the other levels add to it for translations. The text in grey is the default from config/ai.php. Emptying a field brings the default back.',
+        'tuning_intro' => 'AI instructions, one per line; an empty field brings back the default.',
+        'tuning_note' => 'The project level applies to every AI request (translations and drafts); the other levels add to it for translations. The text in grey is the default from config/ai.php.',
         'level_project' => 'Whole project',
         'level_language' => 'Into :language',
         'level_type' => 'Type :type',
@@ -894,7 +901,8 @@ return [
         'new_key_help' => 'type.field, or type.field:kind (for example post.body:heading).',
         'new_text' => 'Instructions',
         'bad_level_key' => 'Use the form type.field or type.field:kind (letters, digits, - and _).',
-        'glossary_intro' => 'Terms that are always translated the same way. Fill in the rendering per language, or tick Keep to leave the term as it is. A language left empty is not constrained. Rows without a term are ignored.',
+        'glossary_intro' => 'Terms that are always translated the same way; tick Keep to leave one as is.',
+        'glossary_note' => 'Fill in the rendering per language, or tick Keep to leave the term as it is. A language left empty is not constrained. Rows without a term are ignored.',
         'term' => 'Term',
         'note' => 'Note',
         'types' => 'Types',
@@ -907,7 +915,7 @@ return [
     // Settings → SEO audit: the last report of the audit, and running it (seo.audit.run). The findings' own
     // messages come from the report as written (English).
     'audit' => [
-        'intro' => 'The last run of the SEO audit on this site: what search engines and visitors would trip over, most serious first. The audit runs on the server, page by page.',
+        'intro' => 'The last SEO audit: what search engines and visitors trip over, worst first.',
         'never_run' => 'No audit has run on this site yet. Run it on the server with',
         'site' => 'Site',
         'started' => 'Started',
@@ -986,7 +994,7 @@ return [
         ],
     ],
     'cache' => [
-        'intro' => 'Every cache rebuilds itself on the next request. Clearing one is safe; the first page after it is slower.',
+        'intro' => 'Every cache rebuilds on the next request, so clearing one is safe.',
         'in_files' => 'in :count file|in :count files',
         'everything_else' => 'Everything else',
         'confirm_all' => 'Clear every cache?',
@@ -1096,7 +1104,8 @@ return [
     ],
     // Settings → Translations (the admins' overrides of interface texts).
     'translations' => [
-        'intro' => 'Change the interface texts for one language. A changed text replaces the delivered one in the admin for everyone using that language; Reset brings the delivered text back. Plain text only.',
+        'intro' => 'Change the interface texts of one language; Reset restores the delivered text.',
+        'note' => 'A changed text replaces the delivered one in the admin for everyone using that language; Reset brings the delivered text back. Plain text only.',
         'choose_target' => 'English is the language the texts are translated from. Choose another language to translate them.',
         'group' => 'Group',
         'group_site' => 'Site (model labels)',
@@ -1249,10 +1258,11 @@ return [
         'left_site' => '“:title” is no longer on the site: its old links now answer “not found”.',
         'left_site_count' => ':count records are no longer on the site: their old links now answer “not found”.',
         'send_old_links' => 'Send its old links to…',
-        'intro' => 'Old addresses that send visitors on to a page or a URL. Renamed and removed pages get theirs automatically; add your own for anything else.',
+        'intro' => 'Old addresses sending visitors on; renamed and removed pages add their own.',
         'tab_redirects' => 'Redirects',
         'tab_not_found' => 'Not found',
-        'not_found_intro' => 'Addresses visitors asked for that don’t exist, each hit at least twice. Redirect them to the right page, or dismiss what doesn’t matter. The count is approximate: an address is counted at most once a minute, a burst of new addresses is recorded at most 30 a minute, and the list keeps the 1,000 most recently hit addresses.',
+        'not_found_intro' => 'Addresses visitors asked for that don’t exist: redirect or dismiss them.',
+        'not_found_note' => 'Each address shown was asked for at least twice. The count is approximate: an address is counted at most once a minute, a burst of new addresses is recorded at most 30 a minute, and the list keeps the 1,000 most recently hit addresses.',
         'new' => 'New redirect',
         'edit' => 'Edit redirect',
         'search_label' => 'Search addresses',

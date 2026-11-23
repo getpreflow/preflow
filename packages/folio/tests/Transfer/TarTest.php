@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Transfer;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Transfer\TarReader;
@@ -50,7 +51,7 @@ final class TarTest extends TestCase
     {
         $long = str_repeat('nested-directory/', 10) . 'file.json'; // > 100 bytes
         $binary = random_bytes(1300);
-        $src = tempnam(sys_get_temp_dir(), 'tar');
+        $src = TempRoots::track((string) tempnam(sys_get_temp_dir(), 'tar'));
         file_put_contents($src, $binary);
 
         $s = $this->memory();

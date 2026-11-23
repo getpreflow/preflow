@@ -115,7 +115,7 @@ All methods return `$this` for chaining except the terminal methods.
 ->where('status', 'IN', ['draft', 'review'])
 ->orderBy('created_at', SortDirection::Desc)
 ->limit(10)->offset(20)
-->search('php')          // searches all #[Field(searchable: true)] fields
+->search('php')          // searches all #[Field(searchable: true)] fields; none declared: refused (0.84)
 ->get(): ResultSet       // all results
 ->first(): ?Model
 ->paginate(perPage: 15, currentPage: 2): PaginatedResult
@@ -321,13 +321,15 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 | `ConditionalMeasures` (0.79, a marker) | Says `aggregate()` honours a measure's own `where:` condition (each `measures()` entry then has a `condition`, a `Query` of only that measure's conditions). | `AggregateQuery::get()` throws for a measure with a condition (never counts every record); measures without one still run. | Read only. |
 | `BulkDeletes::deleteMany()` (0.77) | Many deletes in a few statements (`deleteManyIn()`: activity prune and erasure). | deletes one by one. | No either way (a failure part-way leaves the deleted ones deleted); inside a SQL transaction it rolls back with it. |
 | `Savepoints::savepoint()` (0.77) | Writes inside a caller's open transaction that commit or roll back with it and whose failure leaves it usable. | DataManager does not use it; its consumer, `StoredActivityLog`, runs its writes and reads as they are (fine for storage without transactions). | Yes with it, within the caller's transaction. |
-| `DescribesColumns::hasColumn()` (0.77), `hasTable()` (0.78) | Says whether a table has a column (`hasColumn()`: publishing works on tables not migrated yet) and whether a type's table exists (`hasTable()`: the staff accounts, published copies). | takes any column and any table as present (right for schemaless storage; a SQL driver should implement it). | Read only. |
+| `DescribesColumns::hasColumn()` (0.77), `hasTable()` (0.78) | Says whether a table has a column (`hasColumn()`: publishing works on tables not migrated yet; since 0.84 the change dates, written only where it says the table has the column) and whether a type's table exists (`hasTable()`: the staff accounts, published copies). | takes any column and any table as present (right for schemaless storage; a SQL driver should implement it); its records get no change dates (0.84). | Read only. |
 | `RankedSearch::canScore()`, `score()` (0.78) | Scores the hits loose search found, so ⌘K puts a type's best matches first (`DataManager::canScore()`, `scoreIn()`; only for a type with `"fullText": true`). It orders, it never finds: the hits are the same on every driver. `MysqlDriver` scores with `MATCH … AGAINST` over the FULLTEXT index `migrate` adds. | hits stay in storage order; `scoreIn()` throws `UnsupportedStorage`. | Read only. |
 | `RunsSql::rawQuery()`, `execute()`, `dialect()` (0.78) | Raw SQL through `DataManager::raw()` and `execute()`; the auth tokens, remember-me and codes use it for their conditional single-statement writes. | `raw()` and `execute()` throw `UnsupportedStorage` (a `LogicException`), never a different result; tokens, remember-me and codes read and write under their own lock instead. | As the SQL runs. |
 | `PdoConnection::pdo()` (0.78, extends `RunsSql`) | The PDO connection itself, for `preflow migrate`, `Migration\Schema`, the table sync and the convert tool. | `migrate` runs only the steps registered for any storage; the table sync skips the type. | — |
-| `Maintenance::check()`, `compact()` (0.78) | Checks the whole store (structure, indexes, references) and compacts it, through the driver's own prepared connection (`preflow db:check`, `db:vacuum`). For storage whose database tools can't do it once Preflow owns it (SQLite: the `preflow_text` collation). | the commands refuse the storage and point to the database's own tools (MySQL/MariaDB: `mysqlcheck`). | — |
+| `Maintenance::check()`, `compact()` (0.78) | Checks the whole store (structure, indexes, references) and compacts it, through the driver's own prepared connection (`preflow db:check`, `db:vacuum`). For storage whose database tools can't do it once Preflow owns it (SQLite: the `preflow_text` collation). | the commands refuse the storage and point to the database's own tools. `MysqlDriver` implements it since 0.84 (`CHECK TABLE`, `OPTIMIZE TABLE`). | — |
+| `MaintenanceReport::report()` (0.84, extends `Maintenance`) | Lines for the operator that are no problems: `db:check` prints them after the problems. MySQL: its text columns by collation and `not applicable: …` for what it has no check for (references between records), so a skipped check never reads as a passed one. | `db:check` prints the problems only. | — |
 | `Dumps::dump()`, `restore()` (0.78) | The whole store as text the same driver restores into an empty store (`preflow db:dump`, `db:restore`). | the commands refuse the storage and point to the database's own tools (MySQL/MariaDB: `mysqldump`; JSON: copy the folder). | `restore()` is all or nothing. |
 | `StatesIdKinds::idKindOf()` (0.82) | Says what kind of id the storage holds for a type: `PdoDriver` reads the table's key column and its schema grammar classifies the type (`Migration\Grammar\ClassifiesIdColumns`, 0.82: SQLite by its affinity rules, MySQL a number for every numeric type, as it compares text with them as numbers; a missing table or a grammar without it nothing). `DataManager::idKind()` asks it after the type's model class (a disagreement with the class throws) and before the declared id field. A driver that wraps another must implement it and forward the call. | `idKind()` follows the type: its class, else its declared id field, else a string id. | Read only. |
+| `WriteTimes::writeTimes()` (0.84) | When each record was last written by the storage's own bookkeeping (the JSON driver: each file's modification time), for the change-date backfill of `preflow migrate`. | the backfill takes the record's creation time, else the time of the migrate. | Read only. |
 | `ChangeTokens::changeToken()` (0.77) | A token that moves with every write of a type, so readers reuse what they computed. | `DataManager::changeToken()` only passes it on (null); its consumer, `StoredActivityLog::people()`, reuses nothing and computes every time. | Read only. |
 
 A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`, `InsertsNew`, `BulkDeletes`,
@@ -335,8 +337,8 @@ A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`,
 `RunsSql`), `Transactions`, `UniqueIndexes`, `SelectsColumns` and `SelectsSubqueries` from it and implements `exclusive()` itself (as
 `SqliteDriver` and `MysqlDriver` do); its `Dialect` may add `PatternMatching` and `InsertIfNew` (0.80). `MysqlDriver` adds
 `RankedSearch`, `SqliteDriver` adds `Maintenance` and `Dumps`. Since 0.82 `PdoDriver` also implements `StatesIdKinds` and `RemembersColumns` (a subclass that overrides `forgetColumns()` calls the parent), and both grammars implement `ClassifiesIdColumns`. The JSON file driver implements `VersionedStorage`, `ConditionalUpdates`, `InsertsNew`,
-`ExclusiveWrites`, `BulkDeletes`, `ChangeTokens`, `DescribesColumns`, `AtomicCounters` and
-`AggregatingStorage`.
+`ExclusiveWrites`, `BulkDeletes`, `ChangeTokens`, `DescribesColumns`, `AtomicCounters`,
+`AggregatingStorage` and (0.84) `WriteTimes`.
 
 ### Migrations
 
@@ -688,6 +690,62 @@ record). A save never touches another record: a value colliding with a unique in
 
 A migration-made column that is `NOT NULL` now fails on a `null` instead of silently keeping
 its old value.
+
+### Change dates (0.84)
+
+Every record of a type keeps when it was last changed (`Preflow\Data\ChangeDates`), on every
+driver:
+
+- **Where:** the system key `_updated_at` (`ChangeDates::FIELD`, beside `_version`,
+  `_published_at`), on every type. A type's own `updatedAt` / `updated_at` field is content: the
+  data layer never writes it (a site gives it its own meaning). A type whose rows are never changed
+  after they are written says `changeDates: false` on its `TypeDefinition` (the activity log's own
+  tables: their `at` is their time).
+- **What:** ISO 8601 in UTC to the second (`2026-11-22T18:59:29+00:00`), so ordering by it is a
+  plain text comparison on every driver (`->orderBy('_updated_at', SortDirection::Desc)`).
+- **When:** a save that changes the record sets it, from the render's clock: `saveType()`,
+  `saveTypeIfVersion()`, and `save()` / `insert()` / `insertIgnoring()` / `insertMany()` /
+  `update()` of a class-backed type. A save that
+  changes nothing keeps it (as a version field), so an unchanged record is written to the same
+  bytes; a versioned save moves it with the version, and `saveTypeIfVersion()` with `$next` equal
+  to `$expected` keeps the date the record was loaded with. It is never content: versions,
+  publish states and `changes()` ignore it. A read never touches it.
+- **Not moved:** writes that name their fields write only those: `updateIf()`,
+  `updateFieldsIfVersion()`, `incrementIn()` (counters), raw SQL, a driver called directly. A caller
+  that wants the date moved includes it: `[ChangeDates::FIELD => ChangeDates::text($now)]`.
+- **Keeping dates:** `$dm->keepingChangeDates(fn () => …)` writes the change date a record carries
+  (one without gets now): for imports and copies. A readable date is stored as ISO 8601 UTC text,
+  so the sort holds; an unreadable value is kept as it is. Folio's content import compares
+  records without their dates (a record that differs only in its date stays as it is) and writes
+  the rows it adds or changes as they are, their dates too; what an archive from before 0.84 writes
+  is dated with the import.
+- **Published copies** keep their own `_updated_at`: the publish that wrote their content (a
+  publish of the same content keeps it).
+- **Storage:** JSON records take the key. On SQL, `preflow migrate` adds the column to every table
+  the data layer makes (`RecordTableSync`, a date column compared exactly, with an index on typed
+  tables, since lists sort by it); until then saves are
+  written as before. `DataManager::changeDateOf($def)` says whether the storage holds it (a driver
+  that does not implement `DescribesColumns` is given none). A driver needs nothing new: it stores
+  the key as it stores the fields; `StorageDriverContract` pins it on every driver.
+- **Backfill:** the step `data.change-dates` of `preflow migrate` (after every table step, on any
+  storage) gives each record without a date, in this order: the activity log's newest event for it
+  (a log with `Preflow\Core\Activity\LastChanges`, as the stored one), the type's own `updatedAt` /
+  `updated_at` value (read, never written), the sources packages register with
+  `ChangeDateSources` (`ChangeDateSource`; preflow/publishing adds a published copy's
+  `_published_at`), the storage's own write time (`WriteTimes`: a JSON file's modification time),
+  its `createdAt` / `created_at`, else the time of the migrate.
+  - It runs while the site serves requests: each date is a conditional write of that key alone
+    (`updateIf()`: `UPDATE … WHERE id = ? AND` the date is empty on SQL, a check and write under the
+    type's lock elsewhere). A record deleted meanwhile is not written back; a date a save gave
+    meanwhile stays; a JSON file is written in the bytes a save writes (the change date closes the
+    system keys).
+  - It writes only empty dates, 500 records per transaction: a second run writes nothing, an
+    interrupted one goes on where it stopped.
+  - A table it cannot finish is a `refused:` line and migrate exits 1 (the other tables go on). A
+    source that cannot answer (the activity log unreachable) refuses its table rather than letting
+    a weaker source decide for good; the next run asks again. A table without the column (one a
+    migration made) is a `warning:` line.
+- **Plain models** (no type) keep `#[Timestamps]` for this; their tables are their migrations'.
 
 ## Unique fields and indexes
 

@@ -96,7 +96,7 @@ final class PublishingTablesMysqlTest extends TestCase
         foreach (['article', 'article__published'] as $table) {
             $this->assertContains("added index idx_{$table}_title", $lines);
             $this->assertContains("added index idx_{$table}_title_views", $lines);
-            $this->assertEqualsCanonicalizing(['PRIMARY', "idx_{$table}_title", "idx_{$table}_title_views"], $schema->indexes($table), $table);
+            $this->assertEqualsCanonicalizing(['PRIMARY', "idx_{$table}_title", "idx_{$table}_title_views", "idx_{$table}__updated_at"], $schema->indexes($table), $table);
         }
         $this->assertSame(['PRIMARY'], $schema->indexes('article__revisions'));
         $this->assertSame([], array_values(array_filter($tables->sync(), static fn (string $l): bool => !str_starts_with($l, 'warning: '))), 'a second run adds nothing');

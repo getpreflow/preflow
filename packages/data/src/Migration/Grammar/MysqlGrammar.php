@@ -517,7 +517,7 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, ConvertsColl
         return 'ALTER TABLE ' . $this->quote($table) . ' DROP COLUMN ' . $this->quote($column);
     }
 
-    /** ALTER TABLE … MODIFY, with the column's NULL / NOT NULL and DEFAULT carried over unless changed. */
+    /** ALTER TABLE … MODIFY, with the column's NULL / NOT NULL, DEFAULT, ON UPDATE and COMMENT carried over unless changed. */
     public function convertColumn(\PDO $pdo, string $table, string $column, string $type, ?bool $nullable): void
     {
         $pdo->exec('ALTER TABLE ' . $this->quote($table) . ' ' . $this->modifyClause($pdo, $table, $column, $type, $nullable));
@@ -526,9 +526,9 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, ConvertsColl
     /** "MODIFY `column` type NULL|NOT NULL [DEFAULT …]", nullability and default as the column has them unless $nullable says. */
     private function modifyClause(\PDO $pdo, string $table, string $column, string $type, ?bool $nullable): string
     {
-        $stmt = $pdo->prepare('SELECT IS_NULLABLE, COLUMN_DEFAULT, EXTRA FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
+        $stmt = $pdo->prepare('SELECT IS_NULLABLE, COLUMN_DEFAULT, EXTRA, COLUMN_COMMENT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
         $stmt->execute([$table, $column]);
-        [$isNullable, $default, $extra] = $stmt->fetch(\PDO::FETCH_NUM) ?: throw new \LogicException("Cannot convert \"{$table}.{$column}\": no such column.");
+        [$isNullable, $default, $extra, $comment] = $stmt->fetch(\PDO::FETCH_NUM) ?: throw new \LogicException("Cannot convert \"{$table}.{$column}\": no such column.");
         $stmt->closeCursor();
         $nullable ??= $isNullable === 'YES';
         $sql = 'MODIFY ' . $this->quote($column) . ' ' . $type . ($nullable ? ' NULL' : ' NOT NULL');
@@ -538,6 +538,12 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, ConvertsColl
         $default = self::defaultClause($pdo, $default, (string) $extra);
         if ($default !== null) {
             $sql .= ' DEFAULT ' . $default;
+        }
+        if (preg_match('/\bon update (.+)$/i', (string) $extra, $onUpdate) === 1) {
+            $sql .= ' ON UPDATE ' . $onUpdate[1]; // a touched-at column keeps updating itself (@since 0.84.0)
+        }
+        if ((string) $comment !== '') {
+            $sql .= ' COMMENT ' . $pdo->quote((string) $comment); // @since 0.84.0
         }
 
         return $sql;

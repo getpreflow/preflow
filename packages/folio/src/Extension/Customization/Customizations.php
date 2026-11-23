@@ -21,6 +21,7 @@ use Preflow\Folio\Extension\FieldPlaceholder;
 use Preflow\Folio\Extension\FormPanel;
 use Preflow\Folio\Extension\ListColumn;
 use Preflow\Folio\Extension\ListNotice;
+use Preflow\Folio\Extension\TitleBadge;
 use Preflow\Folio\Extension\NavBadge;
 use Preflow\Folio\Extension\RecordAction;
 use Preflow\Folio\Extension\SaveRecord;
@@ -44,10 +45,10 @@ final class Customizations
 
     private const string PERMISSION_PATTERN = '/^[a-z][a-z0-9_-]*(\.[a-z0-9_-]+)+$/';
 
-    private const array METHOD_ATTRIBUTES = [FormPanel::class, RecordAction::class, BulkAction::class, ListColumn::class, NavBadge::class, ListNotice::class, DashboardNotice::class, DashboardItem::class, FieldPlaceholder::class, SaveRecord::class, ...self::HOOKS];
+    private const array METHOD_ATTRIBUTES = [FormPanel::class, RecordAction::class, BulkAction::class, ListColumn::class, NavBadge::class, ListNotice::class, TitleBadge::class, DashboardNotice::class, DashboardItem::class, FieldPlaceholder::class, SaveRecord::class, ...self::HOOKS];
 
     /**
-     * @param array<string, array{panels: list<array{label: string, position: string, extension: string, owner: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, bulk: list<array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, listNotices: list<\Closure>, dashboardNotices: list<\Closure>, dashboardItems: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}> $types
+     * @param array<string, array{panels: list<array{label: string, position: string, extension: string, owner: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, bulk: list<array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, listNotices: list<\Closure>, titleBadges: list<\Closure>, dashboardNotices: list<\Closure>, dashboardItems: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}> $types
      */
     /** @var array<string, ?int> */
     private array $badgeCounts = [];
@@ -83,7 +84,7 @@ final class Customizations
                 if (!$catalog->has($key)) {
                     throw new ExtensionException("Type customization {$class}: #[FolioType('{$key}')] names no content type \"{$key}\".");
                 }
-                $types[$key] ??= ['panels' => [], 'actions' => [], 'bulk' => [], 'columns' => [], 'badges' => [], 'listNotices' => [], 'dashboardNotices' => [], 'dashboardItems' => [], 'hooks' => [], 'placeholders' => []];
+                $types[$key] ??= ['panels' => [], 'actions' => [], 'bulk' => [], 'columns' => [], 'badges' => [], 'listNotices' => [], 'titleBadges' => [], 'dashboardNotices' => [], 'dashboardItems' => [], 'hooks' => [], 'placeholders' => []];
 
                 $badgeMethod = null;
                 $built = new \stdClass(); // one instance per class, shared by its methods' closures
@@ -162,6 +163,8 @@ final class Customizations
                             $types[$key]['badges'][] = $call;
                         } elseif ($meta instanceof ListNotice) {
                             $types[$key]['listNotices'][] = $call;
+                        } elseif ($meta instanceof TitleBadge) {
+                            $types[$key]['titleBadges'][] = $call;
                         } elseif ($meta instanceof DashboardNotice) {
                             $types[$key]['dashboardNotices'][] = $call;
                         } elseif ($meta instanceof DashboardItem) {
@@ -193,11 +196,11 @@ final class Customizations
     }
 
     /**
-     * @return array{panels: list<array{label: string, position: string, extension: string, owner: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, bulk: list<array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, listNotices: list<\Closure>, dashboardNotices: list<\Closure>, dashboardItems: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}
+     * @return array{panels: list<array{label: string, position: string, extension: string, owner: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, bulk: list<array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, listNotices: list<\Closure>, titleBadges: list<\Closure>, dashboardNotices: list<\Closure>, dashboardItems: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}
      */
     public function forType(string $key): array
     {
-        $type = $this->types[$key] ?? ['panels' => [], 'actions' => [], 'bulk' => [], 'columns' => [], 'badges' => [], 'listNotices' => [], 'dashboardNotices' => [], 'dashboardItems' => [], 'hooks' => [], 'placeholders' => []];
+        $type = $this->types[$key] ?? ['panels' => [], 'actions' => [], 'bulk' => [], 'columns' => [], 'badges' => [], 'listNotices' => [], 'titleBadges' => [], 'dashboardNotices' => [], 'dashboardItems' => [], 'hooks' => [], 'placeholders' => []];
         foreach (['panels', 'actions', 'bulk', 'columns'] as $list) {
             $type[$list] = array_map(self::texts(...), $type[$list]);
         }
@@ -269,6 +272,32 @@ final class Customizations
     public function listNotices(string $type): array
     {
         return self::notices($this->types[$type]['listNotices'] ?? []);
+    }
+
+    /**
+     * The badges of the type's #[TitleBadge] methods for a stored record, in extension name order.
+     * A method that throws or returns anything but Badges (or null) adds nothing.
+     *
+     * @return list<\Preflow\Folio\Extension\Badge>
+     * @since 0.84.0
+     */
+    public function titleBadges(string $type, \Preflow\Data\DynamicRecord $record): array
+    {
+        $badges = [];
+        foreach ($this->types[$type]['titleBadges'] ?? [] as $call) {
+            try {
+                $result = $call($record);
+            } catch (\Throwable) {
+                continue;
+            }
+            foreach (is_array($result) ? $result : [$result] as $badge) {
+                if ($badge instanceof \Preflow\Folio\Extension\Badge && $badge->label !== '') {
+                    $badges[] = $badge;
+                }
+            }
+        }
+
+        return $badges;
     }
 
     /**

@@ -53,6 +53,9 @@ return [
         'footnote' => 'Spaltenköpfe schalten die ganze Spalte.',
         'new' => 'Neu',
         'only_new' => 'Nur neue (:count)',
+        'type' => 'Typ',
+        'type_filter' => 'Nur einen Typ zeigen',
+        'all_types' => 'Alle Typen',
     ],
     'roles_field' => [
         'not_defined' => ':role (nicht definiert)',
@@ -70,6 +73,8 @@ return [
         'dashboard' => ':count neue Berechtigung in Rollen zu prüfen|:count neue Berechtigungen in Rollen zu prüfen',
         'needs_you' => ':count neue Berechtigung in Rollen|:count neue Berechtigungen in Rollen',
         'needs_you_text' => 'Ein Update hat sie gebracht. Pro Rolle entscheiden.',
+        // The role editor's title badge: the new permissions the role does not hold (since 0.84; :count).
+        'role_badge' => ':count neue Berechtigung|:count neue Berechtigungen',
         'added' => 'Zu :role hinzugefügt.',
         'dismissed' => 'Ausgeblendet.',
         'no_role' => 'Wähle die Rolle, der du sie geben willst.',

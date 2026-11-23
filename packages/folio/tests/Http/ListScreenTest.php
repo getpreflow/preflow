@@ -229,4 +229,106 @@ final class ListScreenTest extends TestCase
         $this->assertStringNotContainsString('folio-cell-address', $html);
         $this->assertStringContainsString('<span class="folio-row-text"><a class="folio-row-link" href="/folio/note/n1/edit">Remember</a></span>', $html);
     }
+
+    /** Saves a record through the data layer on a clock at $at, so its change date is $at. */
+    private function savedAt(string $type, string $id, array $data, \DateTimeImmutable $at): void
+    {
+        $dm = $this->dm();
+        $record = \Preflow\Data\DynamicRecord::fromArray($dm->getTypeRegistry()->get($type), ['uuid' => $id] + $data);
+        \Preflow\Core\Context\Contexts::run(
+            \Preflow\Testing\ContextFactory::forTest()->withClock(new \Preflow\Core\Context\FrozenClock($at)),
+            static fn () => $dm->saveType($record, false),
+        );
+    }
+
+    public function test_every_list_ends_in_a_changed_column_from_the_stored_change_date(): void
+    {
+        $this->writeModel('game', ['label' => 'Games', 'fields' => ['title' => ['type' => 'string']]]);
+        $at = new \DateTimeImmutable('-3 hours');
+        $this->savedAt('game', 'g1', ['title' => 'Chess'], $at);
+        $this->working('game', 'g2', ['title' => 'Go']); // written past the data layer: no date
+
+        $html = $this->html('/folio/game');
+
+        $this->assertMatchesRegularExpression('#</a></th><th><a class="folio-sort" href="/folio/game\?sort=-_updated_at">Changed <span class="folio-sort-mark is-idle" aria-hidden="true"></span></a></th>#', $html);
+        $iso = $at->setTimezone(new \DateTimeZone('UTC'))->format(DATE_ATOM);
+        $this->assertMatchesRegularExpression('#<td class="folio-cell-changed"><time datetime="' . preg_quote($iso, '#') . '" title="[^"]+">3 hours ago</time></td>#', $html, 'ISO 8601 for machines');
+        $this->assertSame(2, substr_count($html, 'folio-cell-changed'), 'one cell per row; a record without a date shows a dash');
+        $this->assertStringContainsString('<span class="folio-muted" aria-hidden="true">–</span>', $html);
+    }
+
+    public function test_the_changed_column_sorts_by_the_change_date(): void
+    {
+        $this->writeModel('game', ['label' => 'Games', 'fields' => ['title' => ['type' => 'string']]]);
+        $this->savedAt('game', 'g1', ['title' => 'Middle'], new \DateTimeImmutable('-2 days'));
+        $this->savedAt('game', 'g2', ['title' => 'Newest'], new \DateTimeImmutable('-1 hour'));
+        $this->savedAt('game', 'g3', ['title' => 'Oldest'], new \DateTimeImmutable('-30 days'));
+
+        $titles = static function (string $html): array {
+            preg_match_all('#<a class="folio-row-link" href="/folio/game/g\d/edit">([^<]+)</a>#', $html, $m);
+
+            return $m[1];
+        };
+
+        $newest = $this->html('/folio/game?sort=-_updated_at');
+        $this->assertSame(['Newest', 'Middle', 'Oldest'], $titles($newest));
+        $this->assertStringContainsString('<th aria-sort="descending"><a class="folio-sort" href="/folio/game?sort=_updated_at">Changed <span class="folio-sort-mark" aria-hidden="true">↓</span></a></th>', $newest);
+
+        $oldest = $this->html('/folio/game?sort=_updated_at');
+        $this->assertSame(['Oldest', 'Middle', 'Newest'], $titles($oldest));
+        $this->assertStringContainsString('<th aria-sort="ascending"><a class="folio-sort" href="/folio/game">Changed', $oldest, 'a third click: the list\'s own order');
+    }
+
+    public function test_a_folio_save_leaves_a_types_own_updated_field_and_moves_the_change_date(): void
+    {
+        $this->writeModel('memo', ['label' => 'Memos', 'fields' => ['title' => ['type' => 'string'], 'updated_at' => ['type' => 'string']]]);
+        $this->savedAt('memo', 'm1', ['title' => 'First', 'updated_at' => '2020-01-02 03:04:05'], new \DateTimeImmutable('2026-01-01T00:00:00Z'));
+
+        $res = $this->post('/folio/memo/m1', ['title' => 'Second', 'updated_at' => '2020-01-02 03:04:05', '_locale' => 'en']);
+
+        $this->assertSame(302, $res->getStatusCode());
+        $stored = $this->dm()->driver('json')->findOne('memo', 'm1') ?? [];
+        $this->assertSame('Second', $stored['title'] ?? null);
+        $this->assertSame('2020-01-02 03:04:05', $stored['updated_at'] ?? null, 'the site\'s own field is its content');
+        $this->assertNotSame('2026-01-01T00:00:00+00:00', $stored[\Preflow\Data\ChangeDates::FIELD] ?? null, 'the change date moved');
+        $this->assertNotNull(\Preflow\Data\ChangeDates::parse($stored[\Preflow\Data\ChangeDates::FIELD] ?? null));
+    }
+
+    public function test_the_changed_column_reads_the_change_date_not_a_types_own_updated_field(): void
+    {
+        $this->writeModel('memo', ['label' => 'Memos', 'fields' => ['title' => ['type' => 'string'], 'updated_at' => ['type' => 'string']]]);
+        $this->savedAt('memo', 'm1', ['title' => 'First', 'updated_at' => '2020-01-02 03:04:05'], new \DateTimeImmutable('-3 hours'));
+
+        $html = $this->html('/folio/memo');
+
+        $this->assertMatchesRegularExpression('#<td class="folio-cell-changed"><time datetime="[^"]+" title="[^"]+">3 hours ago</time></td>#', $html);
+        $this->assertStringContainsString('2020-01-02 03:04:05', $html, 'the site\'s own field: an ordinary column');
+    }
+
+    public function test_a_type_hides_the_changed_column_with_list_changed_false(): void
+    {
+        $this->writeModel('toy', ['label' => 'Toys', 'fields' => ['title' => ['type' => 'string']]]);
+        $this->writeModel('game', ['label' => 'Games', 'list' => ['changed' => false], 'fields' => ['title' => ['type' => 'string']]]);
+        $this->working('game', 'g1', ['title' => 'Chess']);
+
+        $this->working('toy', 't1', ['title' => 'Ball']);
+        $this->assertMatchesRegularExpression('#<th[^>]*>(?:<a [^>]*>)?Changed\\b#', $this->html('/folio/toy'), 'a type that does not hide it has the column');
+
+        $html = $this->html('/folio/game');
+
+        $this->assertDoesNotMatchRegularExpression('#<th[^>]*>(?:<a [^>]*>)?Changed\\b#', $html);
+        $this->assertStringNotContainsString('folio-cell-changed', $html);
+    }
+
+    public function test_a_type_may_list_its_own_updated_field_beside_the_changed_column(): void
+    {
+        $this->writeModel('memo', ['label' => 'Memos', 'list' => ['columns' => ['title', 'updated_at']], 'fields' => ['title' => ['type' => 'string'], 'updated_at' => ['type' => 'string']]]);
+        $this->savedAt('memo', 'm1', ['title' => 'First', 'updated_at' => '2026-01-02 03:04:05'], new \DateTimeImmutable('-3 hours'));
+
+        $html = $this->html('/folio/memo');
+
+        $this->assertSame(1, preg_match_all('#<th[^>]*>(?:<a [^>]*>)?Changed\\b#', $html), 'one Changed column');
+        $this->assertStringContainsString('2026-01-02 03:04:05', $html, 'its own field as written');
+        $this->assertSame(1, substr_count($html, 'folio-cell-changed'));
+    }
 }

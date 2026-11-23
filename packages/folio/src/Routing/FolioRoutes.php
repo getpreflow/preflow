@@ -15,6 +15,7 @@ final class FolioRoutes
     private const PAGE_PREVIEW = 'Preflow\\Folio\\Http\\PagePreviewController';
     private const PUBLISHING = 'Preflow\\Folio\\Http\\PublishingController';
     private const ASSETS = 'Preflow\\Folio\\Http\\AssetLibraryController';
+    private const MEDIA_STORAGE_MW = 'Preflow\\Folio\\Http\\MediaStorageMiddleware';
     private const EXTENSIONS = 'Preflow\\Folio\\Http\\ExtensionsController';
     private const CACHE = 'Preflow\\Folio\\Http\\CacheController';
     private const TRANSLATIONS = 'Preflow\\Folio\\Http\\TranslationsController';
@@ -203,6 +204,10 @@ final class FolioRoutes
                 if ($handlerClass !== self::AUTH && $handlerClass !== self::PASSWORDS) {
                     // What the route's type allows (data's "readonly" / "creatable"), with or without sign-in.
                     $middleware[] = self::TYPE_ACTIONS_MW;
+                }
+                if ($handlerClass === self::ASSETS || str_starts_with($pattern, $prefix . '/assets/')) {
+                    // The library's routes, the AI alt text's too: its storage driver must exist (503 with the way to set it).
+                    $middleware[] = self::MEDIA_STORAGE_MW;
                 }
             }
             $c = PatternCompiler::compile($pattern);

@@ -54,7 +54,7 @@ final class MysqlDeclaredIndexesTest extends TestCase
     {
         $def = self::jobs(indexes: [['state', 'updated_at']]);
 
-        $this->assertSame(['created table jobs', 'added index idx_jobs_company', 'added index idx_jobs_state_updated_at'], $this->sync()->sync($def));
+        $this->assertSame(['created table jobs', 'added index idx_jobs_company', 'added index idx_jobs_state_updated_at', 'added index idx_jobs__updated_at'], $this->sync()->sync($def));
         $this->assertSame(['state', 'updated_at'], (new MysqlGrammar())->indexColumns($this->pdo, 'jobs')['idx_jobs_state_updated_at']);
         $this->assertSame(['state' => null, 'updated_at' => null], $this->subParts('jobs', 'idx_jobs_state_updated_at'), 'state is a bounded column');
         $this->assertSame([], $this->sync()->sync($def));
@@ -115,7 +115,7 @@ final class MysqlDeclaredIndexesTest extends TestCase
             'warning: jobs: no index over code, a (a key of up to 3600 bytes; MySQL allows 3072); give its text fields a shorter "length"',
             'warning: jobs: no index over a, b, n (a key of up to 3208 bytes; MySQL allows 3072); give its text fields a shorter "length"',
         ];
-        $this->assertSame(['created table jobs', ...$warnings, 'added index idx_jobs_a_n'], $this->sync()->sync($def));
+        $this->assertSame(['created table jobs', ...$warnings, 'added index idx_jobs_a_n', 'added index idx_jobs__updated_at'], $this->sync()->sync($def));
         $this->assertSame($warnings, $this->sync()->sync($def));
     }
 

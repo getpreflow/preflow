@@ -40,7 +40,7 @@ final class DeclaredIndexesTest extends TestCase
     public function testCompositeIndexIsMadeWithTheTableAndOnAnExistingOne(): void
     {
         $def = self::jobs(indexes: [['state', 'updated_at']]);
-        $this->assertSame(['created table jobs', 'added index idx_jobs_company', 'added index idx_jobs_state_updated_at'], $this->sync()->sync($def));
+        $this->assertSame(['created table jobs', 'added index idx_jobs_company', 'added index idx_jobs_state_updated_at', 'added index idx_jobs__updated_at'], $this->sync()->sync($def));
         $this->assertSame(['state', 'updated_at'], (new SqliteGrammar())->indexColumns($this->pdo, 'jobs')['idx_jobs_state_updated_at']);
 
         $this->pdo->exec('DROP TABLE jobs');
@@ -70,7 +70,7 @@ final class DeclaredIndexesTest extends TestCase
         $lines = $this->sync()->sync($def);
 
         $name = (new SqliteGrammar())->indexName('idx', 'jobs', "{$long}_state");
-        $this->assertSame(['created table jobs', "added index {$name}"], $lines);
+        $this->assertSame(['created table jobs', "added index {$name}", 'added index idx_jobs__updated_at'], $lines);
         $this->assertLessThanOrEqual(64, strlen($name));
         $this->assertSame([], $this->sync()->sync($def));
     }
@@ -125,7 +125,7 @@ final class DeclaredIndexesTest extends TestCase
         $this->pdo->exec('CREATE INDEX idx_published_number ON item (number)');
 
         $this->assertSame([], $sync->sync(new TypeDefinition('item', 'item', 'sqlite', ['number' => new TypeFieldDefinition('number', 'number', index: true)])));
-        $this->assertSame(['idx_published_number'], $this->indexes('item'));
+        $this->assertEqualsCanonicalizing(['idx_item__updated_at', 'idx_published_number'], $this->indexes('item'));
     }
 
     public function testGrammarsTellUniqueIndexes(): void
@@ -147,7 +147,7 @@ final class DeclaredIndexesTest extends TestCase
         $this->pdo->exec('CREATE INDEX by_code_number ON item (code, number)');
 
         $this->assertSame(['added unique index uniq_item_code'], $sync->sync($declared), 'a plain index over code does not make it unique');
-        $this->assertEqualsCanonicalizing(['idx_item_code', 'idx_published_number', 'by_code_number', 'uniq_item_code'], $this->indexes('item'));
+        $this->assertEqualsCanonicalizing(['idx_item__updated_at', 'idx_item_code', 'idx_published_number', 'by_code_number', 'uniq_item_code'], $this->indexes('item'));
 
         $this->pdo->exec('DROP INDEX uniq_item_code');
         $this->pdo->exec('CREATE UNIQUE INDEX item_code_unique ON item (code)');
@@ -177,8 +177,8 @@ final class DeclaredIndexesTest extends TestCase
             'warning: post: no index over tags (tags is free text); see the data README',
             'warning: post: no index over state, body (body is free text); see the data README',
         ];
-        $this->assertSame(['created table post', ...$warnings], $this->sync()->sync($def));
-        $this->assertSame([], $this->indexes('post'));
+        $this->assertSame(['created table post', ...$warnings, 'added index idx_post__updated_at'], $this->sync()->sync($def));
+        $this->assertSame(['idx_post__updated_at'], $this->indexes('post'), 'only the change date\'s');
         $this->assertSame($warnings, $this->sync()->sync($def));
     }
 
@@ -211,7 +211,8 @@ final class DeclaredIndexesTest extends TestCase
         $this->assertStringStartsWith('warning: jobs: no index over company (the server refused it: ', $lines[1]);
         $this->assertStringEndsWith('; see the data README', $lines[1]);
         $this->assertSame('added index idx_jobs_state_updated_at', $lines[2]);
-        $this->assertCount(3, $lines);
+        $this->assertSame('added index idx_jobs__updated_at', $lines[3]);
+        $this->assertCount(4, $lines);
     }
 
     /** SQLite has no key size limit: an index past MySQL's 3072 bytes is made. */
@@ -223,7 +224,7 @@ final class DeclaredIndexesTest extends TestCase
             'n' => new TypeFieldDefinition('n', 'number'),
         ], indexes: [['a', 'b', 'n']]);
 
-        $this->assertSame(['created table jobs', 'added index idx_jobs_a_b_n'], $this->sync()->sync($def));
+        $this->assertSame(['created table jobs', 'added index idx_jobs_a_b_n', 'added index idx_jobs__updated_at'], $this->sync()->sync($def));
     }
 
     /** @param list<list<string>> $indexes */

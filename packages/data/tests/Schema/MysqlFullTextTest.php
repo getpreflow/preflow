@@ -40,7 +40,7 @@ final class MysqlFullTextTest extends TestCase
     {
         $lines = $this->sync()->sync(self::post());
 
-        $this->assertSame(['created table post', 'added full-text index ft_post_search'], $lines);
+        $this->assertSame(['created table post', 'added index idx_post__updated_at', 'added full-text index ft_post_search'], $lines);
         $this->assertSame(['ft_post_search' => ['title', 'body']], (new MysqlGrammar())->fullTextIndexes($this->pdo, 'post'));
         $this->assertSame([], $this->sync()->sync(self::post()), 'a second sync adds nothing');
     }
@@ -90,7 +90,7 @@ final class MysqlFullTextTest extends TestCase
 
         $lines = (new RecordTableSync($dm))->sync($def);
 
-        $this->assertSame(['created table note', 'added full-text index ft_note_search'], $lines);
+        $this->assertSame(['created table note', 'added index idx_note__updated_at', 'added full-text index ft_note_search'], $lines);
         $this->assertSame(['ft_note_search' => ['title', 'tags']], (new MysqlGrammar())->fullTextIndexes($this->pdo, 'note'));
         $this->assertSame('utf8mb4_bin', (new MysqlGrammar())->columnCollations($this->pdo, 'note')['code']);
         $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'a', 'title' => 'Kartenspiel', 'tags' => ['PHP', 'Würfel'], 'code' => 'AbC']), validate: false);

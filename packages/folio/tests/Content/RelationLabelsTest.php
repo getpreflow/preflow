@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Content;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
@@ -27,7 +28,7 @@ final class RelationLabelsTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->base = sys_get_temp_dir() . '/folio_rellabels_' . bin2hex(random_bytes(4));
+        $this->base = TempRoots::path('folio_rellabels_');
         mkdir($this->base . '/m', 0777, true);
         mkdir($this->base . '/s', 0777, true);
         $models = [

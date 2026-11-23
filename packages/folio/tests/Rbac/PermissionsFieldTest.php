@@ -97,12 +97,12 @@ final class PermissionsFieldTest extends TestCase
             . '<th scope="col" class="rbac-cell-all">All</th></tr>#',
             $html,
         );
-        $this->assertMatchesRegularExpression('#scope="colgroup">Members <span[^>]*>.*?</th></tr>\s*<tr class="rbac-row" data-rbac-row><th scope="row" title="member\.\*"><span class="rbac-type"><span class="folio-type-icon"[^>]*>.*?</span><span class="rbac-type-label">Members</span></span></th>#', $html);
-        $this->assertMatchesRegularExpression('#scope="colgroup">Settings <span[^>]*>.*?</th></tr>\s*<tr class="rbac-row" data-rbac-row><th scope="row" title="rbac_role\.\*">.*?<span class="rbac-type-label">Roles</span>#', $html);
+        $this->assertMatchesRegularExpression('#scope="colgroup">Members <span[^>]*>.*?</th></tr>\s*<tr class="rbac-row" data-rbac-row data-rbac-type="[a-z_]+"><th scope="row" title="member\.\*"><span class="rbac-type"><span class="folio-type-icon"[^>]*>.*?</span><span class="rbac-type-label">Members</span></span></th>#', $html);
+        $this->assertMatchesRegularExpression('#scope="colgroup">Settings <span[^>]*>.*?</th></tr>\s*<tr class="rbac-row" data-rbac-row data-rbac-type="[a-z_]+"><th scope="row" title="rbac_role\.\*">.*?<span class="rbac-type-label">Roles</span>#', $html);
 
         // A row: its type tile and label, a box per verb, the row's switch is "{type}.*" (checked here).
         $this->assertMatchesRegularExpression(
-            '#<tr class="rbac-row" data-rbac-row><th scope="row" title="page\.\*"><span class="rbac-type"><span class="folio-type-icon" data-family="" aria-hidden="true"><svg class="folio-icon"[^>]*>.*?</svg></span><span class="rbac-type-label">Pages</span></span></th>'
+            '#<tr class="rbac-row" data-rbac-row data-rbac-type="[a-z_]+"><th scope="row" title="page\.\*"><span class="rbac-type"><span class="folio-type-icon" data-family="" aria-hidden="true"><svg class="folio-icon"[^>]*>.*?</svg></span><span class="rbac-type-label">Pages</span></span></th>'
             . '<td class="rbac-cell"><input type="checkbox" name="permissions\[\]" value="page\.view" title="page\.view" class="rbac-box" data-rbac-verb="view" aria-label="Pages: View"></td>'
             . '(<td class="rbac-cell"><input type="checkbox" name="permissions\[\]" value="page\.(create|edit|publish|delete)" title="[^"]+" class="rbac-box" data-rbac-verb="\2" aria-label="Pages: [A-Za-z]+"></td>){4}'
             . '<td class="rbac-cell rbac-cell-all"><input type="checkbox" name="permissions\[\]" value="page\.\*" title="page\.\*" class="folio-switch rbac-row-switch" role="switch" aria-label="Pages: All" data-rbac-all checked></td></tr>#',
@@ -115,7 +115,7 @@ final class PermissionsFieldTest extends TestCase
         // Type verbs never show up again among the other permissions.
         $this->assertSame(1, substr_count($html, 'value="member.view"'));
         // The key above the matrix: granted and n/a only (the engine checks exact names: nothing is implied).
-        $this->assertMatchesRegularExpression('#<div class="rbac-bar"><ul class="rbac-key" aria-label="Legend"><li><span class="rbac-key-box" aria-hidden="true"></span>Granted</li><li><span class="rbac-none" aria-hidden="true">–</span>Not available for this type</li></ul></div>#', $html);
+        $this->assertMatchesRegularExpression('#<div class="rbac-bar"><ul class="rbac-key" aria-label="Legend"><li><span class="rbac-key-box" aria-hidden="true"></span>Granted</li><li><span class="rbac-none" aria-hidden="true">–</span>Not available for this type</li></ul>(<label class="folio-select-inline rbac-type-filter".*?</label>)?</div>#', $html);
         $this->assertMatchesRegularExpression('#</table></div><p class="rbac-footnote">Column headers toggle the whole column\.</p>#', $html);
         $this->assertStringNotContainsString('implie', $html);
     }
@@ -146,7 +146,7 @@ final class PermissionsFieldTest extends TestCase
         $html = $this->render(['page.view'], ['page.view', 'codes.revoke', 'assets.*', 'ghost.view']);
 
         $this->assertMatchesRegularExpression('#<button type="button" class="rbac-fresh-filter" aria-pressed="false" data-rbac-fresh-filter data-folio-no-edit>Only new \(3\)</button></div>#', $html);
-        $this->assertMatchesRegularExpression('#<tr class="rbac-row is-new" data-rbac-row data-rbac-new><th scope="row" title="page\.\*"><span class="rbac-type">.*?<span class="rbac-type-label">Pages</span><span class="folio-badge is-warning rbac-fresh-badge">New</span></span></th>#', $html);
+        $this->assertMatchesRegularExpression('#<tr class="rbac-row is-new" data-rbac-row data-rbac-type="[a-z_]+" data-rbac-new><th scope="row" title="page\.\*"><span class="rbac-type">.*?<span class="rbac-type-label">Pages</span><span class="folio-badge is-warning rbac-fresh-badge">New</span></span></th>#', $html);
         $this->assertSame(1, preg_match_all('#<tr class="rbac-row is-new"#', $html));
         $this->assertMatchesRegularExpression('#<label class="rbac-chip is-new" title="codes\.revoke" data-rbac-new><input type="checkbox" name="permissions\[\]" value="codes\.revoke"><span>Revoke codes</span><span class="folio-badge is-warning rbac-fresh-badge">New</span></label>#', $html);
         $this->assertMatchesRegularExpression('#title="assets\.\*"><input[^>]+value="assets\.\*" data-rbac-all> All</label><span class="rbac-fresh-mark" data-rbac-new><span class="folio-badge is-warning rbac-fresh-badge">New</span></span>#', $html);
@@ -173,14 +173,15 @@ final class PermissionsFieldTest extends TestCase
             $this->assertStringNotContainsString(' disabled', $tag, 'locks are the script\'s, and only for what a pattern covers');
             $this->assertStringNotContainsString(' hidden', $tag);
         }
-        $this->assertDoesNotMatchRegularExpression('#<(tr|tbody|div|label)[^>]* hidden[ >]#', $html);
+        // The type filter alone starts hidden: it needs the script, which shows it.
+        $this->assertDoesNotMatchRegularExpression('#<(tr|tbody|div|label)(?![^>]*data-rbac-type-filter)[^>]* hidden[ >]#', $html);
     }
 
     public function test_inapplicable_verbs_dashed(): void
     {
         $html = $this->render([]);
         $cells = function (string $type) use ($html): array {
-            $this->assertSame(1, preg_match('#<tr class="rbac-row" data-rbac-row><th scope="row" title="' . preg_quote($type, '#') . '\.\*">.*?</th>(.*?)</tr>#', $html, $m));
+            $this->assertSame(1, preg_match('#<tr class="rbac-row" data-rbac-row data-rbac-type="[a-z_]+"><th scope="row" title="' . preg_quote($type, '#') . '\.\*">.*?</th>(.*?)</tr>#', $html, $m));
             preg_match_all('#<td class="rbac-cell[^"]*">(<input[^>]+value="' . preg_quote($type, '#') . '\.([a-z*]+)"|<span class="rbac-none")#', $m[1], $c);
 
             return array_map(static fn (string $verb): string => $verb === '' ? '–' : $verb, $c[2]);
@@ -202,7 +203,7 @@ final class PermissionsFieldTest extends TestCase
         $html = $this->render(['codes.revoke', 'assets.*']);
 
         $this->assertMatchesRegularExpression('#<div class="rbac-others" data-rbac-others><h3 class="rbac-others-heading">Other permissions</h3>#', $html);
-        preg_match_all('#<div class="rbac-group" data-rbac-group><div class="rbac-group-head"><span class="rbac-group-label">([^<]+)</span>#', $html, $m);
+        preg_match_all('#<div class="rbac-group" data-rbac-group data-rbac-type="[^"]*"><div class="rbac-group-head"><span class="rbac-group-label">([^<]+)</span>#', $html, $m);
         $this->assertSame(['Folio', 'Assets', 'Codes', 'Members'], $m[1]);
         $this->assertMatchesRegularExpression(
             '#<span class="rbac-group-label">Folio</span></div><div class="rbac-chips">'

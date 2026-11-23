@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Field;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
@@ -20,7 +21,7 @@ final class RelationFieldTypeTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->base = sys_get_temp_dir() . '/folio_rel_' . bin2hex(random_bytes(4));
+        $this->base = TempRoots::path('folio_rel_');
         mkdir($this->base . '/m', 0777, true);
         mkdir($this->base . '/s', 0777, true);
         file_put_contents($this->base . '/m/author.json', json_encode([

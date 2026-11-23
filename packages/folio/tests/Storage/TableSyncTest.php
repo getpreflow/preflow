@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Storage;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
@@ -22,7 +23,7 @@ final class TableSyncTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/tsync_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('tsync_');
         mkdir($this->dir . '/models', 0777, true);
         $this->pdo = new \PDO('sqlite::memory:');
     }
@@ -54,12 +55,12 @@ final class TableSyncTest extends TestCase
         $schema = new Schema($this->pdo);
         $this->assertFalse($schema->hasTable('memo__published'));
         $this->assertSame(
-            ['uuid', 'title', 'body', '_locales', '_translated_from', '_translated_source', '_machine_translated', '_order', '_seo', '_version', '_publish_at', '_share_token', '_published_at', '_published_by'],
+            ['uuid', 'title', 'body', '_locales', '_translated_from', '_translated_source', '_machine_translated', '_order', '_seo', '_version', '_publish_at', '_share_token', '_published_at', '_published_by', '_updated_at'],
             $schema->columns('post'),
         );
-        $this->assertSame([...$schema->columns('post'), '_published_version'], $schema->columns('post__published'), 'only snapshots keep the version they were published from');
+        $this->assertSame([...array_diff($schema->columns('post'), ['_updated_at']), '_published_version', '_updated_at'], $schema->columns('post__published'), 'only snapshots keep the version they were published from (the change date last, 0.84)');
         $this->assertSame(
-            ['uuid', 'record_id', 'seq', 'data', 'changed', 'created_at', 'created_by', '_locales', '_translated_from', '_translated_source', '_machine_translated', '_order', '_seo', '_version', '_publish_at', '_share_token', '_published_at', '_published_by'],
+            ['uuid', 'record_id', 'seq', 'data', 'changed', 'created_at', 'created_by', '_locales', '_translated_from', '_translated_source', '_machine_translated', '_order', '_seo', '_version', '_publish_at', '_share_token', '_published_at', '_published_by', '_updated_at'],
             $schema->columns('post__revisions'),
         );
         $info = $this->pdo->query('PRAGMA table_info("post")')->fetchAll(\PDO::FETCH_ASSOC);
@@ -75,7 +76,7 @@ final class TableSyncTest extends TestCase
 
         $lines = $this->tableSync()->syncOwn();
 
-        $this->assertSame(['created table memo'], $lines);
+        $this->assertSame(['created table memo', 'added index idx_memo__updated_at'], $lines);
         $this->assertFalse((new Schema($this->pdo))->hasTable('post'));
         $this->assertSame(['memo'], array_map(static fn (array $e): string => $e['def']->table, $this->tableSync()->own()));
     }

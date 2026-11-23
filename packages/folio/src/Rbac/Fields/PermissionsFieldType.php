@@ -129,9 +129,29 @@ final class PermissionsFieldType implements FieldType
                 $newCount += isset($fresh[$permission]) ? 1 : 0;
             }
         }
+        // The type filter (needs script): the matrix's types, then the other permissions' groups.
+        $types = [];
+        foreach ($sections as $rows) {
+            foreach ($rows as $row) {
+                $types[$row['key']] = $row['label'];
+            }
+        }
+        foreach ($others as $group => $entries) {
+            $first = (string) (array_key_first($entries['names']) ?? $entries['patterns'][0] ?? '');
+            $types['g:' . $group] = $group === 'Other' ? $t('other_group') : ($this->labels?->permissionGroup((string) $group, $first) ?? (string) $group);
+        }
+        $filter = '';
+        if (count($types) > 1) {
+            $filter = '<label class="folio-select-inline rbac-type-filter" hidden data-rbac-type-filter data-folio-no-edit><span>' . $e($t('type')) . '</span><select aria-label="' . $e($t('type_filter')) . '"><option value="">' . $e($t('all_types')) . '</option>';
+            foreach ($types as $key => $text) {
+                $filter .= '<option value="' . $e((string) $key) . '">' . $e($text) . '</option>';
+            }
+            $filter .= '</select></label>';
+        }
         $html .= '<div class="rbac-bar"><ul class="rbac-key" aria-label="' . $e($t('legend')) . '">'
             . '<li><span class="rbac-key-box" aria-hidden="true"></span>' . $e($t('granted')) . '</li>'
             . '<li><span class="rbac-none" aria-hidden="true">–</span>' . $e($t('na')) . '</li></ul>'
+            . $filter
             . ($newCount > 0 ? '<button type="button" class="rbac-fresh-filter" aria-pressed="false" data-rbac-fresh-filter data-folio-no-edit>' . $e($t('only_new', ['count' => (string) $newCount])) . '</button>' : '')
             . '</div>';
         if ($sections !== []) {
@@ -155,7 +175,7 @@ final class PermissionsFieldType implements FieldType
                 foreach ($rows as $row) {
                     $label = $e($row['label']);
                     $isNew = $this->isFresh($row, $fresh);
-                    $html .= "\n" . '<tr class="rbac-row' . ($isNew ? ' is-new' : '') . '" data-rbac-row' . ($isNew ? ' data-rbac-new' : '') . '><th scope="row" title="' . $e($row['key']) . '.*">'
+                    $html .= "\n" . '<tr class="rbac-row' . ($isNew ? ' is-new' : '') . '" data-rbac-row data-rbac-type="' . $e($row['key']) . '"' . ($isNew ? ' data-rbac-new' : '') . '><th scope="row" title="' . $e($row['key']) . '.*">'
                         . '<span class="rbac-type">' . $this->tile($row['family'], $row['glyph']) . '<span class="rbac-type-label">' . $label . '</span>' . ($isNew ? $newBadge : '') . '</span></th>';
                     foreach ($verbs as $action => $verb) {
                         $permission = $row['key'] . '.' . $action;
@@ -176,7 +196,7 @@ final class PermissionsFieldType implements FieldType
             foreach ($others as $group => $entries) {
                 $first = (string) (array_key_first($entries['names']) ?? $entries['patterns'][0] ?? '');
                 $heading = $group === 'Other' ? $t('other_group') : ($this->labels?->permissionGroup((string) $group, $first) ?? (string) $group);
-                $html .= "\n" . '<div class="rbac-group" data-rbac-group><div class="rbac-group-head"><span class="rbac-group-label">' . $e($heading) . '</span>';
+                $html .= "\n" . '<div class="rbac-group" data-rbac-group data-rbac-type="g:' . $e((string) $group) . '"><div class="rbac-group-head"><span class="rbac-group-label">' . $e($heading) . '</span>';
                 $patterns = $entries['patterns'];
                 $all = array_shift($patterns);
                 if ($all !== null) {

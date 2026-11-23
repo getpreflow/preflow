@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Core\Http\Hypermedia;
 
+use Preflow\Core\Http\Vary;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -100,6 +101,26 @@ final class HypermediaProtocols
     public function varyHeaders(): array
     {
         return self::unique(array_merge(...array_map(static fn (HypermediaProtocol $p): array => $p->varyHeaders(), $this->protocols)));
+    }
+
+    /**
+     * $response (an HTML answer: a page, a fragment, a history restore) told to vary on the request
+     * headers of the hypermedia clients (varyHeaders(); htmx: HX-Request…). A URL may answer a whole
+     * page and a fragment; a cache selects a stored answer by the Vary of the one it stored (RFC
+     * 9111), so each answer says it, whichever request it answers: the browser's back/forward cache
+     * never shows a fragment as a page, nor a page for an hx-get. Names already in Vary stay, each
+     * once; a `Vary: *` and an answer that is not HTML (an asset, JSON) are returned as they are.
+     * The page cache allows and keys on these names, so public pages are still stored.
+     *
+     * @since 0.84.0
+     */
+    public function varying(ServerRequestInterface $request, ResponseInterface $response): ResponseInterface
+    {
+        if (!str_starts_with(strtolower(trim($response->getHeaderLine('Content-Type'))), 'text/html')) {
+            return $response;
+        }
+
+        return Vary::add($response, ...$this->varyHeaders());
     }
 
     /** @return list<string> every client's nonceHeaders(), each name once (case-insensitive) */

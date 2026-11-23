@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Block;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Components\ComponentMap;
 use Preflow\Core\Application;
@@ -60,7 +61,7 @@ final class BlockRegistryTest extends TestCase
 
     public function test_cache_is_used_when_nothing_changed(): void
     {
-        $cache = sys_get_temp_dir() . '/folio_blocks_' . bin2hex(random_bytes(4)) . '.php';
+        $cache = TempRoots::path('folio_blocks_') . '.php';
         $classes = [HeroBlock::class, LinkBlock::class];
         BlockRegistry::discover(new ComponentMap([]), '/nowhere', $classes, $cache, useCache: true);
 
@@ -99,7 +100,7 @@ final class BlockRegistryTest extends TestCase
 
     public function test_component_map_is_bound(): void
     {
-        $dir = sys_get_temp_dir() . '/cmap_' . bin2hex(random_bytes(4));
+        $dir = TempRoots::path('cmap_');
         mkdir($dir . '/config', 0777, true);
         file_put_contents($dir . '/config/app.php', "<?php\nreturn ['name'=>'t','debug'=>0,'engine'=>'twig','key'=>'k'];\n");
 
@@ -121,7 +122,7 @@ final class BlockRegistryTest extends TestCase
 
     public function test_cache_rebuilds_when_block_classes_change(): void
     {
-        $cache = sys_get_temp_dir() . '/folio_blocks_' . bin2hex(random_bytes(4)) . '.cache';
+        $cache = TempRoots::path('folio_blocks_') . '.cache';
         BlockRegistry::discover(new ComponentMap([]), '/nowhere', [HeroBlock::class], $cache, useCache: true);
 
         // Another class list (a block added) must not be served from the old cache.
@@ -133,7 +134,7 @@ final class BlockRegistryTest extends TestCase
 
     public function test_cache_rebuilds_when_a_block_file_changes(): void
     {
-        $dir = sys_get_temp_dir() . '/folio_blk_' . bin2hex(random_bytes(4));
+        $dir = TempRoots::path('folio_blk_');
         mkdir($dir, 0777, true);
         $class = 'TmpBlock' . bin2hex(random_bytes(4));
         $file = $dir . '/' . $class . '.php';

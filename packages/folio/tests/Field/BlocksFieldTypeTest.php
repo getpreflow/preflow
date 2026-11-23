@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Field;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Locales;
@@ -35,7 +36,7 @@ final class BlocksFieldTypeTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->uploads = sys_get_temp_dir() . '/bft_' . bin2hex(random_bytes(4));
+        $this->uploads = TempRoots::path('bft_');
         mkdir($this->uploads, 0777, true);
         $this->bilingual = new Locales(['en', 'de'], 'en');
     }

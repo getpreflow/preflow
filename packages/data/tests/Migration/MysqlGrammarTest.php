@@ -324,7 +324,7 @@ final class FakeMysqlPdo extends \PDO
         parent::__construct('sqlite::memory:');
         $this->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         parent::exec("ATTACH DATABASE ':memory:' AS information_schema");
-        parent::exec('CREATE TABLE information_schema.COLUMNS (TABLE_SCHEMA TEXT, TABLE_NAME TEXT, COLUMN_NAME TEXT, IS_NULLABLE TEXT, COLUMN_DEFAULT TEXT, EXTRA TEXT, ORDINAL_POSITION INTEGER)');
+        parent::exec("CREATE TABLE information_schema.COLUMNS (TABLE_SCHEMA TEXT, TABLE_NAME TEXT, COLUMN_NAME TEXT, IS_NULLABLE TEXT, COLUMN_DEFAULT TEXT, EXTRA TEXT, ORDINAL_POSITION INTEGER, COLUMN_COMMENT TEXT NOT NULL DEFAULT '')");
         set_error_handler(static fn (): bool => true, E_DEPRECATED);
         try {
             $this->sqliteCreateFunction('DATABASE', static fn (): string => 'db', 0);
@@ -333,12 +333,14 @@ final class FakeMysqlPdo extends \PDO
         }
     }
 
-    /** @param list<array{0: string, 1: string, 2: ?string, 3: string}> $columns name, IS_NULLABLE, COLUMN_DEFAULT, EXTRA */
+    /** @param list<array{0: string, 1: string, 2: ?string, 3: string, 4?: string}> $columns name, IS_NULLABLE, COLUMN_DEFAULT, EXTRA, COLUMN_COMMENT */
     public function columns(string $table, array $columns): void
     {
-        $insert = $this->prepare("INSERT INTO information_schema.COLUMNS VALUES ('db', ?, ?, ?, ?, ?, ?)");
-        foreach ($columns as $i => [$name, $nullable, $default, $extra]) {
-            $insert->execute([$table, $name, $nullable, $default, $extra, $i + 1]);
+        $insert = $this->prepare("INSERT INTO information_schema.COLUMNS VALUES ('db', ?, ?, ?, ?, ?, ?, ?)");
+        foreach ($columns as $i => $column) {
+            [$name, $nullable, $default, $extra] = $column;
+            $comment = $column[4] ?? '';
+            $insert->execute([$table, $name, $nullable, $default, $extra, $i + 1, $comment]);
         }
     }
 

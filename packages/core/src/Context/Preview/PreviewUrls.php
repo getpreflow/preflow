@@ -6,6 +6,7 @@ namespace Preflow\Core\Context\Preview;
 
 use Preflow\Core\Context\Contexts;
 use Preflow\Core\Http\Hypermedia\HypermediaProtocols;
+use Preflow\Core\Http\Vary;
 use Psr\Http\Message\ResponseInterface;
 
 /**
@@ -50,13 +51,7 @@ final class PreviewUrls
         if (preg_match('/(^|[\s,])no-store([\s,=]|$)/i', $response->getHeaderLine('Cache-Control')) === 1) {
             return $response;
         }
-        foreach (explode(',', strtolower($response->getHeaderLine('Vary'))) as $name) {
-            if (in_array(trim($name), [strtolower(PreviewToken::HEADER), '*'], true)) {
-                return $response;
-            }
-        }
-
-        return $response->withAddedHeader('Vary', PreviewToken::HEADER);
+        return Vary::add($response, PreviewToken::HEADER);
     }
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Content;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
@@ -15,7 +16,7 @@ final class RecordLabelerTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/rl_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('rl_');
         mkdir($this->dir, 0777, true);
     }
 

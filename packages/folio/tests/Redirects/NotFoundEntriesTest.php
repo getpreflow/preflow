@@ -211,7 +211,7 @@ final class NotFoundEntriesTest extends TestCase
         $log = $this->log($storage);
         $log->record('/missing', 'en', self::at('2026-11-01T10:00:00+00:00'));
 
-        $columns = ['id', 'path', 'locale', 'hits', 'first_hit_at', 'last_hit_at', 'dismissed_at'];
+        $columns = ['id', 'path', 'locale', 'hits', 'first_hit_at', 'last_hit_at', 'dismissed_at', '_updated_at']; // and the change date (0.84): no visitor data
         sort($columns);
         // The row as the storage holds it, not as a record built from the definition.
         $stored = $this->dm->driver('default')->findOne(NotFoundEntries::TABLE, NotFoundEntries::id('en', '/missing'), 'id') ?? [];
@@ -219,7 +219,7 @@ final class NotFoundEntriesTest extends TestCase
         sort($keys);
         $this->assertSame($columns, $keys);
 
-        $definition = array_merge(['id'], array_keys(NotFoundEntries::definition()->fields));
+        $definition = array_merge(['id', \Preflow\Data\ChangeDates::FIELD], array_keys(NotFoundEntries::definition()->fields));
         sort($definition);
         $this->assertSame($columns, $definition);
     }

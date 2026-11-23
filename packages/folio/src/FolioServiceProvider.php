@@ -322,6 +322,12 @@ final class FolioServiceProvider extends ServiceProvider
             $container->singleton(\Preflow\Folio\Permissions\KnownPermissions::class, static fn (Container $c) => new \Preflow\Folio\Permissions\KnownPermissions(
                 $c->get(DataManager::class),
                 $c->get(\Preflow\Auth\Access\Access::class)->registry(),
+                // An upgrade is a site that already had roles when Folio first looked. The role table alone
+                // says nothing: `preflow migrate` creates it (folio.tables) before this list is read, and
+                // the seed that gives a new site its first role runs after.
+                static fn (): bool => class_exists(\Preflow\Rbac\RoleStore::class)
+                    && $c->bound(\Preflow\Rbac\RoleStore::class)
+                    && $c->get(\Preflow\Rbac\RoleStore::class)->hasRoles(),
             ));
             $container->get(\Preflow\Data\Migration\MigrationRegistry::class)->afterMigrate(
                 'folio.permissions',
@@ -446,11 +452,23 @@ final class FolioServiceProvider extends ServiceProvider
         ));
 
         // One EditableTexts for the screen and the AI button's units (LabelUnits): they list the same rows.
-        $container->singleton(\Preflow\Folio\Translations\EditableTexts::class, fn (Container $c) => new \Preflow\Folio\Translations\EditableTexts(
-            self::translator($c, $app),
-            $c->bound(\Preflow\I18n\DerivedKeys::class) ? $c->get(\Preflow\I18n\DerivedKeys::class) : null,
-            $locales ?? \Preflow\Data\Locales::single('en'),
-        ));
+        $container->singleton(\Preflow\Folio\Translations\EditableTexts::class, function (Container $c) use ($app, $locales) {
+            $prefixes = null; // asked once per key of a screen: answered once per EditableTexts, so once per app
+
+            return new \Preflow\Folio\Translations\EditableTexts(
+                self::translator($c, $app),
+                $c->bound(\Preflow\I18n\DerivedKeys::class) ? $c->get(\Preflow\I18n\DerivedKeys::class) : null,
+                $locales ?? \Preflow\Data\Locales::single('en'),
+                // The texts of features this site lacks are not offered: drafts and Settings → AI need
+                // preflow/ai, translation needs a translator (the same checks as the permissions below).
+                static function () use ($c, &$prefixes): array {
+                    return $prefixes ??= [
+                        ...(\Preflow\I18n\Machine\AiPackage::installed() ? [] : ['folio.ai_draft.', 'folio.ai_settings.']),
+                        ...($c->get(\Preflow\I18n\Machine\TranslatorAvailability::class)->available() ? [] : ['folio.ai_translate.', 'folio.ai_queue.', 'folio.ai_run.']),
+                    ];
+                },
+            );
+        });
         $container->bind(\Preflow\Folio\Translations\LabelUnits::class, fn (Container $c) => new \Preflow\Folio\Translations\LabelUnits(
             $c->get(\Preflow\Folio\Translations\EditableTexts::class),
             $c->get(\Preflow\Folio\Translations\StoredOverrides::class),
@@ -514,6 +532,16 @@ final class FolioServiceProvider extends ServiceProvider
             authors: new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c), static fn (): ?\Preflow\Auth\UserProviderInterface => self::staffProviderOrNone($c), $c->bound(\Preflow\Core\Activity\ActivityActors::class) ? $c->get(\Preflow\Core\Activity\ActivityActors::class) : null),
         ));
 
+        $container->singleton(\Preflow\Folio\Media\MediaAvailability::class, static fn (Container $c) => new \Preflow\Folio\Media\MediaAvailability(
+            $c->get(\Preflow\Media\MediaConfig::class),
+            $c->get(DataManager::class),
+        ));
+        $container->bind(\Preflow\Folio\Http\MediaStorageMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\MediaStorageMiddleware(
+            $c->get(\Preflow\Folio\Media\MediaAvailability::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
+            $c->get(TypeCatalog::class),
+            $prefix,
+        ));
         $container->bind(\Preflow\Folio\Http\WorkingCopyMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\WorkingCopyMiddleware(
             $c->get(\Preflow\Folio\Http\AdminNav::class),
         ));
@@ -596,9 +624,11 @@ final class FolioServiceProvider extends ServiceProvider
                 $uploadsDir,
                 $uploadUrlPrefix,
                 $c->get(\Preflow\Media\ImageTag::class),
-                $c->get(\Preflow\Media\MediaLibrary::class),
+                // Without the library's storage the field works as without a library: plain files.
+                $c->get(\Preflow\Folio\Media\MediaAvailability::class)->usable() ? $c->get(\Preflow\Media\MediaLibrary::class) : null,
                 $prefix,
                 $can,
+                libraryUnavailable: !$c->get(\Preflow\Folio\Media\MediaAvailability::class)->usable(),
             ));
             $registry->register(new RelationFieldType(
                 $c->get(\Preflow\Data\DataManager::class),
@@ -712,7 +742,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(Customizations::class),
                 $c->bound(\Preflow\Folio\Redirects\NotFoundEntries::class) ? static fn (): \Preflow\Folio\Redirects\NotFoundEntries => $c->get(\Preflow\Folio\Redirects\NotFoundEntries::class) : null,
                 // Live assets (not binned, no private copies), counted by the library's own query.
-                $c->bound(\Preflow\Media\MediaLibrary::class) ? static fn (): int => $c->get(\Preflow\Media\MediaLibrary::class)->query(perPage: 1)->total : null,
+                $c->bound(\Preflow\Media\MediaLibrary::class) && $c->get(\Preflow\Folio\Media\MediaAvailability::class)->usable() ? static fn (): int => $c->get(\Preflow\Media\MediaLibrary::class)->query(perPage: 1)->total : null,
                 $c->get(\Preflow\Core\Cache\CacheRegistry::class),
                 $c->get(\Preflow\Folio\Dashboard\RecentChanges::class),
             ),
@@ -977,7 +1007,8 @@ final class FolioServiceProvider extends ServiceProvider
             new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c), static fn (): ?\Preflow\Auth\UserProviderInterface => self::staffProviderOrNone($c), $c->bound(\Preflow\Core\Activity\ActivityActors::class) ? $c->get(\Preflow\Core\Activity\ActivityActors::class) : null),
             $c->get(\Preflow\Publishing\Publisher::class),
             // Of the rows' assets, the ones still in the library (a binned or deleted one: no link).
-            $c->bound(\Preflow\Media\MediaLibrary::class) ? static function (array $ids) use ($c): array {
+            // Without a usable library (MediaAvailability) asset rows show unlinked.
+            $c->bound(\Preflow\Media\MediaLibrary::class) && $c->get(\Preflow\Folio\Media\MediaAvailability::class)->usable() ? static function (array $ids) use ($c): array {
                 $library = $c->get(\Preflow\Media\MediaLibrary::class);
                 $library->prefetch($ids);
 
@@ -1026,7 +1057,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Data\Search\RecordSearch::class),
             $c->get(\Preflow\Folio\Content\DisplayLabels::class),
             self::can($c),
-            static fn (): \Preflow\Media\MediaLibrary => $c->get(\Preflow\Media\MediaLibrary::class),
+            static fn (): ?\Preflow\Media\MediaLibrary => $c->get(\Preflow\Folio\Media\MediaAvailability::class)->usable() ? $c->get(\Preflow\Media\MediaLibrary::class) : null,
             $prefix,
         ));
         // What each type allows (data's "readonly" / "creatable"): asked by every screen and button, refused on every route.
@@ -1586,6 +1617,11 @@ final class FolioServiceProvider extends ServiceProvider
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_date',
                 callable: static fn (mixed $value, string $style = 'date'): string => (new \Preflow\Folio\Http\AdminFormat())->date($value, $style),
+            ));
+            // When something happened, as a person says it ("3 hours ago", "Yesterday", else the date): folio_relative(value). @since 0.84.0
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_relative',
+                callable: static fn (mixed $value): string => (new \Preflow\Folio\Http\AdminFormat())->relative($value),
             ));
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_number',

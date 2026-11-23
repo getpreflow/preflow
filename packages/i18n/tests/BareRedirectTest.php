@@ -85,10 +85,13 @@ final class BareRedirectTest extends TestCase
             {
                 $this->test->record($request);
 
-                return new Response(200);
+                return new Response(200, $this->test->innerHeaders);
             }
         };
     }
+
+    /** @var array<string, string> the headers the inner handler answers with */
+    public array $innerHeaders = [];
 
     public function record(ServerRequestInterface $request): void
     {
@@ -253,6 +256,15 @@ final class BareRedirectTest extends TestCase
         $this->assertServed($response);
         $this->assertSame('en', $this->captured?->getAttribute('locale'));
         $this->assertSame('Accept-Language, Cookie', $response->getHeaderLine('Vary'));
+    }
+
+    public function test_the_vary_names_the_page_has_are_kept_and_listed_once(): void
+    {
+        $this->innerHeaders = ['Vary' => 'cookie, HX-Request'];
+
+        $response = $this->dispatch($this->middleware(prefixDefault: false), $this->request('/faq', ['Accept-Language' => 'en']));
+
+        $this->assertSame('cookie, HX-Request, Accept-Language', $response->getHeaderLine('Vary'));
     }
 
     public function test_without_prefix_default_other_preference_redirects(): void

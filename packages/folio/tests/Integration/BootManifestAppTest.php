@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Integration;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
@@ -338,7 +339,7 @@ final class BootManifestAppTest extends TestCase
 
     private function site(): void
     {
-        $this->dir = sys_get_temp_dir() . '/folio_manifest_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('folio_manifest_');
         @mkdir($this->dir . '/storage/data', 0777, true);
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log');
         $dir = $this->dir;

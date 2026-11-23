@@ -23,6 +23,17 @@ final class AdminCssTest extends TestCase
         $this->assertStringContainsString('prefers-color-scheme: dark', $css);
     }
 
+    public function test_checkbox_and_radio_chips_keep_a_visible_tick_in_forced_colors(): void
+    {
+        // The tick is a mask painted with the input's background, which forced colors overrides:
+        // the fallback draws it with borders and marks a ticked chip with a Highlight edge.
+        $this->assertSame(1, preg_match('/@media \(forced-colors: active\) \{\s*\.folio-chip input \{(?<base>[^}]*)\}\s*\.folio-chip input:checked \{(?<on>[^}]*)\}\s*\.folio-chip:has\(input:checked\) \{(?<chip>[^}]*)\}/', $this->css(), $m));
+        $this->assertStringContainsString('mask: none', $m['base']);
+        $this->assertStringContainsString('border: solid CanvasText', $m['base']);
+        $this->assertStringContainsString('rotate(45deg)', $m['on']);
+        $this->assertStringContainsString('Highlight', $m['chip']);
+    }
+
     public function test_defines_emerald_accent_and_core_tokens(): void
     {
         $css = $this->css();

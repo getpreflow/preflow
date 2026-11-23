@@ -566,6 +566,6 @@ final class FolioStaffLoginTest extends TestCase
 
     private function makeStaffTableWithoutStamp(): void
     {
-        $this->dm()->execute('CREATE TABLE "staff" ("uuid" TEXT PRIMARY KEY, "email" TEXT, "name" TEXT, "password_hash" TEXT, "roles" TEXT, "active" INTEGER, "auth_epoch" TEXT)', [], 'sqlite');
+        $this->dm()->execute('CREATE TABLE "staff" ("uuid" TEXT PRIMARY KEY, "email" TEXT, "name" TEXT, "password_hash" TEXT, "roles" TEXT, "active" INTEGER, "auth_epoch" TEXT, "_updated_at" TEXT)', [], 'sqlite');
     }
 }

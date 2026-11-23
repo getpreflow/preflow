@@ -27,4 +27,30 @@ final class HypermediaProtocolsTest extends TestCase
         $protocols->add(new HtmxDriver(new ResponseHeaders()));
         $this->assertCount(2, $protocols->all(), 'htmx once: the wrapper stands for it');
     }
+
+    /** @since 0.84.0 */
+    public function test_an_html_answer_varies_on_the_clients_request_headers(): void
+    {
+        $protocols = new HypermediaProtocols();
+        $protocols->add(new HtmxDriver(new ResponseHeaders()));
+        $factory = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $html = ['Content-Type' => 'text/html', 'Vary' => 'Accept-Encoding'];
+
+        foreach ([[], ['HX-Request' => 'true'], ['HX-Request' => 'true', 'HX-History-Restore-Request' => 'true']] as $headers) {
+            $request = $factory->createServerRequest('GET', '/x');
+            foreach ($headers as $n => $v) {
+                $request = $request->withHeader($n, $v);
+            }
+            $out = $protocols->varying($request, new \Nyholm\Psr7\Response(200, $html));
+            $names = array_map(trim(...), explode(',', strtolower($out->getHeaderLine('Vary'))));
+            $this->assertContains('hx-request', $names);
+            $this->assertContains('accept-encoding', $names, 'what was there stays');
+            $this->assertSame($out->getHeaderLine('Vary'), $protocols->varying($request, $out)->getHeaderLine('Vary'), 'each name once');
+        }
+
+        $star = new \Nyholm\Psr7\Response(200, ['Content-Type' => 'text/html', 'Vary' => '*']);
+        $this->assertSame($star, $protocols->varying($factory->createServerRequest('GET', '/x'), $star));
+        $json = new \Nyholm\Psr7\Response(200, ['Content-Type' => 'application/json']);
+        $this->assertSame($json, $protocols->varying($factory->createServerRequest('GET', '/x'), $json));
+    }
 }

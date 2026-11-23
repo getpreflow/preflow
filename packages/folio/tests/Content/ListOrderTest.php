@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Content;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Data\QueryBuilder;
@@ -27,7 +28,7 @@ final class ListOrderTest extends TestCase
         }
         $this->driver = new SqliteDriver($pdo);
 
-        $this->dir = sys_get_temp_dir() . '/folio_list_order_' . uniqid();
+        $this->dir = TempRoots::path('folio_list_order_');
         mkdir($this->dir);
         file_put_contents($this->dir . '/level.json', json_encode([
             'key' => 'level',

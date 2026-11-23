@@ -211,8 +211,9 @@ delete or unpublish (see [Redirects](#redirects)).
 Folio keeps the list of permissions this site has seen (`Preflow\Folio\Permissions\KnownPermissions`,
 table `folio_known_permissions`, since 0.53; created by `preflow migrate` or `folio:extensions:apply`
 on SQL storage, JSON storage needs neither). The first time it is
-read, every enabled permission becomes known silently, except `redirects.manage`: it came with 0.52,
-shortly before the list (0.53), and roles with an explicit permission list never received it. After that, each new one counts as new until someone dismisses
+read, every enabled permission becomes known silently. On a site that already had roles (an
+upgrade) `redirects.manage` is the exception: it came with 0.52, shortly before the list (0.53), and
+roles with an explicit permission list never received it. A new install announces nothing (since 0.84.0). After that, each new one counts as new until someone dismisses
 it or adds it to a role. A permission of a switched-off extension is new only once the extension is
 switched on. With `preflow/rbac`, `preflow migrate` prints the new ones ("New permissions to
 review in Settings → Roles: …") without marking them known; without it, it prints nothing. With `preflow/rbac` the notice, the sidebar count and the
@@ -703,13 +704,16 @@ available for every type that has a route.
     "filters": ["status", "author", "published_at"],
     "bulk": ["status"],
     "sort": "-title",
-    "orderable": false
+    "orderable": false,
+    "changed": true
 }
 ```
 
 - `columns`: the fields shown. The default is the first three
-  string/number/select/boolean/date fields that are not hidden. A `relation` field can be
-  listed too: its cell shows the linked records' labels.
+  string/number/select/boolean/date fields that are not hidden. A type's own updated field
+  (`updatedAt`, `updated_at`) is an ordinary field: when it is among those three it stays a column,
+  next to the "Changed" column at the end. A `relation` field can be listed too: its cell shows the
+  linked records' labels.
 - `filters`: fields offered under "+ Filter": `select`, `boolean`, `date` (a from/until range)
   and `relation` fields. Active filters show as removable chips. A relation filter lists the
   target's records as a select, or searches them remotely when there are more than 200. Other
@@ -718,6 +722,13 @@ available for every type that has a route.
   can set on the ticked rows ("Set Status"). Needs the type's edit permission.
 - `sort`: the default order. A `-` prefix means descending. Without `orderable`, ties and
   unsorted lists end in the record id, so pages stay stable.
+- `changed` (since 0.84): every list ends in a "Changed" column, a relative time ("3 hours ago",
+  "Yesterday", else the date) with the exact time as its tooltip and ISO 8601 in `<time datetime>`.
+  It reads each record's change date, which the data layer keeps on every save (`_updated_at`; see
+  the data README, "Change dates"); a record without one shows a dash. Its header sorts the list by
+  it (`?sort=-_updated_at`: newest first), once the storage holds the dates (a SQL table after
+  `preflow migrate`). `"changed": false` hides the column. A type's own `updatedAt` / `updated_at`
+  field is an ordinary field: `columns` may list it beside the Changed column.
 - `orderable: true`: Move up / Move down in each row's "…" menu, which store a manual position
   in the record's `_order` key. New records go to the end.
 
@@ -1494,6 +1505,16 @@ package and binds its rules to the package's hooks. Files and records are stored
 `public/media/Y/m/{id}.{ext}`, the `folio_assets` table, `storage/private-media`, `/media/…`
 and `/files/{id}`.
 
+**Without the storage driver** (since 0.84.0): the library stores its assets in the driver
+`config/media.php` `storage` names (`json` unless set). A site whose `config/data.php` has no such
+driver boots and works without media. Every `{prefix}/assets` page (and the picker drawer) answers 200
+with the missing driver and where to set it (a driver under `drivers` in `config/data.php`, or another
+`storage` in `config/media.php`); htmx actions, JSON actions and plain form posts answer 503, the AI
+alt text button's too. The texts are translated like Folio's other texts. The admin search, the
+dashboard count, the activity screen (no asset rows), content export and import (no asset table) and
+the asset field leave the library out: a record save keeps the asset ids it holds (they cannot be
+checked), and uploads are refused with a message.
+
 **Library screen** at `{prefix}/assets`:
 - grid and list views;
 - search by name, title or alt text, and filters by kind (images, videos, documents);
@@ -2076,6 +2097,7 @@ final class NoteTweaks
 | `#[RecordAction(name, label, permission, icon, confirm, toolbar: true)]` | `fn(DynamicRecord, ServerRequestInterface): ?ResponseInterface` | A POST button at `{prefix}/{type}/{id}/_action/{name}` (since 0.75 at the foot of the editor's side panel, and in the list's row menu); null redirects back to the form with "{label}: done". Needs the permission and the type's edit permission. With `toolbar: false` there is no button in the editor or the row menu; the action stays routed and permission-checked, for a form inside a `FormPanel` to post to. |
 | `#[ListColumn(label, position: 100)]` | `fn(DynamicRecord): string\|Badge\|Link` | A column after the type's own, ordered by position, shown as escaped text, as a link for `new Link($label, $url)` (`$url` is `member/3/edit`, relative to the admin prefix, or a site path like `/shop/order?id=3`; anything with a scheme, host, `//`, backslash or whitespace is no link and shows the escaped label), or as a status pill for `new Badge($label, $tone)` (tone `''`, `published`, `draft`, `changed`, `scheduled`, `failed` or `incomplete`; the label is escaped, an unknown tone is shown plain). |
 | `#[NavBadge]` | `fn(): ?int` | A count badge on the type's sidebar item (e.g. waiting members); also on a `#[FolioScreen]` class (see Screens), computed only while the item is visible and at most once per request; `null`, `0` or any non-int return shows none, a callback that throws shows no badge (the admin still renders), several add up, one per class. Keep it cheap: it runs on admin page renders. |
+| `#[TitleBadge]` | `fn(DynamicRecord): list<Badge>\|Badge\|null` | Pills after the record's title in the editor (since 0.84; not on "New"), after a publishing type's Published / Draft pills. Same tones as `#[ListColumn]`'s `Badge`. A method that throws adds nothing. |
 | `#[ListNotice]` | `fn(): ?string` | A notice above the type's list (since 0.53), on the full page only, not on live-search refreshes. The method returns HTML that Folio prints as it is, so it escapes its own content (usually by rendering a Twig template). Use Folio's `.folio-notice` markup, e.g. `<div class="folio-notice" role="status"><p>…</p></div>`, for the spacing (a list of items inside it: `<ul class="folio-notice-list">`, no bullets). Since 0.73 that is the info tone (blue). Add `is-warning` (`<div class="folio-notice is-warning" role="status">`) for the amber warning tone; see [Admin styling](#admin-styling). `null` or `''` shows nothing, and so does a throw. Several add up, grouped by type (in the order the types' customizations were registered), each type's notices in extension name order. |
 | `#[DashboardNotice]` | `fn(): ?string` | A notice above the dashboard's "Needs you" section (since 0.53), the same rules as `#[ListNotice]`. Only called for a user who may view the type (`{type}.view`); the notices are grouped by type (in the order the types' customizations were registered), each type's notices in extension name order. |
 | `#[DashboardItem]` | `fn(): ?Preflow\Folio\Dashboard\NeedsYou` | A card in the dashboard's "Needs you" section (since 0.76): `new NeedsYou($title, text: …, url: …, tone: 'warning', icon: null)`. The title says what waits ("3 orders to ship"), the text how to go about it; the whole card links to `url`, a path relative to the admin prefix (`order?status=open`) or a site path, as `Link` takes it (anything else shows no card). `tone` is `warning`, `info` or `danger` (another tone throws `\InvalidArgumentException` when the `NeedsYou` is built, so the card is not shown); `icon` is an `icons.svg` id (`ui-shield`), `null` the tone's. The method must declare that return type (a boot error otherwise). Only called for a user who may view the type (`{type}.view`); `null` or a throw shows nothing. The cards follow Folio's own (changes not live, not-found addresses, translations to review) in the same order as `#[DashboardNotice]`: by type, in the order the types' customizations were registered, then each type's in extension name order. The section is hidden when there are none, and it loads just after the page (htmx), as does the cache line. Folio's roles extension announces new permissions this way. |

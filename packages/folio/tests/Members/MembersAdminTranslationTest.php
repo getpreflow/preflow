@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Members;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\I18n\Translator;
@@ -39,7 +40,7 @@ final class MembersAdminTranslationTest extends TestCase
 
     public function test_members_admin_texts_come_from_folio(): void
     {
-        $installed = sys_get_temp_dir() . '/preflow_installed_' . bin2hex(random_bytes(4)) . '.json';
+        $installed = TempRoots::path('preflow_installed_') . '.json';
         $packages = [];
         foreach (['folio', 'members'] as $name) {
             $root = dirname(__DIR__, 3) . '/' . $name;

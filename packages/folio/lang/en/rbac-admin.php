@@ -57,6 +57,9 @@ return [
         'footnote' => 'Column headers toggle the whole column.',
         'new' => 'New',
         'only_new' => 'Only new (:count)',
+        'type' => 'Type',
+        'type_filter' => 'Show one type',
+        'all_types' => 'All types',
     ],
     // A user's roles (the rbac_roles field). :role is a role's name.
     'roles_field' => [
@@ -75,6 +78,8 @@ return [
         'dashboard' => ':count new permission to review in Roles|:count new permissions to review in Roles',
         'needs_you' => ':count new permission in Roles|:count new permissions in Roles',
         'needs_you_text' => 'An update brought them. Decide per role.',
+        // The role editor's title badge: the new permissions the role does not hold (since 0.84; :count).
+        'role_badge' => ':count new permission|:count new permissions',
         'added' => 'Added to :role.',
         'dismissed' => 'Dismissed.',
         'no_role' => 'Choose a role to add it to.',

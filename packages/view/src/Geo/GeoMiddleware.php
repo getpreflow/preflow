@@ -10,6 +10,7 @@ use Nyholm\Psr7\ServerRequest;
 use Nyholm\Psr7\Stream;
 use Preflow\Core\Exceptions\HttpException;
 use Preflow\Core\Http\Session\SessionMiddleware;
+use Preflow\Core\Http\Vary;
 use Preflow\Core\PageCache\PageCacheMiddleware;
 use Preflow\View\Seo\PageMeta;
 use Preflow\View\Seo\PageSignals;
@@ -189,9 +190,7 @@ final class GeoMiddleware implements MiddlewareInterface
     /** $response with `Accept` in its `Vary` header. */
     private static function varyAccept(ResponseInterface $response): ResponseInterface
     {
-        $vary = array_map('trim', explode(',', strtolower($response->getHeaderLine('Vary'))));
-
-        return in_array('accept', $vary, true) ? $response : $response->withAddedHeader('Vary', 'Accept');
+        return Vary::add($response, 'Accept');
     }
 
     /**

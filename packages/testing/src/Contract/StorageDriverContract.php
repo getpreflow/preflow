@@ -108,6 +108,16 @@ use Preflow\Testing\PlainDriver;
  *   never 0); a match that changes no value is still a match.
  * - An empty id is '', 0 or '0' (as PdoDriver and DataManager treat it): save() with one inserts
  *   a record whose id the store generates, and lastInsertId() returns it.
+ * - Change dates (@since 0.84.0): DataManager writes every record of a type with its change date
+ *   (Preflow\Data\ChangeDates: the system key `_updated_at`, ISO 8601 text in UTC; a type's own
+ *   updated field is content it never writes). A driver stores and reads it as any other key, and sorts by it as text; nothing
+ *   else is asked of it. An SQL store holds it in a column of its own, which `preflow migrate`
+ *   adds to the tables it makes (the tests create it as an `exact` field); a store without a
+ *   schema takes the key. DataManager writes it only to a store with DescribesColumns whose
+ *   hasColumn() says the table has it; a store without that capability gets no change date (its
+ *   records are written as before 0.84), and the change-date tests skip.
+ *   A store that knows when each record was written by its own means (a file's time) may say so
+ *   (WriteTimes): the backfill of `preflow migrate` uses it for records written before 0.84.
  *
  * Optional hooks, for stores that cannot do something generic:
  * - supportsAutoIds() (default true): false skips the test that saves with each empty id ('',
@@ -127,6 +137,10 @@ use Preflow\Testing\PlainDriver;
  *   text rule (a MySQL server without an accent-sensitive, case-insensitive collation, none of
  *   MysqlDialect::MATCH_COLLATIONS; matching does not depend on it); the exact-comparison tests
  *   then skip with it.
+ * - accentFreeMatchingMissing() (default null, @since 0.84.0): a reason the store cannot ignore
+ *   accents in LIKE, CONTAINS and search() (the rule since 0.78.1; a PostgreSQL without the
+ *   unaccent extension, say); the tests of that rule then skip with it. Everything else about
+ *   matching (case, ß, the dot of İ) is still tested.
  *
  * Capabilities are claimed by implementing their interface, and their tests are skipped otherwise:
  * - RunsSql (@since 0.78): rawQuery(), execute() and dialect() tests.
@@ -212,6 +226,17 @@ abstract class StorageDriverContract extends TestCase
      * @since 0.78
      */
     protected function textRuleMissing(): ?string
+    {
+        return null;
+    }
+
+    /**
+     * Why the store cannot ignore accents when matching text (LIKE, CONTAINS, search(), loose
+     * search), or null (the default) when it can. The tests of the accent-free rule skip with it.
+     *
+     * @since 0.84.0
+     */
+    protected function accentFreeMatchingMissing(): ?string
     {
         return null;
     }
@@ -938,9 +963,20 @@ abstract class StorageDriverContract extends TestCase
         $this->assertSame([], $this->wordIds((new Query())->search('nothing', ['title', 'tags'])));
     }
 
+    /** @since 0.84.0 */
+    public function test_search_without_fields_is_refused(): void
+    {
+        $this->seedWords();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('search() needs the fields to search');
+        $this->wordIds((new Query())->search('über', []));
+    }
+
     /** @since 0.78.1 (0.78 respected accents in matching) */
     public function test_like_ignores_accents(): void
     {
+        $this->requireAccentFreeMatching();
         $this->seedEdgeWords();
         $type = new TypeDefinition('edges', 'edges', 'default', ['title' => new TypeFieldDefinition('title')]);
 
@@ -1005,10 +1041,18 @@ abstract class StorageDriverContract extends TestCase
         $this->seedEdgeWords();
 
         $this->assertSame(['d', 'e', 'f', 'l', 'o', 's', 't', 'w', 'x'], $this->edgeIds((new Query())->where('title', 'NOT LIKE', '%ÜBER%')), 'case ignored');
-        $this->assertSame(['d', 'e', 'f', 'l', 'o', 's', 't', 'w', 'x'], $this->edgeIds((new Query())->where('title', 'NOT LIKE', '%uber%')), 'accents ignored');
         $this->assertSame(['d', 'e', 'f', 'o', 's', 't', 'u', 'w'], $this->edgeIds((new Query())->where('title', 'NOT LIKE', 'KELVIN')));
         $this->assertSame(['d', 'e', 'f', 'l', 'o', 's', 'u', 'w', 'x'], $this->edgeIds((new Query())->where('title', 'NOT LIKE', 'İSTANBUL')));
         $this->assertSame(['d', 'e', 'f', 'l', 'o', 's', 't', 'u', 'x'], $this->edgeIds((new Query())->where('title', 'NOT LIKE', 'abc%')));
+    }
+
+    /** @since 0.84.0 (the accent half of test_not_like_follows_the_rule) */
+    public function test_not_like_ignores_accents(): void
+    {
+        $this->requireAccentFreeMatching();
+        $this->seedEdgeWords();
+
+        $this->assertSame(['d', 'e', 'f', 'l', 'o', 's', 't', 'w', 'x'], $this->edgeIds((new Query())->where('title', 'NOT LIKE', '%uber%')), 'accents ignored');
     }
 
     /** Loose search (Folio's lists, ⌘K) is CONTAINS per word, so it follows the rule too. */
@@ -1024,13 +1068,28 @@ abstract class StorageDriverContract extends TestCase
         };
 
         $this->assertSame(['u'], $loose('ÜBER UNS'));
-        $this->assertSame(['u'], $loose('uber'), 'accents ignored');
         $this->assertSame([], $loose('strasse'));
         $this->assertSame(['s'], $loose('STRAẞE'));
         $this->assertSame(['l', 'x'], $loose('kelvin'));
-        $this->assertSame(['t'], $loose('istanbul'));
         $this->assertSame([], $loose('ilik'));
         $this->assertSame(['w'], $loose('abc'));
+    }
+
+    /** @since 0.84.0 (the accent half of test_loose_search_follows_the_rule) */
+    public function test_loose_search_ignores_accents(): void
+    {
+        $this->requireAccentFreeMatching();
+        $this->seedEdgeWords();
+        $type = new TypeDefinition('edges', 'edges', 'default', ['title' => new TypeFieldDefinition('title')]);
+        $loose = function (string $term) use ($type): array {
+            $ids = array_map(static fn ($record): string => (string) $record->get('uuid'), QueryBuilder::forType($this->driver, $type)->searchLoose($term)->get()->items());
+            sort($ids);
+
+            return $ids;
+        };
+
+        $this->assertSame(['u'], $loose('uber'), 'accents ignored');
+        $this->assertSame(['t'], $loose('istanbul'), 'the dot of İ is an accent');
     }
 
     public function test_dotted_i_is_an_i_and_dotless_i_a_letter_of_its_own(): void
@@ -1038,9 +1097,17 @@ abstract class StorageDriverContract extends TestCase
         $this->seedEdgeWords();
 
         $this->assertSame(['t'], $this->edgeIds((new Query())->where('title', 'LIKE', 'İSTANBUL')));
-        $this->assertSame(['t'], $this->edgeIds((new Query())->where('title', 'LIKE', 'istanbul')), 'the dot of İ is an accent, ignored');
         $this->assertSame([], $this->edgeIds((new Query())->where('title', 'LIKE', 'ILIK')), 'ı is a letter of its own');
         $this->assertSame(['d'], $this->edgeIds((new Query())->where('title', 'LIKE', 'ılık')));
+    }
+
+    /** @since 0.84.0 (the accent half of test_dotted_i_is_an_i_and_dotless_i_a_letter_of_its_own) */
+    public function test_the_dot_of_a_dotted_i_is_an_accent(): void
+    {
+        $this->requireAccentFreeMatching();
+        $this->seedEdgeWords();
+
+        $this->assertSame(['t'], $this->edgeIds((new Query())->where('title', 'LIKE', 'istanbul')), 'the dot of İ is an accent, ignored');
     }
 
     public function test_where_in_and_not_in(): void
@@ -1147,6 +1214,7 @@ abstract class StorageDriverContract extends TestCase
     /** One text field, two rules: "=" respects accents, LIKE ignores them (@since 0.78.1). */
     public function test_equals_still_respects_accents_while_like_ignores_them(): void
     {
+        $this->requireAccentFreeMatching();
         $this->seedPeople();
 
         $this->assertSame(['p3'], $this->people((new Query())->where('name', 'muller')), '"=" finds only "Muller"');
@@ -1551,6 +1619,14 @@ abstract class StorageDriverContract extends TestCase
         }
     }
 
+    private function requireAccentFreeMatching(): void
+    {
+        $reason = $this->accentFreeMatchingMissing();
+        if ($reason !== null) {
+            $this->markTestSkipped($reason);
+        }
+    }
+
     private function requireTextRule(): void
     {
         $reason = $this->textRuleMissing();
@@ -1742,6 +1818,244 @@ abstract class StorageDriverContract extends TestCase
         $this->assertNumber(1, $kept['amount'] ?? null);
         $this->assertNull($this->driver->findOne('records', 'r2'), 'nothing new');
         $this->assertNull($this->driver->findOne('records', 'r3'));
+    }
+
+    // --- change dates (@since 0.84.0) -----------------------------------------------------------
+
+    /** A type of $fields over the store (created as createType() makes it), and a DataManager on it. */
+    private function changeDates(bool $declared = false): array
+    {
+        $key = $declared ? 'stamped' : 'dated';
+        $this->createType($key, $declared
+            ? ['uuid' => 'exact', 'title' => 'text', 'updated_at' => 'exact', \Preflow\Data\ChangeDates::FIELD => 'exact']
+            : ['uuid' => 'exact', 'title' => 'text', \Preflow\Data\ChangeDates::FIELD => 'exact']);
+        $fields = ['title' => new TypeFieldDefinition('title')];
+        if ($declared) {
+            $fields['updated_at'] = new TypeFieldDefinition('updated_at', 'date');
+        }
+        $def = new TypeDefinition($key, $key, 'default', $fields);
+        $dm = new \Preflow\Data\DataManager(['default' => $this->driver], 'default');
+        if (!$this->driver instanceof DescribesColumns) {
+            $this->markTestSkipped('The driver does not implement DescribesColumns: DataManager writes it no change date.');
+        }
+
+        return [$dm, $def];
+    }
+
+    /** Runs $write on a clock that tells $at (ISO 8601). */
+    private static function at(string $at, \Closure $write): mixed
+    {
+        $clock = new \Preflow\Core\Context\FrozenClock(new \DateTimeImmutable($at));
+
+        return \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->withClock($clock), $write);
+    }
+
+    public function test_a_save_sets_the_change_date_and_an_update_moves_it(): void
+    {
+        [$dm, $def] = $this->changeDates();
+        $field = \Preflow\Data\ChangeDates::FIELD;
+
+        $record = \Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'c1', 'title' => 'First']);
+        self::at('2026-03-01T10:00:00+01:00', static fn () => $dm->saveType($record, false));
+        $this->assertSame('2026-03-01T09:00:00+00:00', $record->get($field), 'the saved record holds it, in UTC');
+        $this->assertSame('2026-03-01T09:00:00+00:00', ($this->driver->findOne('dated', 'c1') ?? [])[$field] ?? null, 'stored on create');
+
+        $loaded = $dm->findIn($def, 'c1');
+        $loaded->set('title', 'Second');
+        self::at('2026-03-02T08:30:15Z', static fn () => $dm->saveType($loaded, false));
+        $this->assertSame('2026-03-02T08:30:15+00:00', ($this->driver->findOne('dated', 'c1') ?? [])[$field] ?? null, 'moved on update');
+
+        self::at('2026-03-05T00:00:00Z', function () use ($dm, $def): void {
+            $dm->findIn($def, 'c1');
+            $dm->queryIn($def)->get();
+        });
+        $this->assertSame('2026-03-02T08:30:15+00:00', ($this->driver->findOne('dated', 'c1') ?? [])[$field] ?? null, 'a read leaves it');
+        $this->assertSame('Second', ($this->driver->findOne('dated', 'c1') ?? [])['title'] ?? null);
+    }
+
+    public function test_records_sort_by_their_change_date(): void
+    {
+        [$dm, $def] = $this->changeDates();
+        foreach (['c1' => '2026-03-02T00:00:00Z', 'c2' => '2025-12-31T23:59:59Z', 'c3' => '2026-03-01T12:00:00+02:00'] as $id => $at) {
+            self::at($at, static fn () => $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => $id, 'title' => $id]), false));
+        }
+
+        $this->assertSame(['c1', 'c3', 'c2'], $dm->queryIn($def)->orderBy(\Preflow\Data\ChangeDates::FIELD, SortDirection::Desc)->pluck('uuid'));
+        $this->assertSame(['c2', 'c3', 'c1'], $dm->queryIn($def)->orderBy(\Preflow\Data\ChangeDates::FIELD)->pluck('uuid'));
+        $this->assertSame(['c1'], $dm->queryIn($def)->where(\Preflow\Data\ChangeDates::FIELD, '>', '2026-03-01T10:00:00+00:00')->pluck('uuid'), 'compared as text, as written');
+    }
+
+    public function test_a_kept_change_date_round_trips_exactly(): void
+    {
+        [$dm, $def] = $this->changeDates();
+        $field = \Preflow\Data\ChangeDates::FIELD;
+
+        self::at('2026-03-05T00:00:00Z', static fn () => $dm->keepingChangeDates(
+            static fn () => $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'c1', 'title' => 'Imported', $field => '2019-07-04T17:45:00+00:00']), false),
+        ));
+
+        $this->assertSame('2019-07-04T17:45:00+00:00', $dm->findIn($def, 'c1')?->get($field), 'an import keeps the date it brings');
+        self::at('2026-03-05T00:00:00Z', static fn () => $dm->keepingChangeDates(
+            static fn () => $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'c2', 'title' => 'Without']), false),
+        ));
+        $this->assertSame('2026-03-05T00:00:00+00:00', $dm->findIn($def, 'c2')?->get($field), 'one without a date gets now');
+    }
+
+    /** A type's own updated field is its content: the data layer writes only _updated_at. */
+    public function test_a_types_own_updated_field_is_left_as_written(): void
+    {
+        [$dm, $def] = $this->changeDates(declared: true);
+
+        self::at('2026-03-01T09:00:00Z', static fn () => $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'c1', 'title' => 'First', 'updated_at' => '2020-01-01T00:00:00+00:00']), false));
+        $loaded = $dm->findIn($def, 'c1');
+        $loaded->set('title', 'Second');
+        self::at('2026-03-02T09:00:00Z', static fn () => $dm->saveType($loaded, false));
+
+        $stored = $this->driver->findOne('stamped', 'c1') ?? [];
+        $this->assertSame('2020-01-01T00:00:00+00:00', $stored['updated_at'] ?? null, 'the site\'s field, as the site wrote it');
+        $this->assertSame('2026-03-02T09:00:00+00:00', $stored[\Preflow\Data\ChangeDates::FIELD] ?? null, 'the change date beside it');
+    }
+
+    /**
+     * `preflow migrate`'s backfill (ChangeDateBackfill) on this store: records without a change date
+     * get the activity log's newest event, else the storage's own write time (WriteTimes), else
+     * their creation time, else the migrate's time; a stored date stays; a second run writes
+     * nothing; chunks follow each other until every record has one.
+     */
+    public function test_the_backfill_gives_every_record_without_a_change_date_one(): void
+    {
+        if (!$this->driver instanceof DescribesColumns) {
+            $this->markTestSkipped('The driver does not implement DescribesColumns: DataManager keeps no change dates on it.');
+        }
+        $field = \Preflow\Data\ChangeDates::FIELD;
+        $this->createType('aged', ['uuid' => 'exact', 'title' => 'text', 'created_at' => 'exact', $field => 'exact']);
+        $def = new TypeDefinition('aged', 'aged', 'default', ['title' => new TypeFieldDefinition('title'), 'created_at' => new TypeFieldDefinition('created_at')]);
+        $dm = new \Preflow\Data\DataManager(['default' => $this->driver], 'default');
+        $this->driver->save('aged', 'logged', ['uuid' => 'logged', 'title' => 'In the log', 'created_at' => '2020-01-01T00:00:00+00:00']);
+        $this->driver->save('aged', 'created', ['uuid' => 'created', 'title' => 'Created', 'created_at' => '2021-05-06T07:08:09+02:00']);
+        $this->driver->save('aged', 'plain', ['uuid' => 'plain', 'title' => 'Nothing known']);
+        $this->driver->save('aged', 'dated', ['uuid' => 'dated', 'title' => 'Dated', $field => '2019-01-01T00:00:00+00:00']);
+        $this->driver->save('aged', 'blank', ['uuid' => 'blank', 'title' => 'Blank', $field => '']);
+        $log = self::activityLog(static fn (string $subject, array $ids): array => $subject === 'aged' && in_array('logged', $ids, true) ? ['logged' => '2026-02-03T04:05:06+00:00'] : []);
+        $backfill = new \Preflow\Data\ChangeDateBackfill($dm, static fn (): array => [$def, $def], $log, chunk: 2);
+
+        $lines = self::at('2026-11-22T12:00:00Z', static fn (): array => $backfill->run());
+
+        $this->assertCount(1, $lines, 'one line per table (listed twice, done once)');
+        $this->assertStringStartsWith('gave 4 records of aged a change date (', $lines[0]);
+        $dates = [];
+        foreach (['logged', 'created', 'plain', 'dated', 'blank'] as $id) {
+            $dates[$id] = ($this->driver->findOne('aged', $id) ?? [])[$field] ?? null;
+        }
+        $this->assertSame('2026-02-03T04:05:06+00:00', $dates['logged'], 'the activity log first');
+        $this->assertSame('2019-01-01T00:00:00+00:00', $dates['dated'], 'a stored date stays');
+        $this->assertSame('Dated', ($this->driver->findOne('aged', 'dated') ?? [])['title'] ?? null, 'only the date is written');
+        if ($this->driver instanceof \Preflow\Data\WriteTimes) {
+            $this->assertNotSame('2021-05-06T05:08:09+00:00', $dates['created'], 'the storage\'s own write time before the creation time');
+            $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$/', (string) $dates['plain']);
+        } else {
+            $this->assertSame('2021-05-06T05:08:09+00:00', $dates['created'], 'the creation time, in UTC');
+            $this->assertSame('2026-11-22T12:00:00+00:00', $dates['plain'], 'else the time of the migrate');
+            $this->assertSame('2026-11-22T12:00:00+00:00', $dates['blank'], 'an empty one counts as none');
+        }
+
+        $this->assertSame([], self::at('2026-11-23T12:00:00Z', static fn (): array => $backfill->run()), 'a second run writes nothing');
+        $this->assertSame('2026-02-03T04:05:06+00:00', ($this->driver->findOne('aged', 'logged') ?? [])[$field] ?? null);
+    }
+
+    /**
+     * An activity log whose lastChanged() is $lastChanged (the rest unused).
+     *
+     * @param \Closure(string, list<string>): array<string, string> $lastChanged
+     */
+    private static function activityLog(\Closure $lastChanged): \Preflow\Core\Activity\LastChanges
+    {
+        return new class ($lastChanged) implements \Preflow\Core\Activity\LastChanges {
+            public function __construct(private readonly \Closure $lastChanged) {}
+
+            public function lastChanged(string $subject, array $ids): array
+            {
+                return ($this->lastChanged)($subject, $ids);
+            }
+
+            public function record(\Preflow\Core\Activity\Activity $activity): void {}
+
+            public function recent(int $limit, ?array $subjects = null, ?string $before = null, ?string $by = null): \Preflow\Core\Activity\ActivityPage
+            {
+                throw new \LogicException('not read');
+            }
+
+            public function people(?array $subjects = null): array
+            {
+                return [];
+            }
+
+            public function prune(): int
+            {
+                return 0;
+            }
+
+            public function forget(string $subject, string $id): void {}
+        };
+    }
+
+    /**
+     * migrate runs while the site serves requests: between the backfill's read and its write a
+     * record may be deleted (it is not written back as a stub) or saved with a date of its own
+     * (that date stays). Only records that still exist without a date are written.
+     */
+    public function test_the_backfill_writes_only_records_that_still_exist_without_a_date(): void
+    {
+        if (!$this->driver instanceof DescribesColumns) {
+            $this->markTestSkipped('The driver does not implement DescribesColumns: DataManager keeps no change dates on it.');
+        }
+        $field = \Preflow\Data\ChangeDates::FIELD;
+        $this->createType('raced', ['uuid' => 'exact', 'title' => 'text', $field => 'exact']);
+        $def = new TypeDefinition('raced', 'raced', 'default', ['title' => new TypeFieldDefinition('title')]);
+        $dm = new \Preflow\Data\DataManager(['default' => $this->driver], 'default');
+        foreach (['gone', 'saved', 'plain'] as $id) {
+            $this->driver->save('raced', $id, ['uuid' => $id, 'title' => ucfirst($id)]);
+        }
+        $driver = $this->driver;
+        // The log is asked between the read and the write: the site's requests act right then.
+        $log = self::activityLog(static function (string $subject, array $ids) use ($driver, $dm, $def): array {
+            $driver->delete('raced', 'gone');
+            self::at('2026-11-22T12:30:00Z', static fn () => $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'saved', 'title' => 'Saved by a user']), false));
+
+            return [];
+        });
+
+        self::at('2026-11-22T12:00:00Z', static fn (): array => (new \Preflow\Data\ChangeDateBackfill($dm, static fn (): array => [$def], $log))->run());
+
+        $this->assertNull($this->driver->findOne('raced', 'gone'), 'a record deleted meanwhile stays deleted');
+        $this->assertSame('2026-11-22T12:30:00+00:00', ($this->driver->findOne('raced', 'saved') ?? [])[$field] ?? null, 'a date a save gave meanwhile stays');
+        $this->assertSame('Saved by a user', ($this->driver->findOne('raced', 'saved') ?? [])['title'] ?? null);
+        $plain = ($this->driver->findOne('raced', 'plain') ?? [])[$field] ?? null;
+        $this->driver instanceof \Preflow\Data\WriteTimes
+            ? $this->assertNotNull(\Preflow\Data\ChangeDates::parse($plain), 'the storage\'s own write time')
+            : $this->assertSame('2026-11-22T12:00:00+00:00', $plain, 'the time of the migrate');
+        $this->assertSame('Plain', ($this->driver->findOne('raced', 'plain') ?? [])['title'] ?? null, 'only the date is written');
+    }
+
+    /** A source that cannot answer leaves the table for the next run: no weaker source decides for good. */
+    public function test_the_backfill_refuses_a_table_whose_activity_log_cannot_be_read(): void
+    {
+        if (!$this->driver instanceof DescribesColumns) {
+            $this->markTestSkipped('The driver does not implement DescribesColumns: DataManager keeps no change dates on it.');
+        }
+        $field = \Preflow\Data\ChangeDates::FIELD;
+        $this->createType('unlogged', ['uuid' => 'exact', 'title' => 'text', $field => 'exact']);
+        $def = new TypeDefinition('unlogged', 'unlogged', 'default', ['title' => new TypeFieldDefinition('title')]);
+        $dm = new \Preflow\Data\DataManager(['default' => $this->driver], 'default');
+        $this->driver->save('unlogged', 'u1', ['uuid' => 'u1', 'title' => 'One']);
+        $log = self::activityLog(static fn (): array => throw new \RuntimeException('log storage is down'));
+
+        $lines = self::at('2026-11-22T12:00:00Z', static fn (): array => (new \Preflow\Data\ChangeDateBackfill($dm, static fn (): array => [$def], $log))->run());
+
+        $this->assertCount(1, $lines);
+        $this->assertStringStartsWith('refused: unlogged: ', $lines[0]);
+        $this->assertStringContainsString('log storage is down', $lines[0]);
+        $this->assertNull(($this->driver->findOne('unlogged', 'u1') ?? [])[$field] ?? null, 'left for the next run');
     }
 
     // --- insert only if new (InsertsNew, @since 0.79.0) -------------------------------------------

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Content;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Content\FrontendConfigException;
 use Preflow\Folio\Content\TypeCatalog;
@@ -14,7 +15,7 @@ final class TypeCatalogTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->dir = sys_get_temp_dir() . '/folio_models_' . bin2hex(random_bytes(4));
+        $this->dir = TempRoots::path('folio_models_');
         mkdir($this->dir, 0777, true);
     }
 
@@ -62,7 +63,7 @@ final class TypeCatalogTest extends TestCase
 
     public function test_scan_is_memoized(): void
     {
-        $dir = sys_get_temp_dir() . '/tc_memo_' . bin2hex(random_bytes(4));
+        $dir = TempRoots::path('tc_memo_');
         mkdir($dir, 0777, true);
         file_put_contents($dir . '/a.json', json_encode(['key' => 'a', 'table' => 'a', 'fields' => []]));
         $catalog = new \Preflow\Folio\Content\TypeCatalog($dir);

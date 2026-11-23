@@ -98,6 +98,8 @@
     <extensions>
         <!-- After every test no render frame is left open (Contexts::depth() is 0 again) -->
         <bootstrap class="Preflow\Testing\FrameBalanceExtension"/>
+        <!-- A run leaves the temp directory as it found it: temp roots and PHP session files are removed per test -->
+        <bootstrap class="Preflow\Folio\Tests\Support\TempRootsExtension"/>
     </extensions>
     <source>
         <include>

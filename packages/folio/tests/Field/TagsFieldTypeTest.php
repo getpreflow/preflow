@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Field;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Schema\ColumnKind;
 use Preflow\Folio\Content\FrontendConfigException;
@@ -218,7 +219,7 @@ final class TagsFieldTypeTest extends TestCase
     /** @param array<string, mixed> $field */
     private function assertBootError(array $field, string $message): void
     {
-        $dir = sys_get_temp_dir() . '/folio_tags_' . bin2hex(random_bytes(4));
+        $dir = TempRoots::path('folio_tags_');
         mkdir($dir);
         file_put_contents($dir . '/thing.json', (string) json_encode(['key' => 'thing', 'fields' => ['uses' => $field]]));
         try {

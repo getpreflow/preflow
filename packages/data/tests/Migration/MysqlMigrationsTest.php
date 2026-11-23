@@ -201,6 +201,22 @@ final class MysqlMigrationsTest extends TestCase
         $this->assertSame(['Apfel', 'äpfel', 'eagle', 'Émile', 'Zebra'], $slugs);
     }
 
+    /** @since 0.84.0 */
+    public function test_convert_column_on_mysql_keeps_comment_and_on_update(): void
+    {
+        $this->pdo->exec('CREATE TABLE `stamped` (`uuid` VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, `note` LONGTEXT COMMENT \'what it is\', '
+            . '`touched` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT \'last touch\') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+        $schema = new Schema($this->pdo);
+
+        $schema->convertColumn('stamped', new ColumnSpec('note', ColumnKind::Short));
+        (new MysqlGrammar())->on($this->pdo)->convertColumn($this->pdo, 'stamped', 'touched', 'DATETIME', null);
+
+        $rows = $this->pdo->query("SELECT COLUMN_NAME, COLUMN_COMMENT, EXTRA FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stamped' AND COLUMN_NAME IN ('note', 'touched') ORDER BY COLUMN_NAME")->fetchAll(\PDO::FETCH_NUM);
+        $this->assertSame('what it is', $rows[0][1], 'the comment of a converted column stays');
+        $this->assertSame('last touch', $rows[1][1]);
+        $this->assertStringContainsString('on update current_timestamp', strtolower((string) $rows[1][2]), 'ON UPDATE stays');
+    }
+
     public function test_convert_column_on_mysql_keeps_data_default_nullability_and_indexes(): void
     {
         // A site's case: indexed record fields made LONGTEXT before 0.72 become VARCHAR(191) utf8mb4_bin.

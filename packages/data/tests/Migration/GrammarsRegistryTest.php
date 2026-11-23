@@ -53,8 +53,8 @@ final class GrammarsRegistryTest extends TestCase
         $this->assertEquals($grammar->on($pdo), Grammars::for($pdo), 'bound to the connection');
         $lines = (new RecordTableSync($dm))->sync(new TypeDefinition('note', 'note', 'default', ['title' => new TypeFieldDefinition('title')]));
 
-        $this->assertSame(['created table note'], $lines);
-        $this->assertSame(['uuid', 'title'], (new Schema($pdo))->columns('note'));
+        $this->assertSame(['created table note', 'added index idx_note__updated_at'], $lines);
+        $this->assertSame(['uuid', 'title', '_updated_at'], (new Schema($pdo))->columns('note'), 'and the change date (0.84)');
     }
 
     public function test_a_registered_grammar_wins_over_a_built_in_one_until_forgotten(): void

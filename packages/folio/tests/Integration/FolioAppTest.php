@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Integration;
 
+use Preflow\Folio\Tests\Support\TempRoots;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
@@ -30,7 +31,7 @@ final class FolioAppTest extends TestCase
     protected function setUp(): void
     {
         putenv('APP_DEBUG=1'); // -> Twig strict_variables on
-        $this->dir = sys_get_temp_dir() . '/folio_app_' . bin2hex(random_bytes(5));
+        $this->dir = TempRoots::path('folio_app_');
         $this->scaffold();
     }
 

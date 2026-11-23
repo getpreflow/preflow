@@ -62,6 +62,10 @@ function screen({ sections, selected = [], denied = [], kept = [], chips = [] })
     const rest = el(w, field, 'div', { class: 'rbac-rest', 'data-rbac-rest': '' });
     kept.forEach((name) => el(w, rest, 'input', { type: 'hidden', name: 'permissions[]', value: name, 'data-rbac-kept': '' }));
     const filter = el(w, rest, 'button', { type: 'button', 'aria-pressed': 'false', 'data-rbac-fresh-filter': '', 'data-folio-no-edit': '' }, 'Only new');
+    // The type filter as PermissionsFieldType renders it: hidden until the script shows it.
+    const typeLabel = el(w, rest, 'label', { class: 'rbac-type-filter', 'data-rbac-type-filter': '', 'data-folio-no-edit': '' });
+    typeLabel.hidden = true;
+    const typeSelect = el(w, typeLabel, 'select');
     const wrap = el(w, rest, 'div', { class: 'folio-table-wrap' });
     const table = el(w, wrap, 'table', { class: 'folio-table rbac-matrix' });
     const rows = {}, columns = {}, sums = {}, bodies = {};
@@ -73,7 +77,7 @@ function screen({ sections, selected = [], denied = [], kept = [], chips = [] })
         columns[section] = {};
         VERBS.forEach((verb) => { columns[section][verb] = el(w, el(w, head, 'th'), 'button', { type: 'button', 'data-rbac-column': verb }, verb); });
         types.forEach(([type, verbs, pattern, isNew]) => {
-            const tr = el(w, body, 'tr', { class: 'rbac-row', 'data-rbac-row': '', ...(isNew ? { 'data-rbac-new': '' } : {}) });
+            const tr = el(w, body, 'tr', { class: 'rbac-row', 'data-rbac-row': '', 'data-rbac-type': type, ...(isNew ? { 'data-rbac-new': '' } : {}) });
             const cells = {};
             VERBS.forEach((verb) => {
                 const td = el(w, tr, 'td');
@@ -84,7 +88,7 @@ function screen({ sections, selected = [], denied = [], kept = [], chips = [] })
         });
     });
     const others = el(w, rest, 'div', { 'data-rbac-others': '' });
-    const group = el(w, others, 'div', { 'data-rbac-group': '' });
+    const group = el(w, others, 'div', { 'data-rbac-group': '', 'data-rbac-type': 'g:Shop' });
     const chipBoxes = {};
     chips.forEach(([name, isNew]) => {
         const chip = el(w, group, 'label', { class: 'rbac-chip', ...(isNew ? { 'data-rbac-new': '' } : {}) });
@@ -96,7 +100,7 @@ function screen({ sections, selected = [], denied = [], kept = [], chips = [] })
     // The layout loads admin.js, then the field's assets.
     load(w, ADMIN_JS);
     load(w, RBAC_JS);
-    return { w, doc, form, field, save, saveButtons, topbar, state, count, cancel, everything, filter, rows, columns, sums, bodies, chipBoxes, roleLabel };
+    return { w, doc, form, field, save, saveButtons, topbar, state, count, cancel, everything, filter, typeLabel, typeSelect, rows, columns, sums, bodies, chipBoxes, roleLabel };
 }
 
 /** A click on a box as the browser does it: it flips, then "change" bubbles. */
@@ -189,6 +193,38 @@ test('"Only new" hides the other rows and chips but every value still posts', ()
 
     p.filter.click();
     assert.equal(p.filter.getAttribute('aria-pressed'), 'false');
+    assert.equal(p.rows.page.tr.hidden, false);
+    assert.equal(p.bodies.Pages.hidden, false);
+    assert.deepEqual(posted(p), before);
+});
+
+test('the type filter shows once the script ran, narrows rows, sections and groups, and combines with "Only new"', () => {
+    const p = screen({ sections: CONTENT, selected: ['page.view', 'post.edit', 'job.view', 'shop.orders'], chips: [['shop.orders', true]] });
+    const before = posted(p);
+    assert.equal(p.typeLabel.hidden, false, 'it needs the script, which shows it');
+
+    p.typeSelect.value = 'post';
+    p.typeSelect.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+    assert.equal(p.rows.post.tr.hidden, false);
+    assert.equal(p.rows.job.tr.hidden, true);
+    assert.equal(p.rows.page.tr.hidden, true);
+    assert.equal(p.bodies.Pages.hidden, true, 'a section without a matching row hides');
+    assert.equal(p.bodies.Content.hidden, false);
+    assert.equal(p.chipBoxes['shop.orders'].chip.hidden, true, 'a chip of another group');
+    assert.deepEqual(posted(p), before, 'hidden values still post');
+
+    p.filter.click();
+    assert.equal(p.rows.post.tr.hidden, true, 'post is not new: both filters apply');
+    assert.equal(p.bodies.Content.hidden, true);
+
+    p.filter.click();
+    p.typeSelect.value = 'g:Shop';
+    p.typeSelect.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+    assert.equal(p.chipBoxes['shop.orders'].chip.hidden, false);
+    assert.equal(p.rows.post.tr.hidden, true);
+
+    p.typeSelect.value = '';
+    p.typeSelect.dispatchEvent(new p.w.Event('change', { bubbles: true }));
     assert.equal(p.rows.page.tr.hidden, false);
     assert.equal(p.bodies.Pages.hidden, false);
     assert.deepEqual(posted(p), before);

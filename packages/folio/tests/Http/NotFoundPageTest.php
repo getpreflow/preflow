@@ -153,6 +153,7 @@ final class NotFoundPageTest extends TestCase
         'AssetLibraryController::html',       // the asset screens and panels: 200 or 422
         'AssetLibraryController::upload',     // the picker upload's JSON: 200 or 422
         'AuthController::page',               // the sign-in page: 200, 422 or 429
+        'MediaStorageMiddleware::process',    // the assets page without a media storage: 200 for a page, 503 for an action that did not happen
         'PagePreviewController::notice',      // the preview's notice in the frame: 200, or 400 for an address that is none
         'PasswordController::render',         // the password pages: 200 or 422
         'RedirectsController::html',          // the redirect screens: 200, 422 or 503 (not migrated)

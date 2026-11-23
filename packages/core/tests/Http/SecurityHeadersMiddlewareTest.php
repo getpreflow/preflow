@@ -200,6 +200,35 @@ final class SecurityHeadersMiddlewareTest extends TestCase
         }
     }
 
+    /** A cached full page must never answer a later fragment request to its URL, nor the reverse: every HTML answer varies on the client's headers. */
+    public function test_every_html_answer_varies_on_the_hypermedia_clients_request_headers(): void
+    {
+        $html = ['Content-Type' => 'text/html; charset=UTF-8'];
+        $cases = [
+            'full page' => [[], $html],
+            'fragment' => [['HX-Request' => 'true'], $html],
+            'history restore' => [['HX-Request' => 'true', 'HX-History-Restore-Request' => 'true'], $html],
+        ];
+        foreach ($cases as $label => [$requestHeaders, $preset]) {
+            $vary = array_map(trim(...), explode(',', strtolower($this->process(preset: $preset, requestHeaders: $requestHeaders)->getHeaderLine('Vary'))));
+            $this->assertContains('hx-request', $vary, $label);
+            $this->assertContains('hx-target', $vary, $label);
+            $this->assertContains('hx-history-restore-request', $vary, $label);
+        }
+    }
+
+    public function test_vary_merges_with_the_answers_own_and_leaves_a_star_and_non_html_alone(): void
+    {
+        $merged = $this->process(preset: ['Content-Type' => 'text/html', 'Vary' => 'Accept-Encoding, hx-request']);
+        $names = array_map(trim(...), explode(',', strtolower($merged->getHeaderLine('Vary'))));
+        $this->assertSame(count($names), count(array_unique($names)), 'each name once');
+        $this->assertContains('accept-encoding', $names);
+        $this->assertContains('hx-target', $names);
+
+        $this->assertSame('*', $this->process(preset: ['Content-Type' => 'text/html', 'Vary' => '*'])->getHeaderLine('Vary'));
+        $this->assertSame('', $this->process(preset: ['Content-Type' => 'application/json'])->getHeaderLine('Vary'), 'an asset or API answer is not a page');
+    }
+
     /**
      * @param array<string, mixed>  $config
      * @param array<string, string> $preset         headers the inner handler already set

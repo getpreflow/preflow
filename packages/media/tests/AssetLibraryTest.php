@@ -203,7 +203,7 @@ final class AssetLibraryTest extends TestCase
         $dm = new DataManager(drivers: [$storage => $driver], defaultDriver: $storage, typeRegistry: new TypeRegistry($this->assetRoot . '/models'));
         $library = new MediaLibrary($dm, new Locales(['en', 'de'], 'en'), $this->assetRoot . '/media', '/media', ['storage' => $storage, 'versions_dir' => $this->assetRoot . '/versions']);
         $lines = (new RecordTableSync($dm))->sync($library->definition());
-        $this->assertSame(['created table folio_assets'], $lines);
+        $this->assertSame(['created table folio_assets', 'added index idx_folio_assets__updated_at'], $lines);
 
         $asset = $library->upload($this->upload($this->png(), 'Sea View.PNG', 'image/png'), 'u@x');
 

@@ -351,7 +351,7 @@ final class AdminController
         }
         $stateOf = $states === null ? null : static fn (DynamicRecord $record): PublishState => $states[(string) $record->getId()] ?? PublishState::Draft;
 
-        $query = ListQuery::fromRequest($request, $typeDef, $listConfig, $typeDef->locales->default, $states !== null);
+        $query = ListQuery::fromRequest($request, $typeDef, $listConfig, $typeDef->locales->default, $states !== null, $this->dm->changeDateOf($typeDef) !== null);
         $result = $query->fetch(
             $this->dm->queryType($type),
             $multilingual ? fn (DynamicRecord $record): bool => $this->hasUnchecked($typeDef, $record) : null,
@@ -374,6 +374,10 @@ final class AdminController
         $menu = $this->rowMenu($type, $typeDef, $records, $snapshots);
         $route = $this->frontend->routeFor($type);
         $uncheckedUrl = $this->prefix . '/' . $type . '?unchecked=1';
+
+        // The "Changed" column (since 0.84): each record's change date (ChangeDates, `_updated_at`).
+        $showsChanged = ListQuery::showsChanged($typeDef, $listConfig);
+        $changedAt = $showsChanged ? $this->changedTimes($typeDef, $records) : [];
 
         $rows = [];
         foreach ($records as $record) {
@@ -406,6 +410,7 @@ final class AdminController
 
                     return (string) $value;
                 }, $extraColumns),
+                'changed' => $changedAt[$id] ?? '',
                 'languages' => $multilingual ? $this->languageStates($typeDef, $record) : [],
                 'unchecked_url' => $uncheckedUrl,
                 // From the versions, as the status links and the filter (the editor shows the exact state()).
@@ -455,6 +460,7 @@ final class AdminController
             // field => ListCells::kind(): number cells are mono and right-aligned.
             'column_kinds' => array_combine(array_keys($columns), array_map(static fn (string $name): string => ListCells::kind($typeDef, $name), array_keys($columns))),
             'extra_columns' => array_column($extraColumns, 'label'),
+            'shows_changed' => $showsChanged,
             'rows' => $rows,
             'list' => $list,
             'has_records' => $hasRecords,
@@ -644,7 +650,7 @@ final class AdminController
             }
         } else {
             // The list's own view: its status and "not checked" narrowing too, as the list shows it.
-            $query = ListQuery::fromRequest($request, $typeDef, $listConfig, $typeDef->locales->default, $this->publishes($type));
+            $query = ListQuery::fromRequest($request, $typeDef, $listConfig, $typeDef->locales->default, $this->publishes($type), $this->dm->changeDateOf($typeDef) !== null);
             // The states only when a status is asked for (they read the versions of every record of the type).
             $states = $query->status !== null ? $this->publisher->states($type) : null;
             $records = $exporter->records($type, $query, $query->narrowing(
@@ -1350,7 +1356,7 @@ final class AdminController
      */
     private function bulkReturn(ServerRequestInterface $request, string $type): string
     {
-        return ListQuery::fromPosted($request, $this->registry->get($type), $this->catalog->get($type)?->list ?? [], $this->publishes($type))
+        return ListQuery::fromPosted($request, $this->registry->get($type), $this->catalog->get($type)?->list ?? [], $this->publishes($type), $this->dm->changeDateOf($this->registry->get($type)) !== null)
             ->url($this->prefix . '/' . $type);
     }
 
@@ -1603,6 +1609,11 @@ final class AdminController
             'types' => $this->catalog->all(),
             'heading' => $heading,
             'record_title' => $editUrl !== null && !str_ends_with($editUrl, '/new') ? self::recordTitle($values, $locales) : null,
+            // #[TitleBadge] pills after the title of a stored record (since 0.84).
+            'title_badges' => $isNew || $this->customizations === null ? [] : array_map(
+                static fn (Badge $badge): array => ['label' => $badge->label, 'tone' => $badge->tone()],
+                $this->customizations->titleBadges($type, DynamicRecord::fromArray($typeDef, $values)),
+            ),
             'action' => $action,
             'record_id' => isset($values[$typeDef->idField]) ? rawurlencode((string) $values[$typeDef->idField]) : '',
             'csrf' => $csrf,
@@ -2426,6 +2437,29 @@ final class AdminController
         }
 
         return trim(html_entity_decode(strip_tags((string) $value), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    }
+
+    /**
+     * When each record of a page was last changed (the "Changed" column): its change date
+     * (ChangeDates::FIELD) as ISO 8601, for
+     * `<time datetime>`. A record without a readable one (written before the date was kept and
+     * not given one by `preflow migrate`) is left out.
+     *
+     * @param list<DynamicRecord> $records
+     * @return array<string, string> record id => ISO 8601 time
+     */
+    private function changedTimes(TypeDefinition $typeDef, array $records): array
+    {
+        $key = \Preflow\Data\ChangeDates::FIELD;
+        $times = [];
+        foreach ($records as $record) {
+            $at = \Preflow\Data\ChangeDates::parse($record->get($key));
+            if ($at !== null) {
+                $times[(string) $record->getId()] = $at->format(DATE_ATOM);
+            }
+        }
+
+        return $times;
     }
 
     /**

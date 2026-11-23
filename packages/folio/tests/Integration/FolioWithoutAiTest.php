@@ -96,6 +96,34 @@ final class FolioWithoutAiTest extends TestCase
         // Translation has two sources; the roles editor's reason names both.
         $this->assertSame('no machine translator (preflow/ai or config/ai.php translation.translator)', $registry->disabledReason('ai.translate'));
         $this->assertSame('package preflow/ai (not installed)', $registry->disabledReason('ai.draft'));
+
+        // Settings → Translations lists no text of a feature that is not there.
+        foreach (['ai_draft', 'ai_settings', 'ai_translate', 'ai_queue', 'ai_run'] as $feature) {
+            $this->assertStringNotContainsString("folio.{$feature}.", $this->translationsFor($feature), $feature);
+        }
+        $this->assertStringContainsString('folio.nav.', $this->translationsFor('nav'), 'the other texts stay');
+    }
+
+    /**
+     * The hidden prefixes are answered per app, not once per process: without the ai package, an app
+     * with a translator of its own lists the translate texts, a second app in the same process
+     * without one does not.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function test_the_hidden_text_prefixes_belong_to_the_app_not_the_process(): void
+    {
+        HiddenAiPackage::hide();
+        $this->seed();
+        $this->write('config/ai.php', "<?php\nreturn ['translation' => ['translator' => \\" . PlainTranslator::class . "::class]];\n");
+
+        $this->assertTrue($this->app()->container()->get(TranslatorAvailability::class)->available());
+        $this->assertStringContainsString('folio.ai_translate.', $this->translationsFor('ai_translate'), 'a translator: its texts are listed');
+
+        $this->write('config/ai.php', "<?php\nreturn [];\n");
+
+        $this->assertFalse($this->app()->container()->get(TranslatorAvailability::class)->available(), 'the second app has no translator');
+        $this->assertStringNotContainsString('folio.ai_translate.', $this->translationsFor('ai_translate'), 'so its texts are not listed');
     }
 
     public function test_with_the_ai_package_every_ai_action_is_offered(): void
@@ -112,6 +140,9 @@ final class FolioWithoutAiTest extends TestCase
         $this->assertStringContainsString('formaction="/folio/post/_ai/run"', $pages['list'], 'bulk translate');
         $this->assertSame(200, $this->get('/folio/ai')->getStatusCode());
         $this->assertTrue($this->app()->container()->get(TranslatorAvailability::class)->available());
+        foreach (['ai_draft', 'ai_settings', 'ai_translate', 'ai_queue', 'ai_run'] as $feature) {
+            $this->assertStringContainsString("folio.{$feature}.", $this->translationsFor($feature), $feature);
+        }
 
         $registry = $this->app()->container()->get(Access::class)->registry();
         foreach (['ai.translate', 'ai.draft', 'ai.settings'] as $permission) {
@@ -143,6 +174,21 @@ final class FolioWithoutAiTest extends TestCase
         $registry = $c->get(Access::class)->registry();
         $this->assertTrue($registry->isDeclared('ai.translate'));
         $this->assertNull($registry->disabledReason('ai.translate'));
+
+        // It really translates: a job steps the record into German through the configured translator.
+        $runner = $c->get(\Preflow\I18n\Machine\JobRunner::class);
+        $job = $runner->plan('post', ['de'], \Preflow\I18n\Machine\Scope::Needed, ['p1']);
+        $runner->start($job->id);
+        $job = $runner->step($job->id);
+        $this->assertSame('done', $job->state, (string) $job->message);
+        $this->assertSame('done', $job->items['p1']['status']);
+        $this->assertSame('Hallo', $this->stored('post', 'p1')->get('title')['de'] ?? null, 'the German title');
+        foreach (['ai_translate', 'ai_queue', 'ai_run'] as $feature) {
+            $this->assertStringContainsString("folio.{$feature}.", $this->translationsFor($feature), $feature);
+        }
+        foreach (['ai_draft', 'ai_settings'] as $feature) {
+            $this->assertStringNotContainsString("folio.{$feature}.", $this->translationsFor($feature), $feature);
+        }
         foreach (['ai.draft', 'ai.settings'] as $permission) {
             $this->assertFalse($registry->isDeclared($permission), $permission);
         }
@@ -182,6 +228,15 @@ final class FolioWithoutAiTest extends TestCase
         $this->assertNotNull($registry->disabledReason('ai.translate'), 'a role that still grants it is denied quietly');
         $this->assertTrue($registry->isDeclared('ai.draft'), 'drafts ask for the package, not for a translator');
         $this->assertFalse($c->get(\Preflow\I18n\Machine\TextSources::class)->has('post'), 'no text sources without translation');
+    }
+
+    /** Settings → Translations, the Folio group searched for $search. */
+    private function translationsFor(string $search): string
+    {
+        $res = $this->get('/folio/translations?group=folio&locale=en&q=' . $search);
+        $this->assertSame(200, $res->getStatusCode());
+
+        return (string) $res->getBody();
     }
 
     /** @return array<string, string> the dashboard, the editor (both kinds), Settings → Translations and a type list, each answered 200 */
@@ -224,7 +279,14 @@ final class PlainTranslator implements \Preflow\I18n\Machine\MachineTranslator
 
     public function translateUnits(array $units, ?string $note = null): array
     {
-        return [];
+        return array_map(
+            static fn (\Preflow\I18n\Machine\TranslationUnit $unit): \Preflow\I18n\Machine\TranslationResult => new \Preflow\I18n\Machine\TranslationResult(
+                $unit->id,
+                \Preflow\I18n\Machine\UnitStatus::Translated,
+                $unit->source === 'Hello' ? 'Hallo' : $unit->source,
+            ),
+            $units,
+        );
     }
 }
 

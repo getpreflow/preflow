@@ -65,6 +65,10 @@ final class AdminAuthMiddleware implements MiddlewareInterface
         Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer([$guard => $user], $guard)));
         $this->nav->setCurrentPath($request->getUri()->getPath());
         $request = $request->withAttribute(Authenticatable::class, $user);
-        return $handler->handle($request);
+        $response = $handler->handle($request);
+
+        // A staff screen and the parts it loads (?part=…) answer on one URL: the browser's back/forward
+        // cache must show neither again (the bare part as a page), nor keep the page for a signed-out user.
+        return $response->hasHeader('Cache-Control') ? $response : $response->withHeader('Cache-Control', 'no-store');
     }
 }

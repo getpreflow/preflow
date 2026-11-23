@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Tests\Members\Support;
 
 use Preflow\DevTools\Command\MigrateCommand;
+use Preflow\Folio\Tests\Support\TempRoots;
 use Preflow\Folio\Console\ExtensionsApplyCommand;
 use Psr\Http\Message\ResponseInterface;
 
@@ -29,7 +30,9 @@ trait MembersScaffold
      */
     private function scaffold(array $aliases = ['members' => 'sqlite', 'auth' => 'sqlite', 'throttle' => 'sqlite'], array $locales = ['en', 'de'], string $sql = 'sqlite', array $sessionPaths = ['/folio', '/members']): void
     {
+        TempRoots::isolateSessions();
         $this->coreScaffold($aliases, $locales, $sql, $sessionPaths);
+        TempRoots::track($this->dir);
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Rbac\\RbacServiceProvider::class, \\Preflow\\Members\\MembersServiceProvider::class];\n");
         $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio'];\n");
         $this->write('vendor/composer/installed.json', (string) json_encode(['packages' => [

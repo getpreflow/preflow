@@ -3546,6 +3546,28 @@ a.folio-asset-use-row:hover { background: var(--c-row-hover); color: var(--c-tex
 .folio-chip:has(input:disabled) { color: var(--c-text-muted); background: var(--c-surface-2); border-color: var(--c-border); cursor: default; }
 .folio-chip:has(input:disabled:checked) { background: var(--c-neutral-soft); border-color: var(--c-border-strong); }
 .folio-chip:has(input:disabled) input { cursor: default; }
+/* Forced colors: the tick is a mask painted with the input's background, and that background is forced to
+   the canvas colour, so the tick would vanish. Draw it with borders (always painted in system colours) and
+   mark a ticked chip with a heavier Highlight edge, since its tinted background is gone too. */
+@media (forced-colors: active) {
+  .folio-chip input {
+    -webkit-mask: none;
+    mask: none;
+    box-sizing: content-box;
+    background: none;
+    border: solid CanvasText;
+    border-width: 0 2px 2px 0;
+  }
+  .folio-chip input:checked {
+    width: 5px;
+    height: 9px;
+    margin: 0 4px 3px 0;
+    transform: rotate(45deg);
+    border-color: Highlight;
+  }
+  .folio-chip:has(input:checked) { border-color: Highlight; outline: 1px solid Highlight; }
+  .folio-chip:has(input:focus-visible) { outline: 2px solid Highlight; outline-offset: 2px; }
+}
 .folio-chip[hidden] { display: none; }
 /* A tag chip (a picked relation item with its remove button): radius 6 on row-hover. */
 .folio-chip:has(> .folio-chip-remove) {

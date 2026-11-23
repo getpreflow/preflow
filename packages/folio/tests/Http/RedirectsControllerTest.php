@@ -178,6 +178,7 @@ final class RedirectsControllerTest extends TestCase
         $this->assertStringContainsString('/de/missing', $body);
         $this->assertMatchesRegularExpression('#/de/missing.*?Deutsch.*?<td class="is-number">3</td>#s', $body);
         $this->assertStringNotContainsString('/once', $body);
+        $this->assertStringContainsString('<p class="folio-help">Each address shown was asked for at least twice. The count is approximate', $body, 'the cap and the counting rule moved here from the subtitle');
         $this->assertStringContainsString('href="/folio/redirects/new?not_found=' . $id . '"', $body);
         $this->assertStringContainsString('action="/folio/redirects/not-found/' . $id . '/dismiss"', $body);
         $this->assertStringContainsString('name="_csrf_token"', $body);

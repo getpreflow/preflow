@@ -297,6 +297,19 @@ final class CoreRbacTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_has_roles_counts_a_role_of_any_population(): void
+    {
+        $store = new RoleStore($this->app()->container()->get(DataManager::class));
+        $this->assertFalse($store->hasRoles(), 'not installed: none');
+        $store->install();
+        $this->assertFalse($store->hasRoles(), 'installed, nothing stored');
+
+        $store->ensure('partners', 'agent', 'Agent', ['reports.view']);
+
+        $this->assertTrue($store->hasRoles(), 'a population of its own counts too');
+    }
+
+    #[RunInSeparateProcess]
     public function test_migrate_seeds_only_where_rbac_is_installed(): void
     {
         $this->write('config/roles.php', "<?php\nreturn ['staff' => ['editor' => ['page.edit']]];\n");

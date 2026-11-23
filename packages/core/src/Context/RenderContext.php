@@ -373,6 +373,10 @@ final readonly class RenderContext implements \JsonSerializable
     private function computeMemoKey(): string
     {
         $parts = [$this->locale, $this->reads->key(), $this->viewer->key(), $this->surface->key()];
+        if ($this->frozen) {
+            // A frozen time is a date of its own (0.84): a memo made as of one day never answers another.
+            $parts[] = 'at=' . $this->now->getTimestamp() . '.' . $this->now->format('u');
+        }
         $extensions = $this->extensions;
         ksort($extensions, SORT_STRING);
         foreach ($extensions as $class => $facet) {
