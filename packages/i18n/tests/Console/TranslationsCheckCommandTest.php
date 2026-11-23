@@ -82,6 +82,30 @@ final class TranslationsCheckCommandTest extends TestCase
         $this->assertStringContainsString('about.twig', $out);
     }
 
+    public function test_a_dynamic_key_prefix_is_fine_when_a_key_starts_with_it(): void
+    {
+        $this->langFile('vendor/acme/g/lang', 'fr', 'g', ['a' => 'A fr', 'nest' => ['b' => 'B fr'], 'kind_x' => 'X fr']);
+        $this->langFile('vendor/acme/g/lang', 'en', 'g', ['a' => 'A', 'nest' => ['b' => 'B'], 'kind_x' => 'X']);
+        $this->langFile('vendor/acme/g/lang', 'de', 'g', ['a' => 'A de', 'nest' => ['b' => 'B de'], 'kind_x' => 'X de']);
+        $this->file('vendor/acme/g/templates/dyn.twig', "{{ t('g.kind_' ~ row.kind) }}");
+
+        [$code, $out] = $this->check();
+
+        $this->assertSame(0, $code, $out);
+        $this->assertStringNotContainsString('g.kind_', $out);
+    }
+
+    public function test_a_dynamic_key_prefix_no_key_starts_with_is_reported(): void
+    {
+        $this->langFile('vendor/acme/g/lang', 'fr', 'g', ['a' => 'A fr', 'nest' => ['b' => 'B fr']]);
+        $this->file('vendor/acme/g/templates/dyn.twig', "{{ t('g.nothing_' ~ row.kind) }}");
+
+        [$code, $out] = $this->check();
+
+        $this->assertSame(1, $code, $out);
+        $this->assertStringContainsString('g.nothing_', $out);
+    }
+
     public function test_a_package_group_without_a_delivered_language_exits_1(): void
     {
         $this->file('vendor/composer/installed.json', (string) json_encode(['packages' => [

@@ -21,7 +21,8 @@ use Preflow\I18n\Translator;
  * from other files (DerivedKeys: model files' labels, which Folio registers) are checked
  * for package groups only: each needs a text in every delivered language other than English,
  * from a language file or the file's own map; a site type's plain label is a valid fallback.
- * Exits 1 when anything is missing. The package lists it in composer.json (extra.preflow.commands).
+ * A key literal followed by ~, t('group.kind_' ~ value), is a dynamic prefix: fine when any text
+ * starts with it (since 0.84.2). Exits 1 when anything is missing. The package lists it in composer.json (extra.preflow.commands).
  */
 final class TranslationsCheckCommand implements CommandInterface
 {
@@ -99,7 +100,8 @@ final class TranslationsCheckCommand implements CommandInterface
         $problems += $this->derived($container, $translator, $only, $delivered);
 
         $unknown = [];
-        foreach ($this->usedKeys($app, $registry, $groups) as $key => $where) {
+        [$used, $prefixes] = $this->usedKeys($app, $registry, $groups);
+        foreach ($used as $key => $where) {
             if ($only !== null && !str_starts_with($key, $only . '.')) {
                 continue;
             }
@@ -109,6 +111,21 @@ final class TranslationsCheckCommand implements CommandInterface
                 }
             }
             $unknown[$key] = $where;
+        }
+        // A dynamic key (t('group.kind_' ~ value)): its prefix is fine when a text starts with it.
+        foreach ($prefixes as $prefix => $where) {
+            if (($only !== null && !str_starts_with($prefix, $only . '.')) || isset($used[$prefix])) {
+                continue;
+            }
+            $group = strstr($prefix, '.', true) ?: $prefix;
+            foreach ($locales as $locale) {
+                foreach (array_keys($translator->entries($group, $locale)) as $key) {
+                    if (str_starts_with((string) $key, $prefix)) {
+                        continue 3;
+                    }
+                }
+            }
+            $unknown[$prefix] = $where;
         }
         if ($unknown !== []) {
             ksort($unknown);
@@ -170,10 +187,11 @@ final class TranslationsCheckCommand implements CommandInterface
     }
 
     /**
-     * t('key') uses in templates and model files: key => first "file:line".
+     * t('key') uses in templates and model files: key => first "file:line", and the dynamic ones
+     * (t('group.kind_' ~ value): a key literal followed by ~) as prefix => first "file:line".
      *
      * @param list<string> $groups
-     * @return array<string, string>
+     * @return array{0: array<string, string>, 1: array<string, string>}
      */
     private function usedKeys(Application $app, TranslationRegistry $registry, array $groups): array
     {
@@ -189,21 +207,27 @@ final class TranslationsCheckCommand implements CommandInterface
         }
 
         $used = [];
+        $prefixes = [];
         foreach (array_unique($roots) as $root) {
             foreach (self::files($root) as $file) {
                 $lines = file($file) ?: [];
                 foreach ($lines as $i => $line) {
-                    if (!preg_match_all('/(?<![\w$>:])t\(\s*([\'"])([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+)\1/', $line, $matches)) {
+                    if (!preg_match_all('/(?<![\w$>:])t\(\s*([\'"])([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+)\1(\s*~)?/', $line, $matches)) {
                         continue;
                     }
-                    foreach ($matches[2] as $key) {
-                        $used[$key] ??= self::relative($app, $file) . ':' . ($i + 1);
+                    foreach ($matches[2] as $n => $key) {
+                        $where = self::relative($app, $file) . ':' . ($i + 1);
+                        if ($matches[3][$n] !== '') {
+                            $prefixes[$key] ??= $where;
+                        } else {
+                            $used[$key] ??= $where;
+                        }
                     }
                 }
             }
         }
 
-        return $used;
+        return [$used, $prefixes];
     }
 
     /** @return list<string> templates (.twig, .blade.php) and model files (.json) under a folder */
