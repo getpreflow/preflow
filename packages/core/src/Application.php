@@ -1295,9 +1295,7 @@ final class Application
     {
         if (class_exists(\Nyholm\Psr7\Factory\Psr17Factory::class)
             && class_exists(\Nyholm\Psr7Server\ServerRequestCreator::class)) {
-            $factory = new \Nyholm\Psr7\Factory\Psr17Factory();
-            $creator = new \Nyholm\Psr7Server\ServerRequestCreator($factory, $factory, $factory, $factory);
-            $request = $creator->fromGlobals();
+            $request = \Preflow\Core\Http\GlobalRequest::create();
             // Built once the request carries its hypermedia clients: a header-only fragment is no Visit.
             $clients = $this->withHypermedia($request);
             $ctx = $this->requestContext($request, $clients);
