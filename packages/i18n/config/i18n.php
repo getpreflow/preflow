@@ -11,13 +11,16 @@ return [
     'fallback' => 'en',
     // "prefix": the locale is the first URL segment ('/de/about'); "none": no locale in URLs.
     'url_strategy' => 'prefix',
-    // Whether the locale middleware remembers the visitor's language in a cookie. Off with the prefix strategy (the URL carries the language), on with "none".
+    // Whether the locale middleware remembers the visitor's language in a cookie when a page is viewed. Off with the prefix strategy (the URL carries the language), on with "none".
+    // With redirect_bare page views never write it; only the language switch (/--locale/{code}?to=/path) does, whatever this says.
     'cookie' => false,
     // The name of that cookie (letters, digits and !#$%&'*+-.^_`|~).
     'cookie_name' => 'locale',
     // The default language gets a URL prefix too ('/en/about', home '/en'). Needs url_strategy "prefix".
     'prefix_default' => false,
-    // A bare page path ('/about') answers 302 to the visitor's language. Needs url_strategy "prefix".
+    // A bare page path ('/about') answers 302 to the visitor's language, and the language switch /--locale/{code}?to=/path
+    // (the one writer of the locale cookie) is on. Needs url_strategy "prefix" and a page lookup: preflow/routing's Router,
+    // Folio, or anything bound as Preflow\Core\Routing\PageExists.
     'redirect_bare' => false,
     // A prefixed language's home ends in a slash ('/de/', not '/de'). Needs url_strategy "prefix". Since 0.78.2.
     'home_slash' => false,

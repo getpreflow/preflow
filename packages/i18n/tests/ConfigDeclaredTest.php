@@ -13,6 +13,10 @@ use PHPUnit\Framework\TestCase;
  */
 final class ConfigDeclaredTest extends TestCase
 {
+    /**
+     * Every file that reads configFile('i18n'). A new reader must be added here, or its keys go
+     * unchecked and may be left undeclared.
+     */
     private const array READERS = [
         'core/src/Application.php',
         'core/src/Http/LocaleUrls.php',
@@ -46,7 +50,9 @@ final class ConfigDeclaredTest extends TestCase
     {
         $keys = [];
         foreach (self::READERS as $file) {
-            $source = (string) file_get_contents(dirname(__DIR__, 2) . '/' . $file);
+            $path = dirname(__DIR__, 2) . '/' . $file;
+            $this->assertFileExists($path, "READERS names {$file}, which is gone: rename it here too.");
+            $source = (string) file_get_contents($path);
             preg_match_all('/\$i18n(?:Config)?\[\s*\'(\w+)\'\s*\]/', $source, $m);
             array_push($keys, ...$m[1]);
             // A list of keys read in a loop, as LocaleUrls does for its flags.
