@@ -48,6 +48,21 @@ final class ListScreenTest extends TestCase
         return (string) $res->getBody();
     }
 
+    /** A fixed "now" at noon in the zone in use, so "3 hours earlier" is always earlier the same day (never "Yesterday"). */
+    private function noon(): \DateTimeImmutable
+    {
+        return new \DateTimeImmutable('2026-06-15 12:00:00', new \DateTimeZone(date_default_timezone_get()));
+    }
+
+    /** The list page as it reads at $now. */
+    private function htmlAt(string $uri, \DateTimeImmutable $now): string
+    {
+        return \Preflow\Core\Context\Contexts::run(
+            \Preflow\Testing\ContextFactory::forTest()->withClock(new \Preflow\Core\Context\FrozenClock($now)),
+            fn () => $this->html($uri),
+        );
+    }
+
     private function published(string $id, string $title): void
     {
         $this->publisher()->publish($this->working('post', $id, ['title' => ['en' => $title], 'slug' => ['en' => strtolower($title)]]), null);
@@ -244,11 +259,12 @@ final class ListScreenTest extends TestCase
     public function test_every_list_ends_in_a_changed_column_from_the_stored_change_date(): void
     {
         $this->writeModel('game', ['label' => 'Games', 'fields' => ['title' => ['type' => 'string']]]);
-        $at = new \DateTimeImmutable('-3 hours');
+        $now = $this->noon();
+        $at = $now->modify('-3 hours');
         $this->savedAt('game', 'g1', ['title' => 'Chess'], $at);
         $this->working('game', 'g2', ['title' => 'Go']); // written past the data layer: no date
 
-        $html = $this->html('/folio/game');
+        $html = $this->htmlAt('/folio/game', $now);
 
         $this->assertMatchesRegularExpression('#</a></th><th><a class="folio-sort" href="/folio/game\?sort=-_updated_at">Changed <span class="folio-sort-mark is-idle" aria-hidden="true"></span></a></th>#', $html);
         $iso = $at->setTimezone(new \DateTimeZone('UTC'))->format(DATE_ATOM);
@@ -297,9 +313,9 @@ final class ListScreenTest extends TestCase
     public function test_the_changed_column_reads_the_change_date_not_a_types_own_updated_field(): void
     {
         $this->writeModel('memo', ['label' => 'Memos', 'fields' => ['title' => ['type' => 'string'], 'updated_at' => ['type' => 'string']]]);
-        $this->savedAt('memo', 'm1', ['title' => 'First', 'updated_at' => '2020-01-02 03:04:05'], new \DateTimeImmutable('-3 hours'));
+        $this->savedAt('memo', 'm1', ['title' => 'First', 'updated_at' => '2020-01-02 03:04:05'], $this->noon()->modify('-3 hours'));
 
-        $html = $this->html('/folio/memo');
+        $html = $this->htmlAt('/folio/memo', $this->noon());
 
         $this->assertMatchesRegularExpression('#<td class="folio-cell-changed"><time datetime="[^"]+" title="[^"]+">3 hours ago</time></td>#', $html);
         $this->assertStringContainsString('2020-01-02 03:04:05', $html, 'the site\'s own field: an ordinary column');

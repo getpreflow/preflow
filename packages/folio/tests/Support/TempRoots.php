@@ -10,16 +10,21 @@ namespace Preflow\Folio\Tests\Support;
  * leaves the temp directory as it found it. Make roots with path() (nothing is created) or
  * directory() (created), never with sys_get_temp_dir() directly.
  *
+ * A root belongs to the process that registered it. A forked child inherits the registry and the
+ * shutdown sweep but removes only what it registered itself; otherwise it would delete the
+ * parent's roots, and children exiting together would race to recreate the same session folder.
+ *
  * @since 0.84.0
  */
 final class TempRoots
 {
-    /** @var array<string, true> */
+    /** @var array<string, int> path => pid of the process that registered it */
     private static array $roots = [];
-    /** @var array<string, true> removed already; swept once more at process end (a detached page-cache warmer can recreate files after its test) */
+    /** @var array<string, int> removed already; swept once more at process end (a detached page-cache warmer can recreate files after its test) */
     private static array $removed = [];
     private static bool $shutdownRegistered = false;
     private static ?string $sessions = null;
+    private static int $sessionsOwner = 0;
 
     /** A unique path under the temp directory, removed (file or tree) at the end of the test. */
     public static function path(string $prefix): string
@@ -43,9 +48,11 @@ final class TempRoots
      */
     public static function isolateSessions(): void
     {
-        if (self::$sessions !== null || session_status() === PHP_SESSION_ACTIVE) {
+        if ((self::$sessions !== null && self::$sessionsOwner === getmypid()) || session_status() === PHP_SESSION_ACTIVE) {
             return;
         }
+        // In a forked child the inherited folder is the parent's: the child gets one of its own.
+        self::$sessionsOwner = getmypid();
         self::$sessions = sys_get_temp_dir() . '/preflow_sessions_' . bin2hex(random_bytes(5));
         mkdir(self::$sessions, 0777, true);
         self::track(self::$sessions);
@@ -63,7 +70,7 @@ final class TempRoots
                 register_shutdown_function(self::sweep(...));
             });
         }
-        self::$roots[$path] = true;
+        self::$roots[$path] = getmypid();
         self::isolateSessions();
 
         return $path;
@@ -72,15 +79,19 @@ final class TempRoots
     /** Remove every registered path. */
     public static function clean(): void
     {
-        foreach (array_keys(self::$roots) as $path) {
+        $me = getmypid();
+        foreach (self::$roots as $path => $owner) {
+            if ($owner !== $me) {
+                continue;
+            }
             self::remove($path);
+            self::$removed[$path] = $owner;
+            unset(self::$roots[$path]);
         }
-        self::$removed += self::$roots;
-        self::$roots = [];
-        if (self::$sessions !== null) {
+        if (self::$sessions !== null && self::$sessionsOwner === $me) {
             // The session folder goes with the rest; the next test's sessions get it again.
             mkdir(self::$sessions, 0777, true);
-            self::$roots[self::$sessions] = true;
+            self::$roots[self::$sessions] = $me;
         }
     }
 
@@ -88,9 +99,10 @@ final class TempRoots
     public static function sweep(): void
     {
         self::clean();
-        self::$sessions !== null && self::remove(self::$sessions);
-        foreach (array_keys(self::$removed) as $path) {
-            self::remove($path);
+        $me = getmypid();
+        self::$sessions !== null && self::$sessionsOwner === $me && self::remove(self::$sessions);
+        foreach (self::$removed as $path => $owner) {
+            $owner === $me && self::remove($path);
         }
     }
 
