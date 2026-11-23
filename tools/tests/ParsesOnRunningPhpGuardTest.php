@@ -12,7 +12,7 @@ use PHPUnit\Framework\TestCase;
  * uses newer syntax (for example the pipe operator `|>`, PHP 8.5) fails here with its file and
  * line, instead of only when a suite happens to load it.
  *
- * Scanned: every .php file under the repository except vendor, node_modules, .git, .worktrees
+ * Scanned: every .php file, and every extensionless file whose first line is a php shebang, under the repository except vendor, node_modules, .git, .worktrees
  * and .superpowers (hidden folders are skipped as a whole).
  */
 final class ParsesOnRunningPhpGuardTest extends TestCase
@@ -38,6 +38,19 @@ final class ParsesOnRunningPhpGuardTest extends TestCase
         $this->assertSame([], $failures, 'These files do not parse on PHP ' . PHP_VERSION . ":\n" . implode("\n", $failures));
     }
 
+    /** An extensionless script (bin/…, preflow) that starts with `#!… php`. */
+    private static function hasPhpShebang(string $path): bool
+    {
+        $handle = @fopen($path, 'rb');
+        if ($handle === false) {
+            return false;
+        }
+        $first = (string) fgets($handle, 200);
+        fclose($handle);
+
+        return preg_match('/^#!.*\bphp/', $first) === 1;
+    }
+
     /** @return list<string> */
     private function files(string $root): array
     {
@@ -48,7 +61,7 @@ final class ParsesOnRunningPhpGuardTest extends TestCase
 
         $files = [];
         foreach (new \RecursiveIteratorIterator($filter) as $f) {
-            if ($f->getExtension() === 'php') {
+            if ($f->getExtension() === 'php' || ($f->getExtension() === '' && self::hasPhpShebang($f->getPathname()))) {
                 $files[] = $f->getPathname();
             }
         }
