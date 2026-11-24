@@ -407,6 +407,28 @@ final class ComponentEndpointStateTest extends TestCase
         $this->assertStringContainsString('renders no regions', $error->getMessage());
     }
 
+    public function test_region_through_a_wrapper_of_an_engine_without_regions_answers_400(): void
+    {
+        // The lazy engine renders regions only when the engine it builds does: here it doesn't.
+        $engine = new \Preflow\View\LazyTemplateEngine(static fn (): TemplateEngineInterface => new PlainEngine(), 'twig');
+        $id = $this->id(StateCounter::class, 'a');
+        foreach ([true, false] as $debug) {
+            $error = $this->httpError(fn () => $this->post(StateCounter::class, 'add', ['key' => 'a'], [
+                '_state' => [$id => $this->carried(StateCounter::class, ['key' => 'a'], 1)],
+                '_region' => 'results',
+            ], $this->renderer($engine), endpointDebug: $debug));
+
+            $this->assertSame(400, $error->statusCode, 'the request\'s mistake, never a 500');
+            if ($debug) {
+                $this->assertStringContainsString('renders no regions', $error->getMessage());
+                $this->assertStringContainsString(PlainEngine::class, $error->getMessage());
+            } else {
+                $this->assertSame('The action asked for a part of the component that does not exist.', $error->getMessage());
+                $this->assertNull($error->getPrevious());
+            }
+        }
+    }
+
     public function test_a_failing_render_sends_no_state_back(): void
     {
         $id = $this->id(BrokenRegionCounter::class, 'a');

@@ -311,7 +311,14 @@ final class ComponentEndpoint
         if ($region === null || $region === '') {
             return null;
         }
-        $regions = $this->renderer->regionsOf($component);
+        $notRendered = null;
+        try {
+            $regions = $this->renderer->regionsOf($component);
+        } catch (\LogicException $e) {
+            // An engine that passes regions on (lazy, sharing) to an engine that renders none.
+            $regions = null;
+            $notRendered = $e;
+        }
         if (is_string($region) && $regions !== null && in_array($region, $regions, true)) {
             return $region;
         }
@@ -321,10 +328,11 @@ final class ComponentEndpoint
         $template = $component->getTemplatePath();
         $reason = match (true) {
             !is_string($region) => sprintf('the region field is a %s, not a name', get_debug_type($region)),
+            $notRendered !== null => 'the template engine renders no regions (' . rtrim($notRendered->getMessage(), '.') . ')',
             $regions === null => 'the template engine renders no regions',
             default => sprintf("the template %s has no region '%s' (%s)", $template, $region, $regions === [] ? 'it has no regions' : 'its regions: ' . implode(', ', $regions)),
         };
 
-        throw new HttpException(400, sprintf('The action on %s asked for a region it cannot render: %s.', $component::class, $reason));
+        throw new HttpException(400, sprintf('The action on %s asked for a region it cannot render: %s.', $component::class, $reason), $notRendered);
     }
 }
