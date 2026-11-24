@@ -56,7 +56,7 @@ final class ComponentRenderer
      */
     private \WeakMap $placedIn;
 
-    /** @var \WeakMap<Component, true> parents that stand in for the one on the page (placeInside()) */
+    /** @var \WeakMap<Component, true> parents that stand in for the one on the page (placeInside(), or placeInsideLazily() once built) */
     private \WeakMap $standIns;
 
     /** @var \WeakMap<Component, true> */
@@ -264,7 +264,8 @@ final class ComponentRenderer
 
     /**
      * The component whose template rendered $component, null for one rendered on its own (by a
-     * page template, the endpoint, a live part) unless placeInside() named its parent on the page.
+     * page template, the endpoint, a live part) unless placeInside() or placeInsideLazily() named
+     * its parent on the page.
      *
      * @since 0.86.0
      */
@@ -315,8 +316,9 @@ final class ComponentRenderer
 
     /**
      * Whether $component has a parent on the page: it renders inside another component's
-     * template, or placeInside() named the parent it sits in on the page. Answers from what is
-     * known about the parent being there, without asking for the parent itself.
+     * template, or placeInside() or placeInsideLazily() named the parent it sits in on the page.
+     * Answers from what is known about the parent being there, without asking for the parent
+     * itself.
      *
      * @since 0.87.0
      */
@@ -355,7 +357,8 @@ final class ComponentRenderer
     }
 
     /**
-     * Whether $component stands in for a parent on the page (placeInside()): its props other
+     * Whether $component stands in for a parent on the page (placeInside(), or placeInsideLazily()
+     * once built): its props other
      * than its key and its state are not known here.
      *
      * @since 0.86.0
@@ -660,7 +663,7 @@ final class ComponentRenderer
         if ($parent !== null && $parent !== $component) {
             $this->parents[$component] = $parent;
         } elseif ($parent === null) {
-            // Rendered on its own this time: parentOf() falls back to the parent placeInside() named.
+            // Rendered on its own this time: parentOf() falls back to the parent placeInside() or placeInsideLazily() named.
             unset($this->parents[$component]);
         }
         $this->stack[] = $component;

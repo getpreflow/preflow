@@ -390,6 +390,11 @@ A small, fixed set of words that every driver translates (`Preflow\Core\Http\Hyp
 
   In Blade: `@if($hd->hasParent()) … @endif`. Like the other short calls it throws a
   `LogicException` outside a component's template.
+
+  `hd.hasParent()` says only that a parent is there, not that it can be called. A child rendered
+  alone (its own action or refresh) whose parent keeps no state has a parent, so `hasParent()` is
+  true, but the `component: 'parent'` call still throws (the rule above: the parent needs
+  `#[State]`). Give the parent state when its children call it.
 - The set stays small: a new option comes only when at least two real templates need it.
   Everything else goes through the escape hatch.
 
