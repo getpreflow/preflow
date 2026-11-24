@@ -23,6 +23,7 @@ final class TranslatorTest extends TestCase
         $this->createLangFile('en', 'app', [
             'name' => 'Preflow',
             'welcome' => 'Welcome, :name!',
+            'pager' => 'Page :page of :pages',
             'nested' => [
                 'deep' => 'Nested value',
             ],
@@ -89,6 +90,13 @@ final class TranslatorTest extends TestCase
         $result = $t->get('app.welcome', ['name' => 'Steffen']);
 
         $this->assertSame('Welcome, Steffen!', $result);
+    }
+
+    public function test_longer_placeholder_is_not_cut_by_a_shorter_one(): void
+    {
+        $t = new Translator($this->langDir, 'en', 'en');
+
+        $this->assertSame('Page 1 of 3', $t->get('app.pager', ['page' => 1, 'pages' => 3]));
     }
 
     public function test_nested_key(): void

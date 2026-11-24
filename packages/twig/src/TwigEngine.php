@@ -45,6 +45,8 @@ final class TwigEngine implements TemplateEngineInterface
             'autoescape' => 'html',
         ]);
 
+        $this->twig->getRuntime(\Twig\Runtime\EscaperRuntime::class)->addSafeClass(\Preflow\View\SafeHtml::class, ['html']);
+
         $this->twig->addExtension(new PreflowExtension($assetCollector, $geoCollector, $seoContext));
         $this->twig->addExtension(new LiveExtension($liveParts, fn (string $name): ?string => $this->componentTemplates[$name] ?? null));
         $this->twig->addExtension(new FreshnessExtension($pageCache));

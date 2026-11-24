@@ -60,6 +60,9 @@ final class BladeEngine implements TemplateEngineInterface
         // @live … @endlive, taken out of the source before Blade compiles it (raw @php blocks too)
         $this->compiler->prepareStringsForCompilationUsing(fn (string $value): string => $this->compileLive($value));
 
+        // {{ }} prints SafeHtml as it is and escapes everything else
+        $this->compiler->setEchoFormat('\\Preflow\\Blade\\Escape::print(%s)');
+
         // Register @css / @endcss directive pair
         $this->registerAssetDirectives($assetCollector);
 

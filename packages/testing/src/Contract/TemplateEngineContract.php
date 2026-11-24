@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Testing\Contract;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\View\SafeHtml;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\View\TemplateFunctionDefinition;
 
@@ -95,6 +96,15 @@ abstract class TemplateEngineContract extends TestCase
 
         $this->assertStringNotContainsString('<b', $out, 'a variable is printed HTML-escaped unless marked safe');
         $this->assertSame($html, html_entity_decode($out, ENT_QUOTES | ENT_HTML5, 'UTF-8'), 'the escaped output decodes to the value');
+    }
+
+    public function test_safe_html_is_not_escaped(): void
+    {
+        $this->engine->addGlobal('site', new SafeHtml('<b>a</b>'));
+
+        $this->assertSame('<b>a</b>', $this->render('global'), 'SafeHtml is printed as it is');
+        $this->assertSame('<b>a</b>', $this->render('escaped', ['html' => new SafeHtml('<b>a</b>')]));
+        $this->assertSame('&lt;b&gt;', $this->render('escaped', ['html' => '<b>']), 'a plain string is still escaped');
     }
 
     public function test_a_safe_function_prints_its_html_as_it_is(): void
