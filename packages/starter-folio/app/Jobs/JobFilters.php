@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use Preflow\Components\StateValue;
+
 /**
  * What a visitor asked for on the job list. Everything arrives from the address bar or a form,
  * so fromArray() never refuses: anything odd becomes the default, and no filter value can
  * cause an error page.
+ *
+ * It is also the state of the JobSearch component (a StateValue): toState() gives the six
+ * filters as plain values, and fromState() builds the filters from them again.
  */
-final readonly class JobFilters
+final readonly class JobFilters implements StateValue
 {
     public const array TYPES = ['full_time', 'part_time', 'contract', 'internship'];
     public const array REMOTE = ['no', 'hybrid', 'full'];
@@ -75,14 +80,27 @@ final readonly class JobFilters
     /** @param array<string, mixed> $changes */
     public function with(array $changes): self
     {
-        return self::fromArray(array_merge([
+        return self::fromArray(array_merge($this->toState(), $changes));
+    }
+
+    /** @return array{q: string, place: ?string, type: ?string, remote: ?string, view: string, page: int} */
+    public function toState(): array
+    {
+        return [
             'q' => $this->q,
             'place' => $this->place,
             'type' => $this->type,
             'remote' => $this->remote,
             'view' => $this->view,
             'page' => $this->page,
-        ], $changes));
+        ];
+    }
+
+    /** @param array<string, mixed> $state */
+    public static function fromState(array $state): static
+    {
+        // Read like any input, so a state of an older shape (a filter more or less) still works.
+        return self::fromArray($state);
     }
 
     /** A trimmed string, cut to $max characters; anything that is not a string is ''. */

@@ -1,37 +1,28 @@
-{% set results %}
-    {{ component('JobResults', { jobs: jobs, total: total, view: filters.view }) }}
-    {{ component('Pager', { lastPage: lastPage, query: filters.toQuery(), search: componentClass, searchId: componentId }) }}
-{% endset %}
+{# Without JavaScript this is a plain GET form to /jobs. With it, a change runs the search action
+   and only the results region comes back. Typing searches once the visitor pauses (debounce, on the
+   search box only, so a chip click goes at once); latest: a newer search replaces one still running,
+   so a slow, older answer never overwrites a newer one. #}
+<form class="job-search__form" method="get" action="/jobs"
+    {{ hd.post('search', {}, { target: 'results', on: ['change', 'submit'], latest: true }) }}>
+    <label class="job-search__label" for="{{ componentId }}-q">{{ t('app.search.label') }}</label>
+    <input class="job-search__q" id="{{ componentId }}-q" type="search" name="q" value="{{ filters.q }}"
+        placeholder="{{ t('app.search.placeholder') }}" maxlength="100" autocomplete="off"
+        {{ hd.post('search', {}, { target: 'results', on: 'input', debounce: 300, latest: true }) }}>
 
-{% if resultsOnly %}
-    {# The search action's answer: htmx puts it inside the results region, the form stays as it is. #}
-    {{ results }}
-{% else %}
-    {# Without JavaScript this is a plain GET form to /jobs. With it, every change posts the form to
-       the search action; hx-sync="this:replace" drops a request still running when a newer one starts,
-       so a slow, older answer never overwrites a newer one. #}
-    <form class="job-search__form" method="get" action="/jobs"
-        {{ hd.post('search', componentClass, componentId, {}, constant('Preflow\\Htmx\\SwapStrategy::InnerHTML'), {
-            'hx-target': '#' ~ componentId ~ '-results',
-            'hx-trigger': 'input changed delay:300ms from:[name=q], change, submit',
-            'hx-sync': 'this:replace',
-        }) | raw }}>
-        <label class="job-search__label" for="{{ componentId }}-q">{{ t('app.search.label') }}</label>
-        <input class="job-search__q" id="{{ componentId }}-q" type="search" name="q" value="{{ filters.q }}"
-            placeholder="{{ t('app.search.placeholder') }}" maxlength="100" autocomplete="off">
+    <div class="job-search__filters">
+        {{ component('FilterChips', { key: 'place', name: 'place', legend: t('app.search.place'), options: places, selected: filters.place }) }}
+        {{ component('FilterChips', { key: 'type', name: 'type', legend: t('app.search.type'), options: constant('App\\Jobs\\JobFilters::TYPES'), labels: 'app.type.', selected: filters.type }) }}
+        {{ component('FilterChips', { key: 'remote', name: 'remote', legend: t('app.search.remote'), options: constant('App\\Jobs\\JobFilters::REMOTE'), labels: 'app.remote.', selected: filters.remote }) }}
+        {{ component('ViewToggle', { view: filters.view }) }}
+    </div>
 
-        <div class="job-search__filters">
-            {{ component('FilterChips', { key: 'place', name: 'place', legend: t('app.search.place'), options: places, selected: filters.place }) }}
-            {{ component('FilterChips', { key: 'type', name: 'type', legend: t('app.search.type'), options: constant('App\\Jobs\\JobFilters::TYPES'), labels: 'app.type.', selected: filters.type }) }}
-            {{ component('FilterChips', { key: 'remote', name: 'remote', legend: t('app.search.remote'), options: constant('App\\Jobs\\JobFilters::REMOTE'), labels: 'app.remote.', selected: filters.remote }) }}
-            {{ component('ViewToggle', { view: filters.view }) }}
-        </div>
+    <noscript><button class="job-search__submit" type="submit">{{ t('app.search.submit') }}</button></noscript>
 
-        <noscript><button class="job-search__submit" type="submit">{{ t('app.search.submit') }}</button></noscript>
-
-        <div id="{{ componentId }}-results" class="job-search__results">{{ results }}</div>
-    </form>
-{% endif %}
+    {% region 'results' { class: 'job-search__results' } %}
+        {{ component('JobResults', { jobs: jobs, total: total, view: filters.view }) }}
+        {{ component('Pager', { lastPage: lastPage, query: filters.toQuery() }) }}
+    {% endregion %}
+</form>
 
 {% apply css %}
 .job-search__label { display: block; font-weight: 600; margin-bottom: 0.25rem; }
@@ -56,5 +47,7 @@
     cursor: pointer;
 }
 .job-search__results { margin-top: 1.25rem; }
-.job-search__form.htmx-request .job-search__results { opacity: 0.6; transition: opacity 0.2s; }
+/* While a search or a page runs, the element that started it (the form, the search box or a
+   pager link) carries preflow-busy: the results dim until the new ones arrive. */
+.job-search__form:is(.preflow-busy, :has(.preflow-busy)) .job-search__results { opacity: 0.6; transition: opacity 0.2s; }
 {% endapply %}

@@ -68,4 +68,20 @@ final class JobFiltersTest extends TestCase
         $this->assertNull($f->remote);
         $this->assertSame('php', $f->q);
     }
+
+    public function test_state_round_trip(): void
+    {
+        $f = JobFilters::fromArray(['q' => 'php', 'place' => 'Berlin', 'type' => 'contract', 'remote' => 'full', 'view' => 'list', 'page' => '2']);
+
+        $this->assertEquals($f, JobFilters::fromState($f->toState()));
+        $this->assertSame(['q' => 'php', 'place' => 'Berlin', 'type' => 'contract', 'remote' => 'full', 'view' => 'list', 'page' => 2], $f->toState());
+    }
+
+    public function test_state_of_an_older_shape_still_reads(): void
+    {
+        $f = JobFilters::fromState(['q' => 'php', 'salary' => 'high']);
+
+        $this->assertSame('php', $f->q);
+        $this->assertSame(1, $f->page);
+    }
 }

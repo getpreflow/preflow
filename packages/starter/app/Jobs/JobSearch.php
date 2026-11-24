@@ -13,25 +13,21 @@ use Preflow\Data\SortDirection;
 /** Everything the public pages read. Only published jobs ever leave this class. */
 final class JobSearch
 {
+    /** Jobs per page of search(), unless it is asked for another number. */
+    public const int PER_PAGE = 12;
+
     public function __construct(private readonly DataManager $data) {}
 
-    public function search(JobFilters $f, int $perPage = 12): PaginatedResult
+    public function search(JobFilters $f, int $perPage = self::PER_PAGE): PaginatedResult
     {
-        $query = $this->published();
-        if ($f->q !== '') {
-            $query->searchLoose($f->q, ['title', 'description']);
-        }
-        if ($f->place !== null) {
-            $query->where('place', $f->place);
-        }
-        if ($f->type !== null) {
-            $query->where('employmentType', $f->type);
-        }
-        if ($f->remote !== null) {
-            $query->where('remote', $f->remote);
-        }
+        return $this->matching($f)->orderBy('publishedAt', SortDirection::Desc)->paginate($perPage, $f->page);
+    }
 
-        return $query->orderBy('publishedAt', SortDirection::Desc)->paginate($perPage, $f->page);
+    /** The last page search() has for $f, counted without loading the jobs (1 when none match). */
+    public function lastPage(JobFilters $f, int $perPage = self::PER_PAGE): int
+    {
+        // total() ignores the limit, so this counts in the database.
+        return max(1, (int) ceil($this->matching($f)->limit(1)->get()->total() / $perPage));
     }
 
     /** @return list<Job> */
@@ -114,6 +110,26 @@ final class JobSearch
         }
 
         return $companies;
+    }
+
+    /** The published jobs that pass $f's filters (the page is search()'s). */
+    private function matching(JobFilters $f): \Preflow\Data\QueryBuilder
+    {
+        $query = $this->published();
+        if ($f->q !== '') {
+            $query->searchLoose($f->q, ['title', 'description']);
+        }
+        if ($f->place !== null) {
+            $query->where('place', $f->place);
+        }
+        if ($f->type !== null) {
+            $query->where('employmentType', $f->type);
+        }
+        if ($f->remote !== null) {
+            $query->where('remote', $f->remote);
+        }
+
+        return $query;
     }
 
     private function published(): \Preflow\Data\QueryBuilder

@@ -4,14 +4,19 @@ declare(strict_types=1);
 
 namespace Tests\Site;
 
+use App\Components\JobSearch\JobSearch as SearchComponent;
 use App\Models\Job;
+use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Application;
+use Preflow\Core\Http\Hypermedia\DrivesComponentActions;
 use Preflow\Data\DataManager;
 use Preflow\Testing\TestResponse;
+use Preflow\Testing\WebApplication;
 use Psr\Http\Message\ResponseInterface;
 use Tests\Support\StarterApp;
 
-/** The /jobs page: filters in the address, the search action behind the form, view toggle and paging. */
+/** The /jobs page: filters in the address, the search and page actions, view toggle and paging. */
 final class JobSearchTest extends TestCase
 {
     use StarterApp;
@@ -52,26 +57,37 @@ final class JobSearchTest extends TestCase
         return $matches[1];
     }
 
-    /** @return array{0: string, 1: string} the form's hx-post URL and the id of its results region */
-    private function form(string $html): array
+    /** The id of the JobSearch component on /jobs (it has no key, so there is one). */
+    private function searchId(): string
     {
-        $this->assertSame(1, preg_match('#<form[^>]*hx-post="([^"]+)"#', $html, $post), 'the form posts the search action');
-        $this->assertSame(1, preg_match('#<form[^>]*hx-target="\#([^"]+)"#', $html, $target));
-
-        return [html_entity_decode($post[1]), $target[1]];
+        return $this->container()->make(SearchComponent::class)->getComponentId();
     }
 
     /**
-     * What htmx sends when the form changes: the form's values to its hx-post URL, with the
-     * results region as HX-Target.
+     * Runs an action of the job search on $page (the HTML of /jobs) the way the page does: with
+     * the state the page carries, and the results region as the part that comes back.
      *
-     * @param array<string, mixed> $body
+     * @param array<string, mixed> $params the form's fields and the call's values
      */
-    private function search(array $body): ResponseInterface
+    private function act(string $page, string $action, array $params): ResponseInterface
     {
-        [$url, $results] = $this->form($this->get('/jobs')->body());
+        return WebApplication::componentAction(
+            $this->app(),
+            $page,
+            SearchComponent::class,
+            $action,
+            $params + [DrivesComponentActions::REGION_FIELD => 'results'],
+        );
+    }
 
-        return $this->send('POST', $url, $body, ['HX-Request' => 'true', 'HX-Target' => $results]);
+    /**
+     * What happens when the form on /jobs changes: the search action with the form's fields.
+     *
+     * @param array<string, mixed> $form
+     */
+    private function search(array $form): ResponseInterface
+    {
+        return $this->act($this->get('/jobs')->body(), 'search', $form);
     }
 
     public function test_url_filters_render_server_side(): void
@@ -127,19 +143,14 @@ final class JobSearchTest extends TestCase
         $this->assertSame([], $response->getHeader('Set-Cookie'));
     }
 
-    public function test_form_targets_results_and_syncs(): void
+    public function test_form_works_without_javascript(): void
     {
         $html = $this->get('/jobs')->body();
 
         $this->assertMatchesRegularExpression('#<form[^>]*method="get"[^>]*action="/jobs"#', $html);
-        $this->assertMatchesRegularExpression('#<form[^>]*hx-sync="this:replace"#', $html);
-        // Enter in the search box submits the form: htmx must take that over, not the browser.
-        $this->assertMatchesRegularExpression('#<form[^>]*hx-trigger="[^"]*\bsubmit\b#', $html);
-        $this->assertMatchesRegularExpression('#<form[^>]*hx-swap="innerHTML"#', $html);
-        [, $results] = $this->form($html);
-        $this->assertStringEndsWith('-results', $results);
-        $this->assertStringContainsString('id="' . $results . '"', $html);
         $this->assertMatchesRegularExpression('#<noscript>\s*<button[^>]*type="submit"#', $html);
+        // The results are a region of the form: an action renders only that part.
+        $this->assertMatchesRegularExpression('#<div id="' . preg_quote($this->searchId(), '#') . '-results" class="job-search__results">#', $html);
     }
 
     public function test_view_toggle_list(): void
@@ -177,18 +188,109 @@ final class JobSearchTest extends TestCase
         $this->assertStringNotContainsString('rel="prev"', $this->get('/jobs')->body());
     }
 
-    public function test_pager_links_run_the_search_action_with_their_page(): void
+    public function test_pager_links_run_the_page_action(): void
     {
-        $html = $this->get('/jobs?remote=full')->body();
-        $this->assertSame(1, preg_match('#href="/jobs\?remote=full&amp;page=2" rel="next"[^>]*hx-post="([^"]+)"#', $html, $next));
-        [, $results] = $this->form($html);
+        $page = $this->get('/jobs?remote=full')->body();
+        $this->assertStringContainsString('href="/jobs?remote=full&amp;page=2" rel="next"', $page);
 
-        // htmx sends the enclosing form's values with the link's request.
-        $response = $this->send('POST', html_entity_decode($next[1]), ['remote' => 'full'], ['HX-Request' => 'true', 'HX-Target' => $results]);
+        // The link sends its page; the filters are the state the page carries.
+        $response = $this->act($page, 'page', ['page' => 2]);
 
         $all = $this->expected(fn (Job $job): bool => $job->remote === 'full');
         $this->assertSame(array_slice($all, 12, 12), $this->listed((string) $response->getBody()));
         $this->assertSame('/jobs?remote=full&page=2', $response->getHeaderLine('HX-Push-Url'));
+    }
+
+    public function test_pager_keeps_the_filters(): void
+    {
+        // A visitor opens /jobs, picks "full" remote, then pages on: the page action never sees
+        // the filters as input, they come back from the state the search left on the page.
+        $page = $this->get('/jobs')->body();
+        $searched = (string) $this->act($page, 'search', ['remote' => 'full'])->getBody();
+        $state = WebApplication::stateFrom($searched, $this->searchId());
+        $this->assertNotNull($state, 'the answer carries the new state');
+        $page = str_replace((string) WebApplication::stateFrom($page, $this->searchId()), $state, $page);
+
+        $response = $this->act($page, 'page', ['page' => 2]);
+
+        $all = $this->expected(fn (Job $job): bool => $job->remote === 'full');
+        $this->assertGreaterThan(12, count($all));
+        $this->assertSame(array_slice($all, 12, 12), $this->listed((string) $response->getBody()));
+        $this->assertSame('/jobs?remote=full&page=2', $response->getHeaderLine('HX-Push-Url'));
+    }
+
+    public function test_page_action_checks_its_page(): void
+    {
+        $page = $this->get('/jobs')->body();
+
+        foreach (['two', 0, -1, ['2']] as $bad) {
+            $this->assertSame(400, $this->act($page, 'page', ['page' => $bad])->getStatusCode(), var_export($bad, true));
+        }
+        // Past the last page (the list may have got shorter since the page was rendered): the last page.
+        $last = $this->act($page, 'page', ['page' => 99]);
+        $this->assertSame(array_slice($this->expected(fn (): bool => true), 24), $this->listed((string) $last->getBody()));
+        $this->assertSame('/jobs?page=3', $last->getHeaderLine('HX-Push-Url'));
+    }
+
+    public function test_search_runs_once_per_action(): void
+    {
+        $page = $this->get('/jobs')->body();
+
+        [, $pageReads] = $this->jobListReads(fn (Application $app): ResponseInterface => $app->handle(
+            (new Psr17Factory())->createServerRequest('GET', '/jobs'),
+        ));
+        [$answer, $actionReads] = $this->jobListReads(fn (Application $app): ResponseInterface => WebApplication::componentAction(
+            $app,
+            $page,
+            SearchComponent::class,
+            'search',
+            ['q' => 'engineer', DrivesComponentActions::REGION_FIELD => 'results'],
+        ));
+
+        $this->assertSame(200, $answer->getStatusCode());
+        // The action reads the job list as often as the page does: the places once, the search
+        // once. Nothing searches first with the filters the action is about to change.
+        $this->assertGreaterThan(0, $pageReads);
+        $this->assertSame($pageReads, $actionReads);
+    }
+
+    /**
+     * Runs $request on a freshly booted app and counts how often it read a list of jobs.
+     *
+     * @param \Closure(Application): ResponseInterface $request
+     * @return array{0: ResponseInterface, 1: int}
+     */
+    private function jobListReads(\Closure $request): array
+    {
+        $app = $this->app();
+        [$response, $reads] = $app->container()->get(DataManager::class)->captureReads(fn (): ResponseInterface => $request($app));
+        $listings = array_filter(
+            $reads,
+            static fn (array $read): bool => $read[0] === 'read' && str_contains((string) $read[2], 'job') && ($read[3] ?? null) === null,
+        );
+
+        return [$response, count($listings)];
+    }
+
+    public function test_tampered_state_is_refused(): void
+    {
+        $page = $this->get('/jobs?remote=full')->body();
+        $state = (string) WebApplication::stateFrom($page, $this->searchId());
+        $this->assertNotSame('', $state);
+        $tampered = str_replace($state, substr($state, 0, -2) . (str_ends_with($state, 'AA') ? 'BB' : 'AA'), $page);
+
+        $this->assertSame(403, $this->act($tampered, 'page', ['page' => 2])->getStatusCode());
+    }
+
+    public function test_pager_label_reads_page_1_of_3(): void
+    {
+        $this->assertMatchesRegularExpression('#<span class="pager__where">\s*Page 1 of 3\s*</span>#', $this->get('/jobs')->body());
+    }
+
+    public function test_jobs_page_stays_cacheable(): void
+    {
+        WebApplication::assertPageCacheable(WebApplication::boot($this->starterRoot), '/jobs');
+        WebApplication::assertPageCacheable(WebApplication::boot($this->starterRoot), '/jobs?remote=full&page=2');
     }
 
     public function test_odd_values_do_not_fail(): void
