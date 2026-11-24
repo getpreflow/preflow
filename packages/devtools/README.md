@@ -307,6 +307,32 @@ php preflow pages:refresh --all
 
 `cache:clear pages` empties the page cache without rebuilding anything (and drops the queue).
 
+### `pages:why <path> [--locale=de]` — why is this page not cached? (since 0.85)
+
+The page cache stores a page only when it renders the same for every visitor. A page that shows
+the visitor's name, a random number or a cookie is left out, and until now the only sign was a
+slow page. `pages:why` renders the page as the cache does, renders it once more as another
+anonymous visitor, and compares the two as `page_cache.verify` does. Nothing is stored or served,
+and it works with `app.debug` on, where the cache itself does not run.
+
+```
+php preflow pages:why /club
+# /club would not be cached: differs per visitor outside live parts (body at byte 1204 in component StampCard-3fa91c2e)
+# Hint: Move the per-visitor content into a live block ({% live %} in a template, @live in Blade) or into a #[Live] component: ...
+php preflow pages:why /about --locale=de
+# /about would be cached.
+```
+
+| Exit | Meaning |
+|---|---|
+| 0 | The page would be cached. |
+| 1 | It would not be: the reason is printed, with a hint when there is a usual fix (move the part into a `{% live %}` block or a `#[Live]` component; a refusal such as a cookie, a session, a status other than 200 or a signed-in user says that instead). Also when the page cache is off. |
+| 2 | Usage error, an unknown locale, or the page answers 404. |
+
+The same log line the cache writes when it refuses a page now names the part that differed. In a
+test, `WebApplication::assertPageCacheable($app, '/club')` (preflow/testing) fails with the same
+reason.
+
 ### `optimize [--check]` — write the boot manifest
 
 Writes `bootstrap/cache/boot.php` (atomically): the merged config, the package discovery data
@@ -368,6 +394,37 @@ In debug mode `DebugToolbarMiddleware` adds the toolbar to HTML responses. Since
   CSP inspector checks the page against its real nonces. `DebugToolbar::render()` and
   `CspInspector::issues()` take an optional `$styleNonce`; `render()` also an optional
   `RequestLimits`.
+
+## Editing config files: `ConfigFileEditor` (since 0.85)
+
+An installer that adds a provider or a guard to a developer's config file must not destroy what
+the developer wrote. `Preflow\DevTools\Config\ConfigFileEditor` is the one way to do it. It
+works on files that `return [ ... ];`.
+
+```php
+$editor = new ConfigFileEditor($basePath . '/config');
+
+$editor->addToList('providers.php', ['\Vendor\Pkg\PkgServiceProvider::class'], 'start'); // or 'end'
+$editor->addKey('auth.php', ['guards'], 'staff', "[\n    'class' => ...,\n]");
+$editor->addToNestedList('auth.php', ['session', 'paths'], "'/admin'");
+$editor->create('folio.php', $contents);   // never overwrites
+$config = $editor->read('folio.php');      // the evaluated array, or null
+```
+
+Each call returns a `ConfigEdit` with a `status` (`written`, `changed`, `already` or `refused`), a
+`message` and, when refused, the `snippet` to add by hand (`isRefused()`).
+
+- **One insertion, nothing else.** The editor adds lines at a spot it recognises with the PHP
+  tokenizer; every other byte, comments included, stays. A value that is already there
+  (compared by evaluated value) is not added twice, and an existing key is never changed.
+- **It checks its own work.** After writing, the file is evaluated again in a separate PHP
+  process (with the app's `vendor/autoload.php`) and must equal the old values plus exactly the
+  addition. If not, the original bytes are put back and the edit is refused.
+- **It refuses what it cannot read safely:** `array()` syntax, a computed return, a `match`, a file
+  that does not parse, a missing path, and a file that is a symbolic or hard link. The expressions
+  you pass are evaluated: give it code you wrote, never user input.
+
+`folio:install` is built on it.
 
 ## Commands from packages and the app
 

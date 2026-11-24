@@ -52,6 +52,20 @@ view) sends nothing, and what it captured is dropped when its frame ends: `handl
 the response. To look at what a render would have sent, render it with `Application::render()`,
 whose `RenderResult` lists it (`captured`, `wouldSend()`).
 
+### Is this page cacheable? (0.85)
+
+A page that differs per visitor is silently left out of the page cache. Assert in a test that
+yours is not:
+
+```php
+WebApplication::assertPageCacheable(WebApplication::boot($basePath), '/club', 'de'); // locale is optional
+```
+
+It renders the page as the cache does and once more as another anonymous visitor. The failure
+message is the reason `php preflow pages:why /club` prints (the differing part, or a refusal such
+as a cookie or a status other than 200), with the usual fix as a hint. Nothing is stored. It needs
+the page cache to be on for the app (`page_cache.enabled`).
+
 ## Frame balance (0.81)
 
 `Preflow\Testing\FrameBalanceExtension` checks after every test that no render frame was left

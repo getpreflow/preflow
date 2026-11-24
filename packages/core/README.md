@@ -203,6 +203,17 @@ $app->boot();
 $response = $app->handle($request);
 ```
 
+`Application::create($basePath, ?bool $console = null)` decides whether the app answers requests
+or runs commands from `runningInConsole()`, not from the PHP SAPI: with `$console` left out it is
+`PHP_SAPI === 'cli'`; pass `false` to boot a web app from a script (as `WebApplication::boot()`
+does), and the failure guard that turns a crash while booting into a 500 error page is installed
+then. Before 0.85 that decision followed the SAPI.
+
+**A provider that does not exist.** A class in `config/providers.php` that cannot be found (a typo,
+or a package that is not installed) used to be skipped without a word. Now, with `app.debug` on,
+boot throws a `RuntimeException` that names the class and `config/providers.php`. In production the
+site keeps running and logs one error line with the same text.
+
 `boot()` selects the error renderer based on `app.debug`, boots all providers, and wires the kernel. `handle()` runs the middleware pipeline and dispatches to the matched route.
 
 **Work that only some requests need.** A provider can leave setup out of boot and do it on the

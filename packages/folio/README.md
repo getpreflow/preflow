@@ -26,15 +26,85 @@ Without it Folio works as usual and simply leaves out what is not there: no "Wri
 Settings → AI and no matching permissions in the roles, and those addresses answer 404. Translate
 (and the `ai.translate` permission) stays only with a translator of the site's own.
 
-> **Ready-wired app:** `composer create-project preflow/starter-folio myapp` gives you a seeded
-> job board with Folio already configured. The steps below are for adding Folio to an existing
-> app. If Composer refuses a dev version, allow it in your `composer.json`
+> **Starting from nothing:** `composer create-project preflow/skeleton myapp` gives you an empty app
+> that `folio:install` (below) turns into an app with an admin. `composer create-project
+> preflow/starter-folio myapp` gives you a seeded job board with Folio already configured. If
+> Composer refuses a dev version, allow it in your `composer.json`
 > (`"minimum-stability": "dev"`, `"prefer-stable": true`) or require it explicitly with
 > `composer require preflow/folio:@dev`.
 
 ## Getting started
 
-Folio is opt-in: a plain Preflow app (`preflow/starter`) does not wire it for you; `preflow/starter-folio` does. Three small steps.
+### The short way: `folio:install` (since 0.85)
+
+Adding Folio to an app by hand means editing five config files, running four commands and
+creating a first account. Miss one step and the admin does not boot, or boots without a way to
+sign in. One command does all of it:
+
+```bash
+composer require preflow/folio preflow/rbac
+php preflow folio:install
+```
+
+`folio:install` asks for the first admin's e-mail address, name and password (typed twice, not
+shown), then prints each step with what it did. It ends with a summary and the address to open,
+`/folio` unless you chose another path.
+
+| Option | What it does |
+|---|---|
+| `--path=/admin` | Mount the admin there instead of `/folio`. |
+| `--email=you@example.com`, `--name="Your Name"` | Skip the questions. |
+| `--no-password` | Create the admin without a password; the output tells you to run `staff:password` or `staff:invite`. |
+| `--dry-run` | Print what would be written and run, and change nothing. |
+
+A password is never an option: it is asked for on the terminal, or read as one line from standard
+input when there is no terminal (`--email` is then required, or `--no-password`). Without either,
+the command stops with a message naming both options instead of waiting.
+
+`preflow/rbac` must be installed first, because Folio's staff sign in through it; without it the
+command prints `composer require preflow/rbac` and changes nothing.
+
+**What it never does.** It does not rewrite what you wrote. Each file is changed by adding lines
+at a place it can recognise, then the file is evaluated again to check that every earlier value
+is unchanged. A file it cannot read that safely (`array()` syntax, a computed return, a `match`)
+stays byte for byte as it was, and the command prints the exact lines to add yourself and exits
+with 1, after doing every other step it could. A guard, provider or path you already set wins over
+the one it would write: a `config/folio.php` that says `/folio` keeps `/folio` even when you pass
+`--path=/admin`, and the output says so.
+
+**Run it again whenever.** Done steps print `already set up` and the rest is finished, so a run
+that stopped halfway, or a second run in CI, is safe. If the site already has staff accounts, it
+does not ask for another one; naming a new address with `--email` on such a site does create
+another admin.
+
+#### What it does
+
+These are the steps, which you can also do by hand (the next sections), in the order the command
+runs them:
+
+1. `config/folio.php`: written with the admin path (kept as it is when the file exists).
+2. `config/auth.php`: a `staff` guard and provider (`SessionGuard`, `RecordUserProvider` with
+   `type => staff`), and the admin path in `session.paths` when the file limits sessions to some
+   paths. An existing guard of another shape stops the command before anything is written.
+3. `config/media.php`: written with the storage the library keeps its records in (the default
+   storage), unless `config/data.php` has a storage named `json`.
+4. `config/providers.php`: Folio and rbac listed first, in that order. Another provider listed
+   before them is refused, never reordered.
+5. `config/roles.php`: an `admin` role (everything) and an `editor` role (the dashboard, the
+   media library, and every content type of the app), unless the file exists.
+6. `php preflow migrate`, `php preflow rbac:install`, `php preflow folio:extensions:enable rbac`
+   and `php preflow folio:extensions:apply`.
+7. The first admin, with the role `admin`.
+
+`config/commands.php` is not touched: Folio's commands (`folio:*`, and `publish` with
+preflow/publishing) register themselves from Folio's `composer.json`.
+
+The rest of this section is the same setup by hand, which is also what to read when you want to
+understand a step or when `folio:install` refused a file.
+
+### By hand
+
+Three small steps (then the same roles, migrations and first account as above).
 
 ### 1. Register the service provider
 
@@ -1373,11 +1443,10 @@ Publish what is due from cron:
 
 The command holds a lock, so overlapping runs do nothing. A record that fails validation
 stays scheduled and is reported on every run. `publish` and `publish:scheduled` come with
-preflow/publishing; to make Folio's own commands available, list them in `config/commands.php`:
-
-```php
-return [...\Preflow\Folio\Console\FolioCommands::all()];
-```
+preflow/publishing. Folio's own commands (`folio:*`) register themselves from its
+`composer.json` (since 0.85), so `config/commands.php` needs no line for them. Before 0.85 it
+needed `return [...\Preflow\Folio\Console\FolioCommands::all()];`; that line still works, and you
+can delete it.
 
 `php preflow publish <type> [--id=<id>] [--all]` publishes the drafts of a type
 at once. By default it skips records that are already published, and records whose

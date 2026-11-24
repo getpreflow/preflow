@@ -211,6 +211,13 @@ the canonical row to callers that write rows themselves (an import). `updateFiel
 writes its fields into the stored file as it is: the stored key order stays, a new key comes last;
 the next full save (`saveType()`, a model's `save()`) writes the canonical order.
 
+**One order for JSON storage (0.85).** `orderBy()`, the range conditions (`>`, `>=`, `<`, `<=`) and
+`min`/`max` on the JSON driver use one total order: empty values first, then numbers (and numeric
+text) by value, then everything else by byte comparison. Ids like `2`, `9`, `10`, `1a` sort as
+`2, 9, 10, 1a`. A fixed order matters for paging: with ids of mixed kinds, the old comparison could
+skip records between pages (the change-date backfill of `migrate` lost some that way). Fields that
+compare as text keep comparing as text, and the SQL drivers are unchanged.
+
 Since JSON files now hold numbers and `true`/`false`, the JSON driver compares them as SQL compares
 its number and 1/0 columns: `=`, `!=`/`<>`, `IN`/`NOT IN` and `whereAny()`'s `=` match a number given
 as numeric text of the same value (`'2'`, `'02'`, `'2.5'`) and a yes/no value given as `1`/`'1'`
