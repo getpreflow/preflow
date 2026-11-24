@@ -239,7 +239,7 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
     {
         $what = sprintf("hd.%s('%s')", $method, $action);
         [$component, $options, $driver] = $this->resolve($what, $options);
-        $call = new ActionCall($method, $this->url('action', $component, $action), $component->getComponentId(), $this->targetId($component, $options), $options, $values);
+        $call = new ActionCall($method, $this->url('action', $component, $action), $component->getComponentId(), $this->targetId($component, $options), $options, $values, $component->hasState());
 
         return $this->attributes($driver->callAttributes($call));
     }
@@ -254,7 +254,7 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
         $what = sprintf("hd.on('%s')", $event);
         [$component, $options, $driver] = $this->resolve($what, $options);
         // A POST: a component's state goes in the body, whatever its size.
-        $call = new ActionCall('post', $this->url('render', $component, 'render'), $component->getComponentId(), $this->targetId($component, $options), $options);
+        $call = new ActionCall('post', $this->url('render', $component, 'render'), $component->getComponentId(), $this->targetId($component, $options), $options, carriesState: $component->hasState());
 
         return $this->attributes($driver->listenAttributes($call, $event));
     }

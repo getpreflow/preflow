@@ -65,12 +65,12 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
 
     /**
      * hx-get/hx-post, hx-target, hx-swap (with `show:…:top` for scroll), hx-trigger (a debounce
-     * delays typing only), hx-include (the state carrier first, then the regions and fields
-     * named), hx-sync (one request per component at a time: `queue all` on the component, or
-     * with `latest` a newer request replaces the one running on it), hx-disabled-elt with
-     * HtmxAssets::DISABLE_MARKER (what preflow's disabler script disables), and hx-vals
-     * with the values (VALUES_FIELD, one JSON object) and the region (REGION_FIELD, empty for the
-     * whole component).
+     * delays typing only), hx-include (the state carrier first when the component carries state,
+     * then the regions and fields named; left out when there is nothing to include), hx-sync (one
+     * request per component at a time: `queue all` on the component, or with `latest` a newer
+     * request replaces the one running on it), hx-disabled-elt with HtmxAssets::DISABLE_MARKER
+     * (what preflow's disabler script disables), and hx-vals with the values (VALUES_FIELD, one
+     * JSON object) and the region (REGION_FIELD, empty for the whole component).
      *
      * Both fields are always written, so a call inside another call's element (a button in a form
      * that calls an action) never sends the outer call's values or region: htmx merges hx-vals of
@@ -121,7 +121,8 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
         if ($options->scroll === 'top') {
             $swap .= ' show:#' . self::selector($call->targetId) . ':top';
         }
-        $include = ['#' . self::selector(self::carrierId($call->componentId))];
+        // The carrier only when the component has one on the page (htmx logs a selector that matches nothing).
+        $include = $call->carriesState ? ['#' . self::selector(self::carrierId($call->componentId))] : [];
         foreach ($options->include as $name) {
             $include[] = '#' . self::selector($call->componentId . '-' . $name); // a region: its fields
             $include[] = $component . ' [name="' . $name . '"]'; // a field of the component
@@ -130,7 +131,11 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
             "hx-{$call->method}" => $call->url,
             'hx-target' => '#' . self::selector($call->targetId),
             'hx-swap' => $swap,
-            'hx-include' => implode(', ', $include),
+        ];
+        if ($include !== []) {
+            $attributes['hx-include'] = implode(', ', $include);
+        }
+        $attributes += [
             'hx-sync' => $component . ':' . ($options->latest ? 'replace' : 'queue all'),
             'hx-vals' => json_encode([
                 self::VALUES_FIELD => $call->values === [] ? '{}' : json_encode(self::plain(self::VALUES_FIELD, $call->values), self::JSON),

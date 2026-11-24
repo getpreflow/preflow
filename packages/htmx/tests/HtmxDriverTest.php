@@ -227,6 +227,23 @@ final class HtmxDriverTest extends TestCase
         return ($driver ?? $this->driver)->callAttributes(new ActionCall('post', '/--component/action?token=t', $componentId, $targetId, ActionOptions::from($options, true), $values));
     }
 
+    public function test_a_call_names_the_state_carrier_only_when_the_component_carries_state(): void
+    {
+        $stateless = static fn (array $options): array => (new HtmxDriver(new ResponseHeaders()))->callAttributes(
+            new ActionCall('post', '/--component/action?token=t', 'Box-1', 'Box-1', ActionOptions::from($options, true), carriesState: false),
+        );
+        $this->assertArrayNotHasKey('hx-include', $stateless([]), 'no carrier on the page: nothing to include');
+        $this->assertStringNotContainsString('hx-include', $stateless([])['hx-disinherit']);
+        $this->assertSame('#Box-1-filters, #Box-1 [name="filters"]', $stateless(['include' => 'filters'])['hx-include'], 'the regions and fields named still go');
+        $this->assertSame('#preflow-state--Box-1', $this->call([])['hx-include'], 'with state (the default): the carrier first');
+
+        $listen = (new HtmxDriver(new ResponseHeaders()))->listenAttributes(
+            new ActionCall('post', '/--component/render?token=t', 'Box-1', 'Box-1', ActionOptions::from([], true), carriesState: false),
+            'saved',
+        );
+        $this->assertArrayNotHasKey('hx-include', $listen);
+    }
+
     public function test_neutral_options_translate_to_htmx(): void
     {
         $default = $this->call([]);

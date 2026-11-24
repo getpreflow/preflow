@@ -19,6 +19,9 @@ final readonly class ActionCall
      * @param string $targetId the element the answer goes into (the component, its parent, or a region's element)
      * @param array<string, mixed> $values sent unsigned in the request body under
      *        DrivesComponentActions::VALUES_FIELD; the action receives them as input, beside the form's fields
+     * @param bool $carriesState whether the component carries state on the page (#[State]: its
+     *        stateCarrier() is in its wrapper and goes with the request). False: there is no
+     *        carrier to send, so the driver names none (0.87)
      */
     public function __construct(
         public string $method,
@@ -27,6 +30,7 @@ final readonly class ActionCall
         public string $targetId,
         public ActionOptions $options,
         public array $values = [],
+        public bool $carriesState = true,
     ) {
         if ($method !== 'get' && $method !== 'post') {
             throw new \InvalidArgumentException(sprintf("An action call's method is 'get' or 'post', not '%s'.", $method));

@@ -106,15 +106,16 @@ the driver, so state is never lost silently.
 
 | Method | What it returns | htmx |
 |---|---|---|
-| `callAttributes(ActionCall $call): array` | The attributes (name => unescaped value) of an element that runs `$call`: method and URL, target and swap, trigger, the call's values, the target region, and what makes it send the component's state. One request per component at a time: a second waits for the first, or with `latest` replaces it. | `hx-post`, `hx-target`, `hx-swap`, `hx-trigger`, `hx-include` (the state carrier first), `hx-sync`, `hx-vals`, `hx-disabled-elt`, `hx-disinherit` |
+| `callAttributes(ActionCall $call): array` | The attributes (name => unescaped value) of an element that runs `$call`: method and URL, target and swap, trigger, the call's values, the target region, and what makes it send the component's state (when `$call->carriesState`, 0.87: a component without state has no carrier on the page, so none is named). One request per component at a time: a second waits for the first, or with `latest` replaces it. | `hx-post`, `hx-target`, `hx-swap`, `hx-trigger`, `hx-include` (the state carrier first; left out when there is nothing to include), `hx-sync`, `hx-vals`, `hx-disabled-elt`, `hx-disinherit` |
 | `listenAttributes(ActionCall $call, string $event): array` | `callAttributes()` with `$event` (fired anywhere on the page by an action's answer) as the only trigger. `$call` is the component's `render` call, with its state. | `hx-trigger="{event} from:body"` |
 | `stateCarrier(string $componentId, string $carried): string` | The markup that carries a component's state on the page. The renderer puts it first inside the component's wrapper. It belongs to no form of the page. | a hidden input `preflow-state--{componentId}` with `form="preflow-no-form"` |
 | `stateUpdate(string $componentId, string $carried): string` | The markup appended to an action's answer so the page's carrier holds the new state, also when the answer replaced only a region. | the carrier with `hx-swap-oob="true"` |
 
 `ActionCall` (core) holds `method` (`get` or `post`), `url` (the endpoint with the action's
 token), `componentId` (whose state goes along), `targetId` (the element the answer goes into: the
-component or one of its regions), `options` (`ActionOptions`, the checked neutral options) and
-`values`. `ActionOptions::driverOptions($name)` gives what a template put under the driver's own
+component or one of its regions), `options` (`ActionOptions`, the checked neutral options),
+`values` and `carriesState` (0.87, default true: the component has a state carrier on the page; a
+component without `#[State]` has none, so its calls send no state). `ActionOptions::driverOptions($name)` gives what a template put under the driver's own
 key (the escape hatch, below); `drivers()` names every key given, so a driver can warn about keys
 not its own.
 
