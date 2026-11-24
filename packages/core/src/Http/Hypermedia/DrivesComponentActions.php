@@ -52,6 +52,18 @@ interface DrivesComponentActions
     public function callAttributes(ActionCall $call): array;
 
     /**
+     * The attributes of an element that refreshes $call's component when $event happens anywhere
+     * on the page (an event an action's answer fires): callAttributes() with $event as the only
+     * trigger. $call is the component's `render` call; its state goes with it, so the refresh
+     * renders the component as the page has it (no mount() again).
+     *
+     * @throws \InvalidArgumentException an event name with characters other than letters, digits,
+     *         `-`, `_`, `.` and `:`, or a call with events of its own (ActionOptions `on`)
+     * @return array<string, string>
+     */
+    public function listenAttributes(ActionCall $call, string $event): array;
+
+    /**
      * The markup that carries $carried (a component's state string) on the page; the component
      * renderer puts it first inside the component's wrapper. It sends STATE_FIELD[$componentId]
      * with every action of that component (callAttributes()), and is part of no form of the page.

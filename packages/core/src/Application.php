@@ -2665,11 +2665,16 @@ final class Application
             // On a /de/… page component URLs are /de/--component/…, so actions run in that
             // locale: the prefix the current render's URL carried.
             $container = $this->container;
+            // The short call (hd.post('add', values, options)) asks the renderer which component
+            // renders; in debug its misused options fail, otherwise they go to the site's logger.
             $htmxProvider = new \Preflow\Htmx\HtmxExtensionProvider(
                 $driver,
                 $componentToken,
                 assets: $htmxAssets,
                 pathPrefix: self::carriedLocalePrefix(...),
+                renderer: $renderer,
+                debug: $debug->isDebug(),
+                log: $this->pageCacheLogger(),
             );
             $this->registerExtensionProvider($engine, $htmxProvider);
 

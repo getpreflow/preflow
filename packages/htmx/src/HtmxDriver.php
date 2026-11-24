@@ -85,6 +85,32 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
      */
     public function callAttributes(ActionCall $call): array
     {
+        return $this->attributes($call, null);
+    }
+
+    /**
+     * callAttributes() with hx-trigger `{event} from:body`: htmx fires an answer's HX-Trigger
+     * events on the body.
+     *
+     * @since 0.86.0
+     */
+    public function listenAttributes(ActionCall $call, string $event): array
+    {
+        if (preg_match('/^[A-Za-z][A-Za-z0-9_.:-]*$/', $event) !== 1) {
+            throw new \InvalidArgumentException(sprintf("An event name is a letter, then letters, digits, -, _, . and :, not '%s'.", $event));
+        }
+        if ($call->options->on !== []) {
+            throw new \InvalidArgumentException(sprintf("A call that listens to '%s' runs on that event: the action option on (%s) is not for it.", $event, implode(', ', $call->options->on)));
+        }
+
+        return $this->attributes($call, $event);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function attributes(ActionCall $call, ?string $listen): array
+    {
         $this->assets?->requireBusyMarker();
         $options = $call->options;
         $component = '#' . self::selector($call->componentId);
@@ -109,7 +135,9 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
                 self::REGION_FIELD => $options->region() ?? '',
             ], self::JSON),
         ];
-        if ($options->on !== []) {
+        if ($listen !== null) {
+            $attributes['hx-trigger'] = $listen . ' from:body';
+        } elseif ($options->on !== []) {
             $attributes['hx-trigger'] = implode(', ', array_map(
                 static fn (string $on): string => self::EVENTS[$on] . ($on === 'input' && $options->debounce !== null ? ' delay:' . $options->debounce . 'ms' : ''),
                 $options->on,

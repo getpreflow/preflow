@@ -88,8 +88,9 @@ use Psr\Http\Message\ServerRequestInterface;
  * - since 0.86, for a driver that implements DrivesComponentActions (optional; skipped otherwise):
  *   callAttributes() names the URL and the target, and every neutral option (ActionOptions) and
  *   the values change its attributes (`component` excepted: the caller resolves it into the
- *   component and target ids); stateCarrier() and stateUpdate() name the component and hold
- *   the state string.
+ *   component and target ids); listenAttributes() names the URL, the target and the event, and
+ *   differs from callAttributes() for the same call; stateCarrier() and stateUpdate() name the
+ *   component and hold the state string.
  */
 abstract class HypermediaDriverContract extends TestCase
 {
@@ -486,6 +487,24 @@ abstract class HypermediaDriverContract extends TestCase
         foreach ($changes as $option => [$with, $without]) {
             $this->assertNotSame($without, $with, "the option {$option} changes the attributes");
         }
+    }
+
+    public function test_listen_attributes_name_the_event(): void
+    {
+        $driver = $this->driver;
+        if (!$driver instanceof DrivesComponentActions) {
+            $this->markTestSkipped('The driver does not drive component actions (DrivesComponentActions is optional).');
+        }
+        $url = '/--component/render?token=abc';
+        $call = new ActionCall('post', $url, 'Box-1', 'Box-1', ActionOptions::from([], true));
+
+        $listen = $driver->listenAttributes($call, 'cartUpdated');
+        $joined = implode(' ', array_keys($listen)) . ' ' . implode(' ', $listen);
+        $this->assertTrue(str_contains($joined, $url) || str_contains($joined, (string) json_encode($url, JSON_UNESCAPED_SLASHES)), 'the URL is in an attribute');
+        $this->assertStringContainsString('Box-1', $joined, 'the target is in an attribute');
+        $this->assertStringContainsString('cartUpdated', $joined, 'the event is in an attribute');
+        $this->assertNotSame($driver->callAttributes($call), $listen, 'listening differs from a plain call');
+        $this->assertNotSame($listen, $driver->listenAttributes($call, 'saved'), 'another event, other attributes');
     }
 
     public function test_state_update_names_the_component(): void

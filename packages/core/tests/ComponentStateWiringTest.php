@@ -8,6 +8,7 @@ require_once __DIR__ . '/Fixtures/Pluggable/PhtmlEngine.php';
 require_once __DIR__ . '/Fixtures/Pluggable/PhtmlEngineFactory.php';
 require_once __DIR__ . '/Fixtures/State/StatefulTally/StatefulTally.php';
 require_once __DIR__ . '/Fixtures/State/MemoryTally.php';
+require_once __DIR__ . '/Fixtures/State/ShortTally/ShortTally.php';
 
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
@@ -18,6 +19,7 @@ use Preflow\Core\Application;
 use Preflow\Core\Tests\Fixtures\Pluggable\PhtmlEngineFactory;
 use Preflow\Core\Tests\Fixtures\State\MemoryStateStore;
 use Preflow\Core\Tests\Fixtures\State\MemoryTally;
+use Preflow\Core\Tests\Fixtures\State\ShortTally\ShortTally;
 use Preflow\Core\Tests\Fixtures\State\StatefulTally\StatefulTally;
 use Preflow\Testing\ChecksFrameBalance;
 
@@ -134,5 +136,30 @@ final class ComponentStateWiringTest extends TestCase
             ->withParsedBody(['token' => $token, '_state' => [$id => 'x' . html_entity_decode($m[1])]])
             ->withHeader('HX-Request', 'true'));
         $this->assertSame(403, $refused->getStatusCode(), 'tampered state answers like a refused token');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_short_call_runs_on_the_rendering_component(): void
+    {
+        file_put_contents($this->dir . '/app/pages/index.phtml', '<html><head></head><body>'
+            . '<?= $call("component", ' . var_export(ShortTally::class, true) . ', ["start" => 4]) ?></body></html>');
+        $page = (string) $this->app()->handle((new Psr17Factory())->createServerRequest('GET', 'http://localhost/'))->getBody();
+
+        $tally = new ShortTally();
+        $tally->setProps(['start' => 4]);
+        $id = $tally->getComponentId();
+        $this->assertSame(1, preg_match('/<button hx-post="([^"]+)"/', $page, $post), $page);
+        $this->assertSame(1, preg_match('/name="_state\[' . preg_quote($id, '/') . '\]"[^>]*value="([^"]+)"/', $page, $state), $page);
+        $url = html_entity_decode($post[1]);
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+        $payload = (new \Preflow\Htmx\ComponentToken(self::KEY))->decode((string) $query['token']);
+        $this->assertSame([ShortTally::class, 'bump', true, true], [$payload->componentClass, $payload->action, $payload->neutralCall, $payload->stateCarried]);
+
+        $response = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', 'http://localhost' . $url)
+            ->withParsedBody(['_state' => [$id => html_entity_decode($state[1])], '_values' => '{"by":1}', '_region' => ''])
+            ->withHeader('HX-Request', 'true'));
+
+        $this->assertSame(200, $response->getStatusCode(), (string) $response->getBody());
+        $this->assertStringContainsString('<p>Tally 5</p>', (string) $response->getBody(), 'the action ran on the carried state');
     }
 }
