@@ -72,6 +72,13 @@ final class AuthSetup
         $this->adminPath = is_string($path) && $path !== '' ? $path : ($this->pathOption ?? '/folio');
 
         if (!$this->setup->exists('auth.php')) {
+            $named = $this->folio['guard'] ?? null;
+            if ($named !== null && $named !== 'staff') {
+                $name = is_string($named) ? $named : get_debug_type($named);
+
+                return ["config/folio.php names the guard \"{$name}\" ('guard'), and there is no config/auth.php to define it. folio:install writes config/auth.php with the guard \"staff\" and never changes an existing value: remove 'guard' from config/folio.php (or set it to 'staff'), and run folio:install again."];
+            }
+
             return [];
         }
         $this->auth = $this->setup->editor->read('auth.php');

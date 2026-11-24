@@ -7,9 +7,10 @@ namespace Preflow\Folio\Install;
 /**
  * Spec step 2, config/providers.php: Folio's and rbac's providers before the app's own, Folio
  * first (rbac replaces the permission resolver in boot(), and the app's wrappers must come after
- * it). Only insertions at the start of the list (or the end, when Folio is the last entry and
- * only rbac is missing); a list where they cannot go in the right place is refused with the
- * snippet, never reordered.
+ * it). "Already set up" means Folio, then rbac, before every other provider. Only insertions at
+ * the start of the list (or the end, when Folio is its only entry); a list where they cannot go
+ * in the right place (an app provider before Folio or rbac, Folio listed with app providers but
+ * without rbac) is refused with the whole list in the right order as the snippet, never reordered.
  *
  * @since 0.85.0
  */
@@ -43,20 +44,38 @@ final class ProvidersSetup
         $names = array_map(static fn (mixed $c): string => is_string($c) ? ltrim($c, '\\') : '', array_values($list));
         $at = array_search(self::FOLIO, $names, true);
         $rbacAt = array_search(self::RBAC, $names, true);
+        // The app's own providers (everything else) must all come after Folio and rbac.
+        $own = array_keys(array_filter($names, static fn (string $n): bool => $n !== self::FOLIO && $n !== self::RBAC));
+        $firstOwn = $own === [] ? PHP_INT_MAX : $own[0];
+        $order = "{$folio},\n{$rbac},";
+        foreach (array_values($list) as $i => $entry) {
+            if (in_array($i, $own, true)) {
+                $order .= "\n" . (is_string($entry) && $entry !== '' ? '\\' . ltrim($entry, '\\') . '::class' : var_export($entry, true)) . ',';
+            }
+        }
+        $refuse = static fn (string $why): Outcome => new Outcome(Outcome::REFUSED, $subject, $why . ' folio:install does not reorder the list; make it read like this by hand (Folio, rbac, then the app\'s own providers):', $order);
 
         if ($at !== false && $rbacAt !== false) {
-            return $at < $rbacAt
-                ? new Outcome(Outcome::ALREADY, $subject, 'Folio and rbac are listed')
-                : new Outcome(Outcome::REFUSED, $subject, 'rbac\'s provider is listed before Folio\'s; folio:install does not reorder the list. Move Folio\'s up by hand, so the start of the list reads:', "{$folio},\n{$rbac},");
+            return $at < $rbacAt && $rbacAt < $firstOwn
+                ? new Outcome(Outcome::ALREADY, $subject, 'Folio and rbac are listed before the app\'s own providers')
+                : $refuse('Folio and rbac are listed, but not first and in that order.');
         }
         if ($at !== false) {
-            if ($at !== count($names) - 1) {
-                return new Outcome(Outcome::REFUSED, $subject, 'Folio\'s provider is listed and rbac\'s is not; it belongs right after Folio\'s, which folio:install cannot insert. Add it by hand after this line:', "{$folio},\n{$rbac},");
+            // rbac belongs right after Folio: the editor inserts only at the start or the end, so
+            // this works only when Folio is the list's only entry.
+            if (count($names) !== 1) {
+                return $refuse($at > $firstOwn ? 'Folio\'s provider is listed after the app\'s own.' : 'rbac\'s provider belongs right after Folio\'s, between it and the app\'s own, where folio:install cannot insert.');
             }
             $items = [$rbac];
             $where = 'end';
+        } elseif ($rbacAt !== false) {
+            if ($rbacAt > $firstOwn) {
+                return $refuse('rbac\'s provider is listed after the app\'s own.');
+            }
+            $items = [$folio];
+            $where = 'start';
         } else {
-            $items = $rbacAt === false ? [$folio, $rbac] : [$folio];
+            $items = [$folio, $rbac];
             $where = 'start';
         }
         if ($this->setup->dryRun) {

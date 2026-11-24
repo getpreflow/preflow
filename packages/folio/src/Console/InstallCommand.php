@@ -101,6 +101,11 @@ final class InstallCommand implements CommandInterface
         }
         if (!$setup->dryRun && $options['email'] !== null && !$terminal && !$options['no-password']) {
             $this->piped = rtrim((string) fgets($this->input()), "\r\n");
+            if (!mb_check_encoding($this->piped, 'UTF-8')) {
+                echo "The password on STDIN is not valid UTF-8 text. Nothing was changed.\n";
+
+                return 1;
+            }
             if ($this->piped === '' && ($setup->console->probe('state', [$options['email']])['exists'] ?? false) !== true) {
                 echo "No password came on STDIN for {$options['email']}. Pipe it in (printf '%s\\n' \"\$PASSWORD\" | php preflow folio:install --email={$options['email']}),\n"
                     . "or add --no-password (then set it later with php preflow staff:password {$options['email']}, or staff:invite). Nothing was changed.\n";
@@ -298,13 +303,24 @@ final class InstallCommand implements CommandInterface
 
             return null;
         }
+        // One shutdown hook for the whole prompt: it restores the terminal if the process ends while echo is off.
+        $prompt = new \ArrayObject(['open' => false]);
+        register_shutdown_function(function () use ($prompt, $settings): void {
+            if ($prompt['open'] === true) {
+                $this->stty(escapeshellarg($settings));
+            }
+        });
         for ($try = 0; $try < 3; $try++) {
-            $password = $this->hidden($input, "Password (at least {$min} characters): ", $settings);
+            $password = $this->hidden($input, "Password (at least {$min} characters): ", $settings, $prompt);
+            if (!mb_check_encoding($password, 'UTF-8')) {
+                echo "That is not valid UTF-8 text; type it again.\n";
+                continue;
+            }
             if (mb_strlen($password) < $min) {
                 echo "That is shorter than {$min} characters.\n";
                 continue;
             }
-            if ($password !== $this->hidden($input, 'Repeat it: ', $settings)) {
+            if ($password !== $this->hidden($input, 'Repeat it: ', $settings, $prompt)) {
                 echo "The two passwords differ.\n";
                 continue;
             }
@@ -321,8 +337,9 @@ final class InstallCommand implements CommandInterface
      *
      * @param resource $input a terminal
      * @param string $settings the terminal's settings (stty -g)
+     * @param \ArrayObject<string, bool> $state 'open' while echo is off (password() restores at shutdown then)
      */
-    private function hidden(mixed $input, string $prompt, string $settings): string
+    private function hidden(mixed $input, string $prompt, string $settings, \ArrayObject $state): string
     {
         echo $prompt;
         $restore = function () use ($settings): void {
@@ -339,18 +356,13 @@ final class InstallCommand implements CommandInterface
                 exit(130);
             });
         }
-        $prompt = new \ArrayObject(['open' => true]);
-        register_shutdown_function(static function () use ($prompt, $restore): void {
-            if ($prompt['open'] === true) {
-                $restore();
-            }
-        });
+        $state['open'] = true;
         $this->stty('-echo');
         try {
             $line = rtrim((string) fgets($input), "\r\n");
         } finally {
             $restore();
-            $prompt['open'] = false;
+            $state['open'] = false;
             if ($signals) {
                 pcntl_signal(SIGINT, $previous);
                 pcntl_async_signals($async);

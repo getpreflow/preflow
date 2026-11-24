@@ -336,4 +336,76 @@ final class InstallCommandTest extends TestCase
         $this->assertFileExists($root . '/config/auth.php');
         $this->assertFileDoesNotExist($root . '/config/roles.php', 'what needs Folio to boot waits');
     }
+
+    public function test_provider_order_is_checked_as_a_whole(): void
+    {
+        $folio = '\Preflow\Folio\FolioServiceProvider::class';
+        $rbac = '\Preflow\Rbac\RbacServiceProvider::class';
+        $app = '\App\Providers\AppServiceProvider::class';
+        $order = "{$folio},\n{$rbac},\n{$app},";
+        // An app provider before Folio or rbac; Folio with app providers but without rbac (rbac
+        // belongs between them, where the editor cannot insert): refused, the file unchanged.
+        foreach ([[$app, $folio], [$app, $rbac], [$app, $folio, $rbac], [$folio, $app], [$rbac, $folio, $app]] as $list) {
+            $root = $this->installApp('skeleton');
+            file_put_contents($root . '/config/providers.php', "<?php\n\nreturn [\n    " . implode(",\n    ", $list) . ",\n];\n");
+            $before = (string) file_get_contents($root . '/config/providers.php');
+
+            [$code, $output] = $this->install($root, ['--email=a@example.test', '--no-password']);
+
+            $this->assertSame(1, $code, $output);
+            $this->assertSame($before, (string) file_get_contents($root . '/config/providers.php'), implode(', ', $list));
+            $this->assertStringContainsString(self::indented($order), $output, 'the whole list in the right order');
+            $this->assertMatchesRegularExpression('~Needs you.*config/providers.php~', $output);
+        }
+
+        // Folio, rbac, then the app's: set up already.
+        $root = $this->installApp('skeleton');
+        file_put_contents($root . '/config/providers.php', "<?php\n\nreturn [\n    {$folio},\n    {$rbac},\n    {$app},\n];\n");
+        $before = (string) file_get_contents($root . '/config/providers.php');
+        [$code, $output] = $this->install($root, ['--email=a@example.test', '--no-password']);
+        $this->assertSame(0, $code, $output);
+        $this->assertMatchesRegularExpression('~config/providers.php.*already set up~', $output);
+        $this->assertSame($before, (string) file_get_contents($root . '/config/providers.php'));
+
+        // rbac before the app's, Folio missing: Folio goes in at the start.
+        $root = $this->installApp('skeleton');
+        file_put_contents($root . '/config/providers.php', "<?php\n\nreturn [\n    {$rbac},\n    {$app},\n];\n");
+        [$code, $output] = $this->install($root, ['--email=a@example.test', '--no-password']);
+        $this->assertSame(0, $code, $output);
+        $this->assertSame(
+            [\Preflow\Folio\FolioServiceProvider::class, \Preflow\Rbac\RbacServiceProvider::class, 'App\Providers\AppServiceProvider'],
+            array_map(static fn (string $c): string => ltrim($c, '\\'), $this->config($root, 'providers.php')),
+        );
+    }
+
+    private static function indented(string $text): string
+    {
+        return '      ' . str_replace("\n", "\n      ", $text);
+    }
+
+    public function test_folio_guard_without_auth_file_refuses(): void
+    {
+        $root = $this->installApp('skeleton');
+        file_put_contents($root . '/config/folio.php', "<?php\n\nreturn ['path' => '/folio', 'guard' => 'admins'];\n");
+        $before = $this->files($root, true);
+
+        [$code, $output] = $this->install($root, ['--email=a@example.test', '--no-password']);
+
+        $this->assertSame(1, $code, $output);
+        $this->assertStringContainsString('"admins"', $output);
+        $this->assertStringContainsString('Nothing was changed.', $output);
+        $this->assertSame($before, $this->files($root, true));
+    }
+
+    public function test_password_that_is_not_utf8_is_asked_again(): void
+    {
+        $root = $this->installApp('skeleton');
+        $fake = static fn (string $args): string => $args === '-g' ? 'saved-settings' : '';
+
+        [$code, $output] = $this->install($root, [], "a@example.test\nA\n\xff\xfe not text at all\n" . self::PASSWORD . "\n" . self::PASSWORD . "\n", true, $fake);
+
+        $this->assertSame(0, $code, $output);
+        $this->assertStringContainsString('not valid UTF-8', $output);
+        $this->assertStringContainsString('created the admin a@example.test', $output);
+    }
 }
