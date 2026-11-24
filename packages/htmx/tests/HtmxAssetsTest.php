@@ -86,7 +86,9 @@ final class HtmxAssetsTest extends TestCase
         foreach (['htmx:confirm', 'queueMicrotask', 'htmx:beforeSend', 'htmx:targetError', 'e.defaultPrevented', 'x.readyState >= 1 && x.readyState <= 3', 'el.isConnected !== false'] as $piece) {
             $this->assertStringContainsString($piece, $body);
         }
-        $this->assertStringContainsString("xhr.addEventListener('loadend', function () { release(el); });", $body, 'released by the request, also when the answer replaced its element');
+        $this->assertStringContainsString("xhr.addEventListener('readystatechange', function () { if (xhr.readyState === 4) { end(); } });", $body, 'released when the XHR is done: before htmx starts the next queued request, also when the answer replaced the element');
+        $this->assertStringContainsString("xhr.addEventListener('loadend', end);", $body, 'a fallback, once only');
+        $this->assertStringContainsString('c.preflowHolds', $body, 'holds counted per control');
         $this->assertStringNotContainsString('htmx:afterRequest', $body, "afterRequest doesn't reach a replaced element");
         $this->assertStringContainsString("var early = m.how === 'submits';", $body, "only submit controls are disabled while a request waits (a disabled field sends no value)");
         $this->assertStringContainsString('if (c.disabled) { return; }', $body, 'a control disabled already is not taken over');

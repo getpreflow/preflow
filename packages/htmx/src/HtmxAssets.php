@@ -213,10 +213,13 @@ JS;
      * request ends. Running requests per component are the XHRs seen at beforeSend that are still
      * open (readyState 1–3).
      *
-     * A sent request releases on its XHR's `loadend`, which fires after a load (after htmx's swap,
-     * also when the swap throws), an error, an abort and a timeout, whether or not the request's
-     * element is still on the page. So a region's fields, or a button linked to a form that the
-     * answer replaced, are enabled again.
+     * A sent request releases when its XHR is done: on `readystatechange` with readyState 4, which
+     * the XHR fires for a load, an error, an abort and a timeout before the matching event, so
+     * before htmx's handlers swap and start the next queued request (which reads the fields again);
+     * `loadend` is a fallback, once only. Both fire whether or not the request's element is still
+     * on the page, so a region's fields, or a button linked to a form that the answer replaced,
+     * are enabled again. Holds are counted per control: a control two requests hold is enabled
+     * when the last one ends; one the page disabled itself is never taken over.
      */
     private const string DISABLER = <<<'JS'
 function preflowDisabler(marker) {
@@ -250,8 +253,10 @@ function preflowDisabler(marker) {
         if (st.held !== 1) { return; }
         st.disabled = [];
         controls(el, how).forEach(function (c) {
+            if (c.preflowHolds > 0) { c.preflowHolds = c.preflowHolds + 1; st.disabled.push(c); return; }
             if (c.disabled) { return; }
             c.disabled = true;
+            c.preflowHolds = 1;
             st.disabled.push(c);
         });
     }
@@ -260,7 +265,10 @@ function preflowDisabler(marker) {
         if (st.held === 0) { return; }
         st.held = st.held - 1;
         if (st.held !== 0) { return; }
-        st.disabled.forEach(function (c) { c.disabled = false; });
+        st.disabled.forEach(function (c) {
+            c.preflowHolds = c.preflowHolds - 1;
+            if (c.preflowHolds === 0) { c.disabled = false; }
+        });
         st.disabled = [];
     }
     function sync(el) {
@@ -345,7 +353,16 @@ function preflowDisabler(marker) {
         var st = state(el);
         if (st.issue) { st.issue.sent = true; st.issue = null; }
         if (st.transfer > 0) { st.transfer = st.transfer - 1; } else { hold(el, m.how); }
-        xhr.addEventListener('loadend', function () { release(el); });
+        // Released when the XHR is done (readyState 4: before htmx's load/error/abort/timeout handlers,
+        // so before htmx starts the next queued request, which reads the fields); loadend as a fallback.
+        var done = false;
+        var end = function () {
+            if (done) { return; }
+            done = true;
+            release(el);
+        };
+        xhr.addEventListener('readystatechange', function () { if (xhr.readyState === 4) { end(); } });
+        xhr.addEventListener('loadend', end);
     });
 }
 JS;
