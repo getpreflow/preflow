@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Form;
 
+use Preflow\View\SafeHtml;
+
 final class FieldRenderer
 {
     /**
@@ -29,6 +31,8 @@ final class FieldRenderer
      *   errors?:   string[] List of error messages
      *   width?:    string   Optional width modifier class suffix
      *   attrs?:    array    Extra HTML attributes passed to renderInput
+     *   call?:     SafeHtml A short call's result (hd.post(...)), written as it is into the control's
+     *                       opening tag; an attribute it writes may not be set by attrs as well
      * }
      */
     public function renderField(string $name, array $options): string
@@ -42,11 +46,12 @@ final class FieldRenderer
         $errors   = $options['errors']   ?? [];
         $width    = $options['width']    ?? '';
         $attrs    = $options['attrs']    ?? [];
+        $call     = FieldCall::of($name, $options['call'] ?? null);
 
         // Merge id into attrs for the input element
         $inputAttrs = array_merge(['id' => $id], $attrs);
 
-        $inputHtml = $this->renderInput($name, $type, $value, $inputAttrs);
+        $inputHtml = $this->renderInput($name, $type, $value, $inputAttrs, $call);
 
         $hasError = !empty($errors);
 
@@ -95,14 +100,17 @@ final class FieldRenderer
      * @param string $type  Input type (text, textarea, select, checkbox, …).
      * @param string $value Current value.
      * @param array  $attrs Extra HTML attributes. For select, pass 'options' key as assoc array.
+     * @param SafeHtml|null $call A short call's result, written as it is at the end of the opening tag.
+     *
+     * @throws \InvalidArgumentException when the call writes an attribute the control already has
      */
-    public function renderInput(string $name, string $type, string $value, array $attrs): string
+    public function renderInput(string $name, string $type, string $value, array $attrs, ?SafeHtml $call = null): string
     {
         return match ($type) {
-            'textarea'  => $this->renderTextarea($name, $value, $attrs),
-            'select'    => $this->renderSelect($name, $value, $attrs),
-            'checkbox'  => $this->renderCheckbox($name, $value, $attrs),
-            default     => $this->renderStandardInput($name, $type, $value, $attrs),
+            'textarea'  => $this->renderTextarea($name, $value, $attrs, $call),
+            'select'    => $this->renderSelect($name, $value, $attrs, $call),
+            'checkbox'  => $this->renderCheckbox($name, $value, $attrs, $call),
+            default     => $this->renderStandardInput($name, $type, $value, $attrs, $call),
         };
     }
 
@@ -110,7 +118,7 @@ final class FieldRenderer
     // Private helpers
     // ------------------------------------------------------------------
 
-    private function renderStandardInput(string $name, string $type, string $value, array $attrs): string
+    private function renderStandardInput(string $name, string $type, string $value, array $attrs, ?SafeHtml $call): string
     {
         $base = [
             'type' => $type,
@@ -124,22 +132,22 @@ final class FieldRenderer
 
         $merged = array_merge($base, $attrs);
 
-        return '<input' . $this->buildAttrString($merged) . '>';
+        return '<input' . $this->openingAttrs($name, $merged, $call) . '>';
     }
 
-    private function renderTextarea(string $name, string $value, array $attrs): string
+    private function renderTextarea(string $name, string $value, array $attrs, ?SafeHtml $call): string
     {
         $base   = ['name' => $name];
         $merged = array_merge($base, $attrs);
 
         // The HTML parser drops one newline right after <textarea>: this guard newline is the one it
         // drops, so a value that starts with a newline keeps it.
-        return '<textarea' . $this->buildAttrString($merged) . '>' . "\n"
+        return '<textarea' . $this->openingAttrs($name, $merged, $call) . '>' . "\n"
             . htmlspecialchars($value, ENT_QUOTES | ENT_HTML5, 'UTF-8')
             . '</textarea>';
     }
 
-    private function renderSelect(string $name, string $value, array $attrs): string
+    private function renderSelect(string $name, string $value, array $attrs, ?SafeHtml $call): string
     {
         // Extract options array before building attribute string
         $selectOptions = $attrs['options'] ?? [];
@@ -148,7 +156,7 @@ final class FieldRenderer
         $base   = ['name' => $name];
         $merged = array_merge($base, $attrs);
 
-        $html = '<select' . $this->buildAttrString($merged) . '>';
+        $html = '<select' . $this->openingAttrs($name, $merged, $call) . '>';
 
         foreach ($selectOptions as $optValue => $optLabel) {
             $safeValue = htmlspecialchars((string) $optValue, ENT_QUOTES, 'UTF-8');
@@ -162,7 +170,7 @@ final class FieldRenderer
         return $html;
     }
 
-    private function renderCheckbox(string $name, string $value, array $attrs): string
+    private function renderCheckbox(string $name, string $value, array $attrs, ?SafeHtml $call): string
     {
         $checked = in_array($value, ['1', 'true', 'on'], true);
 
@@ -177,7 +185,34 @@ final class FieldRenderer
             $merged['checked'] = true;
         }
 
-        return '<input' . $this->buildAttrString($merged) . '>';
+        return '<input' . $this->openingAttrs($name, $merged, $call) . '>';
+    }
+
+    /**
+     * The attributes of a control's opening tag: its own, then the call as it is. An attribute the
+     * call writes that the control already has is refused, so none is ever written twice.
+     *
+     * @param array<string, mixed> $attrs
+     */
+    private function openingAttrs(string $name, array $attrs, ?SafeHtml $call): string
+    {
+        $html = $this->buildAttrString($attrs);
+        if ($call === null || trim($call->html) === '') {
+            return $html;
+        }
+
+        $twice = FieldCall::overlap(FieldCall::attributeNames($call), $attrs);
+        if ($twice !== []) {
+            throw new \InvalidArgumentException(sprintf(
+                "Field '%s': its call writes %s, and attrs (or the field itself) set %s too. "
+                . 'An attribute may be written once: leave it out of attrs, or change the call.',
+                $name,
+                implode(', ', $twice),
+                count($twice) === 1 ? 'it' : 'them',
+            ));
+        }
+
+        return $html . ' ' . trim($call->html);
     }
 
     /**

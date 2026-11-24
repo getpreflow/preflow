@@ -70,8 +70,36 @@ is one call per button, each with its own `id`:
 | `help` | Help text below the field |
 | `errors` | Error messages (auto-populated from ErrorBag) |
 | `attrs` | Raw HTML attributes passed to the input (escape hatch) |
+| `call` | A short call for the control, like `hd.post(...)` (see below) |
 | `width` | Width hint for use inside groups (`'1/3'`, `'2/3'`) |
 | `options` | Key-value map for select fields |
+
+## A short call on a field
+
+A field's `call` option takes what a short call returns (`hd.post(...)` from preflow/htmx). The
+form builder writes it, as it is, into the control's opening tag. This works for every control:
+input, textarea, select and checkbox.
+
+```twig
+{{ form.field('email', {
+    type: 'email',
+    call: hd.post('check', {field: 'email'}, {on: 'blur', target: 'email'})
+})|raw }}
+```
+
+When the visitor leaves the email field, the component's `check` action runs with `field: 'email'`.
+
+In Blade it is the same call: `$form->field('email', ['call' => $hd->post('check', ['field' => 'email'], ['on' => 'blur', 'target' => 'email'])])`.
+
+Some rules:
+
+- `call` takes only a short call's result (a `Preflow\View\SafeHtml`). A string or a map is
+  refused with an `InvalidArgumentException`. Plain attributes go in `attrs`.
+- `attrs` works next to `call`. But an attribute may be written only once. If `attrs` sets an
+  attribute the call writes too (say `hx-trigger`), the field is refused, and the message names it.
+  Leave it out of `attrs`, or set it to `false` there.
+- A form with inline validation (see below) writes `hx-*` attributes on each field itself. A field
+  with a call then needs `validate: false`, or it is refused.
 
 ## Field Groups
 
