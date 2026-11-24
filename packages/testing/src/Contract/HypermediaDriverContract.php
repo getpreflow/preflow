@@ -90,7 +90,11 @@ use Psr\Http\Message\ServerRequestInterface;
  *   the values change its attributes (`component` excepted: the caller resolves it into the
  *   component and target ids); listenAttributes() names the URL, the target and the event, and
  *   differs from callAttributes() for the same call; stateCarrier() and stateUpdate() name the
- *   component and hold the state string.
+ *   component and hold the state string;
+ * - since 0.87, for such a driver: `on: 'blur'` either gives other attributes than `on: 'change'`
+ *   or is refused (InvalidArgumentException, like any event the driver can't send), and a call
+ *   whose component carries no state (ActionCall::$carriesState false) gives other attributes than
+ *   one that does (no state carrier to send).
  */
 abstract class HypermediaDriverContract extends TestCase
 {
@@ -487,6 +491,29 @@ abstract class HypermediaDriverContract extends TestCase
         foreach ($changes as $option => [$with, $without]) {
             $this->assertNotSame($without, $with, "the option {$option} changes the attributes");
         }
+    }
+
+    public function test_call_attributes_map_or_refuse_blur_and_follow_the_state_carrier(): void
+    {
+        $driver = $this->driver;
+        if (!$driver instanceof DrivesComponentActions) {
+            $this->markTestSkipped('The driver does not drive component actions (DrivesComponentActions is optional).');
+        }
+        $call = static fn (array $options, bool $carriesState = true): ActionCall
+            => new ActionCall('post', '/--component/action?token=abc', 'Box-1', 'Box-1', ActionOptions::from($options, true), carriesState: $carriesState);
+
+        try {
+            $blur = $driver->callAttributes($call(['on' => 'blur']));
+            $this->assertNotSame($driver->callAttributes($call(['on' => 'change'])), $blur, "on: 'blur' is mapped to its own trigger (or refused), not dropped or taken for another event");
+        } catch (\InvalidArgumentException $e) {
+            $this->assertNotSame('', $e->getMessage(), "a driver that can't send on blur says so");
+        }
+
+        $this->assertNotSame(
+            $driver->callAttributes($call([])),
+            $driver->callAttributes($call([], carriesState: false)),
+            'a component without state has no carrier on the page: the call names none',
+        );
     }
 
     public function test_listen_attributes_name_the_event(): void
