@@ -10,7 +10,7 @@ return [
     // signed tokens of their own) is always exempt. Mark controller routes
     // with #[CsrfExempt('why')] instead; this list is for file routes and
     // paths outside the router.
-    // 'exempt' => [],
+    'exempt' => [],
 
     // Other origins allowed to post here, as https://host[:port], for example
     // a stage host posting to production. A sibling subdomain isn't trusted

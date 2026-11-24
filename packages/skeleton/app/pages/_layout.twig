@@ -1,135 +1,97 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ current_locale() }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Preflow App{% endblock %}</title>
+    <title>{% block title %}{{ t('app.name') }}{% endblock %}</title>
+    {# SEO adds <meta name="description"> and the share cards: a page sets the text with {% do seo({description: '…'}) %}. #}
 </head>
 <body>
-    <header class="main-header">
-        {{ component('Navigation', {
-            brand: 'Preflow',
-            items: [
-                { path: '/', label: 'app.nav.home' },
-                { path: '/blog', label: 'app.nav.blog' },
-                { path: '/about', label: 'app.nav.about' },
-            ]
-        }) }}
-        <div class="header-actions">
-            {{ component('LocaleSwitcher', { locales: ['en', 'de'] }) }}
-            {% if auth_check() %}
-                <a href="/admin" class="header-admin-link">Admin</a>
-                <span class="header-user">{{ auth_user().email }}</span>
-                <form method="post" action="/logout" class="header-logout-form">
-                    {{ csrf_field() }}
-                    <button type="submit" class="header-logout-btn">Logout</button>
-                </form>
-            {% else %}
-                <a href="/login" class="header-login-link">Login</a>
-            {% endif %}
-        </div>
+    <header class="site-header">
+        <a href="{{ locale_url('/') }}" class="site-brand">{{ t('app.name') }}</a>
+        <nav class="site-nav" aria-label="{{ t('app.language') }}">
+            {% for code in available_locales() %}
+                {% if code == current_locale() %}
+                    <span aria-current="true">{{ code|upper }}</span>
+                {% else %}
+                    <a href="{{ locale_url('/', code) }}" hreflang="{{ code }}">{{ code|upper }}</a>
+                {% endif %}
+            {% endfor %}
+        </nav>
     </header>
 
-    <main class="main-content">
+    <main class="site-main">
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="main-footer">
-        {{ t('app.footer') }}
-    </footer>
+    <footer class="site-footer">{{ t('app.footer') }}</footer>
 </body>
 </html>
 
 {% apply css %}
-* {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
+:root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --text: #1f2933;
+    --muted: #616e7c;
+    --line: #e4e7eb;
+    --accent: #0b6bcb;
+    --card: #f9fafb;
 }
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #12161b;
+        --text: #e4e7eb;
+        --muted: #9aa5b1;
+        --line: #2d343c;
+        --accent: #6cb2f5;
+        --card: #181d23;
+    }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
     font-family: system-ui, -apple-system, sans-serif;
-    color: #333;
+    background: var(--bg);
+    color: var(--text);
     line-height: 1.6;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
 }
 
-.main-header {
+.site-header {
+    padding: 1rem;
+    border-bottom: 1px solid var(--line);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding-right: 1rem;
-    background: #f8f9fa;
-    border-bottom: 1px solid #dee2e6;
+    gap: 1.5rem;
 }
 
-.main-header nav {
-    border-bottom: none;
-}
+.site-brand { color: var(--text); font-weight: 700; text-decoration: none; }
+.site-nav { display: flex; gap: 0.75rem; font-size: 0.875rem; }
+.site-nav [aria-current] { font-weight: 700; }
 
-.header-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    font-size: 0.8125rem;
-}
-
-.header-admin-link {
-    color: #0066ff;
-    text-decoration: none;
-    font-weight: 600;
-}
-
-.header-admin-link:hover {
-    text-decoration: underline;
-}
-
-.header-user {
-    color: #999;
-}
-
-.header-logout-form {
-    display: inline;
-}
-
-.header-logout-btn {
-    background: none;
-    border: none;
-    color: #dc3545;
-    cursor: pointer;
-    font-size: 0.8125rem;
-    padding: 0;
-}
-
-.header-logout-btn:hover {
-    text-decoration: underline;
-}
-
-.header-login-link {
-    color: #0066ff;
-    text-decoration: none;
-    font-weight: 600;
-}
-
-.header-login-link:hover {
-    text-decoration: underline;
-}
-
-.main-content {
+.site-main {
     flex: 1;
-    padding: 2rem;
-    max-width: 800px;
     width: 100%;
+    max-width: 44rem;
     margin: 0 auto;
+    padding: 2rem 1rem;
 }
 
-.main-footer {
-    padding: 1.5rem 2rem;
+.site-footer {
+    padding: 1rem;
     text-align: center;
-    color: #999;
+    color: var(--muted);
     font-size: 0.875rem;
-    border-top: 1px solid #eee;
+    border-top: 1px solid var(--line);
 }
+
+a { color: var(--accent); }
+h1 { font-size: 1.75rem; line-height: 1.25; }
+code { font-size: 0.9em; }
 {% endapply %}

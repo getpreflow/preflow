@@ -49,7 +49,7 @@
     "scripts": {
         "analyse": "phpstan analyse --memory-limit=2G --no-progress",
         "test:mysql": "bin/test-mysql",
-        "test:starters": "bin/starter test starter && bin/starter test starter-folio"
+        "test:starters": "bin/starter test starter && bin/starter test starter-folio && bin/starter test skeleton"
     },
     "repositories": [
         {

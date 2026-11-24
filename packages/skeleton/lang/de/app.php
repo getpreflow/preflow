@@ -2,10 +2,21 @@
 
 return [
     'name' => 'Preflow App',
-    'nav' => [
-        'home' => 'Startseite',
-        'blog' => 'Blog',
-        'about' => 'Über uns',
+    'footer' => 'Gebaut mit Preflow',
+    'language' => 'Sprache',
+    'home' => [
+        'title' => 'Ihre Preflow-App läuft',
+        'lead' => 'Diese App ist mit Absicht leer. Zwei Schritte bringen Sie weiter.',
+        'next' => 'Nächste Schritte',
+        'page_title' => 'Eine Seite hinzufügen',
+        'page_text' => 'Legen Sie eine Datei in app/pages an, zum Beispiel app/pages/about.twig. Sie antwortet unter /about, ohne dass Sie Routen schreiben.',
+        'admin_title' => 'Einen Admin hinzufügen',
+        'admin_text' => 'Installieren Sie das CMS und das Rollen-Paket, dann richtet der Installer den Admin ein:',
+        'admin_hint' => 'Der Installer fragt nach dem ersten Admin-Konto und lässt Ihre eigenen Dateien unangetastet.',
+        'seo_description' => 'Eine leere Preflow-App: was als Nächstes zu tun ist.',
     ],
-    'footer' => 'Erstellt mit Preflow',
+    'error' => [
+        'title' => 'Fehler :status',
+        'home' => 'Zur Startseite',
+    ],
 ];
