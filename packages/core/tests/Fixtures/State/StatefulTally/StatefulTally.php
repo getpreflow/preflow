@@ -17,6 +17,16 @@ class StatefulTally extends Component
         $this->tally = (int) ($this->props['start'] ?? 0);
     }
 
+    public function actions(): array
+    {
+        return ['bump'];
+    }
+
+    public function actionBump(): void
+    {
+        $this->tally++;
+    }
+
     public function getTemplatePath(string $extension = 'twig'): string
     {
         return __DIR__ . '/StatefulTally.' . $extension;

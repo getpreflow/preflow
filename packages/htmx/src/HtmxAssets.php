@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Htmx;
 
 use Preflow\Core\Context\Contexts;
+use Preflow\Core\Http\Hypermedia\DrivesComponentActions;
 use Preflow\View\AssetCollector;
 use Preflow\View\JsPosition;
 
@@ -15,6 +16,9 @@ use Preflow\View\JsPosition;
  * are accepted by the page's CSP.
  *
  * Modes (config/htmx.php 'include'): always | on-demand | never.
+ *
+ * Since 0.86 an element whose request runs carries the class `preflow-busy`
+ * (DrivesComponentActions::BUSY_CLASS, htmx's requestClass), not `htmx-request`.
  *
  * Since 0.81 whether a page needs htmx is kept per render frame (a frame slot), like the assets
  * themselves: a render asks for htmx in its own frame. With 'always', every frame starts out
@@ -65,10 +69,11 @@ final class HtmxAssets
         // render that needs htmx (verify's second render, a page cache rebuild) gets it.
         $this->requirement()->required = true;
 
-        // The nonce of the render that prints the tag (boot registers it once for 'always').
+        // The nonce of the render that prints the tag (boot registers it once for 'always'). A
+        // running request marks its element with Preflow's neutral class, not htmx-request.
         $nonce = AssetCollector::NONCE;
         $config = json_encode(
-            ['inlineScriptNonce' => $nonce, 'inlineStyleNonce' => $nonce],
+            ['inlineScriptNonce' => $nonce, 'inlineStyleNonce' => $nonce, 'requestClass' => DrivesComponentActions::BUSY_CLASS],
             JSON_HEX_APOS | JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
         );
 

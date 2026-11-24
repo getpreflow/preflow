@@ -8,6 +8,9 @@ use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Context\Contexts;
+use Preflow\Core\Http\Hypermedia\ActionCall;
+use Preflow\Core\Http\Hypermedia\ActionOptions;
+use Preflow\Core\Http\Hypermedia\DrivesComponentActions;
 use Preflow\Core\Http\Hypermedia\HypermediaProtocols;
 use Preflow\Core\Http\Hypermedia\OwnsResponseHeaders;
 use Preflow\Htmx\HtmlAttributes;
@@ -81,7 +84,12 @@ use Psr\Http\Message\ServerRequestInterface;
  * - since 0.81, for a driver that implements OwnsResponseHeaders (optional; skipped otherwise),
  *   ownedHeaders() names the response headers the driver writes: every header
  *   applyEffects(), navigate() and announceNonce() add is in ownedHeaders() or nonceHeaders()
- *   (a name ending in '*' is a prefix), so a page cannot set them as response hints.
+ *   (a name ending in '*' is a prefix), so a page cannot set them as response hints;
+ * - since 0.86, for a driver that implements DrivesComponentActions (optional; skipped otherwise):
+ *   callAttributes() names the URL and the target, and every neutral option (ActionOptions) and
+ *   the values change its attributes (`component` excepted: the caller resolves it into the
+ *   component and target ids); stateCarrier() and stateUpdate() name the component and hold
+ *   the state string.
  */
 abstract class HypermediaDriverContract extends TestCase
 {
@@ -445,5 +453,54 @@ abstract class HypermediaDriverContract extends TestCase
             implode("\n", $effects),
             sprintf('%s shows "%s" in effects(), which lists: %s', $call, $expected, $effects === [] ? '(nothing)' : implode(' | ', $effects)),
         );
+    }
+
+    public function test_call_attributes_cover_every_neutral_option(): void
+    {
+        $driver = $this->driver;
+        if (!$driver instanceof DrivesComponentActions) {
+            $this->markTestSkipped('The driver does not drive component actions (DrivesComponentActions is optional).');
+        }
+        $url = '/--component/action?token=abc';
+        $attributes = static fn (array $options, array $values = [], string $target = 'Box-1'): array
+            => $driver->callAttributes(new ActionCall('post', $url, 'Box-1', $target, ActionOptions::from($options), $values));
+
+        $base = $attributes([]);
+        $this->assertNotSame([], $base);
+        $joined = implode(' ', array_keys($base)) . ' ' . implode(' ', $base);
+        $this->assertTrue(str_contains($joined, $url) || str_contains($joined, (string) json_encode($url, JSON_UNESCAPED_SLASHES)), 'the URL is in an attribute');
+        $this->assertStringContainsString('Box-1', $joined, 'the target is in an attribute');
+        $this->assertStringContainsStringIgnoringCase('post', $joined, 'the method is in an attribute');
+
+        $changes = [
+            'target' => [$attributes(['target' => 'results'], target: 'Box-1-results'), $attributes([], target: 'Box-1-results')],
+            'swap' => [$attributes(['swap' => 'inner']), $base],
+            'on' => [$attributes(['on' => 'change']), $base],
+            'debounce' => [$attributes(['on' => 'input', 'debounce' => 300]), $attributes(['on' => 'input'])],
+            'latest' => [$attributes(['latest' => true]), $base],
+            'include' => [$attributes(['include' => 'filters']), $base],
+            'disable' => [$attributes(['disable' => 'self']), $base],
+            'scroll' => [$attributes(['scroll' => 'top']), $base],
+            'values' => [$attributes([], ['page' => 2]), $base],
+        ];
+        foreach ($changes as $option => [$with, $without]) {
+            $this->assertNotSame($without, $with, "the option {$option} changes the attributes");
+        }
+    }
+
+    public function test_state_update_names_the_component(): void
+    {
+        $driver = $this->driver;
+        if (!$driver instanceof DrivesComponentActions) {
+            $this->markTestSkipped('The driver does not drive component actions (DrivesComponentActions is optional).');
+        }
+
+        foreach (['carrier' => $driver->stateCarrier(...), 'update' => $driver->stateUpdate(...)] as $what => $markup) {
+            $html = $markup('Box-1', 'state-string-1');
+            $this->assertStringContainsString('Box-1', $html, "the {$what} names the component");
+            $this->assertStringContainsString('state-string-1', $html, "the {$what} holds the state");
+            $this->assertNotSame($html, $markup('Box-2', 'state-string-1'), "the {$what} of another component differs");
+            $this->assertStringNotContainsString('"<', $markup('Box-1', '"<'), "the {$what} escapes the state");
+        }
     }
 }

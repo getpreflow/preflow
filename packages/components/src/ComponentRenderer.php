@@ -36,6 +36,9 @@ final class ComponentRenderer
 
     private bool $stateDebug = false;
 
+    /** @var (\Closure(string, string): string)|null */
+    private ?\Closure $stateCarrier = null;
+
     /** @var list<Component> the components whose templates are rendering, innermost last */
     private array $stack = [];
 
@@ -202,6 +205,37 @@ final class ComponentRenderer
     {
         $this->storeFor = $storeFor;
         $this->stateDebug = $debug;
+    }
+
+    /**
+     * Puts the state a component carries on the page: $carrier gives the markup for a component
+     * id and its state string (the hypermedia driver's carrier, DrivesComponentActions), which
+     * goes first inside the wrapper of every component with #[State]. Without it the wrapper
+     * carries nothing: old-style calls still work, a component then mounts from its props again.
+     *
+     * @param \Closure(string $componentId, string $carried): string $carrier
+     * @since 0.86.0
+     */
+    public function carryStateWith(\Closure $carrier): void
+    {
+        $this->stateCarrier = $carrier;
+    }
+
+    /**
+     * The regions $component's template has, null when the template engine renders no regions
+     * (RendersRegions): what renderAfterAction() accepts as its region.
+     *
+     * @return list<string>|null
+     * @since 0.86.0
+     */
+    public function regionsOf(Component $component): ?array
+    {
+        $engine = $this->templateEngine;
+        if (!$engine instanceof RendersRegions) {
+            return null;
+        }
+
+        return $engine->regionsOf($component->getTemplatePath($engine->getTemplateExtension()));
     }
 
     /**
@@ -572,6 +606,10 @@ final class ComponentRenderer
         }
         foreach ($component->getRootAttributes() as $name => $value) {
             $attrs .= ' ' . $name . '="' . htmlspecialchars($value, ENT_QUOTES, 'UTF-8') . '"';
+        }
+
+        if ($this->stateCarrier !== null && isset($this->carried[$component])) {
+            $innerHtml = ($this->stateCarrier)($component->getComponentId(), $this->carried[$component]) . $innerHtml;
         }
 
         return "<{$tag} {$attrs}>{$innerHtml}</{$tag}>";

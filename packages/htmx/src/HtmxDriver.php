@@ -4,14 +4,36 @@ declare(strict_types=1);
 
 namespace Preflow\Htmx;
 
+use Preflow\Core\Http\Hypermedia\ActionCall;
 use Preflow\Core\Http\Hypermedia\CarriesRequestHeaders;
+use Preflow\Core\Http\Hypermedia\DrivesComponentActions;
 use Preflow\Core\Http\Hypermedia\OwnsResponseHeaders;
 use Preflow\View\FormHypermediaDriver;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
-final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsResponseHeaders, CarriesRequestHeaders
+final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsResponseHeaders, CarriesRequestHeaders, DrivesComponentActions
 {
+    /** The escape hatch's key in action options: htmx attributes passed through as they are. */
+    public const string OPTIONS_KEY = 'htmx';
+
+    /** The neutral swaps (ActionOptions::SWAPS) as hx-swap styles. */
+    private const array SWAPS = [
+        'outer' => 'outerHTML', 'inner' => 'innerHTML', 'before' => 'beforebegin', 'after' => 'afterend',
+        'prepend' => 'afterbegin', 'append' => 'beforeend', 'delete' => 'delete', 'none' => 'none',
+    ];
+
+    /** The neutral events (ActionOptions::EVENTS) as hx-trigger events. */
+    private const array EVENTS = [
+        'click' => 'click', 'submit' => 'submit', 'change' => 'change', 'input' => 'input', 'load' => 'load', 'visible' => 'revealed',
+    ];
+
+    /**
+     * The form attribute of a state carrier: an id no form has, so the carrier belongs to no form
+     * of the page (a form around the component never posts it on its own).
+     */
+    private const string NO_FORM = 'preflow-no-form';
+
     private ?HtmxAssets $assets = null;
 
     /** Lets attribute helpers mark htmx as needed on the page (include mode "on-demand"). */
@@ -23,6 +45,122 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
     public function __construct(
         private readonly ResponseHeaders $responseHeaders,
     ) {}
+
+    /**
+     * hx-get/hx-post, hx-target, hx-swap (with `show:…:top` for scroll), hx-trigger (a debounce
+     * delays typing only), hx-include (the state carrier first, then the regions and fields
+     * named), hx-sync (one request per component at a time: `queue all` on the component, or
+     * `this:replace` with `latest`), hx-disabled-elt, and hx-vals with the values (VALUES_FIELD)
+     * and the region (REGION_FIELD). Attributes under the `htmx` key are added last, as given.
+     *
+     * @since 0.86.0
+     */
+    public function callAttributes(ActionCall $call): array
+    {
+        $this->assets?->require();
+        $options = $call->options;
+        $component = '#' . $call->componentId;
+
+        $swap = self::SWAPS[$options->swap];
+        if ($options->scroll === 'top') {
+            $swap .= ' show:#' . $call->targetId . ':top';
+        }
+        $include = [$component . '--state'];
+        foreach ($options->include as $name) {
+            $include[] = $component . '-' . $name; // a region: its fields
+            $include[] = $component . ' [name="' . $name . '"]'; // a field of the component
+        }
+        $attributes = [
+            "hx-{$call->method}" => $call->url,
+            'hx-target' => '#' . $call->targetId,
+            'hx-swap' => $swap,
+            'hx-include' => implode(', ', $include),
+            'hx-sync' => $options->latest ? 'this:replace' : $component . ':queue all',
+        ];
+        if ($options->on !== []) {
+            $attributes['hx-trigger'] = implode(', ', array_map(
+                static fn (string $on): string => self::EVENTS[$on] . ($on === 'input' && $options->debounce !== null ? ' delay:' . $options->debounce . 'ms' : ''),
+                $options->on,
+            ));
+        }
+        if ($options->disable !== null) {
+            $attributes['hx-disabled-elt'] = $options->disable === 'self' ? 'this' : $component . '-' . $options->disable;
+        }
+        $vals = self::fields(self::VALUES_FIELD, $call->values);
+        if ($options->region() !== null) {
+            $vals[self::REGION_FIELD] = $options->region();
+        }
+        if ($vals !== []) {
+            $attributes['hx-vals'] = json_encode($vals, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        }
+        foreach ($options->driverOptions(self::OPTIONS_KEY) as $name => $value) {
+            $attributes[$name] = is_scalar($value) || $value instanceof \Stringable
+                ? (is_bool($value) ? ($value ? 'true' : 'false') : (string) $value)
+                : json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        }
+
+        return $attributes;
+    }
+
+    /**
+     * A hidden input `{componentId}--state` named STATE_FIELD[componentId], outside every form (its
+     * form attribute names none), which callAttributes() includes. The `--` never clashes with a
+     * region's id (`{componentId}-{name}`, a name starts with a letter).
+     *
+     * @since 0.86.0
+     */
+    public function stateCarrier(string $componentId, string $carried): string
+    {
+        return '<input type="hidden" id="' . self::escape($componentId . '--state') . '" name="'
+            . self::escape(self::STATE_FIELD . '[' . $componentId . ']') . '" form="' . self::NO_FORM
+            . '" value="' . self::escape($carried) . '">';
+    }
+
+    /**
+     * The carrier again, swapped out of band (hx-swap-oob): htmx replaces the page's carrier with
+     * it, whatever the answer's own target.
+     *
+     * @since 0.86.0
+     */
+    public function stateUpdate(string $componentId, string $carried): string
+    {
+        return substr($this->stateCarrier($componentId, $carried), 0, -1) . ' hx-swap-oob="true">';
+    }
+
+    /**
+     * $values as form fields under $prefix: `_values[a]`, `_values[rows][0][name]`… (PHP reads
+     * them back as the same arrays). true is "1", false and null are "".
+     *
+     * @param array<array-key, mixed> $values
+     * @return array<string, string|int|float>
+     */
+    private static function fields(string $prefix, array $values): array
+    {
+        $fields = [];
+        foreach ($values as $name => $value) {
+            $field = $prefix . '[' . $name . ']';
+            if (is_array($value)) {
+                $fields += self::fields($field, $value);
+            } elseif (is_int($value) || is_float($value) || is_string($value)) {
+                $fields[$field] = $value;
+            } elseif (is_bool($value) || $value === null) {
+                $fields[$field] = $value === true ? '1' : '';
+            } elseif ($value instanceof \Stringable) {
+                $fields[$field] = (string) $value;
+            } elseif ($value instanceof \BackedEnum) {
+                $fields[$field] = $value->value;
+            } else {
+                throw new \InvalidArgumentException(sprintf('The action value %s is a %s: values are text, numbers, true/false, null, backed enums or lists of them.', $field, get_debug_type($value)));
+            }
+        }
+
+        return $fields;
+    }
+
+    private static function escape(string $value): string
+    {
+        return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
 
     public function actionAttrs(
         string $method,

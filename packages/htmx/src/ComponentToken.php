@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Htmx;
 
+use Preflow\Components\Component;
 use Preflow\Core\Context\Contexts;
 use Preflow\Core\Exceptions\SecurityException;
 
@@ -44,6 +45,24 @@ class ComponentToken
             $payload . '.' . $signature,
             SODIUM_BASE64_VARIANT_URLSAFE_NO_PADDING,
         );
+    }
+
+    /**
+     * The token of $action on $component. A component with #[State] carries only its `key` (its
+     * identity): the rest of its props were used by mount() and live on as its state, which the
+     * page carries beside the token. A component without state carries all its props, as encode().
+     *
+     * @since 0.86.0
+     */
+    public function encodeFor(Component $component, string $action = 'render'): string
+    {
+        $props = $component->getProps();
+        if ($component->hasState()) {
+            $key = $props['key'] ?? null;
+            $props = $key === null || $key === '' ? [] : ['key' => $key];
+        }
+
+        return $this->encode($component::class, $props, $action);
     }
 
     public function decode(string $token, ?int $maxAge = null): TokenPayload

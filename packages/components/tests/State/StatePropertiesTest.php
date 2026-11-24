@@ -125,6 +125,13 @@ final class StatePropertiesTest extends TestCase
         StateProperties::write(new Stateful(), ['filters' => ['city' => 'Bern']]);
     }
 
+    public function test_state_of_a_renamed_property_is_refused(): void
+    {
+        $this->expectException(StateRefused::class);
+        $this->expectExceptionMessage('$renamed');
+        StateProperties::write(new Stateful(), ['renamed' => 'x']);
+    }
+
     public function test_an_unknown_enum_case_is_refused(): void
     {
         $this->expectException(StateRefused::class);

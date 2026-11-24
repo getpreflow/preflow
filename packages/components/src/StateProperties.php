@@ -48,10 +48,18 @@ final class StateProperties
 
     /**
      * @param array<string, mixed> $state
+     * A property $state has no value for keeps its own (one added since); a key without a
+     * property (one renamed or removed since) refuses the state.
+     *
      * @throws StateRefused when the state no longer fits the component's properties
      */
     public static function write(object $component, array $state): void
     {
+        // A key the component has no #[State] property for: written before a property was renamed or removed.
+        $unknown = array_diff(array_map('strval', array_keys($state)), self::of($component));
+        if ($unknown !== []) {
+            throw new StateRefused(sprintf('State of %s no longer fits: it has no state property %s.', $component::class, implode(', ', array_map(static fn (string $n): string => '$' . $n, $unknown))));
+        }
         foreach (self::of($component) as $name) {
             if (!array_key_exists($name, $state)) {
                 continue;

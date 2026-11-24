@@ -2651,6 +2651,16 @@ final class Application
                 }
             }
 
+            // A component with #[State] carries it inside its wrapper, in the driver's carrier
+            // (DrivesComponentActions; a driver built later is asked on the first such render).
+            $renderer->carryStateWith(static function (string $componentId, string $carried) use ($driver): string {
+                $actions = $driver instanceof \Preflow\Htmx\LazyHypermediaDriver ? $driver->driver() : $driver;
+
+                return $actions instanceof \Preflow\Core\Http\Hypermedia\DrivesComponentActions
+                    ? $actions->stateCarrier($componentId, $carried)
+                    : '';
+            });
+
             // Register hd template functions
             // On a /de/… page component URLs are /de/--component/…, so actions run in that
             // locale: the prefix the current render's URL carried.
@@ -2674,6 +2684,7 @@ final class Application
                     return $component;
                 },
                 assetCollector: $this->container->get(\Preflow\View\AssetCollector::class),
+                debug: $debug->isDebug(),
             );
             $this->container->instance('preflow.component_endpoint', $endpoint);
             $this->container->instance(\Preflow\Htmx\ComponentEndpoint::class, $endpoint);

@@ -102,4 +102,37 @@ final class ComponentStateWiringTest extends TestCase
         $this->assertSame('m0', $renderer->stateFor($tally));
         $this->assertSame(['m0' => ['tally' => 4]], $memory->kept);
     }
+
+    #[RunInSeparateProcess]
+    public function test_the_page_carries_the_state_and_an_action_runs_on_it(): void
+    {
+        $app = $this->app();
+        do { // two requests in one second: state is issued with the second it was rendered in
+            $second = time();
+            $page = (string) $app->handle((new Psr17Factory())->createServerRequest('GET', 'http://localhost/'))->getBody();
+            $again = (string) $app->handle((new Psr17Factory())->createServerRequest('GET', 'http://localhost/'))->getBody();
+        } while (time() !== $second);
+        $body = static fn (string $html): string => (string) strstr($html, '</head>');
+        $this->assertNotSame('', $body($page));
+        $this->assertSame($body($page), $body($again), 'equal state, byte-equal component HTML (each response has its own nonce)');
+
+        $tally = new StatefulTally();
+        $tally->setProps(['start' => 2]);
+        $id = $tally->getComponentId();
+        $this->assertSame(1, preg_match('/name="_state\[' . preg_quote($id, '/') . '\]"[^>]*value="([^"]+)"/', $page, $m), $page);
+
+        $token = (new \Preflow\Htmx\ComponentToken(self::KEY))->encodeFor($tally, 'bump');
+        $response = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', 'http://localhost/--component/action')
+            ->withParsedBody(['token' => $token, '_state' => [$id => html_entity_decode($m[1])]])
+            ->withHeader('HX-Request', 'true'));
+
+        $this->assertSame(200, $response->getStatusCode(), (string) $response->getBody());
+        $this->assertStringContainsString('<p>Tally 3</p>', (string) $response->getBody(), 'the action ran on the carried state');
+        $this->assertStringContainsString('hx-swap-oob="true"', (string) $response->getBody(), 'the new state goes back');
+
+        $refused = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', 'http://localhost/--component/action')
+            ->withParsedBody(['token' => $token, '_state' => [$id => 'x' . html_entity_decode($m[1])]])
+            ->withHeader('HX-Request', 'true'));
+        $this->assertSame(403, $refused->getStatusCode(), 'tampered state answers like a refused token');
+    }
 }

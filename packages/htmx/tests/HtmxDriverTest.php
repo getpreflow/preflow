@@ -11,6 +11,8 @@ use Preflow\Htmx\HtmxDriver;
 use Preflow\Htmx\HtmlAttributes;
 use Preflow\Htmx\ResponseHeaders;
 use Preflow\Htmx\SwapStrategy;
+use Preflow\Core\Http\Hypermedia\ActionCall;
+use Preflow\Core\Http\Hypermedia\ActionOptions;
 
 final class HtmxDriverTest extends TestCase
 {
@@ -202,5 +204,80 @@ final class HtmxDriverTest extends TestCase
         $this->assertStringContainsString(' hx-history="false"><p>x</p>', $document);
         $this->assertStringContainsString('the-token', $document);
         $this->assertSame('<p>fragment</p>', $driver->carryHeaders('<p>fragment</p>', $headers));
+    }
+
+    /** @param array<string, mixed> $options */
+    private function call(array $options, array $values = [], string $targetId = 'Box-1'): array
+    {
+        return $this->driver->callAttributes(new ActionCall('post', '/--component/action?token=t', 'Box-1', $targetId, ActionOptions::from($options), $values));
+    }
+
+    public function test_neutral_options_translate_to_htmx(): void
+    {
+        $default = $this->call([]);
+        $this->assertSame([
+            'hx-post' => '/--component/action?token=t',
+            'hx-target' => '#Box-1',
+            'hx-swap' => 'outerHTML',
+            'hx-include' => '#Box-1--state',
+            'hx-sync' => '#Box-1:queue all',
+        ], $default, 'one request per component at a time: queued');
+
+        $swaps = ['outer' => 'outerHTML', 'inner' => 'innerHTML', 'before' => 'beforebegin', 'after' => 'afterend',
+            'prepend' => 'afterbegin', 'append' => 'beforeend', 'delete' => 'delete', 'none' => 'none'];
+        foreach ($swaps as $neutral => $htmx) {
+            $this->assertSame($htmx, $this->call(['swap' => $neutral])['hx-swap']);
+        }
+
+        $region = $this->call(['target' => 'results'], targetId: 'Box-1-results');
+        $this->assertSame('#Box-1-results', $region['hx-target']);
+        $this->assertSame('innerHTML', $region['hx-swap']);
+        $this->assertSame(['_region' => 'results'], json_decode($region['hx-vals'], true));
+
+        $this->assertSame('click, change', $this->call(['on' => ['click', 'change']])['hx-trigger']);
+        $this->assertSame('revealed', $this->call(['on' => 'visible'])['hx-trigger']);
+        $this->assertSame('load', $this->call(['on' => 'load'])['hx-trigger']);
+        $this->assertSame('submit', $this->call(['on' => 'submit'])['hx-trigger']);
+        $this->assertSame('input delay:300ms, change', $this->call(['on' => ['input', 'change'], 'debounce' => 300])['hx-trigger'], 'debounce delays typing only');
+        $this->assertSame('click', $this->call(['on' => 'click', 'debounce' => 300])['hx-trigger']);
+
+        $this->assertSame('this:replace', $this->call(['latest' => true])['hx-sync']);
+        $this->assertSame('#Box-1--state, #Box-1-filters, #Box-1 [name="filters"], #Box-1-q, #Box-1 [name="q"]', $this->call(['include' => ['filters', 'q']])['hx-include']);
+        $this->assertSame('this', $this->call(['disable' => 'self'])['hx-disabled-elt']);
+        $this->assertSame('#Box-1-results', $this->call(['disable' => 'results'])['hx-disabled-elt']);
+        $this->assertSame('innerHTML show:#Box-1-results:top', $this->call(['target' => 'results', 'scroll' => 'top'], targetId: 'Box-1-results')['hx-swap']);
+        $this->assertArrayNotHasKey('hx-trigger', $default, "no on: htmx's default event for the element");
+    }
+
+    public function test_values_travel_as_fields_of_the_values_field(): void
+    {
+        $attributes = $this->call([], ['page' => 2, 'q' => 'a"b', 'rows' => [['name' => 'x']], 'all' => true, 'none' => null]);
+
+        $this->assertSame(
+            ['_values[page]' => 2, '_values[q]' => 'a"b', '_values[rows][0][name]' => 'x', '_values[all]' => '1', '_values[none]' => ''],
+            json_decode($attributes['hx-vals'], true),
+        );
+        parse_str(http_build_query(json_decode($attributes['hx-vals'], true)), $back);
+        $this->assertSame(['page' => '2', 'q' => 'a"b', 'rows' => [['name' => 'x']], 'all' => '1', 'none' => ''], $back['_values'], 'PHP reads them back as the arrays they were');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->call([], ['when' => new \DateTimeImmutable()]);
+    }
+
+    public function test_escape_hatch_passes_htmx_attributes_through(): void
+    {
+        $attributes = $this->call(['htmx' => ['hx-confirm' => 'Sure?', 'hx-swap' => 'morph', 'hx-push-url' => true], 'datastar' => ['data-x' => '1']]);
+
+        $this->assertSame('Sure?', $attributes['hx-confirm']);
+        $this->assertSame('morph', $attributes['hx-swap'], 'the escape hatch wins over the neutral translation');
+        $this->assertSame('true', $attributes['hx-push-url']);
+        $this->assertArrayNotHasKey('data-x', $attributes, "another driver's attributes are ignored");
+    }
+
+    public function test_state_carrier_is_outside_every_form_and_the_update_swaps_it_out_of_band(): void
+    {
+        $carrier = $this->driver->stateCarrier('Box-1', 'a"b<c');
+        $this->assertSame('<input type="hidden" id="Box-1--state" name="_state[Box-1]" form="preflow-no-form" value="a&quot;b&lt;c">', $carrier);
+        $this->assertSame('<input type="hidden" id="Box-1--state" name="_state[Box-1]" form="preflow-no-form" value="a&quot;b&lt;c" hx-swap-oob="true">', $this->driver->stateUpdate('Box-1', 'a"b<c'));
     }
 }
