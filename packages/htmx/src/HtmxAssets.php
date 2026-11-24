@@ -176,8 +176,9 @@ JS;
      *   a disabled field sends none).
      *
      * Only what the disabler disabled is enabled again: when the request ends (a load, an error,
-     * an abort, a timeout), or when a waiting request is never sent (cancelled at a confirm or
-     * prompt, halted by validation, its target gone).
+     * an abort, a timeout; also when the answer replaced the element), or when a waiting request is
+     * never sent (cancelled at a confirm or prompt, halted by validation, its target or element
+     * gone).
      *
      * Asked for by every call with `disable`, so other pages are unchanged. Like the busy marker it
      * goes with the render's component JS (JsPosition::Body, under the page nonce) and sets itself
@@ -203,20 +204,25 @@ JS;
 
     /**
      * How it works with htmx 2's events. htmx:confirm fires before the hx-sync step; a microtask
-     * afterwards (before any next click) sees whether htmx:beforeSend followed. If not and the
-     * component (the call's hx-sync element) has a request running, the request waits in the
-     * queue: `submits` are disabled now. When the queue sends it, htmx:confirm fires again; if
-     * beforeSend follows, the hold passes to the running request, otherwise it is released.
-     * Running requests per component are the XHRs seen at beforeSend that are still open
-     * (readyState 1–3). A request's end is matched by its XHR, so an htmx:afterRequest that htmx
-     * re-sends to an ancestor after a swap releases nothing there. A confirm prevented by another
-     * handler (an asynchronous confirm) is left alone.
+     * afterwards (before any next click) sees whether htmx:beforeSend followed for that confirm. If
+     * not and the component (the call's hx-sync element) has a request running, the request waits
+     * in the queue: `submits` are disabled now. When the queue sends it, htmx:confirm fires again;
+     * if beforeSend follows, the hold passes to the running request, otherwise (cancelled, or a
+     * confirm another handler takes over) it is released. A waiting request whose element left the
+     * page is dropped by htmx without an event: its hold is released when the component's running
+     * request ends. Running requests per component are the XHRs seen at beforeSend that are still
+     * open (readyState 1–3).
+     *
+     * A sent request releases on its XHR's `loadend`, which fires after a load (after htmx's swap,
+     * also when the swap throws), an error, an abort and a timeout, whether or not the request's
+     * element is still on the page. So a region's fields, or a button linked to a form that the
+     * answer replaced, are enabled again.
      */
     private const string DISABLER = <<<'JS'
 function preflowDisabler(marker) {
     if (window.preflowDisablerOn) { return; }
     window.preflowDisablerOn = true;
-    var running = new WeakMap();
+    var running = new WeakMap(), waiting = new WeakMap();
     function isSubmit(c) {
         return (c.tagName === 'BUTTON' && c.type === 'submit') || (c.tagName === 'INPUT' && (c.type === 'submit' || c.type === 'image'));
     }
@@ -235,7 +241,7 @@ function preflowDisabler(marker) {
         return list;
     }
     function state(el) {
-        if (!el.preflowDisable) { el.preflowDisable = { held: 0, disabled: [], queued: 0, sent: 0, xhrs: [], transfer: 0 }; }
+        if (!el.preflowDisable) { el.preflowDisable = { held: 0, disabled: [], queued: 0, transfer: 0, issue: null }; }
         return el.preflowDisable;
     }
     function hold(el, how) {
@@ -270,6 +276,20 @@ function preflowDisabler(marker) {
         running.set(target, xhrs);
         return xhrs.length > 0;
     }
+    function dropDetached(target) {
+        // htmx drops a waiting request whose element left the page, without an event.
+        waiting.set(target, (waiting.get(target) || []).filter(function (el) {
+            var st = state(el);
+            if (st.queued === 0) { return false; }
+            if (el.isConnected !== false) { return true; }
+            var how = el.getAttribute(marker);
+            while (st.queued > 0) {
+                st.queued = st.queued - 1;
+                if (how === 'submits') { release(el); }
+            }
+            return false;
+        }));
+    }
     function marked(e) {
         var el = e.detail && e.detail.elt;
         var how = el && el.getAttribute ? el.getAttribute(marker) : null;
@@ -278,22 +298,27 @@ function preflowDisabler(marker) {
     document.addEventListener('htmx:confirm', function (e) {
         var m = marked(e);
         if (!m || e.target !== m.el) { return; }
-        var st = state(m.el), s = sync(m.el), sent = st.sent;
+        var st = state(m.el), s = sync(m.el), issue = { sent: false };
         var early = m.how === 'submits';
         var dequeued = st.queued > 0 && !(s && busy(s.el));
+        st.issue = issue;
         if (dequeued) {
             st.queued = st.queued - 1;
             if (early) { st.transfer = st.transfer + 1; }
         }
         queueMicrotask(function () {
-            if (st.sent !== sent || e.defaultPrevented) { return; }
+            if (issue.sent) { return; }
             if (dequeued) {
                 if (early) { st.transfer = st.transfer - 1; release(m.el); }
                 return;
             }
+            if (e.defaultPrevented) { return; }
             if (s && s.queues && busy(s.el)) {
                 st.queued = st.queued + 1;
                 if (early) { hold(m.el, m.how); }
+                var list = waiting.get(s.el) || [];
+                if (list.indexOf(m.el) < 0) { list.push(m.el); }
+                waiting.set(s.el, list);
             }
         });
     });
@@ -310,22 +335,17 @@ function preflowDisabler(marker) {
         var el = e.detail && e.detail.elt, xhr = e.detail && e.detail.xhr;
         if (!el || !xhr || e.target !== el) { return; }
         var s = sync(el);
-        if (s) { busy(s.el); running.get(s.el).push(xhr); }
+        if (s) {
+            busy(s.el);
+            running.get(s.el).push(xhr);
+            xhr.addEventListener('loadend', function () { dropDetached(s.el); });
+        }
         var m = marked(e);
         if (!m) { return; }
         var st = state(el);
-        st.sent = st.sent + 1;
-        st.xhrs.push(xhr);
-        if (st.transfer > 0) { st.transfer = st.transfer - 1; return; }
-        hold(el, m.how);
-    });
-    document.addEventListener('htmx:afterRequest', function (e) {
-        var el = e.detail && e.detail.elt, xhr = e.detail && e.detail.xhr;
-        if (!el || !el.preflowDisable) { return; }
-        var st = el.preflowDisable, at = st.xhrs.indexOf(xhr);
-        if (at < 0) { return; }
-        st.xhrs.splice(at, 1);
-        release(el);
+        if (st.issue) { st.issue.sent = true; st.issue = null; }
+        if (st.transfer > 0) { st.transfer = st.transfer - 1; } else { hold(el, m.how); }
+        xhr.addEventListener('loadend', function () { release(el); });
     });
 }
 JS;

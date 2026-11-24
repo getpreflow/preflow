@@ -83,9 +83,11 @@ final class HtmxAssetsTest extends TestCase
         $this->assertStringContainsString("how.indexOf('fields ') === 0", $body);
         $this->assertStringContainsString("region.querySelectorAll('input, select, textarea, button')", $body);
         // Disabled when triggered (htmx:confirm comes before the hx-sync queue), released when sent and done or never sent.
-        foreach (['htmx:confirm', 'queueMicrotask', 'htmx:beforeSend', 'htmx:afterRequest', 'htmx:targetError', 'e.defaultPrevented', 'x.readyState >= 1 && x.readyState <= 3'] as $piece) {
+        foreach (['htmx:confirm', 'queueMicrotask', 'htmx:beforeSend', 'htmx:targetError', 'e.defaultPrevented', 'x.readyState >= 1 && x.readyState <= 3', 'el.isConnected !== false'] as $piece) {
             $this->assertStringContainsString($piece, $body);
         }
+        $this->assertStringContainsString("xhr.addEventListener('loadend', function () { release(el); });", $body, 'released by the request, also when the answer replaced its element');
+        $this->assertStringNotContainsString('htmx:afterRequest', $body, "afterRequest doesn't reach a replaced element");
         $this->assertStringContainsString("var early = m.how === 'submits';", $body, "only submit controls are disabled while a request waits (a disabled field sends no value)");
         $this->assertStringContainsString('if (c.disabled) { return; }', $body, 'a control disabled already is not taken over');
 

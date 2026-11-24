@@ -327,8 +327,10 @@ A small, fixed set of words that every driver translates (`Preflow\Core\Http\Hyp
   htmx puts `disabled` on the form, but that does nothing on a `<form>` (or a `<div>`). What
   protects the buttons is a small preflow script, added under the page nonce, once per page, to
   pages with a `disable` call. It enables again only what it disabled: a button the page had
-  disabled stays disabled. It also enables the buttons when a waiting request is never sent
-  (an `hx-confirm` answered with no, a validation error).
+  disabled stays disabled. It enables them again when the request ends: after the answer (also
+  when the answer replaced the form, so a button linked with `form="…"` outside it comes back), an
+  error, an abort or a timeout. And when a waiting request is never sent (an `hx-confirm` answered
+  with no, a validation error, the form gone from the page).
 
   A region works the same way for its fields, but they are disabled only once the request is sent:
   a waiting request still reads their values, and a disabled field sends none.
@@ -338,11 +340,12 @@ A small, fixed set of words that every driver translates (`Preflow\Core\Http\Hyp
   site adds its own script for the marker.
 
   Known limits:
-  - If a swap fails with a script error (`htmx:onLoadError`), htmx sends no `htmx:afterRequest`,
-    so the buttons stay disabled (htmx's own `hx-disabled-elt` behaves the same way).
-  - A button kept across the swap (`hx-preserve`) keeps its `disabled`.
-  - A confirm handled outside htmx's events (a handler that cancels `htmx:confirm` and sends
-    later) is not tracked: its buttons are disabled only from when the request is sent.
+  - A confirm dialog of your own (a handler that cancels `htmx:confirm` and calls
+    `issueRequest()` later) is outside the waiting rule: while it is open the buttons are enabled,
+    and once it answers yes they are disabled from when the request is sent.
+  - An htmx extension whose `onEvent` returns false for `htmx:confirm` stops the request in a way
+    the script can't see. If another request of the component was running at that moment, the
+    buttons stay disabled until the page reloads.
   - Some browsers drop the focus from a button when it is disabled. htmx then forgets which button
     was clicked, so a form that waited for another request may arrive without that button's
     `name`/`value`. Don't rely on the clicked button's value for a form with `disable: 'self'`.
