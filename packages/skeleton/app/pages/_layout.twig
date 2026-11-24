@@ -14,7 +14,7 @@
                 {% if code == current_locale() %}
                     <span aria-current="true">{{ code|upper }}</span>
                 {% else %}
-                    <a href="{{ locale_url('/', code) }}" hreflang="{{ code }}">{{ code|upper }}</a>
+                    <a href="{{ locale_url(request.path, code) }}" hreflang="{{ code }}">{{ code|upper }}</a>
                 {% endif %}
             {% endfor %}
         </nav>

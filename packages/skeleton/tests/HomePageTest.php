@@ -52,4 +52,13 @@ final class HomePageTest extends TestCase
     {
         $this->get('/does-not-exist')->assertStatus(404);
     }
+
+    public function test_language_switch_keeps_the_page(): void
+    {
+        $this->addPage('about.twig', '{% extends "_layout.twig" %}{% block content %}About{% endblock %}');
+
+        $this->get('/about')->assertOk()->assertSee('href="/de/about"');
+        $this->get('/de/about')->assertOk()->assertSee('href="/about"');
+        $this->get('/')->assertSee('href="/de"');
+    }
 }

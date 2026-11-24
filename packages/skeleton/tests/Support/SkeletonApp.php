@@ -45,6 +45,12 @@ trait SkeletonApp
         TestDataPaths::use($this->appRoot);
     }
 
+    /** A page of the test app's own (the shipped skeleton has only the home page). */
+    private function addPage(string $name, string $template): void
+    {
+        file_put_contents($this->appRoot . '/app/pages/' . $name, $template);
+    }
+
     private function removeApp(): void
     {
         foreach (['APP_KEY', 'APP_URL', 'APP_DEBUG'] as $name) {
