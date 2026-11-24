@@ -25,7 +25,20 @@ final class ActionOptions
     public const array KNOWN = ['target', 'swap', 'on', 'debounce', 'latest', 'include', 'disable', 'scroll', 'component'];
 
     /** Where the answer goes in, relative to the target. */
-    public const array SWAPS = ['outer', 'inner', 'before', 'after', 'prepend', 'append', 'delete', 'none'];
+    public const array SWAPS = ['outer', 'inner', 'prepend', 'append', 'delete', 'none'];
+
+    /**
+     * The swaps for target `self`: the answer is the whole component (its wrapper), so it replaces
+     * the component (`outer`, the default), removes it (`delete`) or is dropped (`none`).
+     */
+    public const array SELF_SWAPS = ['outer', 'none', 'delete'];
+
+    /**
+     * The swaps for a region target: the answer is the region's contents, so it replaces them
+     * (`inner`, the default), goes before or after them (`prepend`, `append`: a region that renders
+     * only the new items, e.g. "load more") or is dropped (`none`).
+     */
+    public const array REGION_SWAPS = ['inner', 'append', 'prepend', 'none'];
 
     /** The events that send the request. `visible`: when the element scrolls into view. */
     public const array EVENTS = ['click', 'submit', 'change', 'input', 'load', 'visible'];
@@ -39,7 +52,7 @@ final class ActionOptions
     /**
      * @param string $target `self` or the name of a region of the component (never `parent`: the
      *        parent's action, which replaces the parent, is `component: 'parent'`)
-     * @param string $swap one of SWAPS
+     * @param string $swap one of SELF_SWAPS for `self`, of REGION_SWAPS for a region
      * @param list<string> $on events of EVENTS; empty: the client's default for the element
      * @param int|null $debounce milliseconds after the last typing (`input`) event; other events send at once
      * @param bool $latest a newer request replaces one still running (instead of waiting its turn)
@@ -68,11 +81,13 @@ final class ActionOptions
      * (error_log() without one), so a page keeps working. A `debounce` without `input` among the
      * events (it delays typing only) is handled the same way. An unknown key whose value is a
      * mapping is a driver's own attributes: kept for the driver it names (each driver ignores
-     * the keys not its own, with a warning in debug).
+     * the keys not its own, with a warning in debug). A swap that doesn't fit the target (see
+     * SELF_SWAPS and REGION_SWAPS) fails in $debug; outside debug $log gets a line and the
+     * target's default swap is used.
      *
      * @param array<array-key, mixed> $options
      * @param (\Closure(string): void)|null $log
-     * @throws \InvalidArgumentException a bad value; an unknown key in $debug
+     * @throws \InvalidArgumentException a bad value; an unknown key or a swap that doesn't fit the target in $debug
      */
     public static function from(array $options, bool $debug, ?\Closure $log = null): self
     {
@@ -112,9 +127,20 @@ final class ActionOptions
         if (!is_string($target) || ($target !== 'self' && !self::isName($target))) {
             throw new \InvalidArgumentException(sprintf("The action option target is 'self' or a region name, not %s.", self::shown($target)));
         }
-        $swap = $options['swap'] ?? (self::isRegion($target) ? 'inner' : 'outer');
+        $fitting = self::isRegion($target) ? self::REGION_SWAPS : self::SELF_SWAPS;
+        $swap = $options['swap'] ?? $fitting[0];
         if (!is_string($swap) || !in_array($swap, self::SWAPS, true)) {
             throw new \InvalidArgumentException(sprintf('The action option swap is one of %s, not %s.', implode(', ', self::SWAPS), self::shown($swap)));
+        }
+        if (!in_array($swap, $fitting, true)) {
+            $message = self::isRegion($target)
+                ? sprintf("The action option swap '%s' doesn't fit target '%s': the answer is the region's contents, so swap is one of %s.", $swap, $target, implode(', ', $fitting))
+                : sprintf("The action option swap '%s' doesn't fit target 'self': the answer is the whole component, so swap is one of %s.", $swap, implode(', ', $fitting));
+            if ($debug) {
+                throw new \InvalidArgumentException($message);
+            }
+            $log($message . sprintf(" Used '%s'.", $fitting[0]));
+            $swap = $fitting[0];
         }
         $on = $options['on'] ?? [];
         $on = is_string($on) ? [$on] : $on;

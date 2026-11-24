@@ -20,7 +20,7 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
 
     /** The neutral swaps (ActionOptions::SWAPS) as hx-swap styles. */
     private const array SWAPS = [
-        'outer' => 'outerHTML', 'inner' => 'innerHTML', 'before' => 'beforebegin', 'after' => 'afterend',
+        'outer' => 'outerHTML', 'inner' => 'innerHTML',
         'prepend' => 'afterbegin', 'append' => 'beforeend', 'delete' => 'delete', 'none' => 'none',
     ];
 

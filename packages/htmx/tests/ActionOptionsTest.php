@@ -25,11 +25,11 @@ final class ActionOptionsTest extends TestCase
 
         // Outside debug: left out, with a log line.
         $lines = [];
-        $options = ActionOptions::from(['tagret' => 'results', 'swap' => 'inner'], false, static function (string $line) use (&$lines): void {
+        $options = ActionOptions::from(['tagret' => 'results', 'swap' => 'none'], false, static function (string $line) use (&$lines): void {
             $lines[] = $line;
         });
         $this->assertSame('self', $options->target);
-        $this->assertSame('inner', $options->swap);
+        $this->assertSame('none', $options->swap);
         $this->assertCount(1, $lines);
         $this->assertStringContainsString('tagret', $lines[0]);
     }
@@ -45,7 +45,58 @@ final class ActionOptionsTest extends TestCase
         $this->assertSame('outer', $self->swap);
         $this->assertNull($self->region());
 
-        $this->assertSame('outer', ActionOptions::from(['target' => 'results', 'swap' => 'outer'], true)->swap, 'an explicit swap wins');
+        $this->assertSame('append', ActionOptions::from(['target' => 'results', 'swap' => 'append'], true)->swap, 'an explicit swap wins');
+        $this->assertSame('delete', ActionOptions::from(['swap' => 'delete'], true)->swap);
+    }
+
+    /** @return iterable<string, array{array<string, string>, string, list<string>}> */
+    public static function unfittingSwaps(): iterable
+    {
+        // The answer to target self is the whole component: only outer, none, delete fit.
+        foreach (['inner', 'append', 'prepend'] as $swap) {
+            yield "self $swap" => [['swap' => $swap], 'outer', ActionOptions::SELF_SWAPS];
+        }
+        // The answer to a region is its contents: only inner, append, prepend, none fit.
+        foreach (['outer', 'delete'] as $swap) {
+            yield "region $swap" => [['target' => 'results', 'swap' => $swap], 'inner', ActionOptions::REGION_SWAPS];
+        }
+    }
+
+    /**
+     * @param array<string, string> $options
+     * @param list<string> $allowed
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('unfittingSwaps')]
+    public function test_a_swap_that_does_not_fit_the_target_is_refused(array $options, string $default, array $allowed): void
+    {
+        try {
+            ActionOptions::from($options, true);
+            $this->fail('an unfitting swap passed in debug');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString("swap '{$options['swap']}'", $e->getMessage());
+            $this->assertStringContainsString("target '" . ($options['target'] ?? 'self') . "'", $e->getMessage());
+            $this->assertStringContainsString(implode(', ', $allowed), $e->getMessage());
+        }
+
+        // Outside debug: a log line, and the target's default swap.
+        $lines = [];
+        $fallback = ActionOptions::from($options, false, static function (string $line) use (&$lines): void {
+            $lines[] = $line;
+        });
+        $this->assertSame($default, $fallback->swap);
+        $this->assertCount(1, $lines);
+        $this->assertStringContainsString("swap '{$options['swap']}'", $lines[0]);
+    }
+
+    public function test_every_fitting_swap_passes(): void
+    {
+        foreach (ActionOptions::SELF_SWAPS as $swap) {
+            $this->assertSame($swap, ActionOptions::from(['swap' => $swap], true)->swap);
+        }
+        foreach (ActionOptions::REGION_SWAPS as $swap) {
+            $this->assertSame($swap, ActionOptions::from(['target' => 'results', 'swap' => $swap], true)->swap);
+        }
+        $this->assertSame([], array_diff(ActionOptions::SWAPS, ActionOptions::SELF_SWAPS, ActionOptions::REGION_SWAPS), 'no swap fits no target');
     }
 
     public function test_every_option_reads_back(): void
@@ -75,6 +126,7 @@ final class ActionOptionsTest extends TestCase
         yield 'target' => [['target' => '1bad']];
         yield 'target parent' => [['target' => 'parent']]; // the parent's action is component: 'parent'
         yield 'swap' => [['swap' => 'outerHTML']];
+        yield 'swap before' => [['swap' => 'before']]; // inserting beside the component or a region breaks it
         yield 'on' => [['on' => 'keyup']];
         yield 'on list' => [['on' => [['click']]]];
         yield 'debounce' => [['debounce' => '300ms']];

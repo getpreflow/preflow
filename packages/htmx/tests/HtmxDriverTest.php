@@ -225,10 +225,11 @@ final class HtmxDriverTest extends TestCase
             'hx-disinherit' => 'hx-target hx-swap hx-include hx-sync',
         ], $default, 'one request per component at a time: queued; values and region always explicit');
 
-        $swaps = ['outer' => 'outerHTML', 'inner' => 'innerHTML', 'before' => 'beforebegin', 'after' => 'afterend',
-            'prepend' => 'afterbegin', 'append' => 'beforeend', 'delete' => 'delete', 'none' => 'none'];
-        foreach ($swaps as $neutral => $htmx) {
+        foreach (['outer' => 'outerHTML', 'delete' => 'delete', 'none' => 'none'] as $neutral => $htmx) {
             $this->assertSame($htmx, $this->call(['swap' => $neutral])['hx-swap']);
+        }
+        foreach (['inner' => 'innerHTML', 'prepend' => 'afterbegin', 'append' => 'beforeend', 'none' => 'none'] as $neutral => $htmx) {
+            $this->assertSame($htmx, $this->call(['target' => 'results', 'swap' => $neutral], targetId: 'Box-1-results')['hx-swap']);
         }
 
         $region = $this->call(['target' => 'results'], targetId: 'Box-1-results');

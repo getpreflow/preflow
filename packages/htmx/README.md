@@ -277,7 +277,7 @@ A small, fixed set of words that every driver translates (`Preflow\Core\Http\Hyp
 | Option | Values | Meaning | htmx |
 |---|---|---|---|
 | `target` | `'self'` (default), a region name | where the answer goes | `hx-target` |
-| `swap` | `'outer'` (default for `self`), `'inner'` (default for a region), `'before'`, `'after'`, `'prepend'`, `'append'`, `'delete'`, `'none'` | how it goes in | `hx-swap` |
+| `swap` | for `self`: `'outer'` (default), `'delete'`, `'none'`; for a region: `'inner'` (default), `'append'`, `'prepend'`, `'none'` | how it goes in | `hx-swap` |
 | `on` | `'click'`, `'submit'`, `'change'`, `'input'`, `'load'`, `'visible'`, or a list | the events that send the request; none: the element's usual one | `hx-trigger` |
 | `debounce` | milliseconds | wait this long after the last typing (`input`) event; clicks and changes go at once. Only with `input` in `on` | `delay:300ms` |
 | `latest` | `true` | a newer request replaces one still running (for searches) | `hx-sync` `replace` |
@@ -289,6 +289,13 @@ A small, fixed set of words that every driver translates (`Preflow\Core\Http\Hyp
 - A value of the wrong kind always fails. An unknown option fails in debug with the list of known
   ones; outside debug it is left out with a log line, so the page keeps working. The same goes for
   `debounce` without `input` in `on`.
+- **The swap fits the target.** The answer to `self` is the whole component, so it replaces the
+  component (`outer`), removes it (`delete`) or is dropped (`none`). The answer to a region is the
+  region's contents, so it replaces them (`inner`), goes after or before them (`append`,
+  `prepend`) or is dropped (`none`). `append` and `prepend` are for a region that renders only the
+  new items, e.g. "load more": the action renders the next page's rows, and they go below the rows
+  already there. Another pair fails in debug and names the swaps that fit; outside debug it logs a
+  line and uses the target's default.
 - **One action at a time per component.** Requests of one component wait for each other, so two
   quick clicks on "Add another" give two rows. `latest: true` opts into "a newer request cancels
   the older one".

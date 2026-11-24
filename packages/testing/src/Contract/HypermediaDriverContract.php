@@ -475,7 +475,7 @@ abstract class HypermediaDriverContract extends TestCase
 
         $changes = [
             'target' => [$attributes(['target' => 'results'], target: 'Box-1-results'), $attributes([], target: 'Box-1-results')],
-            'swap' => [$attributes(['swap' => 'inner']), $base],
+            'swap' => [$attributes(['swap' => 'none']), $base],
             'on' => [$attributes(['on' => 'change']), $base],
             'debounce' => [$attributes(['on' => 'input', 'debounce' => 300]), $attributes(['on' => 'input'])],
             'latest' => [$attributes(['latest' => true]), $base],
