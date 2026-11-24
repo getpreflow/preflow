@@ -118,6 +118,7 @@ final class ActionOptionsTest extends TestCase
         $this->assertSame([], $options->driverOptions('datastar'), 'another driver sees nothing');
         $this->assertSame(['htmx'], $options->drivers());
         $this->assertSame(['click'], ActionOptions::from(['on' => 'click'], true)->on);
+        $this->assertSame(['blur'], ActionOptions::from(['on' => 'blur'], true)->on, 'blur: the field loses focus');
     }
 
     /** @return iterable<string, array{array<string, mixed>}> */
@@ -162,6 +163,13 @@ final class ActionOptionsTest extends TestCase
         $this->assertNull($options->debounce, 'left out in production');
         $this->assertCount(1, $lines);
         $this->assertSame(300, ActionOptions::from(['on' => ['input', 'change'], 'debounce' => 300], true)->debounce);
+
+        try {
+            ActionOptions::from(['on' => 'blur', 'debounce' => 300], true);
+            $this->fail('a debounce on blur passed in debug');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertSame('The action option debounce delays typing only: add input to on (blur).', $e->getMessage());
+        }
     }
 
     public function test_another_drivers_key_is_kept_and_a_plain_unknown_key_is_not(): void

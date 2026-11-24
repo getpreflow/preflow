@@ -132,6 +132,21 @@ final class HtmxDriverTest extends TestCase
         $this->assertFalse($response->hasHeader('HX-Nonce'), 'no nonce without the htmx assets');
     }
 
+    public function test_disable_requires_the_disabler(): void
+    {
+        $collector = new \Preflow\View\AssetCollector(new \Preflow\View\NonceGenerator());
+        $this->driver->useAssets(new \Preflow\Htmx\HtmxAssets($collector, 'on-demand'));
+        $this->call([]);
+        $this->assertStringNotContainsString('preflowDisabler', $collector->renderJsBody(), 'only for calls with disable');
+
+        foreach (['self', 'results'] as $disable) {
+            $collector = new \Preflow\View\AssetCollector(new \Preflow\View\NonceGenerator());
+            $this->driver->useAssets(new \Preflow\Htmx\HtmxAssets($collector, 'on-demand'));
+            $this->call(['disable' => $disable]);
+            $this->assertStringContainsString("preflowDisabler('data-preflow-disable');", $collector->renderJsBody(), "disable: {$disable}");
+        }
+    }
+
     public function test_apply_effects_announces_the_page_nonce(): void
     {
         $collector = new \Preflow\View\AssetCollector(new \Preflow\View\NonceGenerator());
@@ -212,6 +227,23 @@ final class HtmxDriverTest extends TestCase
         return ($driver ?? $this->driver)->callAttributes(new ActionCall('post', '/--component/action?token=t', $componentId, $targetId, ActionOptions::from($options, true), $values));
     }
 
+    public function test_a_call_names_the_state_carrier_only_when_the_component_carries_state(): void
+    {
+        $stateless = static fn (array $options): array => (new HtmxDriver(new ResponseHeaders()))->callAttributes(
+            new ActionCall('post', '/--component/action?token=t', 'Box-1', 'Box-1', ActionOptions::from($options, true), carriesState: false),
+        );
+        $this->assertSame('unset', $stateless([])['hx-include'], 'no carrier on the page: nothing to include, and no ancestor\'s hx-include either');
+        $this->assertStringContainsString('hx-include', $stateless([])['hx-disinherit']);
+        $this->assertSame('#Box-1-filters, #Box-1 [name="filters"]', $stateless(['include' => 'filters'])['hx-include'], 'the regions and fields named still go');
+        $this->assertSame('#preflow-state--Box-1', $this->call([])['hx-include'], 'with state (the default): the carrier first');
+
+        $listen = (new HtmxDriver(new ResponseHeaders()))->listenAttributes(
+            new ActionCall('post', '/--component/render?token=t', 'Box-1', 'Box-1', ActionOptions::from([], true), carriesState: false),
+            'saved',
+        );
+        $this->assertSame('unset', $listen['hx-include']);
+    }
+
     public function test_neutral_options_translate_to_htmx(): void
     {
         $default = $this->call([]);
@@ -239,14 +271,20 @@ final class HtmxDriverTest extends TestCase
 
         $this->assertSame('click, change', $this->call(['on' => ['click', 'change']])['hx-trigger']);
         $this->assertSame('revealed', $this->call(['on' => 'visible'])['hx-trigger']);
+        $this->assertSame('blur', $this->call(['on' => 'blur'])['hx-trigger']);
         $this->assertSame('load', $this->call(['on' => 'load'])['hx-trigger']);
         $this->assertSame('submit', $this->call(['on' => 'submit'])['hx-trigger']);
         $this->assertSame('input delay:300ms, change', $this->call(['on' => ['input', 'change'], 'debounce' => 300])['hx-trigger'], 'debounce delays typing only');
 
         $this->assertSame('#Box-1:replace', $this->call(['latest' => true])['hx-sync'], 'a newer request replaces whatever runs on the component');
         $this->assertSame('#preflow-state--Box-1, #Box-1-filters, #Box-1 [name="filters"], #Box-1-q, #Box-1 [name="q"]', $this->call(['include' => ['filters', 'q']])['hx-include']);
-        $this->assertSame('this', $this->call(['disable' => 'self'])['hx-disabled-elt']);
-        $this->assertSame('#Box-1-results', $this->call(['disable' => 'results'])['hx-disabled-elt']);
+        $self = $this->call(['disable' => 'self']);
+        $this->assertSame('this', $self['hx-disabled-elt'], 'htmx disables the element itself');
+        $this->assertSame('submits', $self['data-preflow-disable'], "the submit controls inside it: preflow's script (htmx 2 can't select all of them)");
+        $region = $this->call(['disable' => 'results']);
+        $this->assertSame('#Box-1-results', $region['hx-disabled-elt']);
+        $this->assertSame('fields #Box-1-results', $region['data-preflow-disable'], "the region's fields: preflow's script (disabled on a <div> does nothing)");
+        $this->assertArrayNotHasKey('data-preflow-disable', $default);
         $this->assertSame('innerHTML show:#Box-1-results:top', $this->call(['target' => 'results', 'scroll' => 'top'], targetId: 'Box-1-results')['hx-swap']);
         $this->assertArrayNotHasKey('hx-trigger', $default, "no on: htmx's default event for the element");
     }

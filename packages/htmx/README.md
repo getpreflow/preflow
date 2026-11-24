@@ -106,15 +106,16 @@ the driver, so state is never lost silently.
 
 | Method | What it returns | htmx |
 |---|---|---|
-| `callAttributes(ActionCall $call): array` | The attributes (name => unescaped value) of an element that runs `$call`: method and URL, target and swap, trigger, the call's values, the target region, and what makes it send the component's state. One request per component at a time: a second waits for the first, or with `latest` replaces it. | `hx-post`, `hx-target`, `hx-swap`, `hx-trigger`, `hx-include` (the state carrier first), `hx-sync`, `hx-vals`, `hx-disabled-elt`, `hx-disinherit` |
+| `callAttributes(ActionCall $call): array` | The attributes (name => unescaped value) of an element that runs `$call`: method and URL, target and swap, trigger, the call's values, the target region, and what makes it send the component's state (when `$call->carriesState`, 0.87: a component without state has no carrier on the page, so none is named). One request per component at a time: a second waits for the first, or with `latest` replaces it. | `hx-post`, `hx-target`, `hx-swap`, `hx-trigger`, `hx-include` (the state carrier first; `unset` when there is nothing to include, so an ancestor's `hx-include` doesn't reach the call), `hx-sync`, `hx-vals`, `hx-disabled-elt`, `hx-disinherit` |
 | `listenAttributes(ActionCall $call, string $event): array` | `callAttributes()` with `$event` (fired anywhere on the page by an action's answer) as the only trigger. `$call` is the component's `render` call, with its state. | `hx-trigger="{event} from:body"` |
 | `stateCarrier(string $componentId, string $carried): string` | The markup that carries a component's state on the page. The renderer puts it first inside the component's wrapper. It belongs to no form of the page. | a hidden input `preflow-state--{componentId}` with `form="preflow-no-form"` |
 | `stateUpdate(string $componentId, string $carried): string` | The markup appended to an action's answer so the page's carrier holds the new state, also when the answer replaced only a region. | the carrier with `hx-swap-oob="true"` |
 
 `ActionCall` (core) holds `method` (`get` or `post`), `url` (the endpoint with the action's
 token), `componentId` (whose state goes along), `targetId` (the element the answer goes into: the
-component or one of its regions), `options` (`ActionOptions`, the checked neutral options) and
-`values`. `ActionOptions::driverOptions($name)` gives what a template put under the driver's own
+component or one of its regions), `options` (`ActionOptions`, the checked neutral options),
+`values` and `carriesState` (0.87, default true: the component has a state carrier on the page; a
+component without `#[State]` has none, so its calls send no state). `ActionOptions::driverOptions($name)` gives what a template put under the driver's own
 key (the escape hatch, below); `drivers()` names every key given, so a driver can warn about keys
 not its own.
 
@@ -211,6 +212,7 @@ Inside a component's template, call an action by its name, with only the values 
 | `hd.get(action, values = {}, options = {})` | the same with a GET. On a component with state the state then travels in the address, which has a length limit: prefer `post` |
 | `hd.on(event, options = {})` | an element that renders the component again when an action's answer fires `event` |
 | `hd.region(name)` | `id="{componentId}-{name}"`, for an element made by hand that a call targets |
+| `hd.hasParent()` | not markup: `true` when the component has a parent on the page (see "Calling the parent") |
 
 The component is the one whose template is rendering: no class, no id. The helpers return markup
 marked safe, so no `| raw`. In Blade the same calls are `{{ $hd->post('addRow') }}`.
@@ -281,11 +283,11 @@ A small, fixed set of words that every driver translates (`Preflow\Core\Http\Hyp
 |---|---|---|---|
 | `target` | `'self'` (default), a region name | where the answer goes | `hx-target` |
 | `swap` | for `self`: `'outer'` (default), `'delete'`, `'none'`; for a region: `'inner'` (default), `'append'`, `'prepend'`, `'none'` | how it goes in | `hx-swap` |
-| `on` | `'click'`, `'submit'`, `'change'`, `'input'`, `'load'`, `'visible'`, or a list | the events that send the request; none: the element's usual one | `hx-trigger` |
+| `on` | `'click'`, `'submit'`, `'change'`, `'input'`, `'load'`, `'visible'`, `'blur'` (0.87), or a list | the events that send the request; none: the element's usual one. `visible`: the element scrolls into view; `blur`: the field is left (check a field once the visitor moves on) | `hx-trigger` (`visible` is `revealed`) |
 | `debounce` | milliseconds | wait this long after the last typing (`input`) event; clicks and changes go at once. Only with `input` in `on` | `delay:300ms` |
 | `latest` | `true` | a newer request replaces one still running (for searches) | `hx-sync` `replace` |
 | `include` | a region or field name, or a list | extra fields to send | `hx-include` |
-| `disable` | `'self'`, a region name | disabled while the request runs | `hx-disabled-elt` |
+| `disable` | `'self'`, a region name | what can't be used while the request runs. `'self'` (0.87): the element if it is a button, and its submit controls (a form's buttons whose type is submit, i.e. none or `submit`, and `input` type `submit` or `image`, also those linked with `form="…"`; not `type="button"` or `"reset"`), from the moment the call is triggered, so a second click or Enter sends nothing, even while the request waits for another request of the component. A region (0.87): the region's `input`, `select`, `textarea` and `button` elements, from when the request is sent | `hx-disabled-elt` (`this`, or the region), plus `data-preflow-disable` (`submits`, or `fields #<region id>`) read by a small preflow script |
 | `scroll` | `'top'` | show the top of the target after the swap | `show:…:top` |
 | `component` | `'parent'` | run the action of the component whose template rendered this one | the parent's token and id |
 
@@ -299,6 +301,56 @@ A small, fixed set of words that every driver translates (`Preflow\Core\Http\Hyp
   new items, e.g. "load more": the action renders the next page's rows, and they go below the rows
   already there. Another pair fails in debug and names the swaps that fit; outside debug it logs a
   line and uses the target's default.
+- **Checking a field when it is left.** `on: 'blur'` sends the request when the field loses
+  focus, so a message shows once the visitor moves on, not on every key:
+
+  ```twig
+  <input name="email" value="{{ email }}"
+      {{ hd.post('checkEmail', {}, { target: 'emailHint', on: 'blur', include: 'email' }) }}>
+  ```
+
+- **Sending a form once.** `disable: 'self'` on a form disables its submit buttons until the
+  answer is in (also after an error), so a second click or Enter starts no second request:
+
+  ```twig
+  <form {{ hd.post('send', {}, { disable: 'self' }) }}>
+      <input name="email" {{ hd.post('checkEmail', {}, { target: 'emailHint', on: 'blur' }) }}>
+      <textarea name="message"></textarea>
+      <button>Send</button>
+  </form>
+  ```
+
+  The buttons are disabled as soon as the form is sent, not only when its request leaves. Say the
+  visitor types an address and double-clicks Send: leaving the field starts `checkEmail`, the
+  first click makes `send` wait for it (one request per component at a time), and the second
+  click finds the button disabled.
+
+  htmx puts `disabled` on the form, but that does nothing on a `<form>` (or a `<div>`). What
+  protects the buttons is a small preflow script, added under the page nonce, once per page, to
+  pages with a `disable` call. It enables again only what it disabled: a button the page had
+  disabled stays disabled. It enables them again when the request ends: after the answer (also
+  when the answer replaced the form, so a button linked with `form="…"` outside it comes back), an
+  error, an abort or a timeout. And when a waiting request is never sent (an `hx-confirm` answered
+  with no, a validation error, the form gone from the page).
+
+  A region works the same way for its fields, but they are disabled only once the request is sent:
+  a waiting request still reads their values, and a disabled field sends none.
+
+  With the htmx include mode `never` (a site brings its own htmx), the driver still writes the
+  `data-preflow-disable` marker but adds no script, so only htmx's own `disabled` applies. Such a
+  site adds its own script for the marker.
+
+  Known limits:
+  - A confirm dialog of your own (a handler that cancels `htmx:confirm` and calls
+    `issueRequest()` later) is outside the waiting rule: while it is open the buttons are enabled,
+    and once it answers yes they are disabled from when the request is sent.
+  - An htmx extension whose `onEvent` returns false for `htmx:confirm` stops the request in a way
+    the script can't see. If another request of the component was running at that moment, the
+    buttons stay disabled until the page reloads.
+  - Some browsers drop the focus from a button when it is disabled. htmx then forgets which button
+    was clicked, so a form that waited for another request may arrive without that button's
+    `name`/`value`. Don't rely on the clicked button's value for a form with `disable: 'self'`.
+
 - **One action at a time per component.** Requests of one component wait for each other, so two
   quick clicks on "Add another" give two rows. `latest: true` opts into "a newer request cancels
   the older one".
@@ -318,6 +370,31 @@ A small, fixed set of words that every driver translates (`Preflow\Core\Http\Hyp
   token, and they aren't known when the child renders alone, so the call fails there (a
   `LogicException`; the child's error boundary shows its fallback). A component rendered on its own
   (by a page template) has no parent; the call then fails too.
+
+  Since 0.87 the endpoint builds that parent (through the component factory) only when the child's
+  answer calls it. Its own calls and `hd.hasParent()` need only the parent's class and key. So a
+  parent whose class can't be built in the child's request fails only a `component: 'parent'` call.
+
+  A component that is shown both inside a parent and on its own (say, a step in an editor's
+  preview) asks first with `hd.hasParent()`. It is true inside another component's template, and
+  when the child renders alone for its own action with a parent named in its token. On its own it
+  is false, so the buttons render without calls:
+
+  ```twig
+  {% if hd.hasParent() %}
+      <button {{ hd.post('answer', { choice: 'a' }, { component: 'parent' }) }}>A</button>
+  {% else %}
+      <button type="button">A</button>
+  {% endif %}
+  ```
+
+  In Blade: `@if($hd->hasParent()) … @endif`. Like the other short calls it throws a
+  `LogicException` outside a component's template.
+
+  `hd.hasParent()` says only that a parent is there, not that it can be called. A child rendered
+  alone (its own action or refresh) whose parent keeps no state has a parent, so `hasParent()` is
+  true, but the `component: 'parent'` call still throws (the rule above: the parent needs
+  `#[State]`). Give the parent state when its children call it.
 - The set stays small: a new option comes only when at least two real templates need it.
   Everything else goes through the escape hatch.
 
@@ -399,7 +476,7 @@ old-style call's element inherits that element's htmx attributes the short call 
 
 #### Locale prefix
 
-Since 0.46, `HtmxExtensionProvider` takes an optional `pathPrefix` closure (`\Closure(): string`) that is put before every URL it builds (`actionUrl`, `post`, `get`, `on`). Preflow's core passes the locale prefix the current request's URL carried (`Contexts::current()->request->localePrefix`; `LocaleMiddleware::urlPrefix()` before 0.83), so on a `/de/…` page component URLs are `/de/--component/…` and the action runs in German; the locale middleware strips `/de` again before the endpoint. Pages without a prefix, and apps without the i18n URL prefix strategy, keep `/--component/…`. A hand-written `hx-post="/--component/…"` loses the locale, so use `hd.actionUrl()`. Only `HtmxExtensionProvider` (the `hd.*` helpers in core apps) applies the prefix; the legacy `HdExtension` does not. Folio's admin preview under `/folio` carries no locale prefix, so it renders components without it. Error pages are rendered after the pipeline (the kernel catches the exception once the locale middleware has returned), so a component on a 404 or 500 page under `/de/…` gets an unprefixed `/--component/…` URL and its action runs in the default locale.
+Since 0.46, `HtmxExtensionProvider` takes an optional `pathPrefix` closure (`\Closure(): string`) that is put before every URL it builds (`actionUrl`, `post`, `get`, `on`). Preflow's core passes the locale prefix the current request's URL carried (`Contexts::current()->request->localePrefix`; `LocaleMiddleware::urlPrefix()` before 0.83), so on a `/de/…` page component URLs are `/de/--component/…` and the action runs in German; the locale middleware strips `/de` again before the endpoint. Pages without a prefix, and apps without the i18n URL prefix strategy, keep `/--component/…`. A hand-written `hx-post="/--component/…"` loses the locale, so use `hd.actionUrl()`. `HtmxExtensionProvider` (the `hd.*` helpers in core apps) applies the prefix. Folio's admin preview under `/folio` carries no locale prefix, so it renders components without it. Error pages are rendered after the pipeline (the kernel catches the exception once the locale middleware has returned), so a component on a 404 or 500 page under `/de/…` gets an unprefixed `/--component/…` URL and its action runs in the default locale.
 
 ```php
 new HtmxExtensionProvider($driver, $token, pathPrefix: fn (): string => Contexts::peek()?->request?->localePrefix ?? '');

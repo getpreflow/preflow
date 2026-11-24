@@ -159,6 +159,214 @@ function preflowBusyMarker(busy) {
 }
 JS;
 
+    /**
+     * htmx, and the disabler for the action option `disable`, which htmx 2's hx-disabled-elt can't
+     * do on its own (its `find` returns the first match only, `this` stands only alone, and the
+     * `disabled` attribute it sets does nothing on a <form> or a <div>). The driver marks the
+     * element with DISABLE_MARKER:
+     *
+     * - `submits` (`disable: 'self'`): the element itself when it is a button, and its submit
+     *   controls (a form's own control list, so buttons linked with form="…" too: `button` whose
+     *   type is submit, i.e. none, empty or submit, and `input` type submit or image; not
+     *   type=button or reset). They are disabled as soon as the call is triggered, also while the
+     *   request waits for another request of its component, so a second click or Enter finds them
+     *   disabled.
+     * - `fields #<region id>` (`disable: '<region>'`): the region's input, select, textarea and
+     *   button elements, from when the request is sent (a waiting request still reads their values;
+     *   a disabled field sends none).
+     *
+     * Only what the disabler disabled is enabled again: when the request ends (a load, an error,
+     * an abort, a timeout; also when the answer replaced the element), or when a waiting request is
+     * never sent (cancelled at a confirm or prompt, halted by validation, its target or element
+     * gone).
+     *
+     * Asked for by every call with `disable`, so other pages are unchanged. Like the busy marker it
+     * goes with the render's component JS (JsPosition::Body, under the page nonce) and sets itself
+     * up once per page. In mode `never` nothing is added (the marker is still written).
+     *
+     * @since 0.87.0
+     */
+    public function requireDisabler(): void
+    {
+        if ($this->mode === 'never') {
+            return;
+        }
+        $this->require();
+        $this->assets->addJs(
+            self::DISABLER . "\npreflowDisabler('" . self::DISABLE_MARKER . "');",
+            JsPosition::Body,
+            'preflow-htmx-disable',
+        );
+    }
+
+    /** The attribute that tells the disabler what a call disables: `submits`, or `fields #<region id>`. */
+    public const string DISABLE_MARKER = 'data-preflow-disable';
+
+    /**
+     * How it works with htmx 2's events. htmx:confirm fires before the hx-sync step; a microtask
+     * afterwards (before any next click) sees whether htmx:beforeSend followed for that confirm. If
+     * not and the component (the call's hx-sync element) has a request running, the request waits
+     * in the queue: `submits` are disabled now. When the queue sends it, htmx:confirm fires again;
+     * if beforeSend follows, the hold passes to the running request, otherwise (cancelled, or a
+     * confirm another handler takes over) it is released. A waiting request whose element left the
+     * page is dropped by htmx without an event: its hold is released when the component's running
+     * request ends. Running requests per component are the XHRs seen at beforeSend that are still
+     * open (readyState 1–3).
+     *
+     * A sent request releases when its XHR is done: on `readystatechange` with readyState 4, which
+     * the XHR fires for a load, an error, an abort and a timeout before the matching event, so
+     * before htmx's handlers swap and start the next queued request (which reads the fields again);
+     * `loadend` is a fallback, once only. Both fire whether or not the request's element is still
+     * on the page, so a region's fields, or a button linked to a form that the answer replaced,
+     * are enabled again. Holds are counted per control: a control two requests hold is enabled
+     * when the last one ends; one the page disabled itself is never taken over.
+     */
+    private const string DISABLER = <<<'JS'
+function preflowDisabler(marker) {
+    if (window.preflowDisablerOn) { return; }
+    window.preflowDisablerOn = true;
+    var running = new WeakMap(), waiting = new WeakMap();
+    function isSubmit(c) {
+        return (c.tagName === 'BUTTON' && c.type === 'submit') || (c.tagName === 'INPUT' && (c.type === 'submit' || c.type === 'image'));
+    }
+    function controls(el, how) {
+        var list = [];
+        if (how.indexOf('fields ') === 0) {
+            var region = document.querySelector(how.slice(7));
+            return region ? Array.prototype.slice.call(region.querySelectorAll('input, select, textarea, button')) : [];
+        }
+        if (el.tagName === 'BUTTON' || (el.tagName === 'INPUT' && (el.type === 'submit' || el.type === 'image' || el.type === 'button'))) { list.push(el); }
+        var inner = el.tagName === 'FORM' ? Array.prototype.slice.call(el.elements) : Array.prototype.slice.call(el.querySelectorAll('button, input'));
+        if (el.tagName === 'FORM') {
+            Array.prototype.forEach.call(document.querySelectorAll('input[type=image]'), function (c) { if (c.form === el) { inner.push(c); } });
+        }
+        inner.forEach(function (c) { if (isSubmit(c) && list.indexOf(c) < 0) { list.push(c); } });
+        return list;
+    }
+    function state(el) {
+        if (!el.preflowDisable) { el.preflowDisable = { held: 0, disabled: [], queued: 0, transfer: 0, issue: null }; }
+        return el.preflowDisable;
+    }
+    function hold(el, how) {
+        var st = state(el);
+        st.held = st.held + 1;
+        if (st.held !== 1) { return; }
+        st.disabled = [];
+        controls(el, how).forEach(function (c) {
+            if (c.preflowHolds > 0) { c.preflowHolds = c.preflowHolds + 1; st.disabled.push(c); return; }
+            if (c.disabled) { return; }
+            c.disabled = true;
+            c.preflowHolds = 1;
+            st.disabled.push(c);
+        });
+    }
+    function release(el) {
+        var st = state(el);
+        if (st.held === 0) { return; }
+        st.held = st.held - 1;
+        if (st.held !== 0) { return; }
+        st.disabled.forEach(function (c) {
+            c.preflowHolds = c.preflowHolds - 1;
+            if (c.preflowHolds === 0) { c.disabled = false; }
+        });
+        st.disabled = [];
+    }
+    function sync(el) {
+        var spec = el.getAttribute && el.getAttribute('hx-sync');
+        if (!spec) { return null; }
+        var at = spec.lastIndexOf(':');
+        var target = null;
+        try { target = document.querySelector(spec.slice(0, at)); } catch (err) { target = null; }
+        return target ? { el: target, queues: spec.slice(at + 1).trim().indexOf('queue') === 0 } : null;
+    }
+    function busy(target) {
+        var xhrs = (running.get(target) || []).filter(function (x) { return x.readyState >= 1 && x.readyState <= 3; });
+        running.set(target, xhrs);
+        return xhrs.length > 0;
+    }
+    function dropDetached(target) {
+        // htmx drops a waiting request whose element left the page, without an event.
+        waiting.set(target, (waiting.get(target) || []).filter(function (el) {
+            var st = state(el);
+            if (st.queued === 0) { return false; }
+            if (el.isConnected !== false) { return true; }
+            var how = el.getAttribute(marker);
+            while (st.queued > 0) {
+                st.queued = st.queued - 1;
+                if (how === 'submits') { release(el); }
+            }
+            return false;
+        }));
+    }
+    function marked(e) {
+        var el = e.detail && e.detail.elt;
+        var how = el && el.getAttribute ? el.getAttribute(marker) : null;
+        return how ? { el: el, how: how } : null;
+    }
+    document.addEventListener('htmx:confirm', function (e) {
+        var m = marked(e);
+        if (!m || e.target !== m.el) { return; }
+        var st = state(m.el), s = sync(m.el), issue = { sent: false };
+        var early = m.how === 'submits';
+        var dequeued = st.queued > 0 && !(s && busy(s.el));
+        st.issue = issue;
+        if (dequeued) {
+            st.queued = st.queued - 1;
+            if (early) { st.transfer = st.transfer + 1; }
+        }
+        queueMicrotask(function () {
+            if (issue.sent) { return; }
+            if (dequeued) {
+                if (early) { st.transfer = st.transfer - 1; release(m.el); }
+                return;
+            }
+            if (e.defaultPrevented) { return; }
+            if (s && s.queues && busy(s.el)) {
+                st.queued = st.queued + 1;
+                if (early) { hold(m.el, m.how); }
+                var list = waiting.get(s.el) || [];
+                if (list.indexOf(m.el) < 0) { list.push(m.el); }
+                waiting.set(s.el, list);
+            }
+        });
+    });
+    document.addEventListener('htmx:targetError', function (e) {
+        var m = marked(e);
+        if (!m || e.target !== m.el) { return; }
+        var st = state(m.el), s = sync(m.el);
+        if (st.queued > 0 && !(s && busy(s.el))) {
+            st.queued = st.queued - 1;
+            if (m.how === 'submits') { release(m.el); }
+        }
+    });
+    document.addEventListener('htmx:beforeSend', function (e) {
+        var el = e.detail && e.detail.elt, xhr = e.detail && e.detail.xhr;
+        if (!el || !xhr || e.target !== el) { return; }
+        var s = sync(el);
+        if (s) {
+            busy(s.el);
+            running.get(s.el).push(xhr);
+            xhr.addEventListener('loadend', function () { dropDetached(s.el); });
+        }
+        var m = marked(e);
+        if (!m) { return; }
+        var st = state(el);
+        if (st.issue) { st.issue.sent = true; st.issue = null; }
+        if (st.transfer > 0) { st.transfer = st.transfer - 1; } else { hold(el, m.how); }
+        // Released when the XHR is done (readyState 4: before htmx's load/error/abort/timeout handlers,
+        // so before htmx starts the next queued request, which reads the fields); loadend as a fallback.
+        var done = false;
+        var end = function () {
+            if (done) { return; }
+            done = true;
+            release(el);
+        };
+        xhr.addEventListener('readystatechange', function () { if (xhr.readyState === 4) { end(); } });
+        xhr.addEventListener('loadend', end);
+    });
+}
+JS;
+
     public function isRequired(): bool
     {
         return $this->requirement()->required;

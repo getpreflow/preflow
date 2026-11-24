@@ -363,6 +363,32 @@ final class FormBuilder
         ) {
             $driverAttrs  = $this->driver->inlineValidationAttributes($this->validateEndpoint, $name);
             $explicitAttrs = $options['attrs'] ?? [];
+
+            // A call writing what the inline validation writes is refused here, where it can say so.
+            $call = FieldCall::of($name, $options['call'] ?? null);
+            if ($call !== null) {
+                // Driver attributes the field's own attrs override (compared like the call) don't count.
+                $overridden = array_flip(array_map(
+                    static fn (int|string $key): string => FieldCall::comparable((string) $key),
+                    array_keys($explicitAttrs),
+                ));
+                $fromDriver = array_filter(
+                    $driverAttrs,
+                    static fn (string $key): bool => !isset($overridden[FieldCall::comparable($key)]),
+                    ARRAY_FILTER_USE_KEY,
+                );
+                $twice = FieldCall::overlap(FieldCall::attributeNames($call), $fromDriver);
+                if ($twice !== []) {
+                    throw new \InvalidArgumentException(sprintf(
+                        "Field '%s': its call writes %s, and the form's inline validation writes %s too. "
+                        . 'Pass validate: false on this field to use the call.',
+                        $name,
+                        implode(', ', $twice),
+                        count($twice) === 1 ? 'it' : 'them',
+                    ));
+                }
+            }
+
             // User attrs override driver attrs
             $options['attrs'] = array_merge($driverAttrs, $explicitAttrs);
         }

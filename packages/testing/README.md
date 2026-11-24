@@ -85,6 +85,8 @@ $answer = WebApplication::componentAction($app, $page, JobSearch::class, 'search
 - `localePrefix: '/de'` runs the action in that locale (the page's HTML doesn't say its locale).
 - `props:` are the props of a component **without** state (its token carries them, as the page's
   does). A component with state carries only its key, so props fail there.
+- `cookies:` are the request's cookies (`['visitor' => $token]`), sent as a browser would: in the
+  request's cookie params and its `Cookie` header. Default: none.
 - A page without the component's state carrier fails the test and names the components that have
   one.
 
@@ -262,7 +264,7 @@ hooks, and run it with PHPUnit like any other test. The built-in adapters run th
 | Suite | Interface | Hooks |
 |---|---|---|
 | `Preflow\Testing\Contract\TemplateEngineContract` | `Preflow\View\TemplateEngineInterface` | `createEngine(string $templateDir)`, `fixture(string $name)` |
-| `Preflow\Testing\Contract\HypermediaDriverContract` | `Preflow\Htmx\HypermediaDriver` | `createDriver()`, `fragmentRequest(ServerRequestInterface $request)`, `targetRequest(ServerRequestInterface $request, string $targetId)`; optional `effects()`, `historyRestoreRequest($request)`, `pageNonceRequest($request, $nonce)`. Since 0.81 it also checks that effects stay in the render frame they were recorded in, and, for a driver that implements `OwnsResponseHeaders`, that `ownedHeaders()` names every header it writes (skipped otherwise). Since 0.86, for a driver that implements `DrivesComponentActions` (skipped otherwise): every neutral action option and the values change the call's attributes, the listen attributes name the event, and the state carrier and update hold the state string |
+| `Preflow\Testing\Contract\HypermediaDriverContract` | `Preflow\Htmx\HypermediaDriver` | `createDriver()`, `fragmentRequest(ServerRequestInterface $request)`, `targetRequest(ServerRequestInterface $request, string $targetId)`; optional `effects()`, `historyRestoreRequest($request)`, `pageNonceRequest($request, $nonce)`. Since 0.81 it also checks that effects stay in the render frame they were recorded in, and, for a driver that implements `OwnsResponseHeaders`, that `ownedHeaders()` names every header it writes (skipped otherwise). Since 0.86, for a driver that implements `DrivesComponentActions` (skipped otherwise): every neutral action option and the values change the call's attributes, the listen attributes name the event, and the state carrier and update hold the state string. Since 0.87: `on: 'blur'` is mapped to its own trigger or refused with an `InvalidArgumentException`, and a call with `carriesState: false` gives other attributes than one with state |
 | `Preflow\Testing\Contract\StateStoreContract` (0.86) | `Preflow\Components\StateStore` | `store()`: the state round-trips, the state of another class or id is refused, tampered state is refused |
 | `Preflow\Testing\Contract\StorageDriverContract` | `Preflow\Data\StorageDriver` | `createDriver()`, `createType(string $type, array $fields)`; optional `supportsAutoIds()`, `reopenDriver()`, `emptyDriver()`, `declareFullText(string $type, array $fields)`, `declareUnique(string $type, string $field)`, `textRuleMissing()` (the last five since 0.78); capability tests run when the driver implements the interface |
 | `Preflow\Testing\Contract\DialectContract` (0.66.1) | `Preflow\Data\Driver\Dialect` | `createPdo()` (an empty database), `createDialect()`; optional `numberColumnType()` |

@@ -16,6 +16,8 @@ use Preflow\Core\Context\SystemClock;
 use Preflow\Core\PageCache\AnonymousGlobals;
 
 session_save_path($argv[2]);
+// The test reads the session file by this id; strict mode (a php.ini default on some builds) would replace it.
+ini_set('session.use_strict_mode', '0');
 session_id($argv[3]);
 session_start();
 $_SESSION['_auth_user_id'] = 'member';

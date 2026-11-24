@@ -160,6 +160,22 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
     }
 
     /**
+     * Whether the component whose template renders has a parent on the page: it renders inside
+     * another component's template, or alone for its own action (or refresh) with a parent named
+     * in its token. Guards a `component: 'parent'` call in a component that is also shown on its
+     * own: `{% if hd.hasParent() %}{{ hd.post('answer', {}, {component: 'parent'}) }}{% endif %}`.
+     *
+     * @throws \LogicException outside a component's render
+     * @since 0.87.0
+     */
+    public function hasParent(): bool
+    {
+        $component = $this->rendering('hd.hasParent()');
+
+        return $this->renderer !== null && $this->renderer->hasParent($component);
+    }
+
+    /**
      * Marks htmx as needed on this page and returns '' (htmx is inlined by
      * HtmxAssets, never loaded through a tag).
      */
@@ -223,7 +239,7 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
     {
         $what = sprintf("hd.%s('%s')", $method, $action);
         [$component, $options, $driver] = $this->resolve($what, $options);
-        $call = new ActionCall($method, $this->url('action', $component, $action), $component->getComponentId(), $this->targetId($component, $options), $options, $values);
+        $call = new ActionCall($method, $this->url('action', $component, $action), $component->getComponentId(), $this->targetId($component, $options), $options, $values, $component->hasState());
 
         return $this->attributes($driver->callAttributes($call));
     }
@@ -238,7 +254,7 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
         $what = sprintf("hd.on('%s')", $event);
         [$component, $options, $driver] = $this->resolve($what, $options);
         // A POST: a component's state goes in the body, whatever its size.
-        $call = new ActionCall('post', $this->url('render', $component, 'render'), $component->getComponentId(), $this->targetId($component, $options), $options);
+        $call = new ActionCall('post', $this->url('render', $component, 'render'), $component->getComponentId(), $this->targetId($component, $options), $options, carriesState: $component->hasState());
 
         return $this->attributes($driver->listenAttributes($call, $event));
     }
@@ -318,7 +334,7 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
      */
     private function url(string $path, Component $component, string $action): string
     {
-        $token = $this->token->encodeFor($component, $action, $this->renderer?->parentOf($component));
+        $token = $this->token->encodeFor($component, $action, $this->renderer?->parentRefOf($component));
 
         return PreviewUrls::carry($this->endpoint() . '/' . $path . '?token=' . urlencode($token));
     }

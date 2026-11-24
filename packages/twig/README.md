@@ -17,7 +17,6 @@ Requires PHP 8.4+ and Twig 3.
 | `TwigEngine` | `TemplateEngineInterface` implementation wrapping `Twig\Environment` |
 | `PreflowExtension` | `{% apply css %}`, `{% apply js %}`, `{{ head() }}`, `{{ assets() }}` |
 | `ComponentExtension` | `{{ component('Name', {props}) }}` — renders Preflow components |
-| `HdExtension` | `{{ hd.post(...) }}`, `{{ hd.get(...) }}` — hypermedia action helpers |
 
 `{{ t() }}` and `{{ tc() }}` come from preflow/i18n (`TranslationExtensionProvider`, registered by the application), which escapes parameters.
 

@@ -11,11 +11,13 @@ use Preflow\Core\PageCache\PageCacheConfig;
 use Preflow\Core\PageCache\PageCacheMiddleware;
 use Preflow\Testing\Tests\Fixtures\State\Greeter;
 use Preflow\Testing\Tests\Fixtures\State\Tally;
+use Preflow\Testing\Tests\Fixtures\State\Visitor;
 use Preflow\Testing\WebApplication;
 use Preflow\Testing\ChecksFrameBalance;
 
 require_once __DIR__ . '/Fixtures/State/Tally.php';
 require_once __DIR__ . '/Fixtures/State/Greeter.php';
+require_once __DIR__ . '/Fixtures/State/Visitor.php';
 
 final class WebApplicationTest extends TestCase
 {
@@ -180,6 +182,17 @@ final class WebApplicationTest extends TestCase
 
         $this->assertSame(200, $answer->getStatusCode(), (string) $answer->getBody());
         $this->assertStringContainsString('Hallo, Eva', (string) $answer->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_an_action_sees_the_cookies_it_is_given(): void
+    {
+        $with = (string) WebApplication::componentAction(WebApplication::boot($this->dir), '', Visitor::class, 'hello', cookies: ['visitor' => 'ada', 'theme' => 'dark'])->getBody();
+        $this->assertStringContainsString('Visitor ada', $with);
+        $this->assertStringContainsString('header visitor=ada; theme=dark', $with, 'the Cookie header carries them as a browser sends them');
+
+        $without = (string) WebApplication::componentAction(WebApplication::boot($this->dir), '', Visitor::class, 'hello')->getBody();
+        $this->assertStringContainsString('Visitor none / header ', $without, 'no cookies by default');
     }
 
     #[RunInSeparateProcess]

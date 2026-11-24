@@ -48,10 +48,15 @@ final class ComponentRenderer
     /** @var \WeakMap<Component, string> */
     private \WeakMap $carried;
 
-    /** @var \WeakMap<Component, Component> the parent on the page of a component rendered alone (placeInside()) */
+    /**
+     * The parent on the page of a component rendered alone (placeInside(), placeInsideLazily()):
+     * its class and key, and the parent itself once built.
+     *
+     * @var \WeakMap<Component, array{ref: ParentRef, parent: ?Component, build: ?\Closure(): Component}>
+     */
     private \WeakMap $placedIn;
 
-    /** @var \WeakMap<Component, true> parents that stand in for the one on the page (placeInside()) */
+    /** @var \WeakMap<Component, true> parents that stand in for the one on the page (placeInside(), or placeInsideLazily() once built) */
     private \WeakMap $standIns;
 
     /** @var \WeakMap<Component, true> */
@@ -259,13 +264,67 @@ final class ComponentRenderer
 
     /**
      * The component whose template rendered $component, null for one rendered on its own (by a
-     * page template, the endpoint, a live part) unless placeInside() named its parent on the page.
+     * page template, the endpoint, a live part) unless placeInside() or placeInsideLazily() named
+     * its parent on the page.
      *
      * @since 0.86.0
      */
     public function parentOf(Component $component): ?Component
     {
-        return $this->parents[$component] ?? null;
+        if (isset($this->parents[$component])) {
+            return $this->parents[$component];
+        }
+        $placed = $this->placedIn[$component] ?? null;
+        if ($placed === null) {
+            return null;
+        }
+        if ($placed['parent'] === null && $placed['build'] !== null) {
+            // Placed lazily: built the first time something asks for the parent itself.
+            $parent = ($placed['build'])();
+            if (!$parent instanceof $placed['ref']->class) {
+                throw new \LogicException(sprintf(
+                    'The parent of %s placed with placeInsideLazily() built a %s; the parent on the page is a %s. The builder must return a %s.',
+                    $component::class,
+                    get_debug_type($parent),
+                    $placed['ref']->class,
+                    $placed['ref']->class,
+                ));
+            }
+            $this->standIns[$parent] = true;
+            $this->placedIn[$component] = ['ref' => $placed['ref'], 'parent' => $parent, 'build' => null];
+
+            return $parent;
+        }
+
+        return $placed['parent'];
+    }
+
+    /**
+     * The class and key of $component's parent (see parentOf()), null without one. Answers from
+     * what is known about the parent, without building a parent placed with placeInsideLazily().
+     *
+     * @since 0.87.0
+     */
+    public function parentRefOf(Component $component): ?ParentRef
+    {
+        if (isset($this->parents[$component])) {
+            return ParentRef::of($this->parents[$component]);
+        }
+
+        return ($this->placedIn[$component] ?? null)['ref'] ?? null;
+    }
+
+    /**
+     * Whether $component has a parent on the page: it renders inside another component's
+     * template, or placeInside() or placeInsideLazily() named the parent it sits in on the page.
+     * Answers from what is known about the parent being there, without asking for the parent
+     * itself.
+     *
+     * @since 0.87.0
+     */
+    public function hasParent(Component $component): bool
+    {
+        return isset($this->parents[$component]) || isset($this->placedIn[$component]);
     }
 
     /**
@@ -279,12 +338,27 @@ final class ComponentRenderer
      */
     public function placeInside(Component $component, Component $parent): void
     {
-        $this->placedIn[$component] = $parent;
+        $this->placedIn[$component] = ['ref' => ParentRef::of($parent), 'parent' => $parent, 'build' => null];
         $this->standIns[$parent] = true;
     }
 
     /**
-     * Whether $component stands in for a parent on the page (placeInside()): its props other
+     * Like placeInside(), with the parent known by class and key ($parent) and built by $build
+     * only when something asks for it (parentOf(), e.g. a `component: 'parent'` call).
+     * hasParent() and parentRefOf() answer without it, so a parent that can't be built here fails
+     * only what needs it. $build must return a $parent->class with $parent->key; it runs at most once.
+     *
+     * @param \Closure(): Component $build
+     * @since 0.87.0
+     */
+    public function placeInsideLazily(Component $component, ParentRef $parent, \Closure $build): void
+    {
+        $this->placedIn[$component] = ['ref' => $parent, 'parent' => null, 'build' => $build];
+    }
+
+    /**
+     * Whether $component stands in for a parent on the page (placeInside(), or placeInsideLazily()
+     * once built): its props other
      * than its key and its state are not known here.
      *
      * @since 0.86.0
@@ -588,10 +662,9 @@ final class ComponentRenderer
         $parent = $this->current();
         if ($parent !== null && $parent !== $component) {
             $this->parents[$component] = $parent;
-        } elseif ($parent === null && isset($this->placedIn[$component])) {
-            $this->parents[$component] = $this->placedIn[$component]; // alone here, inside it on the page
         } elseif ($parent === null) {
-            unset($this->parents[$component]); // rendered on its own this time
+            // Rendered on its own this time: parentOf() falls back to the parent placeInside() or placeInsideLazily() named.
+            unset($this->parents[$component]);
         }
         $this->stack[] = $component;
         try {

@@ -27,6 +27,7 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
     /** The neutral events (ActionOptions::EVENTS) as hx-trigger events. */
     private const array EVENTS = [
         'click' => 'click', 'submit' => 'submit', 'change' => 'change', 'input' => 'input', 'load' => 'load', 'visible' => 'revealed',
+        'blur' => 'blur',
     ];
 
     /**
@@ -64,11 +65,13 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
 
     /**
      * hx-get/hx-post, hx-target, hx-swap (with `show:…:top` for scroll), hx-trigger (a debounce
-     * delays typing only), hx-include (the state carrier first, then the regions and fields
-     * named), hx-sync (one request per component at a time: `queue all` on the component, or
-     * with `latest` a newer request replaces the one running on it), hx-disabled-elt, and hx-vals
-     * with the values (VALUES_FIELD, one JSON object) and the region (REGION_FIELD, empty for the
-     * whole component).
+     * delays typing only), hx-include (the state carrier first when the component carries state,
+     * then the regions and fields named; `unset` when there is nothing to include, so an ancestor's
+     * hx-include doesn't reach the call), hx-sync (one
+     * request per component at a time: `queue all` on the component, or with `latest` a newer
+     * request replaces the one running on it), hx-disabled-elt with HtmxAssets::DISABLE_MARKER
+     * (what preflow's disabler script disables), and hx-vals with the values (VALUES_FIELD, one
+     * JSON object) and the region (REGION_FIELD, empty for the whole component).
      *
      * Both fields are always written, so a call inside another call's element (a button in a form
      * that calls an action) never sends the outer call's values or region: htmx merges hx-vals of
@@ -119,7 +122,8 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
         if ($options->scroll === 'top') {
             $swap .= ' show:#' . self::selector($call->targetId) . ':top';
         }
-        $include = ['#' . self::selector(self::carrierId($call->componentId))];
+        // The carrier only when the component has one on the page (htmx logs a selector that matches nothing).
+        $include = $call->carriesState ? ['#' . self::selector(self::carrierId($call->componentId))] : [];
         foreach ($options->include as $name) {
             $include[] = '#' . self::selector($call->componentId . '-' . $name); // a region: its fields
             $include[] = $component . ' [name="' . $name . '"]'; // a field of the component
@@ -128,7 +132,10 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
             "hx-{$call->method}" => $call->url,
             'hx-target' => '#' . self::selector($call->targetId),
             'hx-swap' => $swap,
-            'hx-include' => implode(', ', $include),
+        ];
+        // Nothing to include: `unset` (htmx 2), so no ancestor's hx-include reaches the call either.
+        $attributes['hx-include'] = $include === [] ? 'unset' : implode(', ', $include);
+        $attributes += [
             'hx-sync' => $component . ':' . ($options->latest ? 'replace' : 'queue all'),
             'hx-vals' => json_encode([
                 self::VALUES_FIELD => $call->values === [] ? '{}' : json_encode(self::plain(self::VALUES_FIELD, $call->values), self::JSON),
@@ -145,6 +152,11 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
         }
         if ($options->disable !== null) {
             $attributes['hx-disabled-elt'] = $options->disable === 'self' ? 'this' : '#' . self::selector($call->componentId . '-' . $options->disable);
+            // What htmx 2 can't disable (a form's submit controls, a region's fields): preflow's script.
+            $attributes[HtmxAssets::DISABLE_MARKER] = $options->disable === 'self'
+                ? 'submits'
+                : 'fields #' . self::selector($call->componentId . '-' . $options->disable);
+            $this->assets?->requireDisabler();
         }
         foreach ($options->drivers() as $driver) {
             if ($driver !== self::OPTIONS_KEY && $this->debug) {
