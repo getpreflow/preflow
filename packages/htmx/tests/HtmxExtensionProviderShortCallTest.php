@@ -267,7 +267,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         $this->assertTrue($payload->neutralCall, 'a 0.86 token (encodeFor())');
         $this->assertSame('#' . $box->getComponentId(), $attributes['hx-target']);
         $this->assertSame(['_values' => '{"row":3}', '_region' => ''], json_decode($attributes['hx-vals'], true));
-        $this->assertArrayNotHasKey('hx-include', $attributes, 'a component without state renders no carrier, so the call names none (htmx would log "returned no matches")');
+        $this->assertSame('unset', $attributes['hx-include'], 'a component without state renders no carrier, so the call names none (htmx would log "returned no matches")');
         $this->assertStringNotContainsString('preflow-state--', (string) $seen);
 
         // A component with state: a key-only token, and its carrier goes with the call.

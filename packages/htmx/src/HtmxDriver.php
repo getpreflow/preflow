@@ -66,7 +66,8 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
     /**
      * hx-get/hx-post, hx-target, hx-swap (with `show:…:top` for scroll), hx-trigger (a debounce
      * delays typing only), hx-include (the state carrier first when the component carries state,
-     * then the regions and fields named; left out when there is nothing to include), hx-sync (one
+     * then the regions and fields named; `unset` when there is nothing to include, so an ancestor's
+     * hx-include doesn't reach the call), hx-sync (one
      * request per component at a time: `queue all` on the component, or with `latest` a newer
      * request replaces the one running on it), hx-disabled-elt with HtmxAssets::DISABLE_MARKER
      * (what preflow's disabler script disables), and hx-vals with the values (VALUES_FIELD, one
@@ -132,9 +133,8 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
             'hx-target' => '#' . self::selector($call->targetId),
             'hx-swap' => $swap,
         ];
-        if ($include !== []) {
-            $attributes['hx-include'] = implode(', ', $include);
-        }
+        // Nothing to include: `unset` (htmx 2), so no ancestor's hx-include reaches the call either.
+        $attributes['hx-include'] = $include === [] ? 'unset' : implode(', ', $include);
         $attributes += [
             'hx-sync' => $component . ':' . ($options->latest ? 'replace' : 'queue all'),
             'hx-vals' => json_encode([
