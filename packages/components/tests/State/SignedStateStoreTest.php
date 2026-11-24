@@ -66,4 +66,12 @@ final class SignedStateStoreTest extends StateStoreContract
         $this->expectException(StateRefused::class);
         $this->at(1_800_000_000)->get('App\\X', 'x', '!!not base64!!');
     }
+
+    public function test_a_component_token_signed_with_the_same_secret_is_refused(): void
+    {
+        $token = new \Preflow\Htmx\ComponentToken(self::KEY);
+
+        $this->expectException(StateRefused::class);
+        $this->at(1_800_000_000)->get('App\\X', 'x', $token->encode('App\\X', []));
+    }
 }

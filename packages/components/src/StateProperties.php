@@ -97,9 +97,18 @@ final class StateProperties
             self::unsupported($class, $property, (string) $type);
         }
 
+        $classParts = 0;
+        $others = 0;
         foreach ($parts as $part) {
             if (!$part instanceof \ReflectionNamedType) {
                 self::unsupported($class, $property, (string) $type);
+            }
+            if ($part->getName() !== 'null') {
+                if ($part->isBuiltin()) {
+                    $others++;
+                } else {
+                    $classParts++;
+                }
             }
             if ($part->isBuiltin()) {
                 if (in_array($part->getName(), ['object', 'callable', 'iterable', 'resource', 'self', 'static'], true)) {
@@ -111,6 +120,11 @@ final class StateProperties
             if (!is_a($name, \BackedEnum::class, true) && !is_a($name, StateValue::class, true)) {
                 self::unsupported($class, $property, (string) $type);
             }
+        }
+
+        // A union of a class type with another type cannot be rebuilt from plain values.
+        if ($classParts > 0 && $classParts + $others > 1) {
+            self::unsupported($class, $property, (string) $type);
         }
     }
 
@@ -155,6 +169,14 @@ final class StateProperties
     private static function plainArray(string $class, string $name, array $values): array
     {
         foreach ($values as $key => $value) {
+            if ($value instanceof \BackedEnum || $value instanceof StateValue) {
+                throw new \LogicException(sprintf(
+                    '%s::$%s holds a %s inside an array; enums and StateValue objects can only be a property of their own, arrays hold plain values.',
+                    $class,
+                    $name,
+                    get_debug_type($value),
+                ));
+            }
             $values[$key] = self::plain($class, $name, $value);
         }
 

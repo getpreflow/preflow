@@ -16,11 +16,18 @@ use Preflow\Core\Context\Contexts;
 class SignedStateStore implements StateStore
 {
     private ?int $issuedAt = null;
+    private readonly string $secretKey;
 
+    /**
+     * The signing key is derived from the app key for this purpose only, so a state string is
+     * never a valid component token (or any other string signed with the app key), nor the reverse.
+     */
     public function __construct(
-        private readonly string $secretKey,
+        string $secretKey,
         private readonly int $maxAge = 86400,
-    ) {}
+    ) {
+        $this->secretKey = hash_hmac('sha256', 'preflow.component-state', $secretKey);
+    }
 
     public function put(string $componentClass, string $componentId, array $state): string
     {

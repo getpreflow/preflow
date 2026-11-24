@@ -47,6 +47,22 @@ final class Unsupported
     #[State] public \DateTimeImmutable $when;
 }
 
+final class UnionState
+{
+    #[State] public string|Sort $s = 'pizza';
+}
+
+final class NullableState
+{
+    #[State] public ?Sort $s = null;
+    #[State] public ?Filters $f = null;
+}
+
+final class ArrayHolder
+{
+    #[State] public array $list = [];
+}
+
 final class HoldsObject
 {
     #[State] public mixed $thing = null;
@@ -113,5 +129,28 @@ final class StatePropertiesTest extends TestCase
     {
         $this->expectException(StateRefused::class);
         StateProperties::write(new Stateful(), ['sort' => 'gone']);
+    }
+
+    public function test_a_union_of_a_class_type_with_another_type_is_refused(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage(UnionState::class);
+        $this->expectExceptionMessage('$s');
+        StateProperties::of(new UnionState());
+    }
+
+    public function test_nullable_class_types_stay_allowed(): void
+    {
+        $this->assertSame(['s', 'f'], StateProperties::of(new NullableState()));
+    }
+
+    public function test_an_enum_inside_an_array_is_refused(): void
+    {
+        $c = new ArrayHolder();
+        $c->list = [Sort::New];
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage(ArrayHolder::class . '::$list');
+        StateProperties::read($c);
     }
 }

@@ -10,8 +10,8 @@ use Preflow\Components\StateStore;
 
 /**
  * What every StateStore does, as tests. Extend it, implement store(), run it with PHPUnit.
- * store() is called once per test and must give an empty store; a test that needs a second
- * request calls it again through the same instance only if the store keeps nothing in the object.
+ * store() gives an empty store. current() builds it once per test and returns that same instance
+ * for every put() and get() of the test, so a store that keeps state in the object works too.
  *
  * @since 0.86.0
  */
@@ -61,9 +61,28 @@ abstract class StateStoreContract extends TestCase
     public function test_tampered_state_is_refused(): void
     {
         $carried = $this->current()->put('App\\Search', 'search-1', ['q' => 'x']);
-        $tampered = ($carried[0] === 'A' ? 'B' : 'A') . substr($carried, 1);
+        $tampered = $this->tamper($carried);
 
         $this->expectException(StateRefused::class);
         $this->current()->get('App\\Search', 'search-1', $tampered);
+    }
+
+    /** Changes a value inside the payload when the string is an encoded payload; else changes its first character. */
+    private function tamper(string $carried): string
+    {
+        try {
+            $decoded = sodium_base642bin($carried, SODIUM_BASE64_VARIANT_URLSAFE_NO_PADDING);
+        } catch (\SodiumException) {
+            $decoded = '';
+        }
+
+        if (str_contains($decoded, '"x"')) {
+            return sodium_bin2base64(
+                preg_replace('/"x"/', '"y"', $decoded, 1) ?? $decoded,
+                SODIUM_BASE64_VARIANT_URLSAFE_NO_PADDING,
+            );
+        }
+
+        return ($carried[0] === 'A' ? 'B' : 'A') . substr($carried, 1);
     }
 }

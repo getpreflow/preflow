@@ -147,4 +147,13 @@ final class ComponentTokenTest extends TestCase
 
         $this->assertSame([], $decoded->props);
     }
+
+    public function test_a_component_state_string_is_not_a_valid_token(): void
+    {
+        $state = (new \Preflow\Components\SignedStateStore('test-secret-key-32-chars-long!!'))
+            ->put('App\\X', 'x', ['a' => 1]);
+
+        $this->expectException(SecurityException::class);
+        $this->token->decode($state, maxAge: 86400);
+    }
 }
