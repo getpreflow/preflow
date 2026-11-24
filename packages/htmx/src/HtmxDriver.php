@@ -67,7 +67,8 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
      * hx-get/hx-post, hx-target, hx-swap (with `show:…:top` for scroll), hx-trigger (a debounce
      * delays typing only), hx-include (the state carrier first, then the regions and fields
      * named), hx-sync (one request per component at a time: `queue all` on the component, or
-     * with `latest` a newer request replaces the one running on it), hx-disabled-elt, and hx-vals
+     * with `latest` a newer request replaces the one running on it), hx-disabled-elt (for `self` also
+     * HtmxAssets::SUBMITS_MARKER: its submit controls are disabled too), and hx-vals
      * with the values (VALUES_FIELD, one JSON object) and the region (REGION_FIELD, empty for the
      * whole component).
      *
@@ -146,6 +147,11 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
         }
         if ($options->disable !== null) {
             $attributes['hx-disabled-elt'] = $options->disable === 'self' ? 'this' : '#' . self::selector($call->componentId . '-' . $options->disable);
+            if ($options->disable === 'self') {
+                // htmx 2 can't select all the submit controls inside the element: preflow's script does.
+                $attributes[HtmxAssets::SUBMITS_MARKER] = 'submits';
+                $this->assets?->requireSubmitDisabler();
+            }
         }
         foreach ($options->drivers() as $driver) {
             if ($driver !== self::OPTIONS_KEY && $this->debug) {

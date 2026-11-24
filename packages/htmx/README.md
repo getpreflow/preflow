@@ -285,7 +285,7 @@ A small, fixed set of words that every driver translates (`Preflow\Core\Http\Hyp
 | `debounce` | milliseconds | wait this long after the last typing (`input`) event; clicks and changes go at once. Only with `input` in `on` | `delay:300ms` |
 | `latest` | `true` | a newer request replaces one still running (for searches) | `hx-sync` `replace` |
 | `include` | a region or field name, or a list | extra fields to send | `hx-include` |
-| `disable` | `'self'`, a region name | disabled while the request runs | `hx-disabled-elt` |
+| `disable` | `'self'`, a region name | disabled while the request runs. `'self'`: the element, and (0.87) the submit controls inside it (`button` without a type or with `type="submit"`, `input type="submit"`; not `type="button"` or `"reset"`), so a form can't be sent twice by a click or Enter. A region: its fields | `hx-disabled-elt` (`this` for `'self'`, plus `data-preflow-disable="submits"` and a small preflow script for the submit controls) |
 | `scroll` | `'top'` | show the top of the target after the swap | `show:…:top` |
 | `component` | `'parent'` | run the action of the component whose template rendered this one | the parent's token and id |
 
@@ -306,6 +306,20 @@ A small, fixed set of words that every driver translates (`Preflow\Core\Http\Hyp
   <input name="email" value="{{ email }}"
       {{ hd.post('checkEmail', {}, { target: 'emailHint', on: 'blur', include: 'email' }) }}>
   ```
+
+- **Sending a form once.** `disable: 'self'` on a form disables its submit buttons until the
+  answer is in (also after an error), so a second click or Enter starts no second request:
+
+  ```twig
+  <form {{ hd.post('send', {}, { disable: 'self' }) }}>
+      <textarea name="message"></textarea>
+      <button>Send</button>
+  </form>
+  ```
+
+  htmx 2 can disable the form itself but not all the buttons inside it, so preflow adds a small
+  script (under the page nonce, once per page) to pages with such a call. A button the page had
+  disabled already stays disabled afterwards.
 
 - **One action at a time per component.** Requests of one component wait for each other, so two
   quick clicks on "Add another" give two rows. `latest: true` opts into "a newer request cancels

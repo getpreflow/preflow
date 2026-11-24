@@ -61,6 +61,29 @@ final class HtmxAssetsTest extends TestCase
         $this->assertStringNotContainsString('preflowBusyMarker', $never->renderHead() . $never->renderJsBody());
     }
 
+    public function test_submit_disabler_is_added_once_after_htmx(): void
+    {
+        $collector = new AssetCollector(new NonceGenerator());
+        $assets = new HtmxAssets($collector, 'on-demand');
+        $assets->requireSubmitDisabler();
+        $assets->requireSubmitDisabler();
+        $this->assertTrue($assets->isRequired(), 'the disabler needs htmx');
+        $head = $collector->renderHead();
+        $this->assertStringNotContainsString('preflowSubmitDisabler', $head, 'not in the head');
+        $body = $collector->renderJsBody();
+        $this->assertSame(1, substr_count($body, "preflowSubmitDisabler('data-preflow-disable');"));
+        $this->assertStringContainsString('function preflowSubmitDisabler(', $body, 'a named function, not an IIFE (inline scripts are joined)');
+        $this->assertStringContainsString('window.preflowSubmitDisablerOn', $body, 'set up once per page');
+        $this->assertStringContainsString("'button:not([type]), button[type=submit], input[type=submit]'", $body, 'submit controls only, not type=button or reset');
+        $this->assertStringContainsString('htmx:beforeSend', $body);
+        $this->assertStringContainsString('htmx:afterRequest', $body, 'fired after a load, an error, an abort and a timeout alike');
+        $this->assertMatchesRegularExpression('#<script nonce="[^"]+">(?:(?!</script>).)*preflowSubmitDisabler#s', $body, 'under the page nonce like the busy marker');
+
+        $never = new AssetCollector(new NonceGenerator());
+        (new HtmxAssets($never, 'never'))->requireSubmitDisabler();
+        $this->assertStringNotContainsString('preflowSubmitDisabler', $never->renderHead() . $never->renderJsBody());
+    }
+
     /** $render in a render frame of its own, as every page render runs (0.81). */
     private static function frame(\Closure $render): mixed
     {

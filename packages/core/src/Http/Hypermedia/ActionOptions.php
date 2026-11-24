@@ -60,7 +60,8 @@ final class ActionOptions
      * @param int|null $debounce milliseconds after the last typing (`input`) event; other events send at once
      * @param bool $latest a newer request replaces one still running (instead of waiting its turn)
      * @param list<string> $include region or field names whose fields go with the request
-     * @param string|null $disable `self`, or a region name, disabled while the request runs
+     * @param string|null $disable `self` (the element and the submit controls inside it: a form
+     *        can't be sent twice), or a region name, disabled while the request runs
      * @param string|null $scroll `top`: the top of the target is shown after the swap
      * @param string|null $component `parent`: the action of the component that rendered this one
      * @param array<string, array<string, mixed>> $drivers driver name => that driver's own attributes

@@ -159,6 +159,71 @@ function preflowBusyMarker(busy) {
 }
 JS;
 
+    /**
+     * htmx, and the submit disabler for `disable: 'self'`: htmx disables the element itself
+     * (hx-disabled-elt `this`); the disabler also disables the submit controls inside an element
+     * marked with SUBMITS_MARKER (`button` without a type or with type=submit, `input[type=submit]`;
+     * not type=button or reset), so a form sent once can't be sent again by a click or Enter while
+     * its request runs. htmx 2's hx-disabled-elt can't select all of them (its `find` returns the
+     * first match only, and `this` stands only alone).
+     *
+     * Asked for by every call with `disable: 'self'`, so other pages are unchanged. Like the busy
+     * marker it goes with the render's component JS (JsPosition::Body, under the page nonce) and
+     * sets itself up once per page.
+     *
+     * @since 0.87.0
+     */
+    public function requireSubmitDisabler(): void
+    {
+        if ($this->mode === 'never') {
+            return;
+        }
+        $this->require();
+        $this->assets->addJs(
+            self::SUBMIT_DISABLER . "\npreflowSubmitDisabler('" . self::SUBMITS_MARKER . "');",
+            JsPosition::Body,
+            'preflow-htmx-submits',
+        );
+    }
+
+    /** The attribute that marks an element whose submit controls are disabled while its request runs (value `submits`). */
+    public const string SUBMITS_MARKER = 'data-preflow-disable';
+
+    /**
+     * On htmx:beforeSend (after htmx has read the form's values, the clicked button's among them)
+     * the marked request element's submit controls that are not disabled yet get `disabled` and
+     * are remembered; on htmx:afterRequest (after a load, an error, an abort and a timeout alike)
+     * exactly those are enabled again, so a control the page disabled itself stays disabled. A
+     * count per element keeps them disabled while another request of the element still runs.
+     */
+    private const string SUBMIT_DISABLER = <<<'JS'
+function preflowSubmitDisabler(marker) {
+    if (window.preflowSubmitDisablerOn) { return; }
+    window.preflowSubmitDisablerOn = true;
+    var controls = 'button:not([type]), button[type=submit], input[type=submit]';
+    document.addEventListener('htmx:beforeSend', function (e) {
+        var el = e.detail && e.detail.elt;
+        if (!el || !el.getAttribute || el.getAttribute(marker) !== 'submits') { return; }
+        el.preflowSubmitsBusy = (el.preflowSubmitsBusy || 0) + 1;
+        if (el.preflowSubmitsBusy !== 1) { return; }
+        el.preflowSubmitsDisabled = [];
+        el.querySelectorAll(controls).forEach(function (control) {
+            if (control.disabled) { return; }
+            control.disabled = true;
+            el.preflowSubmitsDisabled.push(control);
+        });
+    });
+    document.addEventListener('htmx:afterRequest', function (e) {
+        var el = e.detail && e.detail.elt;
+        if (!el || !el.preflowSubmitsBusy) { return; }
+        el.preflowSubmitsBusy = el.preflowSubmitsBusy - 1;
+        if (el.preflowSubmitsBusy !== 0) { return; }
+        (el.preflowSubmitsDisabled || []).forEach(function (control) { control.disabled = false; });
+        el.preflowSubmitsDisabled = [];
+    });
+}
+JS;
+
     public function isRequired(): bool
     {
         return $this->requirement()->required;
