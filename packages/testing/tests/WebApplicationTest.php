@@ -69,4 +69,17 @@ final class WebApplicationTest extends TestCase
             $this->assertStringContainsString('live block', $e->getMessage(), 'the hint');
         }
     }
+
+    #[RunInSeparateProcess]
+    public function test_assert_page_cacheable_says_when_the_cache_is_off(): void
+    {
+        file_put_contents($this->dir . '/config/page_cache.php', "<?php\nreturn ['enabled' => false];\n");
+
+        try {
+            WebApplication::assertPageCacheable(WebApplication::boot($this->dir), '/page');
+            $this->fail('With the cache off the assertion must fail.');
+        } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+            $this->assertStringContainsString('The page cache is off for this app', $e->getMessage());
+        }
+    }
 }

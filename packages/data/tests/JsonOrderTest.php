@@ -59,4 +59,22 @@ final class JsonOrderTest extends TestCase
             );
         }
     }
+
+    public function test_equal_numbers_with_other_spelling_still_have_one_place(): void
+    {
+        $driver = new JsonFileDriver($this->dir);
+        foreach (['1.0', '007', '1', '7'] as $id) {
+            $driver->save('thing', $id, ['id' => $id], 'id');
+        }
+
+        $order = self::ids($driver->findMany('thing', (new Query())->orderBy('id')));
+        $this->assertSame(['1', '1.0', '007', '7'], $order, 'same value: the spelling decides, by bytes');
+        foreach ($order as $position => $x) {
+            $this->assertSame(
+                array_slice($order, $position + 1),
+                self::ids($driver->findMany('thing', (new Query())->where('id', '>', $x)->orderBy('id'))),
+                "after {$x}",
+            );
+        }
+    }
 }

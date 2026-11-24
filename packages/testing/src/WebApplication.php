@@ -59,6 +59,9 @@ final class WebApplication
      */
     public static function assertPageCacheable(Application $app, string $path, ?string $locale = null): void
     {
+        if (!$app->container()->bound(Cacheability::class)) {
+            Assert::fail('The page cache is off for this app (page_cache.enabled, and pdo_sqlite): nothing would be cached, so the assertion cannot pass.');
+        }
         $result = $app->container()->get(Cacheability::class)->check($path, $locale);
         Assert::assertTrue(
             $result->cacheable,

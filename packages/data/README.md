@@ -215,8 +215,10 @@ the next full save (`saveType()`, a model's `save()`) writes the canonical order
 `min`/`max` on the JSON driver use one total order: empty values first, then numbers (and numeric
 text) by value, then everything else by byte comparison. Ids like `2`, `9`, `10`, `1a` sort as
 `2, 9, 10, 1a`. A fixed order matters for paging: with ids of mixed kinds, the old comparison could
-skip records between pages (the change-date backfill of `migrate` lost some that way). Fields that
-compare as text keep comparing as text, and the SQL drivers are unchanged.
+skip records between pages (the change-date backfill of `migrate` lost some that way). Equal numbers in another spelling (`1` and `1.0`, `7` and `007`) keep a fixed place by their bytes.
+Range bounds compare in this same order, so numbers sort before text: give a date bound as a date
+(`'2026-01-01'`), not as a bare year number. Fields that compare as text keep comparing as text, and
+the SQL drivers are unchanged.
 
 Since JSON files now hold numbers and `true`/`false`, the JSON driver compares them as SQL compares
 its number and 1/0 columns: `=`, `!=`/`<>`, `IN`/`NOT IN` and `whereAny()`'s `=` match a number given
@@ -1893,8 +1895,8 @@ $dm->queryType('page')->locale('de')->where('slug', 'ueber-uns')->first();
 Content without code is a JSON file; the app's own models are PHP classes; Folio edits both.
 A class is the single definition of its model: there is no second file that repeats its fields.
 
-**Opt in** with a type key on the entity. Nothing changes for a class without one (like the
-skeleton's `Post`), and an existing JSON type keeps working as it is:
+**Opt in** with a type key on the entity. Nothing changes for a class without one, and an
+existing JSON type keeps working as it is:
 
 ```php
 use Preflow\Data\Attributes\{Entity, Field, Id, Relation};

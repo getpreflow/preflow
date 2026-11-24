@@ -205,8 +205,7 @@ $response = $app->handle($request);
 
 `Application::create($basePath, ?bool $console = null)` decides whether the app answers requests
 or runs commands from `runningInConsole()`, not from the PHP SAPI: with `$console` left out it is
-`PHP_SAPI === 'cli'`; pass `false` to boot a web app from a script (as `WebApplication::boot()`
-does), and the failure guard that turns a crash while booting into a 500 error page is installed
+`PHP_SAPI === 'cli'`; pass `false` to boot a web app from a script, and the failure guard that turns a crash while booting into a 500 error page is installed
 then. Before 0.85 that decision followed the SAPI.
 
 **A provider that does not exist.** A class in `config/providers.php` that cannot be found (a typo,
@@ -993,8 +992,8 @@ return [
   before any session opens). The form of a cached page carries the public (stateless) CSRF
   token; posted on a public path where the session only resumed by its cookie, it is accepted
   as it is for a visitor without one (with a passing origin). A site that needs sessions for
-  guests on public pages (a cart before sign-in) must list those paths. The skeleton ships
-  with its sign-in, admin and component paths.
+  guests on public pages (a cart before sign-in) must list those paths. The starter lists
+  its sign-in, employer and component paths.
 - **The key** is the URL as the visitor asked for it (the locale prefix included), the locale
   the locale middleware resolved (a cookie or `Accept-Language` on unprefixed paths), the
   normalised query, the values of the hypermedia clients' `varyHeaders()` and the `vary_headers`, and a forwarded scheme and host

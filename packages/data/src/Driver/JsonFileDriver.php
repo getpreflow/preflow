@@ -561,7 +561,8 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         $aNumber = is_numeric($a);
         $bNumber = is_numeric($b);
         if ($aNumber && $bNumber) {
-            return $a <=> $b;
+            // Equal values in another spelling ('1' and '1.0', '7' and '007') keep a fixed place by bytes.
+            return ($a <=> $b) ?: (strcmp((string) $a, (string) $b) <=> 0);
         }
         if ($aNumber !== $bNumber) {
             return $aNumber ? -1 : 1;

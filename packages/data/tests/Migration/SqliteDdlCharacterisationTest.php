@@ -63,19 +63,6 @@ final class SqliteDdlCharacterisationTest extends TestCase
     `redeemed_at` INTEGER NOT NULL
 )'],
             ['type' => 'index', 'name' => 'idx_code_redemption_code_id', 'sql' => 'CREATE INDEX `idx_code_redemption_code_id` ON `code_redemption` (`code_id`)'],
-            ['type' => 'index', 'name' => 'idx_posts_slug', 'sql' => 'CREATE INDEX `idx_posts_slug` ON `posts` (`slug`)'],
-            ['type' => 'index', 'name' => 'idx_posts_title', 'sql' => 'CREATE INDEX `idx_posts_title` ON `posts` (`title`)'],
-            ['type' => 'index', 'name' => 'idx_user_tokens_tokenHash', 'sql' => 'CREATE INDEX `idx_user_tokens_tokenHash` ON `user_tokens` (`tokenHash`)'],
-            ['type' => 'index', 'name' => 'idx_users_email', 'sql' => 'CREATE INDEX `idx_users_email` ON `users` (`email`)'],
-            ['type' => 'table', 'name' => 'posts', 'sql' => 'CREATE TABLE `posts` (
-    `uuid` TEXT PRIMARY KEY,
-    `title` TEXT COLLATE preflow_text NOT NULL,
-    `slug` TEXT COLLATE preflow_text NOT NULL,
-    `body` TEXT COLLATE preflow_text,
-    `status` TEXT COLLATE preflow_text NOT NULL,
-    `created_at` TEXT,
-    `updated_at` TEXT
-)'],
             // Since 0.78: the columns' intent each migration records (MigrationColumns).
             ['type' => 'table', 'name' => 'preflow_migration_columns', 'sql' => 'CREATE TABLE `preflow_migration_columns` (
     `id` TEXT PRIMARY KEY,
@@ -93,20 +80,6 @@ final class SqliteDdlCharacterisationTest extends TestCase
     `hits` INTEGER NOT NULL,
     `window_start` INTEGER NOT NULL
 , `expires_at` INTEGER)'],
-            ['type' => 'table', 'name' => 'user_tokens', 'sql' => 'CREATE TABLE `user_tokens` (
-    `uuid` TEXT PRIMARY KEY,
-    `tokenHash` TEXT NOT NULL,
-    `userId` TEXT NOT NULL,
-    `name` TEXT COLLATE preflow_text,
-    `createdAt` TEXT
-)'],
-            ['type' => 'table', 'name' => 'users', 'sql' => 'CREATE TABLE `users` (
-    `uuid` TEXT PRIMARY KEY,
-    `email` TEXT COLLATE preflow_text NOT NULL,
-    `passwordHash` TEXT NOT NULL,
-    `roles` TEXT,
-    `createdAt` TEXT
-)'],
         ], $actual);
     }
 

@@ -339,7 +339,7 @@ and archive extensions (`.php`, `.sql`, `.bak`, `.zip`…).
 
 ### `config/redirects.php`
 
-The skeleton ships it with every option commented out; without the file the defaults apply:
+Without the file the defaults apply; create it to change them:
 
 ```php
 return [

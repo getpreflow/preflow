@@ -173,6 +173,26 @@ final class ChangeDateBackfillTest extends TestCase
         }
     }
 
+    public function test_backfill_pages_ids_of_equal_value_once(): void
+    {
+        $driver = new JsonFileDriver($this->dir . '/data');
+        $dm = new DataManager(['default' => $driver], 'default');
+        $def = new TypeDefinition('page', 'page', 'default', ['title' => new TypeFieldDefinition('title')]);
+        $ids = ['1', '1.0', '7', '007', '8'];
+        foreach ($ids as $id) {
+            $driver->save('page', $id, ['uuid' => $id, 'title' => $id]);
+        }
+
+        Contexts::run(
+            ContextFactory::forTest()->withClock(new FrozenClock(new \DateTimeImmutable('2026-11-22T12:00:00Z'))),
+            static fn (): array => (new ChangeDateBackfill($dm, static fn (): array => [$def], chunk: 1))->run(),
+        );
+
+        foreach ($ids as $id) {
+            $this->assertArrayHasKey(ChangeDates::FIELD, $driver->findOne('page', $id), "{$id} has its date");
+        }
+    }
+
     public function test_a_type_without_change_dates_is_left_out(): void
     {
         $driver = new JsonFileDriver($this->dir . '/data');

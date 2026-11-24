@@ -1,6 +1,6 @@
 # Preflow skeleton
 
-An empty [Preflow](https://getpreflow.dev) app: one home page in English and German, and nothing else to delete.
+An empty [Preflow](https://preflow.dev) app: one home page in English and German, and nothing else to delete.
 
 ```bash
 composer create-project preflow/skeleton mysite

@@ -58,8 +58,9 @@ shown), then prints each step with what it did. It ends with a summary and the a
 | `--dry-run` | Print what would be written and run, and change nothing. |
 
 A password is never an option: it is asked for on the terminal, or read as one line from standard
-input when there is no terminal (`--email` is then required, or `--no-password`). Without either,
-the command stops with a message naming both options instead of waiting.
+input when there is no terminal. Without a terminal `--email` is required (on a site that has no
+staff yet); `--no-password` only replaces the piped password, so the admin is created without one.
+Without `--email` the command stops with a message naming both options instead of waiting.
 
 `preflow/rbac` must be installed first, because Folio's staff sign in through it; without it the
 command prints `composer require preflow/rbac` and changes nothing.
@@ -106,18 +107,22 @@ understand a step or when `folio:install` refused a file.
 
 Three small steps (then the same roles, migrations and first account as above).
 
-### 1. Register the service provider
+#### 1. Register the service providers
 
 In `config/providers.php`:
 
 ```php
 return [
-    \App\Providers\AppServiceProvider::class,
     \Preflow\Folio\FolioServiceProvider::class,
+    \Preflow\Rbac\RbacServiceProvider::class,
+    \App\Providers\AppServiceProvider::class,
 ];
 ```
 
-### 2. Choose the admin mount path (optional)
+The order matters: rbac replaces the permission resolver in `boot()`, so the app's own providers,
+which wrap it, come after.
+
+#### 2. Choose the admin mount path (optional)
 
 The admin mounts at `/folio` by default. To change it, add `config/folio.php`:
 
@@ -162,7 +167,7 @@ login form left open until the session expired still signs in when the browser's
 check passes (the password is the proof), instead of failing with a 403. Other admin forms
 whose session expired are sent back with a warning and their fields kept, never applied.
 
-### 3. Define a content type
+#### 3. Define a content type
 
 Content types are JSON files in `config/models/` (the existing `data.models_path`).
 Create `config/models/page.json`:

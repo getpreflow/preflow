@@ -11,8 +11,8 @@ return [
         'page_title' => 'Add a page',
         'page_text' => 'Create a file in app/pages, for example app/pages/about.twig. It answers at /about, with no routing to write.',
         'admin_title' => 'Add an admin',
-        'admin_text' => 'Install the CMS and the roles package, then let the installer set the admin up:',
-        'admin_hint' => 'The installer asks for the first admin account and leaves the files you wrote alone.',
+        'admin_text' => 'Install the CMS and rbac (preflow/rbac), then let the installer set the admin up:',
+        'admin_hint' => 'The installer asks for the first admin account and adds lines to your config files and never rewrites yours.',
         'seo_description' => 'An empty Preflow app: what to do next.',
     ],
     'error' => [

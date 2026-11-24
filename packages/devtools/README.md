@@ -327,7 +327,7 @@ php preflow pages:why /about --locale=de
 |---|---|
 | 0 | The page would be cached. |
 | 1 | It would not be: the reason is printed, with a hint when there is a usual fix (move the part into a `{% live %}` block or a `#[Live]` component; a refusal such as a cookie, a session, a status other than 200 or a signed-in user says that instead). Also when the page cache is off. |
-| 2 | Usage error, an unknown locale, or the page answers 404. |
+| 2 | Usage error, an unknown locale, the page answers 404, or the app fails to boot. |
 
 The same log line the cache writes when it refuses a page now names the part that differed. In a
 test, `WebApplication::assertPageCacheable($app, '/club')` (preflow/testing) fails with the same

@@ -424,7 +424,7 @@ redirect (`redirect_bare`).
 
 ### Turning it on
 
-Create `config/seo.php` (the skeleton has one with every key commented):
+Create `config/seo.php` (the skeleton has one with `enabled` and `name`):
 
 ```php
 <?php
