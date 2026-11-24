@@ -1,0 +1,105 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\Core\Tests;
+
+require_once __DIR__ . '/Fixtures/Pluggable/PhtmlEngine.php';
+require_once __DIR__ . '/Fixtures/Pluggable/PhtmlEngineFactory.php';
+require_once __DIR__ . '/Fixtures/State/StatefulTally/StatefulTally.php';
+require_once __DIR__ . '/Fixtures/State/MemoryTally.php';
+
+use Nyholm\Psr7\Factory\Psr17Factory;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
+use PHPUnit\Framework\TestCase;
+use Preflow\Components\ComponentRenderer;
+use Preflow\Components\SignedStateStore;
+use Preflow\Core\Application;
+use Preflow\Core\Tests\Fixtures\Pluggable\PhtmlEngineFactory;
+use Preflow\Core\Tests\Fixtures\State\MemoryStateStore;
+use Preflow\Core\Tests\Fixtures\State\MemoryTally;
+use Preflow\Core\Tests\Fixtures\State\StatefulTally\StatefulTally;
+use Preflow\Testing\ChecksFrameBalance;
+
+/** The app's component renderer keeps #[State]: signed with the app key, one signed store per request, others from the container. */
+final class ComponentStateWiringTest extends TestCase
+{
+    use ChecksFrameBalance;
+
+    private const KEY = 'component-state-wiring-test-key-0123456789';
+
+    private string $dir;
+
+    protected function setUp(): void
+    {
+        $this->dir = sys_get_temp_dir() . '/component_state_' . bin2hex(random_bytes(4));
+        mkdir($this->dir . '/config', 0777, true);
+        mkdir($this->dir . '/app/pages', 0777, true);
+        file_put_contents($this->dir . '/app/pages/index.phtml', '<html><head></head><body>'
+            . '<?= $call("component", ' . var_export(StatefulTally::class, true) . ', ["start" => 2]) ?></body></html>');
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn " . var_export(
+            ['name' => 't', 'debug' => 0, 'engine' => PhtmlEngineFactory::class, 'key' => self::KEY],
+            true,
+        ) . ";\n");
+    }
+
+    protected function tearDown(): void
+    {
+        exec('rm -rf ' . escapeshellarg($this->dir));
+    }
+
+    private function app(): Application
+    {
+        $app = Application::create($this->dir);
+        $app->boot();
+
+        return $app;
+    }
+
+    #[RunInSeparateProcess]
+    public function test_state_is_signed_with_the_app_key(): void
+    {
+        $app = $this->app();
+        $html = (string) $app->handle((new Psr17Factory())->createServerRequest('GET', 'http://localhost/'))->getBody();
+        $this->assertStringContainsString('<p>Tally 2</p>', $html, 'mounted from its props');
+
+        $renderer = $app->container()->get(ComponentRenderer::class);
+        $tally = new StatefulTally();
+        $tally->setProps(['start' => 7]);
+        $renderer->render($tally);
+
+        $carried = $renderer->stateFor($tally);
+        $this->assertNotNull($carried);
+        $this->assertSame(['tally' => 7], (new SignedStateStore(self::KEY))->get(StatefulTally::class, $tally->getComponentId(), $carried));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_each_request_gets_its_own_signed_store(): void
+    {
+        $app = $this->app();
+        $store = new \ReflectionProperty(Application::class, 'signedStateStore');
+
+        $app->handle((new Psr17Factory())->createServerRequest('GET', 'http://localhost/'));
+        $first = $store->getValue($app);
+        $this->assertInstanceOf(SignedStateStore::class, $first, 'made by the page with a stateful component');
+
+        $app->handle((new Psr17Factory())->createServerRequest('GET', 'http://localhost/'));
+        $this->assertNotSame($first, $store->getValue($app), 'a long-lived store would issue state as old as its first request');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_store_named_by_state_in_comes_from_the_container(): void
+    {
+        $app = $this->app();
+        $memory = new MemoryStateStore();
+        $app->container()->instance(MemoryStateStore::class, $memory);
+
+        $renderer = $app->container()->get(ComponentRenderer::class);
+        $tally = new MemoryTally();
+        $tally->setProps(['start' => 4]);
+        $renderer->render($tally);
+
+        $this->assertSame('m0', $renderer->stateFor($tally));
+        $this->assertSame(['m0' => ['tally' => 4]], $memory->kept);
+    }
+}

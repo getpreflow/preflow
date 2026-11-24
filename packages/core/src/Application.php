@@ -655,6 +655,7 @@ final class Application
         $clients = $this->withHypermedia($request);
         $ctx = $this->requestContext($request, $clients);
         $this->rebuildsScheduled = false;
+        $this->signedStateStore = null; // a new request issues its component state anew
 
         $held = [];
         try {
@@ -1150,6 +1151,9 @@ final class Application
 
     private bool $rebuildsScheduled = false;
 
+    /** The request's signed component state store (bootComponentLayer()): made on first use, forgotten when a request begins. */
+    private ?\Preflow\Components\SignedStateStore $signedStateStore = null;
+
     /**
      * The page nonce a fragment request sent back, adopted for the rest of the request's frame
      * (untrusted input: a fragment request only, a base64 value of 22+ characters; the page cache
@@ -1304,6 +1308,7 @@ final class Application
             $clients = $this->withHypermedia($request);
             $ctx = $this->requestContext($request, $clients);
             $this->rebuildsScheduled = false;
+            $this->signedStateStore = null;
 
             Contexts::run($ctx, function () use ($request, $clients): void {
                 // While run() handles the request, a request the site asks for in-process
@@ -2590,6 +2595,24 @@ final class Application
         $renderer->enableLive($this->container->get(\Preflow\Core\PageCache\LiveParts::class), $componentFactory);
         // Components marked #[Freshness] resolve and render with that freshness for what they read
         $renderer->enableFreshness($pageCache);
+        // Components with #[State] keep it in the signed store (with the key the action tokens
+        // use), or in the store #[StateIn] names, from the container (the session store needs the
+        // session). The signed store is one per request: it issues all its strings at its first,
+        // so a page rendered twice in a request (the page cache's verify) carries the same state.
+        $renderer->enableState(
+            function (string $store) use ($container, $secretKey): \Preflow\Components\StateStore {
+                if ($store === \Preflow\Components\SignedStateStore::class) {
+                    return $this->signedStateStore ??= new \Preflow\Components\SignedStateStore($secretKey);
+                }
+                $made = $container->has($store) ? $container->get($store) : $container->make($store);
+                if (!$made instanceof \Preflow\Components\StateStore) {
+                    throw new \RuntimeException(sprintf('The container gave %s for the state store %s, which is no %s.', get_debug_type($made), $store, \Preflow\Components\StateStore::class));
+                }
+
+                return $made;
+            },
+            $debug->isDebug(),
+        );
 
         // Register component template functions
         $componentProvider = new \Preflow\Components\ComponentsExtensionProvider(
