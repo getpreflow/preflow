@@ -127,9 +127,29 @@ final class StatePropertiesTest extends TestCase
 
     public function test_state_of_a_renamed_property_is_refused(): void
     {
-        $this->expectException(StateRefused::class);
-        $this->expectExceptionMessage('$renamed');
-        StateProperties::write(new Stateful(), ['renamed' => 'x']);
+        try {
+            StateProperties::write(new Stateful(), ['renamed' => 'x']);
+            $this->fail('the state was written');
+        } catch (StateRefused $e) {
+            $this->assertSame('The state of Stateful no longer fits; reload the page.', $e->getMessage());
+            $this->assertStringContainsString('$renamed', (string) $e->getPrevious()?->getMessage(), 'the detail stays in the previous exception');
+        }
+    }
+
+    public function test_a_type_error_leaks_no_detail_into_the_message(): void
+    {
+        try {
+            StateProperties::write(new Stateful(), ['page' => ['not', 'an', 'int']]);
+            $this->fail('the state was written');
+        } catch (StateRefused $e) {
+            $this->assertSame('The state of Stateful no longer fits; reload the page.', $e->getMessage());
+            $this->assertStringNotContainsString('/', $e->getMessage(), 'no path');
+            $this->assertStringNotContainsString(Stateful::class, $e->getMessage(), 'no full class name');
+            $previous = $e->getPrevious();
+            $this->assertNotNull($previous);
+            $this->assertStringContainsString('$page', $previous->getMessage());
+            $this->assertInstanceOf(\TypeError::class, $previous->getPrevious(), 'the original error, as previous');
+        }
     }
 
     public function test_an_unknown_enum_case_is_refused(): void

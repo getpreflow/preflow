@@ -58,7 +58,11 @@ final class StateProperties
         // A key the component has no #[State] property for: written before a property was renamed or removed.
         $unknown = array_diff(array_map('strval', array_keys($state)), self::of($component));
         if ($unknown !== []) {
-            throw new StateRefused(sprintf('State of %s no longer fits: it has no state property %s.', $component::class, implode(', ', array_map(static fn (string $n): string => '$' . $n, $unknown))));
+            throw StateRefused::noLongerFits($component, new \UnexpectedValueException(sprintf(
+                'State of %s no longer fits: it has no state property %s.',
+                $component::class,
+                implode(', ', array_map(static fn (string $n): string => '$' . $n, $unknown)),
+            )));
         }
         foreach (self::of($component) as $name) {
             if (!array_key_exists($name, $state)) {
@@ -68,10 +72,12 @@ final class StateProperties
             try {
                 $property->setValue($component, self::rebuild($property, $state[$name]));
             } catch (\Throwable $e) {
-                throw new StateRefused(
+                // The detail (a TypeError names files and values) stays in the previous exception.
+                throw StateRefused::noLongerFits($component, new \UnexpectedValueException(
                     sprintf('State of %s::$%s no longer fits: %s', $component::class, $name, $e->getMessage()),
+                    0,
                     $e,
-                );
+                ));
             }
         }
     }

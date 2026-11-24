@@ -324,7 +324,7 @@ final class ComponentRenderer
     public function restore(Component $component, string $carried): void
     {
         if (!$component->hasState()) {
-            throw new StateRefused(sprintf('%s keeps no state.', $component::class));
+            throw StateRefused::keepsNone($component);
         }
         $state = $this->storeOf($component)->get($component::class, $component->getComponentId(), $carried);
         StateProperties::write($component, $state);
