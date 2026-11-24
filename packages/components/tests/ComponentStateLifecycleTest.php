@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Components\Component;
 use Preflow\Components\ComponentRenderer;
 use Preflow\Components\ErrorBoundary;
+use Preflow\Components\ParentRef;
 use Preflow\Components\SessionStateStore;
 use Preflow\Components\SignedStateStore;
 use Preflow\Components\StateRefused;
@@ -180,6 +181,58 @@ final class ComponentStateLifecycleTest extends TestCase
         $this->renderer->render($parent);
         $this->assertSame($parent, $seen[1]);
         $this->assertFalse($this->renderer->standsIn($parent));
+    }
+
+    public function test_a_lazily_placed_parent_is_built_on_the_first_ask(): void
+    {
+        $builds = 0;
+        $standIn = $this->make(RowsForm::class, ['key' => 'p']);
+        $child = $this->make(Counter::class, ['key' => 'child']);
+        $this->renderer->placeInsideLazily($child, new ParentRef(RowsForm::class, 'p'), static function () use (&$builds, $standIn): Component {
+            $builds++;
+
+            return $standIn;
+        });
+
+        // Whether there is a parent, and which class and key it has: known without building it.
+        $this->assertTrue($this->renderer->hasParent($child));
+        $this->assertEquals(new ParentRef(RowsForm::class, 'p'), $this->renderer->parentRefOf($child));
+        $this->renderer->render($child);
+        $this->assertSame(0, $builds, 'nothing asked for the parent itself');
+        $this->assertFalse($this->renderer->standsIn($standIn));
+
+        // The instance: built once, then a stand-in.
+        $this->assertSame($standIn, $this->renderer->parentOf($child));
+        $this->assertSame($standIn, $this->renderer->parentOf($child));
+        $this->assertSame(1, $builds);
+        $this->assertTrue($this->renderer->standsIn($standIn));
+    }
+
+    public function test_a_lazily_placed_parent_of_another_class_is_refused(): void
+    {
+        $child = $this->make(Counter::class, ['key' => 'child']);
+        $this->renderer->placeInsideLazily($child, new ParentRef(RowsForm::class, 'p'), fn (): Component => $this->make(Counter::class, ['key' => 'p']));
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage(sprintf('built a %s; the parent on the page is a %s', Counter::class, RowsForm::class));
+        $this->renderer->parentOf($child);
+    }
+
+    public function test_parent_ref_of_names_class_and_key(): void
+    {
+        $seen = [];
+        $renderer = $this->renderer;
+        $this->templates['RowsForm'] = fn (array $c): string => $renderer->render($this->make(Counter::class, ['key' => 'child']));
+        $this->templates['Counter'] = static function (array $c) use (&$seen, $renderer): string {
+            $seen[] = $renderer->parentRefOf($renderer->current() ?? throw new \LogicException('no current'));
+
+            return '';
+        };
+        $this->renderer->render($this->make(RowsForm::class, ['key' => 'list', 'filter' => 'open']));
+        $this->renderer->render($this->make(Counter::class, ['key' => 'alone']));
+
+        $this->assertEquals([new ParentRef(RowsForm::class, 'list'), null], $seen, 'inside a template: the parent\'s class and key; alone: none');
+        $this->assertEquals(new ParentRef(RowsForm::class), ParentRef::of($this->make(RowsForm::class, ['key' => ''])), 'an empty key is no key');
     }
 
     public function test_has_parent_answers_without_the_parents_instance(): void

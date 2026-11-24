@@ -277,6 +277,18 @@ $renderer->current(): ?Component                  // the component whose templat
 $renderer->parentOf(Component $c): ?Component     // the component whose template rendered $c
 ```
 
+Since 0.87, a child rendered alone (the endpoint runs its action) can name its parent on the page
+without building it. `placeInsideLazily()` takes the parent's class and key as a `ParentRef` and a
+closure that builds it. The closure runs once, the first time `parentOf()` asks for the parent.
+`parentRefOf()` gives the class and key, and `hasParent()` says whether there is a parent; neither
+builds it. So a parent that can't be built in this request fails only a call that needs it.
+
+```php
+$renderer->placeInsideLazily($row, new ParentRef(TodoList::class, 'inbox'), fn (): Component => $factory(TodoList::class, ['key' => 'inbox']));
+$renderer->parentRefOf($row);  // ParentRef(TodoList::class, 'inbox'), nothing built
+$renderer->parentOf($row);     // builds the TodoList now (once)
+```
+
 ### Live components: `#[Live]` and `PrefetchesLive`
 
 A component class marked `#[Live]` is a live part of cached pages (preflow/core's page cache):

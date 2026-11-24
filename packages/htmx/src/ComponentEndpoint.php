@@ -8,6 +8,7 @@ use Nyholm\Psr7\Response;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Preflow\Components\Component;
+use Preflow\Components\ParentRef;
 use Preflow\Components\ComponentRenderer;
 use Preflow\Components\StateRefused;
 use Preflow\Core\Context\RefusedInPreview;
@@ -133,16 +134,21 @@ final class ComponentEndpoint
 
     /**
      * Tells the renderer that $component sits inside a $parentClass with key $parentKey on the
-     * page: a stand-in built from them (no mount(), no state) has the parent's id, so a
-     * `component: 'parent'` call in $component's answer targets the parent on the page.
+     * page. The class is checked here, before anything renders. The stand-in (built from class and
+     * key, no mount(), no state) has the parent's id, so a `component: 'parent'` call in
+     * $component's answer targets the parent on the page; it is built only when such a call (or
+     * anything else) asks for the parent itself.
      */
     private function placeInParent(Component $component, string $parentClass, string|int|null $parentKey): void
     {
         if (!class_exists($parentClass) || !is_subclass_of($parentClass, Component::class)) {
             throw new SecurityException("Invalid parent component class [{$parentClass}].");
         }
-        $parent = ($this->componentFactory)($parentClass, $parentKey === null ? [] : ['key' => $parentKey]);
-        $this->renderer->placeInside($component, $parent);
+        $this->renderer->placeInsideLazily(
+            $component,
+            new ParentRef($parentClass, $parentKey),
+            fn (): Component => ($this->componentFactory)($parentClass, $parentKey === null ? [] : ['key' => $parentKey]),
+        );
     }
 
     /** $html with the CSS/JS the render collected and the effects the action asked for. */

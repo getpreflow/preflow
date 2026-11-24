@@ -342,6 +342,10 @@ A small, fixed set of words that every driver translates (`Preflow\Core\Http\Hyp
   `LogicException`; the child's error boundary shows its fallback). A component rendered on its own
   (by a page template) has no parent; the call then fails too.
 
+  Since 0.87 the endpoint builds that parent (through the component factory) only when the child's
+  answer calls it. Its own calls and `hd.hasParent()` need only the parent's class and key. So a
+  parent whose class can't be built in the child's request fails only a `component: 'parent'` call.
+
   A component that is shown both inside a parent and on its own (say, a step in an editor's
   preview) asks first with `hd.hasParent()`. It is true inside another component's template, and
   when the child renders alone for its own action with a parent named in its token. On its own it

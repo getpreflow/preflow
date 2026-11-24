@@ -443,6 +443,94 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         $this->assertSame([false], $seen);
     }
 
+    public function test_the_parent_is_built_only_when_asked(): void
+    {
+        $own = '';
+        $seen = [];
+        CallbackEngine::$templates['ShortRow'] = function () use (&$own, &$seen): string {
+            $own = (string) $this->hd->post('toggle');
+            $seen[] = $this->hd->hasParent();
+
+            return '<button ' . $own . '>t</button>';
+        };
+        CallbackEngine::$templates['ShortSearch'] = fn (): string => $this->renderer->render($this->component(ShortRow::class, ['key' => 'r1']));
+        $this->renderer->render($this->component(ShortSearch::class, ['key' => 's']));
+
+        // The parent's class can't be built here (say its constructor needs a service this request lacks).
+        $this->freshRequest();
+        $seen = [];
+        $built = [];
+        $response = $this->endpoint(function (string $class, array $props) use (&$built): Component {
+            $built[] = $class;
+            if ($class === ShortSearch::class) {
+                throw new \RuntimeException('the parent cannot be built here');
+            }
+
+            return $this->component($class, $props);
+        })->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
+            ->createServerRequest('POST', '/--component/action')
+            ->withHeader('HX-Request', 'true')
+            ->withParsedBody(['token' => $this->token(self::attributes($own)['hx-post'])]));
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame([], $this->errors, 'nothing asked for the parent itself');
+        $this->assertSame([ShortRow::class], $built, 'only the child was built');
+        $this->assertSame([true], $seen, 'hd.hasParent() answers without the parent');
+        // The answer's own call still names the parent on the page, for the next action.
+        $payload = $this->payload(self::attributes($own)['hx-post']);
+        $this->assertSame(ShortSearch::class, $payload->parentClass);
+        $this->assertSame('s', $payload->parentKey);
+    }
+
+    public function test_a_parent_call_builds_the_parent_once(): void
+    {
+        $own = '';
+        $parent = [];
+        CallbackEngine::$templates['ShortRow'] = function () use (&$own, &$parent): string {
+            $own = (string) $this->hd->post('toggle');
+            $parent[] = (string) $this->hd->post('search', [], ['component' => 'parent']);
+            $parent[] = (string) $this->hd->get('search', [], ['component' => 'parent']);
+
+            return '';
+        };
+        CallbackEngine::$templates['ShortSearch'] = fn (): string => $this->renderer->render($this->component(ShortRow::class, ['key' => 'r1']));
+        $search = $this->component(ShortSearch::class, ['key' => 's']);
+        $this->renderer->render($search);
+
+        $this->freshRequest();
+        $parent = [];
+        $built = [];
+        $this->endpoint(function (string $class, array $props) use (&$built): Component {
+            $built[] = $class;
+
+            return $this->component($class, $props);
+        })->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
+            ->createServerRequest('POST', '/--component/action')
+            ->withHeader('HX-Request', 'true')
+            ->withParsedBody(['token' => $this->token(self::attributes($own)['hx-post'])]));
+
+        $this->assertSame([], $this->errors);
+        $this->assertSame([ShortRow::class, ShortSearch::class], $built, 'the parent built once, for the first call that needs it');
+        $this->assertSame('#' . $search->getComponentId(), self::attributes($parent[0])['hx-target'], 'the parent on the page');
+        $this->assertSame('#' . $search->getComponentId(), self::attributes($parent[1])['hx-target']);
+    }
+
+    public function test_a_token_naming_a_class_that_is_no_component_as_parent_is_refused(): void
+    {
+        $token = $this->tokens->encodeFor($this->component(ShortRow::class, ['key' => 'r1']), 'toggle', new \Preflow\Components\ParentRef(\stdClass::class));
+
+        $this->expectException(\Preflow\Core\Exceptions\SecurityException::class);
+        $this->expectExceptionMessage('Invalid parent component class [stdClass].');
+        $this->endpoint(function (string $class, array $props): Component {
+            $this->assertNotSame(\stdClass::class, $class, 'refused before anything is built');
+
+            return $this->component($class, $props);
+        })->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
+            ->createServerRequest('POST', '/--component/action')
+            ->withHeader('HX-Request', 'true')
+            ->withParsedBody(['token' => $token]));
+    }
+
     public function test_has_parent_in_twig_and_blade(): void
     {
         $dir = sys_get_temp_dir() . '/preflow_has_parent_' . bin2hex(random_bytes(4));
@@ -762,13 +850,14 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         $this->hd = new HtmxExtensionProvider($driver, $this->tokens, renderer: $this->renderer, debug: true);
     }
 
-    private function endpoint(): \Preflow\Htmx\ComponentEndpoint
+    /** @param (\Closure(string, array<string, mixed>): Component)|null $factory */
+    private function endpoint(?\Closure $factory = null): \Preflow\Htmx\ComponentEndpoint
     {
         return new \Preflow\Htmx\ComponentEndpoint(
             token: $this->tokens,
             renderer: $this->renderer,
             driver: new HtmxDriver(new ResponseHeaders(), true),
-            componentFactory: function (string $class, array $props): Component {
+            componentFactory: $factory ?? function (string $class, array $props): Component {
                 return $this->component($class, $props);
             },
             debug: true,

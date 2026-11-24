@@ -334,7 +334,7 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
      */
     private function url(string $path, Component $component, string $action): string
     {
-        $token = $this->token->encodeFor($component, $action, $this->renderer?->parentOf($component));
+        $token = $this->token->encodeFor($component, $action, $this->renderer?->parentRefOf($component));
 
         return PreviewUrls::carry($this->endpoint() . '/' . $path . '?token=' . urlencode($token));
     }

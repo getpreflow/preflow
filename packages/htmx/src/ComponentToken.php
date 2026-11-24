@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Htmx;
 
 use Preflow\Components\Component;
+use Preflow\Components\ParentRef;
 use Preflow\Core\Context\Contexts;
 use Preflow\Core\Exceptions\SecurityException;
 
@@ -61,13 +62,14 @@ class ComponentToken
      * component without state carries all its props, as encode(). Every token made here is for a
      * 0.86 call (TokenPayload::$neutralCall): only such a request's values and region are read.
      *
-     * With $parent (the component whose template rendered $component), the token also names the
-     * parent's class and key (TokenPayload::$parentClass, $parentKey): when the endpoint renders
-     * $component alone, its template can still call the parent (`component: 'parent'`).
+     * With $parent (the component whose template rendered $component, or its class and key as a
+     * ParentRef, since 0.87), the token also names the parent's class and key
+     * (TokenPayload::$parentClass, $parentKey): when the endpoint renders $component alone, its
+     * template can still call the parent (`component: 'parent'`).
      *
      * @since 0.86.0
      */
-    public function encodeFor(Component $component, string $action = 'render', ?Component $parent = null): string
+    public function encodeFor(Component $component, string $action = 'render', Component|ParentRef|null $parent = null): string
     {
         $props = $component->getProps();
         $data = ['c' => $component::class, 'p' => $props, 'a' => $action, 't' => $this->issuedAt ??= $this->currentTime()];
@@ -77,10 +79,10 @@ class ComponentToken
         }
         $data['n'] = 1;
         if ($parent !== null) {
-            $data['pc'] = $parent::class;
-            $parentKey = self::keyOnly($parent->getProps())['key'] ?? null;
-            if ($parentKey !== null) {
-                $data['pk'] = $parentKey;
+            $parent = $parent instanceof Component ? ParentRef::of($parent) : $parent;
+            $data['pc'] = $parent->class;
+            if ($parent->key !== null) {
+                $data['pk'] = $parent->key;
             }
         }
 
