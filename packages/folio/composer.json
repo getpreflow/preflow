@@ -20,7 +20,7 @@
         "preflow/i18n": "^0.83.0 || @dev",
         "preflow/media": "^0.83.0 || @dev",
         "preflow/notify": "^0.69 || @dev",
-        "preflow/devtools": "^0.77 || @dev",
+        "preflow/devtools": "^0.85.0 || @dev",
         "nyholm/psr7": "^1.8",
         "symfony/html-sanitizer": "^7.0"
     },
@@ -42,7 +42,7 @@
         "preflow/codes": "<0.68",
         "preflow/core": "<0.82.0",
         "preflow/data": "<0.84.0",
-        "preflow/devtools": "<0.77",
+        "preflow/devtools": "<0.85.0",
         "preflow/form": "<0.75",
         "preflow/htmx": "<0.65",
         "preflow/i18n": "<0.83.0",
@@ -83,7 +83,8 @@
                 "Preflow\\Folio\\Console\\ExtensionsDisableCommand",
                 "Preflow\\Folio\\Console\\ExtensionsApplyCommand",
                 "Preflow\\Folio\\Console\\ExtensionsCheckCommand",
-                "Preflow\\Folio\\Console\\ExtensionsUninstallCommand"
+                "Preflow\\Folio\\Console\\ExtensionsUninstallCommand",
+                "Preflow\\Folio\\Console\\InstallCommand"
             ],
             "runtime": [
                 "config/folio/extensions.json"
