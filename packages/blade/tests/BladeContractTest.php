@@ -32,6 +32,8 @@ final class BladeContractTest extends TemplateEngineContract
             'global' => '{{ $site }}',
             'namespaced' => "@include('lib::part')",
             'part' => 'PART',
+            'region' => "before @region('results', ['class' => 'list'])[{{ \$name }}]@endregion after",
+            'region_after_set' => "@php(\$name = 'changed')@region('results'){{ \$name }}@endregion",
         };
     }
 }

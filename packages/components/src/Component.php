@@ -24,10 +24,44 @@ abstract class Component
 
     /**
      * Load state from database, session, cache, etc.
-     * Override in subclass.
+     * Override in subclass. For a component without #[State] only: it runs before every render
+     * and before every action. A component with #[State] uses mount() and prepare() instead.
      */
     public function resolveState(): void
     {
+    }
+
+    /**
+     * A component with #[State], on its first render only (a page, a component() call): sets its
+     * state from its props. Not called after its own actions nor on a refresh, which start from
+     * the state the page carried.
+     *
+     * @since 0.86.0
+     */
+    public function mount(): void
+    {
+    }
+
+    /**
+     * A component with #[State], before every render (the first, after an action, on a refresh):
+     * loads what derives from the state (search results, a list of places). It does not change
+     * the state.
+     *
+     * @since 0.86.0
+     */
+    public function prepare(): void
+    {
+    }
+
+    /**
+     * Whether the component has a #[State] property.
+     *
+     * @throws \LogicException a #[State] property of a type that cannot be kept as state
+     * @since 0.86.0
+     */
+    public function hasState(): bool
+    {
+        return StateProperties::of($this) !== [];
     }
 
     /**

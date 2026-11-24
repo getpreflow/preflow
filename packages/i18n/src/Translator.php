@@ -552,10 +552,12 @@ final class Translator
      */
     private function replaceParams(string $message, array $params): string
     {
+        $map = [];
         foreach ($params as $key => $value) {
-            $message = str_replace(':' . $key, (string) $value, $message);
+            $map[':' . $key] = (string) $value;
         }
 
-        return $message;
+        // strtr takes the longest key first and never re-reads a replacement
+        return $map === [] ? $message : strtr($message, $map);
     }
 }

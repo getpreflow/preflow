@@ -17,6 +17,8 @@ Requires PHP 8.4+ and illuminate/view 11+.
 | `BladeEngine` | `TemplateEngineInterface` implementation wrapping Blade's `Factory` and `BladeCompiler` |
 | `@css` / `@endcss` | Directive pair for co-located CSS via `AssetCollector` |
 | Custom directives | Template functions registered via `addFunction()` become `@name(...)` directives |
+| `@region` / `@endregion` | A named part of a component's template that an action can render alone (0.86): `@region('results', ['class' => 'list']) … @endregion`. It sees the template's variables, not ones set with `@php` before it. See preflow/htmx's README ("Regions") |
+| `{{ }}` and `SafeHtml` | `{{ }}` prints a `Preflow\View\SafeHtml` (the `$hd->post(...)` helpers return one) as it is and escapes everything else (0.86) |
 
 ## BladeEngine
 

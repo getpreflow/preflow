@@ -655,6 +655,7 @@ final class Application
         $clients = $this->withHypermedia($request);
         $ctx = $this->requestContext($request, $clients);
         $this->rebuildsScheduled = false;
+        $this->signedStateStore = null; // a new request issues its component state anew
 
         $held = [];
         try {
@@ -1150,6 +1151,9 @@ final class Application
 
     private bool $rebuildsScheduled = false;
 
+    /** The request's signed component state store (bootComponentLayer()): made on first use, forgotten when a request begins. */
+    private ?\Preflow\Components\SignedStateStore $signedStateStore = null;
+
     /**
      * The page nonce a fragment request sent back, adopted for the rest of the request's frame
      * (untrusted input: a fragment request only, a base64 value of 22+ characters; the page cache
@@ -1304,6 +1308,7 @@ final class Application
             $clients = $this->withHypermedia($request);
             $ctx = $this->requestContext($request, $clients);
             $this->rebuildsScheduled = false;
+            $this->signedStateStore = null;
 
             Contexts::run($ctx, function () use ($request, $clients): void {
                 // While run() handles the request, a request the site asks for in-process
@@ -2590,6 +2595,24 @@ final class Application
         $renderer->enableLive($this->container->get(\Preflow\Core\PageCache\LiveParts::class), $componentFactory);
         // Components marked #[Freshness] resolve and render with that freshness for what they read
         $renderer->enableFreshness($pageCache);
+        // Components with #[State] keep it in the signed store (with the key the action tokens
+        // use), or in the store #[StateIn] names, from the container (the session store needs the
+        // session). The signed store is one per request: it issues all its strings at its first,
+        // so a page rendered twice in a request (the page cache's verify) carries the same state.
+        $renderer->enableState(
+            function (string $store) use ($container, $secretKey): \Preflow\Components\StateStore {
+                if ($store === \Preflow\Components\SignedStateStore::class) {
+                    return $this->signedStateStore ??= new \Preflow\Components\SignedStateStore($secretKey);
+                }
+                $made = $container->has($store) ? $container->get($store) : $container->make($store);
+                if (!$made instanceof \Preflow\Components\StateStore) {
+                    throw new \RuntimeException(sprintf('The container gave %s for the state store %s, which is no %s.', get_debug_type($made), $store, \Preflow\Components\StateStore::class));
+                }
+
+                return $made;
+            },
+            $debug->isDebug(),
+        );
 
         // Register component template functions
         $componentProvider = new \Preflow\Components\ComponentsExtensionProvider(
@@ -2601,7 +2624,7 @@ final class Application
         if (class_exists(\Preflow\Htmx\HtmxDriver::class)) {
             $componentToken = new \Preflow\Htmx\ComponentToken($secretKey);
             $this->container->instance(\Preflow\Htmx\ComponentToken::class, $componentToken);
-            $driver = $this->createHypermediaDriver();
+            $driver = $this->createHypermediaDriver($debug->isDebug());
             $this->container->instance(\Preflow\Htmx\HypermediaDriver::class, $driver);
             if ($driver instanceof \Preflow\Htmx\HtmxDriver) {
                 $this->container->instance(\Preflow\Htmx\HtmxDriver::class, $driver);
@@ -2628,15 +2651,30 @@ final class Application
                 }
             }
 
+            // A component with #[State] carries it inside its wrapper, in the driver's carrier
+            // (DrivesComponentActions; a driver built later is asked on the first such render).
+            $renderer->carryStateWith(static function (string $componentId, string $carried) use ($driver): string {
+                $actions = $driver instanceof \Preflow\Htmx\LazyHypermediaDriver ? $driver->driver() : $driver;
+
+                return $actions instanceof \Preflow\Core\Http\Hypermedia\DrivesComponentActions
+                    ? $actions->stateCarrier($componentId, $carried)
+                    : '';
+            });
+
             // Register hd template functions
             // On a /de/… page component URLs are /de/--component/…, so actions run in that
             // locale: the prefix the current render's URL carried.
             $container = $this->container;
+            // The short call (hd.post('add', values, options)) asks the renderer which component
+            // renders; in debug its misused options fail, otherwise they go to the site's logger.
             $htmxProvider = new \Preflow\Htmx\HtmxExtensionProvider(
                 $driver,
                 $componentToken,
                 assets: $htmxAssets,
                 pathPrefix: self::carriedLocalePrefix(...),
+                renderer: $renderer,
+                debug: $debug->isDebug(),
+                log: $this->pageCacheLogger(),
             );
             $this->registerExtensionProvider($engine, $htmxProvider);
 
@@ -2651,6 +2689,7 @@ final class Application
                     return $component;
                 },
                 assetCollector: $this->container->get(\Preflow\View\AssetCollector::class),
+                debug: $debug->isDebug(),
             );
             $this->container->instance('preflow.component_endpoint', $endpoint);
             $this->container->instance(\Preflow\Htmx\ComponentEndpoint::class, $endpoint);
@@ -2658,17 +2697,19 @@ final class Application
     }
 
     /**
-     * The app's hypermedia driver: HtmxDriver (with the ResponseHeaders it records into), or the
+     * The app's hypermedia driver: HtmxDriver (with the ResponseHeaders it records into, the debug
+     * flag and the site's logger), or the
      * HypermediaDriver class config/app.php 'hypermedia' names, built by the container.
      */
-    private function createHypermediaDriver(): \Preflow\Htmx\HypermediaDriver
+    private function createHypermediaDriver(bool $debug): \Preflow\Htmx\HypermediaDriver
     {
         $class = $this->config->get('app.hypermedia') ?: \Preflow\Htmx\HtmxDriver::class; // unset, null or '': htmx
         if ($class === \Preflow\Htmx\HtmxDriver::class) {
             $responseHeaders = new \Preflow\Htmx\ResponseHeaders();
             $this->container->instance(\Preflow\Htmx\ResponseHeaders::class, $responseHeaders);
 
-            return new \Preflow\Htmx\HtmxDriver($responseHeaders);
+            // In debug, misused action options fail and other drivers' option keys are warned about (to the site's logger).
+            return new \Preflow\Htmx\HtmxDriver($responseHeaders, $debug, $this->pageCacheLogger());
         }
         if (!is_string($class) || !class_exists($class) || !is_subclass_of($class, \Preflow\Htmx\HypermediaDriver::class)) {
             throw new \RuntimeException(sprintf(

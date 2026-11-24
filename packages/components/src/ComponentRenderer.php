@@ -9,6 +9,8 @@ use Preflow\Core\Exceptions\HttpException;
 use Preflow\Core\PageCache\LiveParts;
 use Preflow\View\AssetCollector;
 use Preflow\View\Geo\GeoCollector;
+use Preflow\View\Regions;
+use Preflow\View\RendersRegions;
 use Preflow\View\TemplateEngineInterface;
 
 final class ComponentRenderer
@@ -26,13 +28,48 @@ final class ComponentRenderer
     /** @var array<class-string, bool> */
     private static array $liveClasses = [];
 
+    /** @var array<class-string, class-string<StateStore>> */
+    private static array $storeClassOf = [];
+
+    /** @var (\Closure(class-string<StateStore>): StateStore)|null */
+    private ?\Closure $storeFor = null;
+
+    private bool $stateDebug = false;
+
+    /** @var (\Closure(string, string): string)|null */
+    private ?\Closure $stateCarrier = null;
+
+    /** @var list<Component> the components whose templates are rendering, innermost last */
+    private array $stack = [];
+
+    /** @var \WeakMap<Component, Component> */
+    private \WeakMap $parents;
+
+    /** @var \WeakMap<Component, string> */
+    private \WeakMap $carried;
+
+    /** @var \WeakMap<Component, Component> the parent on the page of a component rendered alone (placeInside()) */
+    private \WeakMap $placedIn;
+
+    /** @var \WeakMap<Component, true> parents that stand in for the one on the page (placeInside()) */
+    private \WeakMap $standIns;
+
+    /** @var \WeakMap<Component, true> */
+    private \WeakMap $restored;
+
     public function __construct(
         private readonly TemplateEngineInterface $templateEngine,
         private readonly ErrorBoundary $errorBoundary,
         private readonly ?\Preflow\Core\Debug\DebugCollector $collector = null,
         private readonly ?AssetCollector $assetCollector = null,
         private readonly ?GeoCollector $geoCollector = null,
-    ) {}
+    ) {
+        $this->parents = new \WeakMap();
+        $this->carried = new \WeakMap();
+        $this->placedIn = new \WeakMap();
+        $this->standIns = new \WeakMap();
+        $this->restored = new \WeakMap();
+    }
 
     /**
      * Makes components marked #[Live] live parts of cached pages: while a page renders for the
@@ -163,8 +200,173 @@ final class ComponentRenderer
     }
 
     /**
+     * Keeps the state of components marked #[State]: $storeFor gives the StateStore of a class
+     * (SignedStateStore unless the component names another with #[StateIn]). In $debug, misuse
+     * fails the render instead of reaching the error boundary: resolveState() on a component with
+     * state, or a session store on a page the page cache may store (outside debug that page is
+     * not stored instead).
+     *
+     * @param \Closure(class-string<StateStore>): StateStore $storeFor
+     * @since 0.86.0
+     */
+    public function enableState(\Closure $storeFor, bool $debug = false): void
+    {
+        $this->storeFor = $storeFor;
+        $this->stateDebug = $debug;
+    }
+
+    /**
+     * Puts the state a component carries on the page: $carrier gives the markup for a component
+     * id and its state string (the hypermedia driver's carrier, DrivesComponentActions), which
+     * goes first inside the wrapper of every component with #[State]. Without it the wrapper
+     * carries nothing: old-style calls still work, a component then mounts from its props again.
+     *
+     * @param \Closure(string $componentId, string $carried): string $carrier
+     * @since 0.86.0
+     */
+    public function carryStateWith(\Closure $carrier): void
+    {
+        $this->stateCarrier = $carrier;
+    }
+
+    /**
+     * The regions $component's template has, null when the template engine renders no regions
+     * (RendersRegions): what renderAfterAction() accepts as its region.
+     *
+     * @return list<string>|null
+     * @since 0.86.0
+     */
+    public function regionsOf(Component $component): ?array
+    {
+        $engine = $this->templateEngine;
+        if (!$engine instanceof RendersRegions) {
+            return null;
+        }
+
+        return $engine->regionsOf($component->getTemplatePath($engine->getTemplateExtension()));
+    }
+
+    /**
+     * The component whose template is rendering now (the innermost one), null outside every
+     * component render. Also while an action's response renders (renderAfterAction()).
+     *
+     * @since 0.86.0
+     */
+    public function current(): ?Component
+    {
+        return $this->stack === [] ? null : $this->stack[array_key_last($this->stack)];
+    }
+
+    /**
+     * The component whose template rendered $component, null for one rendered on its own (by a
+     * page template, the endpoint, a live part) unless placeInside() named its parent on the page.
+     *
+     * @since 0.86.0
+     */
+    public function parentOf(Component $component): ?Component
+    {
+        return $this->parents[$component] ?? null;
+    }
+
+    /**
+     * Renders $component, which sits inside $parent's template on the page, on its own here (the
+     * endpoint renders a child alone for its action or its refresh): parentOf() gives $parent
+     * while $component renders without another component's template around it. $parent stands in
+     * for the one on the page (standsIn()): built from its class and key, never mounted, restored
+     * nor rendered here, so only its class, its id and its key are known.
+     *
+     * @since 0.86.0
+     */
+    public function placeInside(Component $component, Component $parent): void
+    {
+        $this->placedIn[$component] = $parent;
+        $this->standIns[$parent] = true;
+    }
+
+    /**
+     * Whether $component stands in for a parent on the page (placeInside()): its props other
+     * than its key and its state are not known here.
+     *
+     * @since 0.86.0
+     */
+    public function standsIn(Component $component): bool
+    {
+        return isset($this->standIns[$component]);
+    }
+
+    /**
+     * The string the page carries for $component's state, from its store, after its last render;
+     * null for a component without #[State] or not rendered yet.
+     *
+     * @throws \LogicException a component with state on a renderer without enableState()
+     * @since 0.86.0
+     */
+    public function stateFor(Component $component): ?string
+    {
+        if (isset($this->carried[$component])) {
+            return $this->carried[$component];
+        }
+        if ($component->hasState() && $this->storeFor === null) {
+            throw new \LogicException(sprintf('%s has #[State], but the component renderer keeps no state: call enableState() with its stores.', $component::class));
+        }
+
+        return null;
+    }
+
+    /**
+     * Writes the state the page carried ($carried, from stateFor() of an earlier render) into
+     * $component, from its store. Its next render does not mount() it again.
+     *
+     * @throws StateRefused tampered, foreign, expired or unreadable state, a shape the component
+     *         no longer has, or state for a component without #[State]
+     * @since 0.86.0
+     */
+    public function restore(Component $component, string $carried): void
+    {
+        if (!$component->hasState()) {
+            throw StateRefused::keepsNone($component);
+        }
+        $state = $this->storeOf($component)->get($component::class, $component->getComponentId(), $carried);
+        StateProperties::write($component, $state);
+        $this->restored[$component] = true;
+    }
+
+    /**
+     * Renders $component after one of its actions ran, with its wrapper: prepare() for a
+     * component with state (no mount(): the action ran on its restored state), nothing for one
+     * without (its resolveState() ran before the action). With $region, only that region of its
+     * template renders: its contents, without the region element or the component's wrapper (both
+     * stay on the page), with the component's template context (RendersRegions).
+     *
+     * @throws \InvalidArgumentException its template has no region $region (the message names its regions)
+     * @throws \LogicException for a region: the template engine renders no regions (named in the message)
+     * @since 0.86.0
+     */
+    public function renderAfterAction(Component $component, ?string $region = null): string
+    {
+        if ($region === null) {
+            return $this->renderInBoundary($component, self::AFTER_ACTION, true);
+        }
+        $engine = $this->templateEngine;
+        if (!$engine instanceof RendersRegions) {
+            throw Regions::notRendered($engine);
+        }
+        // An unknown region is the request's mistake, never the component's: not its error boundary.
+        $template = $component->getTemplatePath($engine->getTemplateExtension());
+        $regions = $engine->regionsOf($template);
+        if (!in_array($region, $regions, true)) {
+            throw Regions::unknown($template, $region, $regions);
+        }
+
+        return $this->renderInBoundary($component, self::AFTER_ACTION, false, $region);
+    }
+
+    /**
      * Render a component with wrapper HTML and error boundary. A #[Live] component on a page
      * being rendered for the page cache is its placeholder instead (enableLive()).
+     *
+     * A component without #[State] runs resolveState() first; one with #[State] runs mount() on
+     * its first render (not after restore()) and prepare() before every render.
      *
      * The boundary catches every failure except an HttpException (a 403, a 404…): that one is
      * rethrown in every render method, so the page or the action answers with its status
@@ -184,36 +386,21 @@ final class ComponentRenderer
 
             return $this->errorBoundary->preview($failure, $component, 'resolveState');
         }
-        try {
-            if ($this->live !== null && self::isLive($component::class)) {
+        if ($this->live !== null && self::isLive($component::class)) {
+            try {
                 \Preflow\Core\PageCache\LivePlaceholder::assertPlain($component->getProps());
                 $placeholder = $this->live->placeholder(self::LIVE_KIND, ['c' => $component::class, 'p' => $component->getProps()]);
-                if ($placeholder !== null) {
-                    return $placeholder;
-                }
+            } catch (HttpException|RefusedInPreview $e) {
+                throw $e;
+            } catch (\Throwable $e) {
+                return $this->errorBoundary->render($e, $component, $this->detectPhase($e));
             }
-            $start = 0;
-            $innerHtml = $this->withFreshness($component, function () use ($component, &$start): string {
-                $component->resolveState();
-                $start = hrtime(true);
-
-                return $this->renderInner($component);
-            });
-            if ($this->collector !== null) {
-                $durationMs = (hrtime(true) - $start) / 1_000_000;
-                $this->collector->logComponent(
-                    $component::class,
-                    $component->getComponentId(),
-                    $durationMs,
-                    $component->getProps(),
-                );
+            if ($placeholder !== null) {
+                return $placeholder;
             }
-            return $this->wrapHtml($component, $innerHtml);
-        } catch (HttpException|RefusedInPreview $e) {
-            throw $e; // a 403/404 the component throws is the page's answer, not a broken component
-        } catch (\Throwable $e) {
-            return $this->errorBoundary->render($e, $component, $this->detectPhase($e));
         }
+
+        return $this->renderInBoundary($component, self::FIRST, true);
     }
 
     /**
@@ -222,29 +409,7 @@ final class ComponentRenderer
      */
     public function renderFragment(Component $component): string
     {
-        try {
-            $start = 0;
-            $html = $this->withFreshness($component, function () use ($component, &$start): string {
-                $component->resolveState();
-                $start = hrtime(true);
-
-                return $this->renderInner($component);
-            });
-            if ($this->collector !== null) {
-                $durationMs = (hrtime(true) - $start) / 1_000_000;
-                $this->collector->logComponent(
-                    $component::class,
-                    $component->getComponentId(),
-                    $durationMs,
-                    $component->getProps(),
-                );
-            }
-            return $html;
-        } catch (HttpException|RefusedInPreview $e) {
-            throw $e; // a 403/404 the component throws is the page's answer, not a broken component
-        } catch (\Throwable $e) {
-            return $this->errorBoundary->render($e, $component, $this->detectPhase($e));
-        }
+        return $this->renderInBoundary($component, self::FIRST, false);
     }
 
     /**
@@ -254,24 +419,7 @@ final class ComponentRenderer
      */
     public function renderResolvedFragment(Component $component): string
     {
-        try {
-            $start = hrtime(true);
-            $html = $this->withFreshness($component, fn (): string => $this->renderInner($component));
-            if ($this->collector !== null) {
-                $durationMs = (hrtime(true) - $start) / 1_000_000;
-                $this->collector->logComponent(
-                    $component::class,
-                    $component->getComponentId(),
-                    $durationMs,
-                    $component->getProps(),
-                );
-            }
-            return $html;
-        } catch (HttpException|RefusedInPreview $e) {
-            throw $e; // a 403/404 the component throws is the page's answer, not a broken component
-        } catch (\Throwable $e) {
-            return $this->errorBoundary->render($e, $component, $this->detectPhase($e));
-        }
+        return $this->renderInBoundary($component, self::RESOLVED, false);
     }
 
     /**
@@ -281,9 +429,37 @@ final class ComponentRenderer
      */
     public function renderResolved(Component $component): string
     {
+        return $this->renderInBoundary($component, self::RESOLVED, true);
+    }
+
+    /** A first render, or a refresh of a restored component: resolveState(), or mount() and prepare(). */
+    private const int FIRST = 0;
+
+    /** After an action: prepare() for a component with state, nothing for one without. */
+    private const int AFTER_ACTION = 1;
+
+    /** Resolved by the caller: no hook runs. */
+    private const int RESOLVED = 2;
+
+    /**
+     * The hooks of $moment, the render (of $region only, when given), the state kept, inside the
+     * error boundary and the component's #[Freshness]; with the wrapper when $wrap.
+     */
+    private function renderInBoundary(Component $component, int $moment, bool $wrap, ?string $region = null): string
+    {
+        if ($this->stateDebug && $moment !== self::RESOLVED) {
+            $this->assertStateUse($component); // misuse fails the render, not the boundary
+        }
         try {
             $start = hrtime(true);
-            $innerHtml = $this->withFreshness($component, fn (): string => $this->renderInner($component));
+            $innerHtml = $this->withFreshness($component, function () use ($component, $moment, $region, &$start): string {
+                $this->runHooks($component, $moment);
+                $start = hrtime(true);
+                $html = $this->renderInner($component, $region);
+                $this->keepState($component);
+
+                return $html;
+            });
             if ($this->collector !== null) {
                 $durationMs = (hrtime(true) - $start) / 1_000_000;
                 $this->collector->logComponent(
@@ -293,12 +469,107 @@ final class ComponentRenderer
                     $component->getProps(),
                 );
             }
-            return $this->wrapHtml($component, $innerHtml);
+
+            return $wrap ? $this->wrapHtml($component, $innerHtml) : $innerHtml;
         } catch (HttpException|RefusedInPreview $e) {
             throw $e; // a 403/404 the component throws is the page's answer, not a broken component
         } catch (\Throwable $e) {
             return $this->errorBoundary->render($e, $component, $this->detectPhase($e));
         }
+    }
+
+    private function runHooks(Component $component, int $moment): void
+    {
+        if ($moment === self::RESOLVED) {
+            return;
+        }
+        if (!$component->hasState()) {
+            if ($moment === self::FIRST) {
+                $component->resolveState();
+            }
+
+            return;
+        }
+        if ($moment === self::FIRST && !isset($this->restored[$component])) {
+            $component->mount();
+        }
+        $component->prepare();
+    }
+
+    /** Puts the state of a component with #[State] into its store, for stateFor(). */
+    private function keepState(Component $component): void
+    {
+        if ($this->storeFor === null || !$component->hasState()) {
+            return;
+        }
+        $store = $this->storeOf($component);
+        if ($store instanceof SessionStateStore && $this->pageCache?->storing() === true) {
+            // Every visitor of the stored page would carry this visitor's session reference.
+            $this->pageCache->refuse('component-session-state');
+        }
+        $this->carried[$component] = $store->put($component::class, $component->getComponentId(), StateProperties::read($component));
+    }
+
+    /** Debug: resolveState() on a component with state; a session store on a page the cache may store. */
+    private function assertStateUse(Component $component): void
+    {
+        if (!$component->hasState()) {
+            return;
+        }
+        $class = $component::class;
+        if ((new \ReflectionMethod($component, 'resolveState'))->getDeclaringClass()->getName() !== Component::class) {
+            throw new \LogicException(sprintf(
+                '%s has #[State] and defines resolveState(), which a component with state never runs: use mount() and prepare() instead (mount() sets the state from props on the first render, prepare() loads what derives from the state before every render).',
+                $class,
+            ));
+        }
+        if ($this->pageCache?->storing() === true && self::storeClassOf($class) === SessionStateStore::class
+            && !($this->live !== null && self::isLive($class))) {
+            throw new \LogicException(sprintf(
+                '%s keeps its state in the session (#[StateIn(%s)]), but it renders on a page the page cache may store for every visitor, who does not have that session. Use the signed store (%s, the default without #[StateIn]) or a page that is not cached (behind a login, or refused with PageCache::refuse()).',
+                $class,
+                SessionStateStore::class,
+                SignedStateStore::class,
+            ));
+        }
+    }
+
+    /** The store $component keeps its state in. */
+    private function storeOf(Component $component): StateStore
+    {
+        if ($this->storeFor === null) {
+            throw new \LogicException(sprintf('%s has #[State], but the component renderer keeps no state: call enableState() with its stores.', $component::class));
+        }
+        $class = self::storeClassOf($component::class);
+        $store = ($this->storeFor)($class);
+        if (!$store instanceof $class) {
+            throw new \LogicException(sprintf('The state store for %s is a %s, not the %s it names.', $component::class, get_debug_type($store), $class));
+        }
+
+        return $store;
+    }
+
+    /**
+     * The store class #[StateIn] names on $class (itself, else the nearest parent), else SignedStateStore.
+     *
+     * @param class-string<Component> $class
+     * @return class-string<StateStore>
+     */
+    private static function storeClassOf(string $class): string
+    {
+        if (isset(self::$storeClassOf[$class])) {
+            return self::$storeClassOf[$class];
+        }
+        $store = SignedStateStore::class;
+        for ($ref = new \ReflectionClass($class); $ref !== false; $ref = $ref->getParentClass()) {
+            $attributes = $ref->getAttributes(StateIn::class);
+            if ($attributes !== []) {
+                $store = $attributes[0]->newInstance()->store;
+                break;
+            }
+        }
+
+        return self::$storeClassOf[$class] = $store;
     }
 
     /** What the error boundary shows for a component that failed outside rendering (e.g. in an action). */
@@ -311,20 +582,41 @@ final class ComponentRenderer
      * The component's inner HTML. While GEO captures, the render runs in a block of its
      * own; a component that declared a geo block is replaced by its placeholder.
      */
-    private function renderInner(Component $component): string
+    private function renderInner(Component $component, ?string $region = null): string
     {
-        return $this->geoCollector === null
-            ? $this->renderTemplate($component)
-            : $this->geoCollector->component(fn (): string => $this->renderTemplate($component));
+        // On the render stack while its template renders: current(), and the parent of what it renders.
+        $parent = $this->current();
+        if ($parent !== null && $parent !== $component) {
+            $this->parents[$component] = $parent;
+        } elseif ($parent === null && isset($this->placedIn[$component])) {
+            $this->parents[$component] = $this->placedIn[$component]; // alone here, inside it on the page
+        } elseif ($parent === null) {
+            unset($this->parents[$component]); // rendered on its own this time
+        }
+        $this->stack[] = $component;
+        try {
+            return $this->geoCollector === null
+                ? $this->renderTemplate($component, $region)
+                : $this->geoCollector->component(fn (): string => $this->renderTemplate($component, $region));
+        } finally {
+            array_pop($this->stack);
+        }
     }
 
-    private function renderTemplate(Component $component): string
+    /** The component's template rendered, or only its region $region (RendersRegions). */
+    private function renderTemplate(Component $component, ?string $region = null): string
     {
         $templatePath = $component->getTemplatePath($this->templateEngine->getTemplateExtension());
         $context = $component->getTemplateContext();
+        $engine = $this->templateEngine;
+        $render = match (true) {
+            $region === null => static fn (): string => $engine->render($templatePath, $context),
+            $engine instanceof RendersRegions => static fn (): string => $engine->renderRegion($templatePath, $region, $context),
+            default => throw Regions::notRendered($engine),
+        };
 
         if ($this->assetCollector === null) {
-            return $this->templateEngine->render($templatePath, $context);
+            return $render();
         }
 
         // The component's own CSS scope, or none: an unscoped child inside a scoped parent
@@ -332,7 +624,7 @@ final class ComponentRenderer
         $previousScope = $this->assetCollector->getCssScope();
         $this->assetCollector->setCssScope($component->hasCssScoping() ? $component->getCssClass() : null);
         try {
-            return $this->templateEngine->render($templatePath, $context);
+            return $render();
         } finally {
             $this->assetCollector->setCssScope($previousScope);
         }
@@ -350,6 +642,10 @@ final class ComponentRenderer
         }
         foreach ($component->getRootAttributes() as $name => $value) {
             $attrs .= ' ' . $name . '="' . htmlspecialchars($value, ENT_QUOTES, 'UTF-8') . '"';
+        }
+
+        if ($this->stateCarrier !== null && isset($this->carried[$component])) {
+            $innerHtml = ($this->stateCarrier)($component->getComponentId(), $this->carried[$component]) . $innerHtml;
         }
 
         return "<{$tag} {$attrs}>{$innerHtml}</{$tag}>";
@@ -374,6 +670,10 @@ final class ComponentRenderer
                 }
                 if ($frame['function'] === 'handleAction') {
                     return 'handleAction';
+                }
+                if (in_array($frame['function'], ['mount', 'prepare'], true)
+                    && is_a($frame['class'] ?? '', Component::class, true)) {
+                    return $frame['function'];
                 }
             }
         }

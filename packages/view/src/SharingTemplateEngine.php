@@ -11,7 +11,7 @@ namespace Preflow\View;
  * engine, which then has csrf_field(), t(), hd and the rest just like the app's. Namespaces are the
  * app engine's own and are not shared.
  */
-final class SharingTemplateEngine implements TemplateEngineInterface
+final class SharingTemplateEngine implements TemplateEngineInterface, RendersRegions
 {
     /** @var list<\Closure(TemplateEngineInterface): void> every function and global so far, in order */
     private array $shared = [];
@@ -41,6 +41,34 @@ final class SharingTemplateEngine implements TemplateEngineInterface
     public function render(string $template, array $context = []): string
     {
         return $this->engine->render($template, $context);
+    }
+
+    /**
+     * The wrapped engine's region (since 0.86.0).
+     *
+     * @throws \LogicException the wrapped engine renders no regions (named in the message)
+     */
+    public function renderRegion(string $template, string $region, array $context): string
+    {
+        return $this->regions()->renderRegion($template, $region, $context);
+    }
+
+    /**
+     * The wrapped engine's regions of $template (since 0.86.0).
+     *
+     * @throws \LogicException the wrapped engine renders no regions (named in the message)
+     */
+    public function regionsOf(string $template): array
+    {
+        return $this->regions()->regionsOf($template);
+    }
+
+    /** The wrapped engine, as one that renders regions. */
+    private function regions(): RendersRegions
+    {
+        $engine = $this->engine;
+
+        return $engine instanceof RendersRegions ? $engine : throw Regions::notRendered($engine);
     }
 
     public function exists(string $template): bool

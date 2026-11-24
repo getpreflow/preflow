@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Htmx;
 
 use Preflow\Core\Context\Contexts;
+use Preflow\Core\Http\Hypermedia\DrivesComponentActions;
 use Preflow\View\AssetCollector;
 use Preflow\View\JsPosition;
 
@@ -104,6 +105,58 @@ document.addEventListener('htmx:beforeSwap', function (e) {
         d.serverResponse = isDocument ? '<!DOCTYPE html>' + root.documentElement.outerHTML : root.innerHTML;
     }
 });
+JS;
+
+    /**
+     * htmx, and the busy marker: while a request runs, the element that sent it (the element with
+     * hx-get/hx-post) carries DrivesComponentActions::BUSY_CLASS (`preflow-busy`), beside htmx's
+     * own `htmx-request` (on that element, or the hx-indicator it names), which stays as it is.
+     * Asked for by every element written with DrivesComponentActions::callAttributes(), so a page
+     * without such an element is unchanged.
+     *
+     * The script goes with the render's component JS (JsPosition::Body): at the end of a page,
+     * and in a component's answer, so the marker also works when a page's first such element
+     * arrives in an answer. It sets itself up once per page.
+     *
+     * @since 0.86.0
+     */
+    public function requireBusyMarker(): void
+    {
+        if ($this->mode === 'never') {
+            return;
+        }
+        $this->require();
+        $this->assets->addJs(
+            self::BUSY_MARKER . "\npreflowBusyMarker('" . DrivesComponentActions::BUSY_CLASS . "');",
+            JsPosition::Body,
+            'preflow-htmx-busy',
+        );
+    }
+
+    /**
+     * Adds the busy class on htmx:beforeSend and takes it off on htmx:afterRequest (which htmx
+     * fires after a load, an error, an abort and a timeout alike), on the request's element
+     * (e.detail.elt). A count per element keeps the class while another request of the same
+     * element still runs. A named function, called on its own line (inline scripts are joined
+     * and minified), that sets up its listeners once per page.
+     */
+    private const string BUSY_MARKER = <<<'JS'
+function preflowBusyMarker(busy) {
+    if (window.preflowBusyMarkerOn) { return; }
+    window.preflowBusyMarkerOn = true;
+    document.addEventListener('htmx:beforeSend', function (e) {
+        var el = e.detail && e.detail.elt;
+        if (!el || !el.classList) { return; }
+        el.preflowBusy = (el.preflowBusy || 0) + 1;
+        el.classList.add(busy);
+    });
+    document.addEventListener('htmx:afterRequest', function (e) {
+        var el = e.detail && e.detail.elt;
+        if (!el || !el.classList || !el.preflowBusy) { return; }
+        el.preflowBusy = el.preflowBusy - 1;
+        if (el.preflowBusy === 0) { el.classList.remove(busy); }
+    });
+}
 JS;
 
     public function isRequired(): bool

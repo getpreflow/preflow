@@ -66,6 +66,38 @@ message is the reason `php preflow pages:why /club` prints (the differing part, 
 as a cookie or a status other than 200), with the usual fix as a hint. Nothing is stored. It needs
 the page cache to be on for the app (`page_cache.enabled`).
 
+### Calling a component action the way the page does (0.86)
+
+A component with `#[State]` gets its state from the page with every action. A test that posts to
+the endpoint by hand would have to dig the token and the state out of the page's HTML, which ties
+it to one driver's markup. `componentAction()` does it for you: it makes the action's token itself
+and takes the component's state from the page, from the neutral field `_state[<componentId>]`:
+
+```php
+$page = (string) $app->handle($request)->getBody();
+$answer = WebApplication::componentAction($app, $page, JobSearch::class, 'search', ['remote' => 'full']);
+```
+
+- `$params` are the request's fields: the form's fields and the call's values. Add
+  `DrivesComponentActions::REGION_FIELD => 'results'` to render one region, as a call with
+  `target: 'results'` does.
+- `key:` names the component when the page has several of its class (its `key` prop).
+- `localePrefix: '/de'` runs the action in that locale (the page's HTML doesn't say its locale).
+- `props:` are the props of a component **without** state (its token carries them, as the page's
+  does). A component with state carries only its key, so props fail there.
+- A page without the component's state carrier fails the test and names the components that have
+  one.
+
+For a second action, take the new state from the answer and put it into the page:
+
+```php
+$state = WebApplication::stateFrom((string) $answer->getBody(), $componentId);
+$page = str_replace((string) WebApplication::stateFrom($page, $componentId), (string) $state, $page);
+```
+
+`stateFrom($html, $componentId)` returns the state string a page, or an answer's state update,
+carries for the component, or null.
+
 ## Frame balance (0.81)
 
 `Preflow\Testing\FrameBalanceExtension` checks after every test that no render frame was left
@@ -230,7 +262,8 @@ hooks, and run it with PHPUnit like any other test. The built-in adapters run th
 | Suite | Interface | Hooks |
 |---|---|---|
 | `Preflow\Testing\Contract\TemplateEngineContract` | `Preflow\View\TemplateEngineInterface` | `createEngine(string $templateDir)`, `fixture(string $name)` |
-| `Preflow\Testing\Contract\HypermediaDriverContract` | `Preflow\Htmx\HypermediaDriver` | `createDriver()`, `fragmentRequest(ServerRequestInterface $request)`, `targetRequest(ServerRequestInterface $request, string $targetId)`; optional `effects()`, `historyRestoreRequest($request)`, `pageNonceRequest($request, $nonce)`. Since 0.81 it also checks that effects stay in the render frame they were recorded in, and, for a driver that implements `OwnsResponseHeaders`, that `ownedHeaders()` names every header it writes (skipped otherwise) |
+| `Preflow\Testing\Contract\HypermediaDriverContract` | `Preflow\Htmx\HypermediaDriver` | `createDriver()`, `fragmentRequest(ServerRequestInterface $request)`, `targetRequest(ServerRequestInterface $request, string $targetId)`; optional `effects()`, `historyRestoreRequest($request)`, `pageNonceRequest($request, $nonce)`. Since 0.81 it also checks that effects stay in the render frame they were recorded in, and, for a driver that implements `OwnsResponseHeaders`, that `ownedHeaders()` names every header it writes (skipped otherwise). Since 0.86, for a driver that implements `DrivesComponentActions` (skipped otherwise): every neutral action option and the values change the call's attributes, the listen attributes name the event, and the state carrier and update hold the state string |
+| `Preflow\Testing\Contract\StateStoreContract` (0.86) | `Preflow\Components\StateStore` | `store()`: the state round-trips, the state of another class or id is refused, tampered state is refused |
 | `Preflow\Testing\Contract\StorageDriverContract` | `Preflow\Data\StorageDriver` | `createDriver()`, `createType(string $type, array $fields)`; optional `supportsAutoIds()`, `reopenDriver()`, `emptyDriver()`, `declareFullText(string $type, array $fields)`, `declareUnique(string $type, string $field)`, `textRuleMissing()` (the last five since 0.78); capability tests run when the driver implements the interface |
 | `Preflow\Testing\Contract\DialectContract` (0.66.1) | `Preflow\Data\Driver\Dialect` | `createPdo()` (an empty database), `createDialect()`; optional `numberColumnType()` |
 

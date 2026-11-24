@@ -165,6 +165,19 @@ per dependency"), and the page's expiry:
 - Without the page cache the body renders as it is; a wrong name or duration fails either way.
   Inside `{% live %}` it does nothing.
 
+## Regions: `{% region %}` (0.86)
+
+A named part of a component's template that a component action can render alone:
+
+```twig
+{% region 'results' { class: 'job-search__results' } %}…{% endregion %}
+```
+
+On a page it prints in place inside `<div id="{componentId}-{name}" …>` (the attributes may be
+left out). An action with `target: 'results'` renders only its contents. The body sees the
+component's template context, not variables set with `{% set %}` before it. Names are unique in a
+template; regions don't nest. How actions target regions: preflow/htmx's README ("Regions").
+
 ## Engine configuration
 
 Set `APP_ENGINE=twig` in your `.env` (this is the default). Preflow's `Application` will automatically create a `TwigEngine` and register all extension providers.

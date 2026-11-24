@@ -8,12 +8,12 @@ use App\Jobs\JobFilters;
 use Preflow\Components\Component;
 
 /**
- * Previous and next links under the results. Props: `page`, `lastPage`, `query` (the filters as
- * JobFilters::toQuery() gives them), and `search`/`searchId`, the JobSearch component whose
- * search action the links run.
+ * Previous and next links under the results of a JobSearch. Props: `lastPage` and `query` (the
+ * filters as JobFilters::toQuery() gives them).
  *
  * Each link is a real address (it works without JavaScript and can be opened in a new tab) and
- * also posts the search action with its page, so with JavaScript only the results are swapped.
+ * also runs the `page` action of the JobSearch around it (`component: 'parent'`), so with
+ * JavaScript only that search's results region is swapped.
  */
 final class Pager extends Component
 {
@@ -26,16 +26,12 @@ final class Pager extends Component
     public ?int $next = null;
     public ?string $prevUrl = null;
     public ?string $nextUrl = null;
-    public string $search = '';
-    public string $searchId = '';
 
     public function resolveState(): void
     {
         $filters = JobFilters::fromArray((array) ($this->props['query'] ?? []));
         $this->page = $filters->page;
         $this->lastPage = max(1, (int) ($this->props['lastPage'] ?? 1));
-        $this->search = (string) ($this->props['search'] ?? '');
-        $this->searchId = (string) ($this->props['searchId'] ?? '');
 
         if ($this->page > 1) {
             // Past the last page, "previous" leads back to the last one that has jobs.

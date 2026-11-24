@@ -25,6 +25,8 @@ composer require preflow/blade  # Laravel Blade
 | `TemplateEngineContext` | What core passes the factory: template dirs, assets, debug, cache path, GEO, SEO, live parts, page cache; bound in the container for every engine |
 | `SharingTemplateEngine` | The app's engine when it is not Twig: keeps every function and global, so another engine can `share()` them (0.65) |
 | `TemplateFunctionDefinition` | Value object describing a template function (name, callable, isSafe) |
+| `SafeHtml` | Markup a helper returns that every engine prints as it is, unescaped (0.86; the `hd.post()` short call returns one) |
+| `RendersRegions` | Optional engine interface (0.86): `renderRegion($template, $region, $context)` and `regionsOf($template)`, for regions a component action renders alone (Twig `{% region %}`, Blade `@region`). `Regions` holds what every engine shares: valid names, the region element, the errors |
 | `TemplateExtensionProvider` | Interface for packages that supply template functions and globals |
 | `AssetCollector` | Collects CSS/JS across components, deduplicates by xxh3 hash |
 | `JsPosition` | Enum: `Head`, `Body`, `Inline` |
