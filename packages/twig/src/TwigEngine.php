@@ -11,11 +11,13 @@ use Twig\Loader\FilesystemLoader;
 use Twig\TwigFunction;
 use Preflow\View\AssetCollector;
 use Preflow\View\Geo\GeoCollector;
+use Preflow\View\Regions;
+use Preflow\View\RendersRegions;
 use Preflow\View\Seo\SeoContext;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\View\TemplateFunctionDefinition;
 
-final class TwigEngine implements TemplateEngineInterface
+final class TwigEngine implements TemplateEngineInterface, RendersRegions
 {
     private readonly Environment $twig;
 
@@ -50,6 +52,7 @@ final class TwigEngine implements TemplateEngineInterface
         $this->twig->addExtension(new PreflowExtension($assetCollector, $geoCollector, $seoContext));
         $this->twig->addExtension(new LiveExtension($liveParts, fn (string $name): ?string => $this->componentTemplates[$name] ?? null));
         $this->twig->addExtension(new FreshnessExtension($pageCache));
+        $this->twig->addExtension(new RegionExtension());
         $liveParts?->register(LiveExtension::KIND, fn (array $recipe): string => $this->renderLiveBlock($recipe));
     }
 
@@ -112,19 +115,79 @@ final class TwigEngine implements TemplateEngineInterface
      */
     public function render(string $template, array $context = []): string
     {
-        try {
-            // Absolute path (e.g., component templates) — load directly from filesystem
-            if (str_starts_with($template, '/') && file_exists($template)) {
-                $source = file_get_contents($template);
-                $tpl = $this->twig->createTemplate($source, $template);
-                $class = $context['componentClass'] ?? null;
-                if (is_string($class) && !isset($this->componentTemplates[$tpl->getTemplateName()]) && self::componentTemplate($class) === $template) {
-                    $this->componentTemplates[$tpl->getTemplateName()] = $class; // the name holds the file and its source hash: one owner
-                }
-                return $tpl->render($context);
+        return $this->unwrapHttp(fn (): string => $this->load($template, $context)->render($context));
+    }
+
+    /**
+     * The contents of the {% region %} $region of $template (since 0.86.0): its block, rendered
+     * with $context and the globals, without the region element.
+     */
+    public function renderRegion(string $template, string $region, array $context): string
+    {
+        return $this->unwrapHttp(function () use ($template, $region, $context): string {
+            $tpl = $this->load($template, $context);
+            $block = RegionExtension::blockName($region);
+            if (!Regions::validName($region) || !$tpl->hasBlock($block)) {
+                throw Regions::unknown($template, $region, self::regionNames($tpl));
             }
 
-            return $this->twig->render($template, $context);
+            return $tpl->renderBlock($block, $context);
+        });
+    }
+
+    /** The {% region %}s of $template, in the order they appear (since 0.86.0). */
+    public function regionsOf(string $template): array
+    {
+        return self::regionNames($this->load($template, []));
+    }
+
+    /** @return list<string> */
+    private static function regionNames(\Twig\TemplateWrapper $template): array
+    {
+        $names = [];
+        foreach ($template->getBlockNames() as $block) {
+            $name = RegionExtension::regionName((string) $block);
+            if ($name !== null) {
+                $names[] = $name;
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * $template loaded: an absolute path (a component's template) from its file, anything else
+     * by the loader.
+     *
+     * @param array<string, mixed> $context
+     */
+    private function load(string $template, array $context): \Twig\TemplateWrapper
+    {
+        // Absolute path (e.g., component templates) — load directly from filesystem
+        if (str_starts_with($template, '/') && file_exists($template)) {
+            $source = (string) file_get_contents($template);
+            $tpl = $this->twig->createTemplate($source, $template);
+            $class = $context['componentClass'] ?? null;
+            if (is_string($class) && !isset($this->componentTemplates[$tpl->getTemplateName()]) && self::componentTemplate($class) === $template) {
+                $this->componentTemplates[$tpl->getTemplateName()] = $class; // the name holds the file and its source hash: one owner
+            }
+
+            return $tpl;
+        }
+
+        return $this->twig->load($template);
+    }
+
+    /**
+     * $render's result; an HttpException thrown inside it comes out as itself, not wrapped in
+     * Twig's RuntimeError.
+     *
+     * @param \Closure(): string $render
+     */
+    private function unwrapHttp(\Closure $render): string
+    {
+        try {
+            return $render();
         } catch (\Twig\Error\Error $e) {
             for ($cause = $e->getPrevious(); $cause !== null; $cause = $cause->getPrevious()) {
                 if ($cause instanceof \Preflow\Core\Exceptions\HttpException) {

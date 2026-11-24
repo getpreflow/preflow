@@ -16,11 +16,13 @@ use Preflow\Core\PageCache\LivePlaceholder;
 use Preflow\Core\PageCache\LiveRecipeRejected;
 use Preflow\View\AssetCollector;
 use Preflow\View\Geo\GeoCollector;
+use Preflow\View\Regions;
+use Preflow\View\RendersRegions;
 use Preflow\View\Seo\SeoContext;
 use Preflow\View\TemplateFunctionDefinition;
 use Preflow\View\TemplateEngineInterface;
 
-final class BladeEngine implements TemplateEngineInterface
+final class BladeEngine implements TemplateEngineInterface, RendersRegions
 {
     private readonly Factory $viewFactory;
     private readonly BladeCompiler $compiler;
@@ -31,6 +33,9 @@ final class BladeEngine implements TemplateEngineInterface
 
     /** @live(['number' => $n]) … @endlive; the arguments may be left out. Not nested. */
     private const string LIVE_PATTERN = '/(?<![@\w])@live(?![\w])\s*(\((?:[^()]++|(?1))*\))?(.*?)(?<![@\w])@endlive(?![\w])/s';
+
+    /** A region: `@region('results', ['class' => 'x'])` … `@endregion`; the attributes may be left out. Not nested. */
+    private const string REGION_PATTERN = '/(?<![@\w])@region(?![\w])\s*(\((?:[^()]++|(?1))*\))(.*?)(?<![@\w])@endregion(?![\w])/s';
 
     private readonly string $cachePath;
 
@@ -57,8 +62,9 @@ final class BladeEngine implements TemplateEngineInterface
 
         $this->compiler = new BladeCompiler($filesystem, $cachePath);
 
-        // @live … @endlive, taken out of the source before Blade compiles it (raw @php blocks too)
-        $this->compiler->prepareStringsForCompilationUsing(fn (string $value): string => $this->compileLive($value));
+        // @live … @endlive, then @region … @endregion, taken out of the source before Blade compiles
+        // it (raw @php blocks too); a region holding a live block keeps it as the template's
+        $this->compiler->prepareStringsForCompilationUsing(fn (string $value): string => $this->compileRegions($this->compileLive($value)));
 
         // {{ }} prints SafeHtml as it is and escapes everything else
         $this->compiler->setEchoFormat('\\Preflow\\Blade\\Escape::print(%s)');
@@ -78,6 +84,7 @@ final class BladeEngine implements TemplateEngineInterface
         $this->viewFactory->share('__geoCollector', $geoCollector);
         $this->viewFactory->share('__seoContext', $seoContext);
         $this->viewFactory->share('__live', $this);
+        $this->viewFactory->share('__regions', $this);
         // @freshness / @expires; without the page cache, one without a recorder checks the arguments
         $this->viewFactory->share('__pageCache', $pageCache ?? new \Preflow\Core\PageCache\PageCache());
         $liveParts?->register(self::LIVE_KIND, fn (array $recipe): string => $this->renderLiveBlock($recipe));
@@ -120,12 +127,12 @@ final class BladeEngine implements TemplateEngineInterface
      * file of its own (storage/cache/blade/live/{hash}.blade.php), rendered with only its values.
      * That file is the block's declaration: only bodies written here are ever filled.
      */
-    private function compileLive(string $value): string
+    private function compileLive(string $value, ?string $file = null): string
     {
         if (!str_contains($value, '@live')) {
             return $value;
         }
-        $file = (string) $this->compiler->getPath();
+        $file ??= (string) $this->compiler->getPath();
         $view = $file === '' ? null : $this->viewName($file);
         $index = 0;
 
@@ -143,6 +150,142 @@ final class BladeEngine implements TemplateEngineInterface
             return '<?php echo $__live->live(' . var_export($view, true) . ', $componentClass ?? null, ' . $index++ . ', ' . var_export($hash, true)
                 . ($args !== '' ? ', ' . $args : '') . '); ?>';
         }, $value);
+    }
+
+    /**
+     * A region (@region): its element (Regions::open()), then its body rendered with $data, the
+     * variables the template was rendered with (never ones it set before the region), then the
+     * closing tag.
+     *
+     * @internal compiled templates
+     * @param array<string, mixed> $data the template's $__data
+     * @param string $hash the body's hash (its extracted view file)
+     * @since 0.86.0
+     */
+    public function region(array $data, string $name, string $hash, mixed $attributes = []): string
+    {
+        return Regions::open($data, $name, $attributes)
+            . $this->renderBody($this->bodyPath('regions', $hash), $data)
+            . Regions::close();
+    }
+
+    /**
+     * Replaces each @region … @endregion of $value with a call of region(); its body goes into a
+     * view file of its own (storage/cache/blade/regions/{hash}.blade.php), rendered with only the
+     * template's variables, in place and by renderRegion() alike.
+     */
+    private function compileRegions(string $value): string
+    {
+        if (!str_contains($value, 'region')) {
+            return $value;
+        }
+        $file = (string) $this->compiler->getPath();
+        $regions = $this->regions($value, $file === '' ? 'a Blade string' : $file);
+
+        return (string) preg_replace_callback(self::REGION_PATTERN, function (array $m) use (&$regions): string {
+            $region = array_shift($regions) ?? throw new \LogicException('A region the source scan missed.');
+            $hash = $this->writeBody('regions', $region['body']);
+
+            return '<?php echo $__regions->region($__data, ' . var_export($region['name'], true) . ', ' . var_export($hash, true)
+                . ($region['attributes'] !== '' ? ', ' . $region['attributes'] : '') . '); ?>';
+        }, $value);
+    }
+
+    /**
+     * The regions of the source $value (live blocks compiled already), in order: name, attributes
+     * (PHP, '' for none) and body. Two of one name, a nested one or a name that is no quoted
+     * region name are errors.
+     *
+     * @return list<array{name: string, attributes: string, body: string}>
+     */
+    private function regions(string $value, string $file): array
+    {
+        if (!str_contains($value, 'region')) {
+            return [];
+        }
+        preg_match_all(self::REGION_PATTERN, $value, $matches, PREG_SET_ORDER);
+        $regions = [];
+        $seen = [];
+        foreach ($matches as $m) {
+            $body = $m[2];
+            if (preg_match('/^\s*([\'"])([^\'"]*)\1\s*(?:,(.*))?$/s', substr($m[1], 1, -1), $args) !== 1) {
+                throw new \InvalidArgumentException("@region takes its name as a quoted string first: @region('results') ({$file}).");
+            }
+            $name = $args[2];
+            if (!Regions::validName($name)) {
+                throw new \InvalidArgumentException(sprintf("'%s' is no region name (a letter, then letters, digits, - and _) (%s).", $name, $file));
+            }
+            if (preg_match('/(?<![@\w])@region(?![\w])/', $body) === 1) {
+                throw new \InvalidArgumentException(sprintf("The region '%s' holds another region: regions don't nest (%s).", $name, $file));
+            }
+            if (isset($seen[$name])) {
+                throw Regions::duplicate($file, $name);
+            }
+            $seen[$name] = true;
+            $regions[] = ['name' => $name, 'attributes' => trim($args[3] ?? ''), 'body' => $body];
+        }
+        if (preg_match('/(?<![@\w])@(end)?region(?![\w])/', (string) preg_replace(self::REGION_PATTERN, '', $value), $left) === 1) {
+            throw new \InvalidArgumentException(sprintf('%s without %s (%s).', $left[0], $left[0] === '@region' ? '@endregion' : '@region', $file));
+        }
+
+        return $regions;
+    }
+
+    /**
+     * The contents of the @region $region of $template (since 0.86.0): its body, rendered with
+     * $context and the globals, without the region element.
+     */
+    public function renderRegion(string $template, string $region, array $context): string
+    {
+        $regions = $this->regionsIn($this->sourceFile($template));
+        foreach ($regions as $found) {
+            if ($found['name'] === $region) {
+                $path = $this->bodyPath('regions', $this->writeBody('regions', $found['body']));
+
+                return $this->unwrapHttp(fn (): string => $this->renderBody($path, array_merge($this->globals, $context)));
+            }
+        }
+
+        throw Regions::unknown($template, $region, array_column($regions, 'name'));
+    }
+
+    /** The @regions of $template, in the order they appear (since 0.86.0). */
+    public function regionsOf(string $template): array
+    {
+        return array_column($this->regionsIn($this->sourceFile($template)), 'name');
+    }
+
+    /** @return list<array{name: string, attributes: string, body: string}> */
+    private function regionsIn(string $file): array
+    {
+        // As compiling it: its live blocks first, so a region's body is the one compiled.
+        return $this->regions($this->compileLive((string) file_get_contents($file), $file), $file);
+    }
+
+    /**
+     * The file of $template (as render() finds it); an absolute path's directory becomes a
+     * location, so the template can @include siblings by name.
+     */
+    private function sourceFile(string $template): string
+    {
+        $file = $this->templateFile($template);
+        if ($file === null && str_starts_with($template, '/') && file_exists($template)) {
+            $file = $template;
+        }
+        if ($file === null) {
+            return $this->viewFactory->getFinder()->find($template);
+        }
+        $this->addLocation(dirname($file));
+
+        return $file;
+    }
+
+    private function addLocation(string $dir): void
+    {
+        $finder = $this->viewFactory->getFinder();
+        if (!in_array($dir, $finder->getPaths(), true)) {
+            $finder->addLocation($dir);
+        }
     }
 
     /** The view name of a template file in one of the template folders ("partials/card"), null elsewhere. */
@@ -164,14 +307,26 @@ final class BladeEngine implements TemplateEngineInterface
 
     private function livePath(string $hash): string
     {
-        return $this->cachePath . '/live/' . $hash . '.blade.php';
+        return $this->bodyPath('live', $hash);
+    }
+
+    /** The view file of a body of $kind (live, regions) by its hash. */
+    private function bodyPath(string $kind, string $hash): string
+    {
+        return $this->cachePath . '/' . $kind . '/' . $hash . '.blade.php';
     }
 
     /** Writes a live block's body as a view file, once; returns its hash. */
     private function writeLiveBody(string $body): string
     {
+        return $this->writeBody('live', $body);
+    }
+
+    /** Writes a body of $kind (live, regions) as a view file, once; returns its hash. */
+    private function writeBody(string $kind, string $body): string
+    {
         $hash = hash('xxh128', $body);
-        $path = $this->livePath($hash);
+        $path = $this->bodyPath($kind, $hash);
         if (!is_file($path)) {
             @mkdir(dirname($path), 0755, true);
             $tmp = $path . '.' . bin2hex(random_bytes(4));
@@ -185,7 +340,13 @@ final class BladeEngine implements TemplateEngineInterface
     /** @param array<string, mixed> $with */
     private function renderLiveBody(string $path, array $with): string
     {
-        return $this->viewFactory->file($path, array_merge($this->globals, $with))->render();
+        return $this->renderBody($path, array_merge($this->globals, $with));
+    }
+
+    /** @param array<string, mixed> $data */
+    private function renderBody(string $path, array $data): string
+    {
+        return $this->viewFactory->file($path, $data)->render();
     }
 
     /**
@@ -251,13 +412,22 @@ final class BladeEngine implements TemplateEngineInterface
      */
     public function render(string $template, array $context = []): string
     {
+        return $this->unwrapHttp(fn (): string => $this->renderTemplate($template, $context));
+    }
+
+    /**
+     * $render's result. An HttpException (a 403, a 404…) a component or function threw comes out
+     * as itself, not wrapped in the view's exception: the page answers with its status.
+     *
+     * @param \Closure(): string $render
+     */
+    private function unwrapHttp(\Closure $render): string
+    {
         try {
-            return $this->renderTemplate($template, $context);
+            return $render();
         } catch (\Preflow\Core\Exceptions\HttpException $e) {
             throw $e;
         } catch (\Throwable $e) {
-            // An HttpException (a 403, a 404…) a component or function threw comes out as itself,
-            // not wrapped in the view's exception: the page answers with its status.
             for ($cause = $e->getPrevious(); $cause !== null; $cause = $cause->getPrevious()) {
                 if ($cause instanceof \Preflow\Core\Exceptions\HttpException) {
                     throw $cause;
@@ -278,11 +448,8 @@ final class BladeEngine implements TemplateEngineInterface
         // location so it can @include siblings by name (deduplicated to avoid finder bloat).
         if ($file !== null || (str_starts_with($template, '/') && file_exists($template))) {
             $template = $file ?? $template;
-            $dir = dirname($template);
-            $finder = $this->viewFactory->getFinder();
-            if (!in_array($dir, $finder->getPaths(), true)) {
-                $finder->addLocation($dir);
-            }
+            $this->addLocation(dirname($template));
+
             return $this->viewFactory->file($template, $context)->render();
         }
 

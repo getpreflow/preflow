@@ -29,6 +29,8 @@ use Preflow\Core\PageCache\PageCache;
 use Preflow\Core\PageCache\PageCacheConfig;
 use Preflow\Core\PageCache\PageKey;
 use Preflow\Testing\ArraySession;
+use Preflow\View\Regions;
+use Preflow\View\RendersRegions;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\View\TemplateFunctionDefinition;
 
@@ -176,11 +178,72 @@ final class ComponentStateLifecycleTest extends TestCase
         $this->renderer->restore($this->make(Counter::class, ['key' => 'mine']), (string) $this->renderer->stateFor($other));
     }
 
-    public function test_region_waits_for_a_template_engine_that_renders_regions(): void
+    public function test_region_after_action_renders_only_that_region_after_prepare(): void
     {
-        $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('regions need a template engine that renders regions');
-        $this->renderer->renderAfterAction($this->make(Counter::class, []), 'results');
+        $regions = [];
+        $renderer = $this->renderer(regions: $regions);
+        $counter = $this->make(Counter::class, ['key' => 'r']);
+        $renderer->restore($counter, $this->carriedFor(Counter::class, $counter->getComponentId(), ['count' => 4]));
+        $counter->handleAction('add');
+        Log::$calls = [];
+
+        $html = $renderer->renderAfterAction($counter, 'results');
+
+        $this->assertSame('[results:count 5]', $html, 'only the region, no wrapper element');
+        $this->assertSame([Counter::class . ':prepare'], Log::$calls, 'prepare() ran before the region rendered');
+        $this->assertSame('Counter', $regions[0]['template']);
+        $this->assertSame($counter->getComponentId(), $regions[0]['context']['componentId'], 'the component\'s template context');
+        $this->assertSame(Counter::class, $regions[0]['context']['componentClass']);
+        $this->assertNotNull($renderer->stateFor($counter), 'the new state is kept for the response');
+    }
+
+    public function test_region_with_twig_in_place_on_the_page_and_alone_after_an_action(): void
+    {
+        $dir = sys_get_temp_dir() . '/preflow_region_component_' . bin2hex(random_bytes(4));
+        mkdir($dir);
+        try {
+            file_put_contents($dir . '/Counter', "<h1>{{ count }}</h1>{% set label = 'set' %}{% region 'results' {class: 'list'} %}{{ label }}{% endregion %}");
+            $twig = new \Preflow\Twig\TwigEngine([$dir], new \Preflow\View\AssetCollector(new \Preflow\View\NonceGenerator()), debug: true);
+            $renderer = new ComponentRenderer($twig, new ErrorBoundary(debug: DebugLevel::On));
+            $renderer->enableState(static fn (string $store): StateStore => new SignedStateStore(self::SECRET), true);
+
+            $page = $renderer->render($counter = $this->make(Counter::class, ['start' => 2]));
+            $id = $counter->getComponentId();
+            $this->assertStringContainsString('<h1>2</h1><div id="' . $id . '-results" class="list">count 2</div>', $page);
+
+            $again = $this->make(Counter::class, []);
+            $renderer->restore($again, (string) $renderer->stateFor($counter));
+            $again->handleAction('add');
+            $this->assertSame('count 3', $renderer->renderAfterAction($again, 'results'), 'only the contents, after prepare()');
+        } finally {
+            exec('rm -rf ' . escapeshellarg($dir));
+        }
+    }
+
+    public function test_unknown_region_fails_naming_the_regions(): void
+    {
+        $regions = [];
+        $renderer = $this->renderer(regions: $regions);
+
+        try {
+            $renderer->renderAfterAction($this->make(Counter::class, []), 'nope');
+            $this->fail('an unknown region rendered');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString("'nope'", $e->getMessage());
+            $this->assertStringContainsString('results', $e->getMessage());
+        }
+        $this->assertSame([], $regions, 'nothing rendered');
+    }
+
+    public function test_region_on_an_engine_without_regions_names_the_engine(): void
+    {
+        try {
+            $this->renderer->renderAfterAction($this->make(Counter::class, []), 'results');
+            $this->fail('a region rendered on an engine without regions');
+        } catch (\LogicException $e) {
+            $this->assertStringContainsString('TemplateEngineInterface@anonymous', $e->getMessage(), 'the message names the engine');
+            $this->assertStringContainsString(RendersRegions::class, $e->getMessage());
+        }
     }
 
     public function test_live_and_freshness_components_with_state_still_render(): void
@@ -228,15 +291,45 @@ final class ComponentStateLifecycleTest extends TestCase
         }
     }
 
-    private function renderer(DebugLevel $debug = DebugLevel::On): ComponentRenderer
+    /**
+     * @param list<array{template: string, region: string, context: array<string, mixed>}>|null $regions
+     *        given: the engine renders regions (one, "results") and logs each renderRegion() here
+     */
+    private function renderer(DebugLevel $debug = DebugLevel::On, ?array &$regions = null): ComponentRenderer
     {
-        $engine = new class(fn (string $template, array $context): string => ($this->templates[$template])($context)) implements TemplateEngineInterface {
+        $templates = fn (string $template, array $context): string => ($this->templates[$template])($context);
+        $engine = $regions === null ? new class($templates) implements TemplateEngineInterface {
             /** @param \Closure(string, array<string, mixed>): string $templates */
             public function __construct(private readonly \Closure $templates) {}
             public function render(string $template, array $context = []): string
             {
                 return ($this->templates)($template, $context);
             }
+            public function exists(string $template): bool { return true; }
+            public function addFunction(TemplateFunctionDefinition $function): void {}
+            public function addGlobal(string $name, mixed $value): void {}
+            public function getTemplateExtension(): string { return 'twig'; }
+            public function addNamespace(string $namespace, string $path): void {}
+        } : new class($templates, $regions) implements TemplateEngineInterface, RendersRegions {
+            /**
+             * @param \Closure(string, array<string, mixed>): string $templates
+             * @param list<array{template: string, region: string, context: array<string, mixed>}> $log
+             */
+            public function __construct(private readonly \Closure $templates, private array &$log) {}
+            public function render(string $template, array $context = []): string
+            {
+                return ($this->templates)($template, $context);
+            }
+            public function renderRegion(string $template, string $region, array $context): string
+            {
+                if ($region !== 'results') {
+                    throw Regions::unknown($template, $region, $this->regionsOf($template));
+                }
+                $this->log[] = ['template' => $template, 'region' => $region, 'context' => $context];
+
+                return '[results:' . ($context['label'] ?? '') . ']';
+            }
+            public function regionsOf(string $template): array { return ['results']; }
             public function exists(string $template): bool { return true; }
             public function addFunction(TemplateFunctionDefinition $function): void {}
             public function addGlobal(string $name, mixed $value): void {}

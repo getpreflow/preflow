@@ -9,6 +9,8 @@ use Preflow\Core\Exceptions\HttpException;
 use Preflow\Core\PageCache\LiveParts;
 use Preflow\View\AssetCollector;
 use Preflow\View\Geo\GeoCollector;
+use Preflow\View\Regions;
+use Preflow\View\RendersRegions;
 use Preflow\View\TemplateEngineInterface;
 
 final class ComponentRenderer
@@ -264,18 +266,31 @@ final class ComponentRenderer
     /**
      * Renders $component after one of its actions ran, with its wrapper: prepare() for a
      * component with state (no mount(): the action ran on its restored state), nothing for one
-     * without (its resolveState() ran before the action). $region renders one region only.
+     * without (its resolveState() ran before the action). With $region, only that region of its
+     * template renders: its contents, without the region element or the component's wrapper (both
+     * stay on the page), with the component's template context (RendersRegions).
      *
-     * @throws \LogicException for a region: regions need a template engine that renders regions
+     * @throws \InvalidArgumentException its template has no region $region (the message names its regions)
+     * @throws \LogicException for a region: the template engine renders no regions (named in the message)
      * @since 0.86.0
      */
     public function renderAfterAction(Component $component, ?string $region = null): string
     {
-        if ($region !== null) {
-            throw new \LogicException('regions need a template engine that renders regions');
+        if ($region === null) {
+            return $this->renderInBoundary($component, self::AFTER_ACTION, true);
+        }
+        $engine = $this->templateEngine;
+        if (!$engine instanceof RendersRegions) {
+            throw Regions::notRendered($engine);
+        }
+        // An unknown region is the request's mistake, never the component's: not its error boundary.
+        $template = $component->getTemplatePath($engine->getTemplateExtension());
+        $regions = $engine->regionsOf($template);
+        if (!in_array($region, $regions, true)) {
+            throw Regions::unknown($template, $region, $regions);
         }
 
-        return $this->renderInBoundary($component, self::AFTER_ACTION, true);
+        return $this->renderInBoundary($component, self::AFTER_ACTION, false, $region);
     }
 
     /**
@@ -359,20 +374,20 @@ final class ComponentRenderer
     private const int RESOLVED = 2;
 
     /**
-     * The hooks of $moment, the render, the state kept, inside the error boundary and the
-     * component's #[Freshness]; with the wrapper when $wrap.
+     * The hooks of $moment, the render (of $region only, when given), the state kept, inside the
+     * error boundary and the component's #[Freshness]; with the wrapper when $wrap.
      */
-    private function renderInBoundary(Component $component, int $moment, bool $wrap): string
+    private function renderInBoundary(Component $component, int $moment, bool $wrap, ?string $region = null): string
     {
         if ($this->stateDebug && $moment !== self::RESOLVED) {
             $this->assertStateUse($component); // misuse fails the render, not the boundary
         }
         try {
             $start = hrtime(true);
-            $innerHtml = $this->withFreshness($component, function () use ($component, $moment, &$start): string {
+            $innerHtml = $this->withFreshness($component, function () use ($component, $moment, $region, &$start): string {
                 $this->runHooks($component, $moment);
                 $start = hrtime(true);
-                $html = $this->renderInner($component);
+                $html = $this->renderInner($component, $region);
                 $this->keepState($component);
 
                 return $html;
@@ -499,7 +514,7 @@ final class ComponentRenderer
      * The component's inner HTML. While GEO captures, the render runs in a block of its
      * own; a component that declared a geo block is replaced by its placeholder.
      */
-    private function renderInner(Component $component): string
+    private function renderInner(Component $component, ?string $region = null): string
     {
         // On the render stack while its template renders: current(), and the parent of what it renders.
         $parent = $this->current();
@@ -511,20 +526,27 @@ final class ComponentRenderer
         $this->stack[] = $component;
         try {
             return $this->geoCollector === null
-                ? $this->renderTemplate($component)
-                : $this->geoCollector->component(fn (): string => $this->renderTemplate($component));
+                ? $this->renderTemplate($component, $region)
+                : $this->geoCollector->component(fn (): string => $this->renderTemplate($component, $region));
         } finally {
             array_pop($this->stack);
         }
     }
 
-    private function renderTemplate(Component $component): string
+    /** The component's template rendered, or only its region $region (RendersRegions). */
+    private function renderTemplate(Component $component, ?string $region = null): string
     {
         $templatePath = $component->getTemplatePath($this->templateEngine->getTemplateExtension());
         $context = $component->getTemplateContext();
+        $engine = $this->templateEngine;
+        $render = match (true) {
+            $region === null => static fn (): string => $engine->render($templatePath, $context),
+            $engine instanceof RendersRegions => static fn (): string => $engine->renderRegion($templatePath, $region, $context),
+            default => throw Regions::notRendered($engine),
+        };
 
         if ($this->assetCollector === null) {
-            return $this->templateEngine->render($templatePath, $context);
+            return $render();
         }
 
         // The component's own CSS scope, or none: an unscoped child inside a scoped parent
@@ -532,7 +554,7 @@ final class ComponentRenderer
         $previousScope = $this->assetCollector->getCssScope();
         $this->assetCollector->setCssScope($component->hasCssScoping() ? $component->getCssClass() : null);
         try {
-            return $this->templateEngine->render($templatePath, $context);
+            return $render();
         } finally {
             $this->assetCollector->setCssScope($previousScope);
         }

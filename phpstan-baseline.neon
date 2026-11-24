@@ -4729,12 +4729,6 @@ parameters:
 			path: packages/twig/src/PreflowExtension.php
 
 		-
-			message: '#^Parameter \#1 \$template of method Twig\\Environment\:\:createTemplate\(\) expects string, string\|false given\.$#'
-			identifier: argument.type
-			count: 1
-			path: packages/twig/src/TwigEngine.php
-
-		-
 			message: '#^Property Preflow\\Twig\\TwigEngine\:\:\$componentTemplates \(array\<string, class\-string\>\) does not accept array\<string, string\>\.$#'
 			identifier: assign.propertyType
 			count: 1

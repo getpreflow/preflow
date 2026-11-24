@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Testing\Contract;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\View\RendersRegions;
 use Preflow\View\SafeHtml;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\View\TemplateFunctionDefinition;
@@ -48,10 +49,24 @@ use Preflow\View\TemplateFunctionDefinition;
  * - `part`: prints the plain text `PART`
  *
  * Whitespace around the output does not matter: the tests trim it.
+ *
+ * An engine that also implements RendersRegions (optional; the region tests are skipped for one
+ * that does not) supplies two more fixtures, both with a region named `results`:
+ *
+ * - `region`: prints `before `, then the region `results` with the attribute class `list`,
+ *   holding `[`, the context variable `name`, `]`, then ` after` (Twig:
+ *   `before {% region 'results' {class: 'list'} %}[{{ name }}]{% endregion %} after`, Blade:
+ *   `before @region('results', ['class' => 'list'])[{{ $name }}]@endregion after`)
+ * - `region_after_set`: sets the variable `name` to `changed`, then the region `results`
+ *   printing `name` (Twig: `{% set name = 'changed' %}{% region 'results' %}{{ name }}{% endregion %}`,
+ *   Blade: `@php($name = 'changed')@region('results'){{ $name }}@endregion`)
  */
 abstract class TemplateEngineContract extends TestCase
 {
     private const array FIXTURES = ['variable', 'escaped', 'raw_function', 'escaped_function', 'global', 'namespaced', 'part'];
+
+    /** The fixtures of an engine that renders regions (RendersRegions). */
+    private const array REGION_FIXTURES = ['region', 'region_after_set'];
 
     /** The engine under test, reading templates from $templateDir. */
     abstract protected function createEngine(string $templateDir): TemplateEngineInterface;
@@ -70,7 +85,8 @@ abstract class TemplateEngineContract extends TestCase
         $this->templateDir = $this->root . '/templates';
         mkdir($this->templateDir, 0777, true);
         $this->engine = $this->createEngine($this->templateDir);
-        foreach (self::FIXTURES as $name) {
+        $fixtures = $this->engine instanceof RendersRegions ? [...self::FIXTURES, ...self::REGION_FIXTURES] : self::FIXTURES;
+        foreach ($fixtures as $name) {
             file_put_contents($this->templateDir . '/' . $this->file($name), $this->fixture($name));
         }
     }
@@ -164,6 +180,57 @@ abstract class TemplateEngineContract extends TestCase
         $other->addNamespace('lib', $second);
         $other->addNamespace('lib', $first);
         $this->assertSame('SECOND', trim($other->render($this->file('namespaced'))), 'the path registered first is searched first');
+    }
+
+    public function test_region_renders_in_place_with_id_and_attributes(): void
+    {
+        $this->regions();
+
+        $this->assertMatchesRegularExpression(
+            '#^before\s*<div id="c1-results" class="list">\s*\[Ada\]\s*</div>\s*after$#',
+            $this->render('region', ['componentId' => 'c1', 'name' => 'Ada']),
+            'a region prints in place, in an element with the id {componentId}-{name} and its attributes',
+        );
+    }
+
+    public function test_render_region_gives_only_its_contents(): void
+    {
+        $engine = $this->regions();
+
+        $this->assertSame('[Ada]', trim($engine->renderRegion($this->file('region'), 'results', ['componentId' => 'c1', 'name' => 'Ada'])), 'only the contents: the element stays on the page');
+        $this->assertSame(['results'], $engine->regionsOf($this->file('region')));
+    }
+
+    public function test_unknown_region_lists_the_known_ones(): void
+    {
+        $engine = $this->regions();
+
+        try {
+            $engine->renderRegion($this->file('region'), 'nope', ['componentId' => 'c1', 'name' => 'Ada']);
+            $this->fail('an unknown region renders');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('nope', $e->getMessage());
+            $this->assertStringContainsString('results', $e->getMessage(), 'the message names the regions the template has');
+        }
+    }
+
+    public function test_region_does_not_see_earlier_set_variables(): void
+    {
+        $engine = $this->regions();
+        $context = ['componentId' => 'c1', 'name' => 'Ada'];
+
+        $this->assertMatchesRegularExpression('#^<div id="c1-results">\s*Ada\s*</div>$#', $this->render('region_after_set', $context), 'in place, the region sees the context, not what the template set before it');
+        $this->assertSame('Ada', trim($engine->renderRegion($this->file('region_after_set'), 'results', $context)), 'alone, the same');
+    }
+
+    /** The engine as one that renders regions; the test is skipped for one that does not. */
+    private function regions(): RendersRegions
+    {
+        if (!$this->engine instanceof RendersRegions) {
+            $this->markTestSkipped($this->engine::class . ' does not render regions (RendersRegions is optional).');
+        }
+
+        return $this->engine;
     }
 
     /** @param array<string, mixed> $context */
