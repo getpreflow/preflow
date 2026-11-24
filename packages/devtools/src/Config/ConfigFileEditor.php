@@ -84,11 +84,13 @@ final class ConfigFileEditor
     public function create(string $file, string $contents): ConfigEdit
     {
         $path = $this->path($file);
-        if (self::isLinked($path)) {
-            return new ConfigEdit(ConfigEdit::REFUSED, $path, "{$file} is a link; this tool does not write through links. Create its target by hand with this content.", $contents);
-        }
+        // An existing file is never written, also when it is a link (followed) or has more hard
+        // links: 'already'. Only a dangling symbolic link is refused: creating would write its target.
         if (file_exists($path)) {
             return new ConfigEdit(ConfigEdit::ALREADY, $path, "{$file} exists already; left as it is.");
+        }
+        if (is_link($path)) {
+            return new ConfigEdit(ConfigEdit::REFUSED, $path, "{$file} is a link to a missing file; this tool does not write through links. Create its target by hand with this content.", $contents);
         }
         $created = $this->createExclusively($path, $contents);
         if ($created === null) {

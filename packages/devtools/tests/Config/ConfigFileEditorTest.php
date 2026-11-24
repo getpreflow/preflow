@@ -269,6 +269,26 @@ final class ConfigFileEditorTest extends TestCase
         $this->assertFileDoesNotExist($this->root . '/missing/folio.php');
     }
 
+    public function test_create_leaves_an_existing_linked_file_as_already(): void
+    {
+        mkdir($this->root . '/shared');
+        $existing = "<?php\n\nreturn ['path' => '/admin'];\n";
+        file_put_contents($this->root . '/shared/folio.php', $existing);
+        symlink($this->root . '/shared/folio.php', $this->configDir . '/folio.php');
+        file_put_contents($this->configDir . '/media.php', $existing);
+        link($this->configDir . '/media.php', $this->root . '/media-copy.php');
+
+        $symlinked = $this->editor()->create('folio.php', "<?php\n\nreturn [];\n");
+        $hardLinked = $this->editor()->create('media.php', "<?php\n\nreturn [];\n");
+
+        $this->assertSame(ConfigEdit::ALREADY, $symlinked->status);
+        $this->assertTrue(is_link($this->configDir . '/folio.php'));
+        $this->assertSame($existing, file_get_contents($this->root . '/shared/folio.php'));
+        $this->assertSame(ConfigEdit::ALREADY, $hardLinked->status);
+        $this->assertSame($existing, file_get_contents($this->configDir . '/media.php'));
+        $this->assertSame($existing, file_get_contents($this->root . '/media-copy.php'));
+    }
+
     public function test_much_output_on_stderr_does_not_hang_the_check(): void
     {
         file_put_contents($this->configDir . '/app.php', "<?php\n\nfwrite(STDERR, str_repeat('x', 200000));\n\nreturn [\n    'name' => 'Site',\n];\n");
