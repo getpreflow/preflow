@@ -463,7 +463,7 @@ abstract class HypermediaDriverContract extends TestCase
         }
         $url = '/--component/action?token=abc';
         $attributes = static fn (array $options, array $values = [], string $target = 'Box-1'): array
-            => $driver->callAttributes(new ActionCall('post', $url, 'Box-1', $target, ActionOptions::from($options), $values));
+            => $driver->callAttributes(new ActionCall('post', $url, 'Box-1', $target, ActionOptions::from($options, true), $values));
 
         $base = $attributes([]);
         $this->assertNotSame([], $base);

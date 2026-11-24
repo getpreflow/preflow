@@ -99,6 +99,20 @@ final class ResolvingCounter extends StateCounter
     }
 }
 
+/** Its mount() fails. */
+final class FailingMountCounter extends StateCounter
+{
+    public function mount(): void
+    {
+        throw new \RuntimeException('boom');
+    }
+
+    public function fallback(\Throwable $e): ?string
+    {
+        return null;
+    }
+}
+
 #[StateIn(SessionStateStore::class)]
 final class SessionCounter extends StateCounter
 {
@@ -110,6 +124,41 @@ final class BrokenRegionCounter extends StateCounter
     public function getTemplatePath(string $extension = 'twig'): string
     {
         return 'Broken';
+    }
+}
+
+/** Without #[State]: resolveState() before every render, as in 0.85. */
+final class PlainCounter extends Component
+{
+    public int $count = 0;
+
+    public string $label = '';
+
+    public function resolveState(): void
+    {
+        Hooks::$calls[] = 'resolveState';
+        $this->count = (int) ($this->props['start'] ?? 0);
+        $this->label = 'plain ' . $this->count;
+    }
+
+    public function actions(): array
+    {
+        return ['add', 'echo'];
+    }
+
+    public function actionAdd(array $params = []): void
+    {
+        $this->count++;
+    }
+
+    public function actionEcho(array $params = []): void
+    {
+        Hooks::$params = $params;
+    }
+
+    public function getTemplatePath(string $extension = 'twig'): string
+    {
+        return 'Counter';
     }
 }
 
@@ -227,7 +276,7 @@ final class ComponentEndpointStateTest extends TestCase
 
         $this->assertStringStartsWith('<b>results 5</b>', $html, 'only the region, without its element or the wrapper');
         $this->assertStringNotContainsString('<p>count', $html);
-        $this->assertSame(1, preg_match('/<input type="hidden" id="' . preg_quote($id, '/') . '--state" name="_state\[' . preg_quote($id, '/') . '\]" form="preflow-no-form" value="([^"]+)" hx-swap-oob="true">/', $html, $m), $html);
+        $this->assertSame(1, preg_match('/<input type="hidden" id="preflow-state--' . preg_quote($id, '/') . '" name="_state\[' . preg_quote($id, '/') . '\]" form="preflow-no-form" value="([^"]+)" hx-swap-oob="true">/', $html, $m), $html);
         $this->assertSame(['count' => 5], $this->signed->get(StateCounter::class, $id, html_entity_decode($m[1])), 'the new state goes back');
     }
 
@@ -407,6 +456,70 @@ final class ComponentEndpointStateTest extends TestCase
         $this->assertRefused(fn () => $this->post(SessionCounter::class, 'add', ['key' => 's'], ['_state' => [$id => 'unknown-reference']]));
     }
 
+    public function test_key_only_token_without_state_is_refused(): void
+    {
+        $counter = new StateCounter();
+        $counter->setProps(['start' => 3, 'key' => 'a']);
+        $token = $this->tokens->encodeFor($counter, 'add');
+
+        $this->assertRefused(fn () => $this->post(StateCounter::class, 'add', [], token: $token));
+        $this->assertSame([], Hooks::$calls, 'never mounted from a key alone');
+
+        // With its state, the same token works.
+        $html = $this->body($this->post(StateCounter::class, 'add', [], ['_state' => [$counter->getComponentId() => $this->carried(StateCounter::class, ['key' => 'a'], 3)]], token: $token));
+        $this->assertStringContainsString('<p>count 4</p>', $html);
+    }
+
+    public function test_values_as_one_json_object(): void
+    {
+        $id = $this->id(StateCounter::class, 'a');
+        $state = ['_state' => [$id => $this->carried(StateCounter::class, ['key' => 'a'], 1)]];
+        $this->body($this->post(StateCounter::class, 'echo', ['key' => 'a'], $state + ['_values' => '{"q":"v","rows":[1,2]}', '_region' => '', 'q' => 'form']));
+        $this->assertSame(['q' => 'form', 'rows' => [1, 2]], Hooks::$params, 'decoded, under the form fields; an empty region is the whole component');
+
+        try {
+            $this->post(StateCounter::class, 'echo', ['key' => 'a'], $state + ['_values' => 'not json']);
+            $this->fail('unreadable values were used');
+        } catch (HttpException $e) {
+            $this->assertSame(400, $e->statusCode);
+        }
+    }
+
+    public function test_mount_failure_on_an_action_call_is_a_mount_failure(): void
+    {
+        $html = $this->body($this->post(FailingMountCounter::class, 'add', ['start' => 1]));
+
+        $this->assertMatchesRegularExpression('#Phase</dt><dd[^>]*>mount</dd>#', $html, 'the boundary names the phase that failed');
+        $this->assertStringNotContainsString('_state[', $html);
+    }
+
+    public function test_stateless_component_takes_values_and_region(): void
+    {
+        $html = $this->body($this->post(PlainCounter::class, 'echo', ['start' => 4], ['_values' => '{"q":"v","page":"2"}', '_region' => 'results', 'page' => '3']));
+
+        $this->assertSame(['q' => 'v', 'page' => '3'], Hooks::$params, 'values under the form fields');
+        $this->assertSame(['resolveState'], Hooks::$calls, 'as in 0.85: resolveState() before the action');
+        $this->assertSame('<b>results 4</b>', $html, 'only the region, no state');
+
+        Hooks::$calls = [];
+        $whole = $this->body($this->post(PlainCounter::class, 'add', ['start' => 4], ['_values' => '{}', '_region' => '']));
+        $this->assertStringStartsWith('<div id="' . $this->id(PlainCounter::class, null) . '"><p>plain 4</p>', $whole);
+        $this->assertStringContainsString('<b>results 5</b>', $whole, 'the action ran, then the whole component rendered without resolving again');
+        $this->assertSame(['resolveState'], Hooks::$calls);
+
+        $error = $this->httpError(fn () => $this->post(PlainCounter::class, 'add', ['start' => 4], ['_region' => 'nope']));
+        $this->assertSame(400, $error->statusCode);
+    }
+
+    public function test_old_style_request_on_a_stateless_component_is_unchanged(): void
+    {
+        $token = $this->tokens->encode(PlainCounter::class, ['start' => 2], 'echo');
+        $html = $this->body($this->post(PlainCounter::class, 'echo', ['start' => 2], ['q' => 'x'], token: $token));
+
+        $this->assertSame(['q' => 'x', 'token' => $token], Hooks::$params, 'the whole body, as in 0.85');
+        $this->assertSame('<div id="' . $this->id(PlainCounter::class, null) . '"><p>plain 2</p><div id="' . $this->id(PlainCounter::class, null) . '-results"><b>results 2</b></div></div>', $html);
+    }
+
     /** @param array<string, mixed> $props */
     private function carried(string $class, array $props, int $count, ?string $as = null): string
     {
@@ -449,6 +562,7 @@ final class ComponentEndpointStateTest extends TestCase
         ?ComponentRenderer $renderer = null,
         bool $endpointDebug = false,
         array $headers = ['HX-Request' => 'true'],
+        ?string $token = null,
     ): ResponseInterface {
         $endpoint = new ComponentEndpoint(
             token: $this->tokens,
@@ -463,7 +577,7 @@ final class ComponentEndpointStateTest extends TestCase
             debug: $endpointDebug,
         );
         $request = (new Psr17Factory())->createServerRequest('POST', '/--component/action')
-            ->withParsedBody($body + ['token' => $this->tokens->encode($class, $props, $action)]);
+            ->withParsedBody($body + ['token' => $token ?? $this->tokens->encode($class, $props, $action)]);
         foreach ($headers as $name => $value) {
             $request = $request->withHeader($name, $value);
         }

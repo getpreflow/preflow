@@ -86,8 +86,12 @@ final class ComponentEndpoint
         $isFragmentRequest = $target !== null && $target !== ''
             && $target !== $component->getComponentId();
 
+        // The neutral fields of a 0.86 call (DrivesComponentActions); a get call sends them in the query.
+        $fields = array_replace($queryParams, is_array($bodyParams) ? $bodyParams : []);
         if ($component->hasState()) {
-            $html = $this->handleStateful($component, $payload->action, $queryParams, is_array($bodyParams) ? $bodyParams : [], $isFragmentRequest);
+            $html = $this->handleStateful($component, $payload, $fields, $isFragmentRequest);
+        } elseif (array_key_exists(DrivesComponentActions::VALUES_FIELD, $fields) || array_key_exists(DrivesComponentActions::REGION_FIELD, $fields)) {
+            $html = $this->handleNeutralCall($component, $payload->action, $fields, $isFragmentRequest);
         } elseif ($payload->action !== 'render') {
             try {
                 // Resolve state first so the action operates on correct base state
@@ -139,48 +143,56 @@ final class ComponentEndpoint
     }
 
     /**
-     * A component with #[State]: its state comes from the request (DrivesComponentActions::STATE_FIELD),
-     * else from mount() with the token's props (a call written before the component had state).
-     * Then the action (no resolveState()), or nothing for a refresh (no mount()), then prepare()
-     * and the render: the whole component, or the region the call asked for (REGION_FIELD). The
-     * new state goes back with the answer (stateUpdate()), unless the render failed.
+     * A component with #[State]: its state comes from the request (DrivesComponentActions::STATE_FIELD).
+     * Without it, a token from ComponentToken::encodeFor() (key only) is refused like expired
+     * state; an old-style token (all props) mounts from its props (a call written before the
+     * component had state). Then the action (no resolveState()), or nothing for a refresh (no
+     * mount()), then prepare() and the render: the whole component, or the region the call asked
+     * for (REGION_FIELD). The new state goes back with the answer (stateUpdate()), unless the
+     * action or the render failed.
      *
-     * @param array<array-key, mixed> $query
-     * @param array<array-key, mixed> $body
-     * @throws StateRefused state that is tampered, of another component, expired or of an older shape (403)
-     * @throws HttpException 400: a region the template does not have, or an engine without regions
+     * @param array<array-key, mixed> $fields the request's fields, the body over the query
+     * @throws StateRefused state that is tampered, of another component, expired, of an older shape or missing (403)
+     * @throws HttpException 400: a region the template does not have, an engine without regions, unreadable values
      */
-    private function handleStateful(Component $component, string $action, array $query, array $body, bool $isFragmentRequest): string
+    private function handleStateful(Component $component, TokenPayload $payload, array $fields, bool $isFragmentRequest): string
     {
-        $fields = array_replace($query, $body); // a get call sends its fields in the query
+        $action = $payload->action;
         $id = $component->getComponentId();
         $states = $fields[DrivesComponentActions::STATE_FIELD] ?? [];
         $carried = is_array($states) ? ($states[$id] ?? null) : null;
         if ($carried !== null && !is_string($carried)) {
             throw new StateRefused('Component state refused: not a state string.');
         }
+        if ($carried === null && $payload->stateCarried) {
+            // The token holds only the key: without its state there is nothing to mount from.
+            throw new StateRefused('Component state missing.');
+        }
         if ($carried !== null) {
             $this->renderer->restore($component, $carried); // StateRefused: 403, like a refused token
         }
-        // Checked before the action runs: a bad region changes nothing.
+        // Checked before the action runs: a bad region or bad values change nothing.
         $region = $this->requestedRegion($component, $fields[DrivesComponentActions::REGION_FIELD] ?? null);
+        $params = $this->params($fields);
 
-        // Input: the values the call sent, under the form's own fields (those win). State never comes from here.
-        $values = $fields[DrivesComponentActions::VALUES_FIELD] ?? [];
-        $params = array_replace(is_array($values) ? $values : [], array_diff_key($fields, self::OWN_FIELDS));
-
-        try {
-            if ($carried === null) {
+        if ($carried === null) {
+            try {
                 $component->mount(); // no state on the page: an old-style call, from the token's props
+            } catch (HttpException|RefusedInPreview $e) {
+                throw $e;
+            } catch (\Throwable $e) {
+                return $this->renderer->renderError($component, $e, 'mount'); // no new state goes back
             }
-            if ($action !== 'render') {
+        }
+        if ($action !== 'render') {
+            try {
                 $component->handleAction($action, $params);
+            } catch (HttpException|RefusedInPreview $e) {
+                throw $e;
+            } catch (\Throwable $e) {
+                // The boundary's fallback replaces the component (200); no new state goes back with it.
+                return $this->renderer->renderError($component, $e, 'action');
             }
-        } catch (HttpException|RefusedInPreview $e) {
-            throw $e;
-        } catch (\Throwable $e) {
-            // The boundary's fallback replaces the component (200); no new state goes back with it.
-            return $this->renderer->renderError($component, $e, $action !== 'render' ? 'action' : 'mount');
         }
 
         if ($region === null && $isFragmentRequest) {
@@ -203,6 +215,62 @@ final class ComponentEndpoint
         $kept = $driver instanceof DrivesComponentActions ? $this->renderer->stateFor($component) : null;
 
         return $kept === null ? $html : $html . $driver->stateUpdate($id, $kept);
+    }
+
+    /**
+     * A 0.86 call (it sends VALUES_FIELD or REGION_FIELD) on a component without #[State]: as an
+     * old-style call (resolveState(), then the action), with the values under the form's fields
+     * as the action's params and the region it asked for rendered alone.
+     *
+     * @param array<array-key, mixed> $fields the request's fields, the body over the query
+     * @throws HttpException 400: a region the template does not have, an engine without regions, unreadable values
+     */
+    private function handleNeutralCall(Component $component, string $action, array $fields, bool $isFragmentRequest): string
+    {
+        $region = $this->requestedRegion($component, $fields[DrivesComponentActions::REGION_FIELD] ?? null);
+        $params = $this->params($fields);
+        try {
+            $component->resolveState();
+        } catch (HttpException|RefusedInPreview $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return $this->renderer->renderError($component, $e, 'resolveState');
+        }
+        if ($action !== 'render') {
+            try {
+                $component->handleAction($action, $params);
+            } catch (HttpException|RefusedInPreview $e) {
+                throw $e;
+            } catch (\Throwable $e) {
+                return $this->renderer->renderError($component, $e, 'action');
+            }
+        }
+
+        return $region === null && $isFragmentRequest
+            ? $this->renderer->renderResolvedFragment($component)
+            : $this->renderer->renderAfterAction($component, $region);
+    }
+
+    /**
+     * An action's params: the values the call sent (VALUES_FIELD: one JSON object, or fields)
+     * under the request's other fields (a form's own fields win), without the framework's fields.
+     * Input, never state.
+     *
+     * @param array<array-key, mixed> $fields
+     * @return array<array-key, mixed>
+     * @throws HttpException 400: values that are not a JSON object
+     */
+    private function params(array $fields): array
+    {
+        $values = $fields[DrivesComponentActions::VALUES_FIELD] ?? [];
+        if (is_string($values)) {
+            $values = json_decode($values, true, 64);
+            if (!is_array($values)) {
+                throw new HttpException(400, 'The action values are not readable.');
+            }
+        }
+
+        return array_replace(is_array($values) ? $values : [], array_diff_key($fields, self::OWN_FIELDS));
     }
 
     /**

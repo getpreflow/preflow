@@ -16,12 +16,14 @@ namespace Preflow\Core\Http\Hypermedia;
  * knowing the client:
  *
  * - STATE_FIELD[<componentId>]: the state string the page carries for that component;
- * - VALUES_FIELD[<name>]: the values the call sends (unsigned: the action gets them as input,
- *   beside the fields of the form the element sits in, which win over them);
- * - REGION_FIELD: the region of the component the answer renders, when the call targets one.
+ * - VALUES_FIELD: the values the call sends, as one JSON object (a string), or as fields
+ *   VALUES_FIELD[<name>] (unsigned: the action gets them as input, beside the fields of the form
+ *   the element sits in, which win over them);
+ * - REGION_FIELD: the region of the component the answer renders; empty or missing for the
+ *   whole component.
  *
- * While a request runs, the element that sent it carries the class BUSY_CLASS (a driver may add
- * it to an indicator it names instead), so CSS for "loading" names no client library.
+ * While a request runs, the element that sent it carries the class BUSY_CLASS, so CSS for
+ * "loading" names no client library.
  *
  * @since 0.86.0
  */

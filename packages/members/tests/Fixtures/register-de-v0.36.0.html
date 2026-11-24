@@ -6,7 +6,7 @@
 document.addEventListener('htmx:beforeSwap',function(e){var d=e.detail,html=d.serverResponse;if(typeof html!=='string'||!/<(script|style)\b/i.test(html)){return}
 var nonce=d.xhr?d.xhr.getResponseHeader('HX-Nonce'):null;var isDocument=/<html[\s>]/i.test(html);var root=isDocument?new DOMParser().parseFromString(html,'text/html'):document.createElement('template');if(!isDocument){root.innerHTML=html}
 var scope=isDocument?root:root.content,changed=!1;var pageNonce=window.htmx&&htmx.config.inlineStyleNonce;scope.querySelectorAll('script, style').forEach(function(el){if(!nonce||el.getAttribute('nonce')!==nonce){el.parentNode.removeChild(el);changed=!0}else if(el.tagName==='STYLE'&&pageNonce&&pageNonce!==nonce){el.setAttribute('nonce',pageNonce);changed=!0}});if(changed){d.serverResponse=isDocument?'<!DOCTYPE html>'+root.documentElement.outerHTML:root.innerHTML}})</script>
-<meta name="htmx-config" content='{"inlineScriptNonce":"…","inlineStyleNonce":"…","requestClass":"preflow-busy"}'></head>
+<meta name="htmx-config" content='{"inlineScriptNonce":"…","inlineStyleNonce":"…"}'></head>
 <body><header>Site header</header><main>
 <section class="members-form">
   <div class="section-inner">
@@ -53,7 +53,7 @@ var scope=isDocument?root:root.content,changed=!1;var pageNonce=window.htmx&&htm
 document.addEventListener('htmx:beforeSwap',function(e){var d=e.detail,html=d.serverResponse;if(typeof html!=='string'||!/<(script|style)\b/i.test(html)){return}
 var nonce=d.xhr?d.xhr.getResponseHeader('HX-Nonce'):null;var isDocument=/<html[\s>]/i.test(html);var root=isDocument?new DOMParser().parseFromString(html,'text/html'):document.createElement('template');if(!isDocument){root.innerHTML=html}
 var scope=isDocument?root:root.content,changed=!1;var pageNonce=window.htmx&&htmx.config.inlineStyleNonce;scope.querySelectorAll('script, style').forEach(function(el){if(!nonce||el.getAttribute('nonce')!==nonce){el.parentNode.removeChild(el);changed=!0}else if(el.tagName==='STYLE'&&pageNonce&&pageNonce!==nonce){el.setAttribute('nonce',pageNonce);changed=!0}});if(changed){d.serverResponse=isDocument?'<!DOCTYPE html>'+root.documentElement.outerHTML:root.innerHTML}})</script>
-<meta name="htmx-config" content='{"inlineScriptNonce":"…","inlineStyleNonce":"…","requestClass":"preflow-busy"}'></head>
+<meta name="htmx-config" content='{"inlineScriptNonce":"…","inlineStyleNonce":"…"}'></head>
 <body><header>Site header</header><main>
 <section class="members-form">
   <div class="section-inner">

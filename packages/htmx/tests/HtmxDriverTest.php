@@ -207,9 +207,9 @@ final class HtmxDriverTest extends TestCase
     }
 
     /** @param array<string, mixed> $options */
-    private function call(array $options, array $values = [], string $targetId = 'Box-1'): array
+    private function call(array $options, array $values = [], string $targetId = 'Box-1', ?HtmxDriver $driver = null, string $componentId = 'Box-1'): array
     {
-        return $this->driver->callAttributes(new ActionCall('post', '/--component/action?token=t', 'Box-1', $targetId, ActionOptions::from($options), $values));
+        return ($driver ?? $this->driver)->callAttributes(new ActionCall('post', '/--component/action?token=t', $componentId, $targetId, ActionOptions::from($options, true), $values));
     }
 
     public function test_neutral_options_translate_to_htmx(): void
@@ -219,9 +219,11 @@ final class HtmxDriverTest extends TestCase
             'hx-post' => '/--component/action?token=t',
             'hx-target' => '#Box-1',
             'hx-swap' => 'outerHTML',
-            'hx-include' => '#Box-1--state',
+            'hx-include' => '#preflow-state--Box-1',
             'hx-sync' => '#Box-1:queue all',
-        ], $default, 'one request per component at a time: queued');
+            'hx-vals' => '{"_values":"{}","_region":""}',
+            'hx-disinherit' => '*',
+        ], $default, 'one request per component at a time: queued; values and region always explicit');
 
         $swaps = ['outer' => 'outerHTML', 'inner' => 'innerHTML', 'before' => 'beforebegin', 'after' => 'afterend',
             'prepend' => 'afterbegin', 'append' => 'beforeend', 'delete' => 'delete', 'none' => 'none'];
@@ -232,52 +234,114 @@ final class HtmxDriverTest extends TestCase
         $region = $this->call(['target' => 'results'], targetId: 'Box-1-results');
         $this->assertSame('#Box-1-results', $region['hx-target']);
         $this->assertSame('innerHTML', $region['hx-swap']);
-        $this->assertSame(['_region' => 'results'], json_decode($region['hx-vals'], true));
+        $this->assertSame(['_values' => '{}', '_region' => 'results'], json_decode($region['hx-vals'], true));
 
         $this->assertSame('click, change', $this->call(['on' => ['click', 'change']])['hx-trigger']);
         $this->assertSame('revealed', $this->call(['on' => 'visible'])['hx-trigger']);
         $this->assertSame('load', $this->call(['on' => 'load'])['hx-trigger']);
         $this->assertSame('submit', $this->call(['on' => 'submit'])['hx-trigger']);
         $this->assertSame('input delay:300ms, change', $this->call(['on' => ['input', 'change'], 'debounce' => 300])['hx-trigger'], 'debounce delays typing only');
-        $this->assertSame('click', $this->call(['on' => 'click', 'debounce' => 300])['hx-trigger']);
 
-        $this->assertSame('this:replace', $this->call(['latest' => true])['hx-sync']);
-        $this->assertSame('#Box-1--state, #Box-1-filters, #Box-1 [name="filters"], #Box-1-q, #Box-1 [name="q"]', $this->call(['include' => ['filters', 'q']])['hx-include']);
+        $this->assertSame('#Box-1:replace', $this->call(['latest' => true])['hx-sync'], 'a newer request replaces whatever runs on the component');
+        $this->assertSame('#preflow-state--Box-1, #Box-1-filters, #Box-1 [name="filters"], #Box-1-q, #Box-1 [name="q"]', $this->call(['include' => ['filters', 'q']])['hx-include']);
         $this->assertSame('this', $this->call(['disable' => 'self'])['hx-disabled-elt']);
         $this->assertSame('#Box-1-results', $this->call(['disable' => 'results'])['hx-disabled-elt']);
         $this->assertSame('innerHTML show:#Box-1-results:top', $this->call(['target' => 'results', 'scroll' => 'top'], targetId: 'Box-1-results')['hx-swap']);
         $this->assertArrayNotHasKey('hx-trigger', $default, "no on: htmx's default event for the element");
     }
 
-    public function test_values_travel_as_fields_of_the_values_field(): void
+    public function test_values_travel_as_one_json_object(): void
     {
         $attributes = $this->call([], ['page' => 2, 'q' => 'a"b', 'rows' => [['name' => 'x']], 'all' => true, 'none' => null]);
 
-        $this->assertSame(
-            ['_values[page]' => 2, '_values[q]' => 'a"b', '_values[rows][0][name]' => 'x', '_values[all]' => '1', '_values[none]' => ''],
-            json_decode($attributes['hx-vals'], true),
-        );
-        parse_str(http_build_query(json_decode($attributes['hx-vals'], true)), $back);
-        $this->assertSame(['page' => '2', 'q' => 'a"b', 'rows' => [['name' => 'x']], 'all' => '1', 'none' => ''], $back['_values'], 'PHP reads them back as the arrays they were');
+        $values = json_decode($attributes['hx-vals'], true)['_values'];
+        $this->assertIsString($values, 'one field: an ancestor\'s values never mix in');
+        $this->assertSame(['page' => 2, 'q' => 'a"b', 'rows' => [['name' => 'x']], 'all' => '1', 'none' => ''], json_decode($values, true));
 
         $this->expectException(\InvalidArgumentException::class);
         $this->call([], ['when' => new \DateTimeImmutable()]);
     }
 
+    public function test_a_call_inside_another_calls_element_sends_only_its_own_values_and_region(): void
+    {
+        // A form that searches into the results region, and a button inside it that saves the component.
+        $form = $this->call(['target' => 'results', 'disable' => 'self'], ['q' => 'bern'], targetId: 'Box-1-results');
+        $button = $this->call([], ['page' => 2]);
+
+        $this->assertSame('*', $form['hx-disinherit'], 'its hx-disabled-elt and the rest never reach the button');
+        // htmx merges the hx-vals of every ancestor, the element's own keys first: the button defines both keys.
+        $merged = json_decode($button['hx-vals'], true) + json_decode($form['hx-vals'], true);
+        $this->assertSame('', $merged['_region'], 'the whole component, not the form\'s region');
+        $this->assertSame(['page' => 2], json_decode($merged['_values'], true), 'only its own values');
+        $this->assertSame(['_values', '_region'], array_keys($merged));
+    }
+
     public function test_escape_hatch_passes_htmx_attributes_through(): void
     {
-        $attributes = $this->call(['htmx' => ['hx-confirm' => 'Sure?', 'hx-swap' => 'morph', 'hx-push-url' => true], 'datastar' => ['data-x' => '1']]);
+        $attributes = $this->call(['htmx' => ['hx-confirm' => 'Sure?', 'hx-swap' => 'morph', 'hx-push-url' => true]]);
 
         $this->assertSame('Sure?', $attributes['hx-confirm']);
         $this->assertSame('morph', $attributes['hx-swap'], 'the escape hatch wins over the neutral translation');
         $this->assertSame('true', $attributes['hx-push-url']);
-        $this->assertArrayNotHasKey('data-x', $attributes, "another driver's attributes are ignored");
+    }
+
+    public function test_escape_hatch_cannot_replace_what_the_call_needs(): void
+    {
+        $lines = [];
+        $log = static function (string $line) use (&$lines): void {
+            $lines[] = $line;
+        };
+        foreach (['hx-include', 'hx-vals', 'hx-sync', 'hx-target', 'data-hx-vals'] as $name) {
+            try {
+                $this->call(['htmx' => [$name => 'x']], driver: new HtmxDriver(new ResponseHeaders(), true, $log));
+                $this->fail("{$name} passed in debug");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString($name, $e->getMessage());
+            }
+        }
+
+        $production = $this->call(['htmx' => ['hx-vals' => '{"x":1}', 'hx-confirm' => 'Sure?']], driver: new HtmxDriver(new ResponseHeaders(), false, $log));
+        $this->assertSame('{"_values":"{}","_region":""}', $production['hx-vals'], 'left out in production');
+        $this->assertSame('Sure?', $production['hx-confirm']);
+        $this->assertCount(1, $lines);
+        $this->assertStringContainsString('hx-vals', $lines[0]);
+    }
+
+    public function test_another_drivers_key_is_ignored_with_one_warning_in_debug(): void
+    {
+        $lines = [];
+        $debug = new HtmxDriver(new ResponseHeaders(), true, static function (string $line) use (&$lines): void {
+            $lines[] = $line;
+        });
+        $attributes = $this->call(['datastar' => ['data-x' => '1']], driver: $debug);
+        $this->call(['datastar' => ['data-x' => '2']], driver: $debug);
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), fn () => $this->call(['datastar' => ['data-x' => '3']], driver: $debug));
+
+        $this->assertArrayNotHasKey('data-x', $attributes);
+        $this->assertCount(2, $lines, 'once per key and request (each render frame its own)');
+        $this->assertStringContainsString('datastar', $lines[0]);
+
+        $quiet = [];
+        $this->call(['datastar' => ['data-x' => '1']], driver: new HtmxDriver(new ResponseHeaders(), false, static function (string $line) use (&$quiet): void {
+            $quiet[] = $line;
+        }));
+        $this->assertSame([], $quiet, 'no warning outside debug');
+    }
+
+    public function test_component_ids_are_escaped_in_selectors(): void
+    {
+        $attributes = $this->call(['include' => 'q', 'scroll' => 'top'], targetId: 'Box-1-a.b:c', componentId: 'Box-1-a.b:c');
+
+        $this->assertSame('#Box-1-a\\00002eb\\00003ac', $attributes['hx-target']);
+        $this->assertSame('#Box-1-a\\00002eb\\00003ac:queue all', $attributes['hx-sync'], 'no colon or space in the selector htmx splits');
+        $this->assertSame('#preflow-state--Box-1-a\\00002eb\\00003ac, #Box-1-a\\00002eb\\00003ac-q, #Box-1-a\\00002eb\\00003ac [name="q"]', $attributes['hx-include']);
+        $this->assertSame('outerHTML show:#Box-1-a\\00002eb\\00003ac:top', $attributes['hx-swap']);
     }
 
     public function test_state_carrier_is_outside_every_form_and_the_update_swaps_it_out_of_band(): void
     {
         $carrier = $this->driver->stateCarrier('Box-1', 'a"b<c');
-        $this->assertSame('<input type="hidden" id="Box-1--state" name="_state[Box-1]" form="preflow-no-form" value="a&quot;b&lt;c">', $carrier);
-        $this->assertSame('<input type="hidden" id="Box-1--state" name="_state[Box-1]" form="preflow-no-form" value="a&quot;b&lt;c" hx-swap-oob="true">', $this->driver->stateUpdate('Box-1', 'a"b<c'));
+        $this->assertSame('<input type="hidden" id="preflow-state--Box-1" name="_state[Box-1]" form="preflow-no-form" value="a&quot;b&lt;c">', $carrier);
+        $this->assertSame('<input type="hidden" id="preflow-state--Box-1" name="_state[Box-1]" form="preflow-no-form" value="a&quot;b&lt;c" hx-swap-oob="true">', $this->driver->stateUpdate('Box-1', 'a"b<c'));
     }
 }

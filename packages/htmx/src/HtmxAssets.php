@@ -17,9 +17,6 @@ use Preflow\View\JsPosition;
  *
  * Modes (config/htmx.php 'include'): always | on-demand | never.
  *
- * Since 0.86 an element whose request runs carries the class `preflow-busy`
- * (DrivesComponentActions::BUSY_CLASS, htmx's requestClass), not `htmx-request`.
- *
  * Since 0.81 whether a page needs htmx is kept per render frame (a frame slot), like the assets
  * themselves: a render asks for htmx in its own frame. With 'always', every frame starts out
  * needing it (boot registered it).
@@ -69,11 +66,10 @@ final class HtmxAssets
         // render that needs htmx (verify's second render, a page cache rebuild) gets it.
         $this->requirement()->required = true;
 
-        // The nonce of the render that prints the tag (boot registers it once for 'always'). A
-        // running request marks its element with Preflow's neutral class, not htmx-request.
+        // The nonce of the render that prints the tag (boot registers it once for 'always').
         $nonce = AssetCollector::NONCE;
         $config = json_encode(
-            ['inlineScriptNonce' => $nonce, 'inlineStyleNonce' => $nonce, 'requestClass' => DrivesComponentActions::BUSY_CLASS],
+            ['inlineScriptNonce' => $nonce, 'inlineStyleNonce' => $nonce],
             JSON_HEX_APOS | JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
         );
 
@@ -109,6 +105,48 @@ document.addEventListener('htmx:beforeSwap', function (e) {
         d.serverResponse = isDocument ? '<!DOCTYPE html>' + root.documentElement.outerHTML : root.innerHTML;
     }
 });
+JS;
+
+    /**
+     * htmx, and the busy marker: while a request runs, the element that sent it (htmx's
+     * event target, the element with hx-get/hx-post) carries DrivesComponentActions::BUSY_CLASS
+     * (`preflow-busy`), beside htmx's own `htmx-request` (on that element, or the hx-indicator
+     * it names), which stays as it is. Asked for by every element written with
+     * DrivesComponentActions::callAttributes(), so a page without such an element is unchanged.
+     *
+     * @since 0.86.0
+     */
+    public function requireBusyMarker(): void
+    {
+        if ($this->mode === 'never') {
+            return;
+        }
+        $this->require();
+        $this->assets->addJs(self::BUSY_MARKER, JsPosition::Head, 'preflow-htmx-busy');
+    }
+
+    /**
+     * Adds the busy class on htmx:beforeRequest and takes it off on htmx:afterRequest (which htmx
+     * fires after a load, an error, an abort and a timeout alike). A count per element keeps the
+     * class while another request of the same element still runs. A named function, called on
+     * its own line: inline scripts are joined and minified.
+     */
+    private const string BUSY_MARKER = <<<'JS'
+function preflowBusyMarker(busy) {
+    document.addEventListener('htmx:beforeRequest', function (e) {
+        var el = e.target;
+        if (!el || !el.classList) { return; }
+        el.preflowBusy = (el.preflowBusy || 0) + 1;
+        el.classList.add(busy);
+    });
+    document.addEventListener('htmx:afterRequest', function (e) {
+        var el = e.target;
+        if (!el || !el.classList || !el.preflowBusy) { return; }
+        el.preflowBusy = el.preflowBusy - 1;
+        if (el.preflowBusy === 0) { el.classList.remove(busy); }
+    });
+}
+preflowBusyMarker('preflow-busy');
 JS;
 
     public function isRequired(): bool

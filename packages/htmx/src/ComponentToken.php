@@ -32,12 +32,18 @@ class ComponentToken
         array $props = [],
         string $action = 'render',
     ): string {
-        $payload = json_encode([
+        return $this->sign([
             'c' => $componentClass,
             'p' => $props,
             'a' => $action,
             't' => $this->issuedAt ??= $this->currentTime(),
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        ]);
+    }
+
+    /** @param array<string, mixed> $data */
+    private function sign(array $data): string
+    {
+        $payload = json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
 
         $signature = hash_hmac($this->algorithm, $payload, $this->secretKey);
 
@@ -50,7 +56,9 @@ class ComponentToken
     /**
      * The token of $action on $component. A component with #[State] carries only its `key` (its
      * identity): the rest of its props were used by mount() and live on as its state, which the
-     * page carries beside the token. A component without state carries all its props, as encode().
+     * page carries beside the token, and the token says so (TokenPayload::$stateCarried): the
+     * endpoint then refuses a request without that state instead of mounting from no props. A
+     * component without state carries all its props, as encode().
      *
      * @since 0.86.0
      */
@@ -60,6 +68,14 @@ class ComponentToken
         if ($component->hasState()) {
             $key = $props['key'] ?? null;
             $props = $key === null || $key === '' ? [] : ['key' => $key];
+
+            return $this->sign([
+                'c' => $component::class,
+                'p' => $props,
+                'a' => $action,
+                't' => $this->issuedAt ??= $this->currentTime(),
+                's' => 1,
+            ]);
         }
 
         return $this->encode($component::class, $props, $action);
@@ -98,6 +114,7 @@ class ComponentToken
             props: $data['p'] ?? [],
             action: $data['a'] ?? 'render',
             timestamp: $data['t'] ?? 0,
+            stateCarried: ($data['s'] ?? 0) === 1,
         );
     }
 

@@ -64,13 +64,16 @@ final class ActionOptions
     /**
      * The options in $options, checked. A value of the wrong kind fails always. An unknown key
      * fails in $debug, naming the known ones; outside debug it is left out and $log gets a line
-     * (error_log() without one), so a page keeps working.
+     * (error_log() without one), so a page keeps working. A `debounce` without `input` among the
+     * events (it delays typing only) is handled the same way. An unknown key whose value is a
+     * mapping is a driver's own attributes: kept for the driver it names (each driver ignores
+     * the keys not its own, with a warning in debug).
      *
      * @param array<array-key, mixed> $options
      * @param (\Closure(string): void)|null $log
      * @throws \InvalidArgumentException a bad value; an unknown key in $debug
      */
-    public static function from(array $options, bool $debug = true, ?\Closure $log = null): self
+    public static function from(array $options, bool $debug, ?\Closure $log = null): self
     {
         $drivers = [];
         $unknown = [];
@@ -85,6 +88,9 @@ final class ActionOptions
             }
             $unknown[] = (string) $key;
         }
+        $log ??= static function (string $line): void {
+            error_log($line);
+        };
         if ($unknown !== []) {
             $message = sprintf(
                 'Unknown action option%s %s; the known ones: %s (and a driver\'s own attributes under its name, e.g. htmx: {…}).',
@@ -95,7 +101,7 @@ final class ActionOptions
             if ($debug) {
                 throw new \InvalidArgumentException($message);
             }
-            $log !== null ? $log($message . ' Left out.') : error_log($message . ' Left out.');
+            $log($message . ' Left out.');
         }
 
         $target = $options['target'] ?? 'self';
@@ -116,6 +122,14 @@ final class ActionOptions
         $debounce = $options['debounce'] ?? null;
         if ($debounce !== null && (!is_int($debounce) || $debounce < 0)) {
             throw new \InvalidArgumentException(sprintf('The action option debounce is a number of milliseconds (0 or more), not %s.', self::shown($debounce)));
+        }
+        if ($debounce !== null && !in_array('input', $on, true)) {
+            $message = sprintf('The action option debounce delays typing only: add input to on (%s).', $on === [] ? 'none given' : implode(', ', $on));
+            if ($debug) {
+                throw new \InvalidArgumentException($message);
+            }
+            $log($message . ' Left out.');
+            $debounce = null;
         }
         $latest = $options['latest'] ?? false;
         if (!is_bool($latest)) {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Htmx;
 
+use Preflow\Core\Context\Contexts;
 use Preflow\Core\Http\Hypermedia\ActionCall;
 use Preflow\Core\Http\Hypermedia\CarriesRequestHeaders;
 use Preflow\Core\Http\Hypermedia\DrivesComponentActions;
@@ -34,6 +35,11 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
      */
     private const string NO_FORM = 'preflow-no-form';
 
+    /** The attributes a call sets for its state and target: not to be given under the `htmx` key. */
+    private const array OWN_ATTRIBUTES = ['hx-include', 'hx-vals', 'hx-sync', 'hx-target'];
+
+    private const int JSON = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR;
+
     private ?HtmxAssets $assets = null;
 
     /** Lets attribute helpers mark htmx as needed on the page (include mode "on-demand"). */
@@ -42,40 +48,66 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
         $this->assets = $assets;
     }
 
+    private WarnedOptions $warned;
+
+    /**
+     * @param bool $debug misused action options fail (callAttributes()), others' keys are warned about
+     * @param (\Closure(string): void)|null $log where warnings go (error_log() without one)
+     */
     public function __construct(
         private readonly ResponseHeaders $responseHeaders,
-    ) {}
+        private readonly bool $debug = false,
+        private readonly ?\Closure $log = null,
+    ) {
+        $this->warned = new WarnedOptions();
+    }
 
     /**
      * hx-get/hx-post, hx-target, hx-swap (with `show:…:top` for scroll), hx-trigger (a debounce
      * delays typing only), hx-include (the state carrier first, then the regions and fields
      * named), hx-sync (one request per component at a time: `queue all` on the component, or
-     * `this:replace` with `latest`), hx-disabled-elt, and hx-vals with the values (VALUES_FIELD)
-     * and the region (REGION_FIELD). Attributes under the `htmx` key are added last, as given.
+     * with `latest` a newer request replaces the one running on it), hx-disabled-elt, and hx-vals
+     * with the values (VALUES_FIELD, one JSON object) and the region (REGION_FIELD, empty for the
+     * whole component).
+     *
+     * Both fields are always written, so a call inside another call's element (a button in a form
+     * that calls an action) never sends the outer call's values or region: htmx merges hx-vals of
+     * every ancestor, the element's own keys first. hx-disinherit="*" keeps the element's other
+     * attributes (hx-disabled-elt, hx-confirm…) from reaching the calls inside it.
+     *
+     * Attributes under the `htmx` key are added last, as given, except the ones the call needs
+     * for its state and target (hx-include, hx-vals, hx-sync, hx-target): those fail in debug and
+     * are left out, with a log line, otherwise. Another driver's key is ignored (in debug with one
+     * warning per key and request).
      *
      * @since 0.86.0
      */
     public function callAttributes(ActionCall $call): array
     {
-        $this->assets?->require();
+        $this->assets?->requireBusyMarker();
         $options = $call->options;
-        $component = '#' . $call->componentId;
+        $component = '#' . self::selector($call->componentId);
 
         $swap = self::SWAPS[$options->swap];
         if ($options->scroll === 'top') {
-            $swap .= ' show:#' . $call->targetId . ':top';
+            $swap .= ' show:#' . self::selector($call->targetId) . ':top';
         }
-        $include = [$component . '--state'];
+        $include = ['#' . self::selector(self::carrierId($call->componentId))];
         foreach ($options->include as $name) {
-            $include[] = $component . '-' . $name; // a region: its fields
+            $include[] = '#' . self::selector($call->componentId . '-' . $name); // a region: its fields
             $include[] = $component . ' [name="' . $name . '"]'; // a field of the component
         }
         $attributes = [
             "hx-{$call->method}" => $call->url,
-            'hx-target' => '#' . $call->targetId,
+            'hx-target' => '#' . self::selector($call->targetId),
             'hx-swap' => $swap,
             'hx-include' => implode(', ', $include),
-            'hx-sync' => $options->latest ? 'this:replace' : $component . ':queue all',
+            'hx-sync' => $component . ':' . ($options->latest ? 'replace' : 'queue all'),
+            'hx-vals' => json_encode([
+                self::VALUES_FIELD => $call->values === [] ? '{}' : json_encode(self::plain(self::VALUES_FIELD, $call->values), self::JSON),
+                self::REGION_FIELD => $options->region() ?? '',
+            ], self::JSON),
+            'hx-disinherit' => '*',
         ];
         if ($options->on !== []) {
             $attributes['hx-trigger'] = implode(', ', array_map(
@@ -84,34 +116,41 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
             ));
         }
         if ($options->disable !== null) {
-            $attributes['hx-disabled-elt'] = $options->disable === 'self' ? 'this' : $component . '-' . $options->disable;
+            $attributes['hx-disabled-elt'] = $options->disable === 'self' ? 'this' : '#' . self::selector($call->componentId . '-' . $options->disable);
         }
-        $vals = self::fields(self::VALUES_FIELD, $call->values);
-        if ($options->region() !== null) {
-            $vals[self::REGION_FIELD] = $options->region();
-        }
-        if ($vals !== []) {
-            $attributes['hx-vals'] = json_encode($vals, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        foreach ($options->drivers() as $driver) {
+            if ($driver !== self::OPTIONS_KEY && $this->debug) {
+                $this->warnOnce($driver, sprintf("Action option '%s' is another driver's attributes: %s ignores it (its own key is '%s').", $driver, self::class, self::OPTIONS_KEY));
+            }
         }
         foreach ($options->driverOptions(self::OPTIONS_KEY) as $name => $value) {
+            $name = (string) $name;
+            if (in_array(strtolower((string) preg_replace('/^data-/i', '', $name)), self::OWN_ATTRIBUTES, true)) {
+                $message = sprintf("The htmx attribute %s can't be given under the action option htmx: the call sets it for its state and target (%s are the call's own).", $name, implode(', ', self::OWN_ATTRIBUTES));
+                if ($this->debug) {
+                    throw new \InvalidArgumentException($message);
+                }
+                $this->log($message . ' Left out.');
+                continue;
+            }
             $attributes[$name] = is_scalar($value) || $value instanceof \Stringable
                 ? (is_bool($value) ? ($value ? 'true' : 'false') : (string) $value)
-                : json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+                : json_encode($value, self::JSON);
         }
 
         return $attributes;
     }
 
     /**
-     * A hidden input `{componentId}--state` named STATE_FIELD[componentId], outside every form (its
-     * form attribute names none), which callAttributes() includes. The `--` never clashes with a
-     * region's id (`{componentId}-{name}`, a name starts with a letter).
+     * A hidden input `preflow-state--{componentId}` named STATE_FIELD[componentId], outside every
+     * form (its form attribute names none), which callAttributes() includes. Component ids start
+     * with a class name and a hash, never with `preflow-state--`, so the id is no other element's.
      *
      * @since 0.86.0
      */
     public function stateCarrier(string $componentId, string $carried): string
     {
-        return '<input type="hidden" id="' . self::escape($componentId . '--state') . '" name="'
+        return '<input type="hidden" id="' . self::escape(self::carrierId($componentId)) . '" name="'
             . self::escape(self::STATE_FIELD . '[' . $componentId . ']') . '" form="' . self::NO_FORM
             . '" value="' . self::escape($carried) . '">';
     }
@@ -127,34 +166,65 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
         return substr($this->stateCarrier($componentId, $carried), 0, -1) . ' hx-swap-oob="true">';
     }
 
-    /**
-     * $values as form fields under $prefix: `_values[a]`, `_values[rows][0][name]`… (PHP reads
-     * them back as the same arrays). true is "1", false and null are "".
-     *
-     * @param array<array-key, mixed> $values
-     * @return array<string, string|int|float>
-     */
-    private static function fields(string $prefix, array $values): array
+    private static function carrierId(string $componentId): string
     {
-        $fields = [];
-        foreach ($values as $name => $value) {
-            $field = $prefix . '[' . $name . ']';
-            if (is_array($value)) {
-                $fields += self::fields($field, $value);
-            } elseif (is_int($value) || is_float($value) || is_string($value)) {
-                $fields[$field] = $value;
-            } elseif (is_bool($value) || $value === null) {
-                $fields[$field] = $value === true ? '1' : '';
-            } elseif ($value instanceof \Stringable) {
-                $fields[$field] = (string) $value;
-            } elseif ($value instanceof \BackedEnum) {
-                $fields[$field] = $value->value;
-            } else {
-                throw new \InvalidArgumentException(sprintf('The action value %s is a %s: values are text, numbers, true/false, null, backed enums or lists of them.', $field, get_debug_type($value)));
-            }
+        return 'preflow-state--' . $componentId;
+    }
+
+    /**
+     * $id as a CSS id selector part: every character but letters, digits, - and _ (and a leading
+     * digit) as a six-digit hex escape, so the selector has no `:`, `,` or space htmx would split on.
+     */
+    private static function selector(string $id): string
+    {
+        $out = '';
+        foreach (mb_str_split($id, 1, 'UTF-8') as $i => $char) {
+            $plain = preg_match('/^[A-Za-z0-9_-]$/', $char) === 1 && !($i === 0 && ctype_digit($char));
+            $out .= $plain ? $char : sprintf('\\%06x', mb_ord($char, 'UTF-8'));
         }
 
-        return $fields;
+        return $out;
+    }
+
+    /**
+     * $values as plain values for JSON: true is "1", false and null are "", a backed enum its
+     * value, a Stringable its text.
+     *
+     * @param array<array-key, mixed> $values
+     * @return array<array-key, mixed>
+     */
+    private static function plain(string $path, array $values): array
+    {
+        $plain = [];
+        foreach ($values as $name => $value) {
+            $field = $path . '[' . $name . ']';
+            $plain[$name] = match (true) {
+                is_array($value) => self::plain($field, $value),
+                is_int($value), is_float($value), is_string($value) => $value,
+                is_bool($value), $value === null => $value === true ? '1' : '',
+                $value instanceof \Stringable => (string) $value,
+                $value instanceof \BackedEnum => $value->value,
+                default => throw new \InvalidArgumentException(sprintf('The action value %s is a %s: values are text, numbers, true/false, null, backed enums or lists of them.', $field, get_debug_type($value))),
+            };
+        }
+
+        return $plain;
+    }
+
+    /** One warning per key and request (the render frame; the driver's own outside every render). */
+    private function warnOnce(string $key, string $message): void
+    {
+        $warned = Contexts::depth() === 0 ? $this->warned : Contexts::frame()->slot(WarnedOptions::class, static fn (): WarnedOptions => new WarnedOptions());
+        if (isset($warned->keys[$key])) {
+            return;
+        }
+        $warned->keys[$key] = true;
+        $this->log($message);
+    }
+
+    private function log(string $message): void
+    {
+        $this->log !== null ? ($this->log)($message) : error_log($message);
     }
 
     private static function escape(string $value): string

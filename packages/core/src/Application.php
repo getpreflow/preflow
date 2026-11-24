@@ -2624,7 +2624,7 @@ final class Application
         if (class_exists(\Preflow\Htmx\HtmxDriver::class)) {
             $componentToken = new \Preflow\Htmx\ComponentToken($secretKey);
             $this->container->instance(\Preflow\Htmx\ComponentToken::class, $componentToken);
-            $driver = $this->createHypermediaDriver();
+            $driver = $this->createHypermediaDriver($debug->isDebug());
             $this->container->instance(\Preflow\Htmx\HypermediaDriver::class, $driver);
             if ($driver instanceof \Preflow\Htmx\HtmxDriver) {
                 $this->container->instance(\Preflow\Htmx\HtmxDriver::class, $driver);
@@ -2692,17 +2692,19 @@ final class Application
     }
 
     /**
-     * The app's hypermedia driver: HtmxDriver (with the ResponseHeaders it records into), or the
+     * The app's hypermedia driver: HtmxDriver (with the ResponseHeaders it records into, the debug
+     * flag and the site's logger), or the
      * HypermediaDriver class config/app.php 'hypermedia' names, built by the container.
      */
-    private function createHypermediaDriver(): \Preflow\Htmx\HypermediaDriver
+    private function createHypermediaDriver(bool $debug): \Preflow\Htmx\HypermediaDriver
     {
         $class = $this->config->get('app.hypermedia') ?: \Preflow\Htmx\HtmxDriver::class; // unset, null or '': htmx
         if ($class === \Preflow\Htmx\HtmxDriver::class) {
             $responseHeaders = new \Preflow\Htmx\ResponseHeaders();
             $this->container->instance(\Preflow\Htmx\ResponseHeaders::class, $responseHeaders);
 
-            return new \Preflow\Htmx\HtmxDriver($responseHeaders);
+            // In debug, misused action options fail and other drivers' option keys are warned about (to the site's logger).
+            return new \Preflow\Htmx\HtmxDriver($responseHeaders, $debug, $this->pageCacheLogger());
         }
         if (!is_string($class) || !class_exists($class) || !is_subclass_of($class, \Preflow\Htmx\HypermediaDriver::class)) {
             throw new \RuntimeException(sprintf(

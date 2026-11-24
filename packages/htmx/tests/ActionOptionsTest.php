@@ -14,7 +14,7 @@ final class ActionOptionsTest extends TestCase
     public function test_unknown_option_lists_known_ones(): void
     {
         try {
-            ActionOptions::from(['tagret' => 'results']);
+            ActionOptions::from(['tagret' => 'results'], true);
             $this->fail('an unknown option passed in debug');
         } catch (\InvalidArgumentException $e) {
             $this->assertStringContainsString('tagret', $e->getMessage());
@@ -36,18 +36,18 @@ final class ActionOptionsTest extends TestCase
 
     public function test_region_target_defaults_to_inner(): void
     {
-        $region = ActionOptions::from(['target' => 'results']);
+        $region = ActionOptions::from(['target' => 'results'], true);
         $this->assertSame('inner', $region->swap, 'a region swaps its contents');
         $this->assertSame('results', $region->region());
 
-        $self = ActionOptions::from([]);
+        $self = ActionOptions::from([], true);
         $this->assertSame('self', $self->target);
         $this->assertSame('outer', $self->swap);
         $this->assertNull($self->region());
 
-        $this->assertSame('outer', ActionOptions::from(['target' => 'parent'])->swap);
-        $this->assertNull(ActionOptions::from(['target' => 'parent'])->region());
-        $this->assertSame('outer', ActionOptions::from(['target' => 'results', 'swap' => 'outer'])->swap, 'an explicit swap wins');
+        $this->assertSame('outer', ActionOptions::from(['target' => 'parent'], true)->swap);
+        $this->assertNull(ActionOptions::from(['target' => 'parent'], true)->region());
+        $this->assertSame('outer', ActionOptions::from(['target' => 'results', 'swap' => 'outer'], true)->swap, 'an explicit swap wins');
     }
 
     public function test_every_option_reads_back(): void
@@ -56,7 +56,7 @@ final class ActionOptionsTest extends TestCase
             'target' => 'results', 'swap' => 'append', 'on' => ['input', 'change'], 'debounce' => 250,
             'latest' => true, 'include' => 'filters', 'disable' => 'self', 'scroll' => 'top', 'component' => 'parent',
             'htmx' => ['hx-confirm' => 'Sure?'],
-        ]);
+        ], true);
 
         $this->assertSame(['input', 'change'], $options->on);
         $this->assertSame(250, $options->debounce);
@@ -68,7 +68,7 @@ final class ActionOptionsTest extends TestCase
         $this->assertSame(['hx-confirm' => 'Sure?'], $options->driverOptions('htmx'));
         $this->assertSame([], $options->driverOptions('datastar'), 'another driver sees nothing');
         $this->assertSame(['htmx'], $options->drivers());
-        $this->assertSame(['click'], ActionOptions::from(['on' => 'click'])->on);
+        $this->assertSame(['click'], ActionOptions::from(['on' => 'click'], true)->on);
     }
 
     /** @return iterable<string, array{array<string, mixed>}> */
@@ -95,9 +95,36 @@ final class ActionOptionsTest extends TestCase
         ActionOptions::from($options, false, static function (): void {});
     }
 
+    public function test_debounce_without_typing_fails_in_debug(): void
+    {
+        try {
+            ActionOptions::from(['on' => 'click', 'debounce' => 300], true);
+            $this->fail('a debounce on clicks passed in debug');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('typing only', $e->getMessage());
+        }
+
+        $lines = [];
+        $options = ActionOptions::from(['on' => 'click', 'debounce' => 300], false, static function (string $line) use (&$lines): void {
+            $lines[] = $line;
+        });
+        $this->assertNull($options->debounce, 'left out in production');
+        $this->assertCount(1, $lines);
+        $this->assertSame(300, ActionOptions::from(['on' => ['input', 'change'], 'debounce' => 300], true)->debounce);
+    }
+
+    public function test_another_drivers_key_is_kept_and_a_plain_unknown_key_is_not(): void
+    {
+        $options = ActionOptions::from(['datastar' => ['data-on' => 'x']], true);
+        $this->assertSame(['datastar'], $options->drivers(), 'a mapping under an unknown key: some driver\'s own attributes');
+
+        $this->expectException(\InvalidArgumentException::class);
+        ActionOptions::from(['datastar' => 'x'], true);
+    }
+
     public function test_an_action_call_is_get_or_post(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        new ActionCall('delete', '/x', 'c', 'c', ActionOptions::from([]));
+        new ActionCall('delete', '/x', 'c', 'c', ActionOptions::from([], true));
     }
 }

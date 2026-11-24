@@ -31,6 +31,32 @@ final class HtmxAssetsTest extends TestCase
         $this->assertStringNotContainsString('unpkg.com', $head);
     }
 
+    public function test_busy_marker_is_added_beside_htmx_request_only_for_calls(): void
+    {
+        $collector = new AssetCollector(new NonceGenerator());
+        $assets = new HtmxAssets($collector, 'on-demand');
+        $assets->require();
+        $plain = $collector->renderHead();
+        $this->assertStringNotContainsString('preflow-busy', $plain, 'a page without a 0.86 call is as in 0.85');
+        $this->assertMatchesRegularExpression('/<meta name="htmx-config" content=\'\{"inlineScriptNonce":"[^"]+","inlineStyleNonce":"[^"]+"\}\'>/', $plain, 'htmx keeps its own htmx-request');
+
+        $collector = new AssetCollector(new NonceGenerator());
+        $assets = new HtmxAssets($collector, 'on-demand');
+        $assets->requireBusyMarker();
+        $assets->requireBusyMarker();
+        $head = $collector->renderHead();
+        $this->assertTrue($assets->isRequired(), 'the marker needs htmx');
+        $this->assertSame(1, substr_count($head, "preflowBusyMarker('" . \Preflow\Core\Http\Hypermedia\DrivesComponentActions::BUSY_CLASS . "')"));
+        $this->assertStringContainsString('htmx:beforeRequest', $head);
+        $this->assertStringContainsString('htmx:afterRequest', $head);
+        $this->assertMatchesRegularExpression('/<meta name="htmx-config" content=\'\{"inlineScriptNonce":"[^"]+","inlineStyleNonce":"[^"]+"\}\'>/', $head);
+        $this->assertStringContainsString('function preflowBusyMarker(', $head, 'a named function, not an IIFE (inline scripts are joined)');
+
+        $never = new AssetCollector(new NonceGenerator());
+        (new HtmxAssets($never, 'never'))->requireBusyMarker();
+        $this->assertStringNotContainsString('preflowBusyMarker', $never->renderHead());
+    }
+
     /** $render in a render frame of its own, as every page render runs (0.81). */
     private static function frame(\Closure $render): mixed
     {
