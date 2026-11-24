@@ -13,3 +13,8 @@ storage/data/*
 !storage/logs/.gitkeep
 !storage/data/.gitkeep
 .DS_Store
+
+# The media library (folio:install adds it): uploads and their earlier versions.
+/public/media/
+/storage/media-bin/
+/storage/media-versions/

@@ -12,7 +12,7 @@ use Preflow\Core\Application;
 use Preflow\DevTools\Command\AuthTokenCommand;
 use Preflow\DevTools\Command\MigrateCommand;
 
-/** auth:token against a temp SQLite site with the skeleton's user_tokens migration. */
+/** auth:token against a temp SQLite site with a user_tokens migration (tests/Fixtures/migrations). */
 final class AuthTokenCommandTest extends TestCase
 {
     private string $dir;
@@ -22,7 +22,7 @@ final class AuthTokenCommandTest extends TestCase
         $this->dir = sys_get_temp_dir() . '/auth_token_cmd_' . bin2hex(random_bytes(4));
         mkdir($this->dir . '/config', 0777, true);
         mkdir($this->dir . '/migrations', 0777, true);
-        copy(dirname(__DIR__, 3) . '/skeleton/migrations/2026_04_12_001_create_user_tokens.php', $this->dir . '/migrations/2026_04_12_001_create_user_tokens.php');
+        copy(dirname(__DIR__) . '/Fixtures/migrations/2026_04_12_001_create_user_tokens.php', $this->dir . '/migrations/2026_04_12_001_create_user_tokens.php');
         file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name'=>'t','debug'=>0,'engine'=>'twig','key'=>'auth-token-test-key-0123456789abcd'];\n");
         file_put_contents($this->dir . '/config/data.php', '<?php return ["default" => "sqlite", "drivers" => ["sqlite" => ["path" => ' . var_export($this->dir . '/app.sqlite', true) . ']]];');
         $this->auth(['api' => ['class' => TokenGuard::class, 'provider' => 'users']]);
