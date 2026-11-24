@@ -21,6 +21,11 @@ namespace Preflow\DevTools\Config;
  * hand. A value that is already there (compared by evaluated value) is never changed or added
  * twice.
  *
+ * A config file that is a symbolic link (also a dangling one) or has more than one hard link is
+ * never written: replacing it would turn the link into a plain file, so such edits are refused
+ * with the snippet. The check process gets a deadline; one that runs past it counts as a failed
+ * check.
+ *
  * @since 0.85.0
  */
 final class ConfigFileEditor
@@ -65,10 +70,12 @@ final class ConfigFileEditor
      * @param string $configDir the app's config folder; its parent's vendor/autoload.php is loaded
      *                          by the check process when present
      * @param string|null $php PHP binary for the check process (default: the running one)
+     * @param float $timeout seconds one check process may run before it is stopped and the check fails
      */
     public function __construct(
         private readonly string $configDir,
         ?string $php = null,
+        private readonly float $timeout = 10.0,
     ) {
         $this->php = $php ?? PHP_BINARY;
     }
@@ -77,10 +84,17 @@ final class ConfigFileEditor
     public function create(string $file, string $contents): ConfigEdit
     {
         $path = $this->path($file);
+        if (self::isLinked($path)) {
+            return new ConfigEdit(ConfigEdit::REFUSED, $path, "{$file} is a link; this tool does not write through links. Create its target by hand with this content.", $contents);
+        }
         if (file_exists($path)) {
             return new ConfigEdit(ConfigEdit::ALREADY, $path, "{$file} exists already; left as it is.");
         }
-        if (!$this->writeAtomically($path, $contents)) {
+        $created = $this->createExclusively($path, $contents);
+        if ($created === null) {
+            return new ConfigEdit(ConfigEdit::ALREADY, $path, "{$file} exists already; left as it is.");
+        }
+        if ($created === false) {
             return new ConfigEdit(ConfigEdit::REFUSED, $path, "{$file} could not be written. Create it by hand with this content.", $contents);
         }
         if ($this->read($file) === null) {
@@ -122,6 +136,9 @@ final class ConfigFileEditor
         $text = var_export($key, true) . ' => ' . $expression;
         $snippet = $text . ',';
         $fullPath = $this->path($file);
+        if (self::isLinked($fullPath)) {
+            return $this->refusedLink($fullPath, $file, $place, $snippet);
+        }
 
         $before = $this->read($file);
         if ($before === null) {
@@ -155,7 +172,12 @@ final class ConfigFileEditor
 
     /**
      * Evaluates the file in a separate PHP process and returns its array (for checks like the
-     * staff guard shape). Null when the file is missing, does not evaluate, or returns no array.
+     * staff guard shape). Null when the file is missing, does not evaluate, returns no array, or
+     * runs past the deadline.
+     *
+     * The check process loads the app's vendor/autoload.php only: the app's .env is not read, so a
+     * value taken from the environment shows what the environment of this process holds (usually
+     * the default the config file gives).
      *
      * @return array<mixed>|null
      */
@@ -179,6 +201,9 @@ final class ConfigFileEditor
     {
         $fullPath = $this->path($file);
         $snippet = self::listSnippet($items);
+        if (self::isLinked($fullPath)) {
+            return $this->refusedLink($fullPath, $file, $place, $snippet);
+        }
 
         $before = $this->read($file);
         if ($before === null) {
@@ -223,6 +248,9 @@ final class ConfigFileEditor
     private function write(string $file, array $path, string $where, array $texts, array $expected, string $place, string $snippet): ConfigEdit
     {
         $fullPath = $this->path($file);
+        if (self::isLinked($fullPath)) {
+            return $this->refusedLink($fullPath, $file, $place, $snippet);
+        }
         $original = @file_get_contents($fullPath);
         if ($original === false) {
             return $this->refused($fullPath, "{$file} cannot be read", $place, $snippet);
@@ -667,10 +695,47 @@ final class ConfigFileEditor
         }
         fwrite($pipes[0], $code);
         fclose($pipes[0]);
-        $out = (string) stream_get_contents($pipes[1]);
-        fclose($pipes[1]);
-        $error = trim((string) stream_get_contents($pipes[2]));
-        fclose($pipes[2]);
+
+        // Both pipes are drained together, so a child that writes much to stderr cannot block on a
+        // full pipe while stdout is read; the deadline stops a child that never ends.
+        $output = [1 => '', 2 => ''];
+        $open = [1 => $pipes[1], 2 => $pipes[2]];
+        foreach ($open as $pipe) {
+            stream_set_blocking($pipe, false);
+        }
+        $deadline = hrtime(true) + (int) ($this->timeout * 1e9);
+        while ($open !== []) {
+            $left = ($deadline - hrtime(true)) / 1e9;
+            $read = array_values($open);
+            $write = $except = null;
+            $failure = match (true) {
+                $left <= 0 => 'the PHP check process did not finish within ' . $this->timeout . ' s',
+                @stream_select($read, $write, $except, (int) $left, (int) (fmod($left, 1.0) * 1_000_000)) === false => 'the PHP check process\'s output could not be read',
+                default => null,
+            };
+            if ($failure !== null) {
+                foreach ($open as $pipe) {
+                    fclose($pipe);
+                }
+                proc_terminate($process, 9);
+                proc_close($process);
+                $this->lastError = $failure;
+
+                return null;
+            }
+            foreach ($open as $n => $pipe) {
+                $chunk = fread($pipe, 65536);
+                if ($chunk !== false) {
+                    $output[$n] .= $chunk;
+                }
+                if (feof($pipe)) {
+                    fclose($pipe);
+                    unset($open[$n]);
+                }
+            }
+        }
+        $out = $output[1];
+        $error = trim(substr($output[2], 0, 500));
         $exit = proc_close($process);
 
         if ($exit !== 0) {
@@ -687,6 +752,74 @@ final class ConfigFileEditor
         $this->lastError = '';
 
         return $value;
+    }
+
+    /**
+     * Something (a file, a folder, a link, dangling too) is at $path; the stat cache is cleared
+     * first. Asked twice in create(): another process may create the file in between.
+     *
+     * @phpstan-impure
+     */
+    private static function taken(string $path): bool
+    {
+        clearstatcache(true, $path);
+
+        return file_exists($path) || is_link($path);
+    }
+
+    /** A symbolic link (dangling ones too) or a file with more than one hard link. */
+    private static function isLinked(string $path): bool
+    {
+        if (is_link($path)) {
+            return true;
+        }
+        $stat = @stat($path);
+
+        return $stat !== false && $stat['nlink'] > 1;
+    }
+
+    private function refusedLink(string $fullPath, string $file, string $place, string $snippet): ConfigEdit
+    {
+        return $this->refused($fullPath, "{$file} is a link (symbolic or hard); this tool does not write through links, the file was left as it is", $place, $snippet);
+    }
+
+    /**
+     * Creates $path with $contents, never replacing a file: the content goes to a temporary file
+     * that is then hard-linked to $path (which fails when $path exists); where hard links are not
+     * available, the file is opened with exclusive creation instead.
+     *
+     * @return bool|null true created, false failed, null $path exists already
+     */
+    private function createExclusively(string $path, string $contents): ?bool
+    {
+        $dir = dirname($path);
+        $temp = @tempnam($dir, '.' . basename($path) . '.');
+        if ($temp !== false && realpath(dirname($temp)) === realpath($dir)
+            && @file_put_contents($temp, $contents) === strlen($contents)
+            && @chmod($temp, 0666 & ~umask())) {
+            $linked = @link($temp, $path);
+            @unlink($temp);
+            if ($linked) {
+                return true;
+            }
+        } elseif ($temp !== false) {
+            @unlink($temp);
+        }
+        if (self::taken($path)) {
+            return null;
+        }
+
+        $handle = @fopen($path, 'x');
+        if ($handle === false) {
+            return self::taken($path) ? null : false;
+        }
+        $written = fwrite($handle, $contents) === strlen($contents);
+        fclose($handle);
+        if (!$written) {
+            @unlink($path);
+        }
+
+        return $written;
     }
 
     /** Writes through a temporary file in the same folder and a rename, keeping the file's mode. */

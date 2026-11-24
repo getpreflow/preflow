@@ -222,6 +222,79 @@ final class ConfigFileEditorTest extends TestCase
         $this->assertSame('FolioServiceProvider::class,', $edit->snippet);
     }
 
+    public function test_symlinked_file_is_refused_and_left_a_link(): void
+    {
+        mkdir($this->root . '/shared');
+        copy(__DIR__ . '/Fixtures/providers.php', $this->root . '/shared/providers.php');
+        symlink($this->root . '/shared/providers.php', $this->configDir . '/providers.php');
+        $before = file_get_contents($this->root . '/shared/providers.php');
+
+        $edit = $this->editor()->addToList('providers.php', ['\Preflow\Folio\FolioServiceProvider::class'], 'start');
+
+        $this->assertSame(ConfigEdit::REFUSED, $edit->status);
+        $this->assertStringContainsString('link', $edit->message);
+        $this->assertSame('\Preflow\Folio\FolioServiceProvider::class,', $edit->snippet);
+        $this->assertTrue(is_link($this->configDir . '/providers.php'));
+        $this->assertSame($before, file_get_contents($this->root . '/shared/providers.php'));
+
+        $edit = $this->editor()->addKey('providers.php', [], 'x', "'y'");
+        $this->assertSame(ConfigEdit::REFUSED, $edit->status);
+        $this->assertTrue(is_link($this->configDir . '/providers.php'));
+    }
+
+    public function test_hard_linked_file_is_refused_and_both_names_unchanged(): void
+    {
+        $this->fixture('auth.php');
+        link($this->configDir . '/auth.php', $this->root . '/auth-copy.php');
+        $before = file_get_contents($this->configDir . '/auth.php');
+
+        $edit = $this->editor()->addKey('auth.php', ['guards'], 'staff', "['provider' => 'staff']");
+
+        $this->assertSame(ConfigEdit::REFUSED, $edit->status);
+        $this->assertStringContainsString('link', $edit->message);
+        $this->assertSame($before, file_get_contents($this->configDir . '/auth.php'));
+        $this->assertSame($before, file_get_contents($this->root . '/auth-copy.php'));
+        $this->assertSame(2, (int) (stat($this->configDir . '/auth.php') ?: [])['nlink']);
+    }
+
+    public function test_create_refuses_a_dangling_symlink(): void
+    {
+        symlink($this->root . '/missing/folio.php', $this->configDir . '/folio.php');
+
+        $edit = $this->editor()->create('folio.php', "<?php\n\nreturn [];\n");
+
+        $this->assertSame(ConfigEdit::REFUSED, $edit->status);
+        $this->assertSame("<?php\n\nreturn [];\n", $edit->snippet);
+        $this->assertTrue(is_link($this->configDir . '/folio.php'));
+        $this->assertFileDoesNotExist($this->root . '/missing/folio.php');
+    }
+
+    public function test_much_output_on_stderr_does_not_hang_the_check(): void
+    {
+        file_put_contents($this->configDir . '/app.php', "<?php\n\nfwrite(STDERR, str_repeat('x', 200000));\n\nreturn [\n    'name' => 'Site',\n];\n");
+
+        $edit = (new ConfigFileEditor($this->configDir, null, 5.0))->addKey('app.php', [], 'locale', "'en'");
+
+        $this->assertSame(ConfigEdit::CHANGED, $edit->status, $edit->message);
+        $this->assertSame(['name' => 'Site', 'locale' => 'en'], $this->editor()->read('app.php'));
+    }
+
+    public function test_check_past_the_deadline_refuses_and_restores(): void
+    {
+        // Sleeps only once the edit has added 'late' (the marker is split so the file does not
+        // match before the edit): the check after writing runs past the deadline.
+        file_put_contents($this->configDir . '/app.php', "<?php\n\nif (str_contains((string) file_get_contents(__FILE__), 'late' . \"' =>\")) {\n    sleep(5);\n}\n\nreturn [\n    'name' => 'Site',\n];\n");
+        $before = file_get_contents($this->configDir . '/app.php');
+
+        $started = microtime(true);
+        $edit = (new ConfigFileEditor($this->configDir, null, 1.0))->addKey('app.php', [], 'late', 'true');
+
+        $this->assertLessThan(4.0, microtime(true) - $started);
+        $this->assertSame(ConfigEdit::REFUSED, $edit->status);
+        $this->assertStringContainsString('did not finish within', $edit->message);
+        $this->assertSame($before, file_get_contents($this->configDir . '/app.php'));
+    }
+
     private function editor(): ConfigFileEditor
     {
         return new ConfigFileEditor($this->configDir);
