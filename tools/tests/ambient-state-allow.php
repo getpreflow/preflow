@@ -247,6 +247,12 @@ return [
         'static-state' => [
             'private static array $liveClasses = [];' => 'whether a component class is live: a per-class fact',
             'private static array $freshnessOf = [];' => 'a component class\'s #[Freshness] attribute (or false), from reflection: a per-class fact',
+            'private static array $storeClassOf = [];' => 'a component class\'s state store (#[StateIn] or the signed default), from reflection: a per-class fact',
+        ],
+    ],
+    'components/src/StateProperties.php' => [
+        'static-state' => [
+            'private static array $names = [];' => 'a component class\'s #[State] property names, from reflection (checked once): a per-class fact',
         ],
     ],
     'data/src/Model.php' => [

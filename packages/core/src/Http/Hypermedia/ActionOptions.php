@@ -43,7 +43,7 @@ final class ActionOptions
     /** The events that send the request. `visible`: when the element scrolls into view. */
     public const array EVENTS = ['click', 'submit', 'change', 'input', 'load', 'visible'];
 
-    /** A region name or a field name: a letter, then letters, digits, - and _ (as Preflow\View\Regions). */
+    /** A region name or a field name: a letter, then letters, digits, - and _ (the rule the view package's Regions class applies). */
     private const string NAME_PATTERN = '/^[A-Za-z][A-Za-z0-9_-]*$/';
 
     /** A driver's key for its own attributes (the escape hatch): a lower-case word. */
