@@ -61,27 +61,37 @@ final class HtmxAssetsTest extends TestCase
         $this->assertStringNotContainsString('preflowBusyMarker', $never->renderHead() . $never->renderJsBody());
     }
 
-    public function test_submit_disabler_is_added_once_after_htmx(): void
+    public function test_disabler_is_added_once_after_htmx(): void
     {
         $collector = new AssetCollector(new NonceGenerator());
         $assets = new HtmxAssets($collector, 'on-demand');
-        $assets->requireSubmitDisabler();
-        $assets->requireSubmitDisabler();
+        $assets->requireDisabler();
+        $assets->requireDisabler();
         $this->assertTrue($assets->isRequired(), 'the disabler needs htmx');
-        $head = $collector->renderHead();
-        $this->assertStringNotContainsString('preflowSubmitDisabler', $head, 'not in the head');
+        $this->assertStringNotContainsString('preflowDisabler', $collector->renderHead(), 'not in the head');
         $body = $collector->renderJsBody();
-        $this->assertSame(1, substr_count($body, "preflowSubmitDisabler('data-preflow-disable');"));
-        $this->assertStringContainsString('function preflowSubmitDisabler(', $body, 'a named function, not an IIFE (inline scripts are joined)');
-        $this->assertStringContainsString('window.preflowSubmitDisablerOn', $body, 'set up once per page');
-        $this->assertStringContainsString("'button:not([type]), button[type=submit], input[type=submit]'", $body, 'submit controls only, not type=button or reset');
-        $this->assertStringContainsString('htmx:beforeSend', $body);
-        $this->assertStringContainsString('htmx:afterRequest', $body, 'fired after a load, an error, an abort and a timeout alike');
-        $this->assertMatchesRegularExpression('#<script nonce="[^"]+">(?:(?!</script>).)*preflowSubmitDisabler#s', $body, 'under the page nonce like the busy marker');
+        $this->assertSame(1, substr_count($body, "preflowDisabler('data-preflow-disable');"));
+        $this->assertStringContainsString('function preflowDisabler(', $body, 'a named function, not an IIFE (inline scripts are joined)');
+        $this->assertStringContainsString('window.preflowDisablerOn', $body, 'set up once per page');
+        $this->assertMatchesRegularExpression('#<script nonce="[^"]+">(?:(?!</script>).)*preflowDisabler#s', $body, 'under the page nonce like the busy marker');
+
+        // Submit controls: a button whose type is submit (none, empty, invalid or submit), input submit or image; a form's own list (form="…" too).
+        $this->assertStringContainsString("(c.tagName === 'BUTTON' && c.type === 'submit') || (c.tagName === 'INPUT' && (c.type === 'submit' || c.type === 'image'))", $body);
+        $this->assertStringContainsString("el.tagName === 'FORM' ? Array.prototype.slice.call(el.elements)", $body);
+        $this->assertStringContainsString("document.querySelectorAll('input[type=image]')", $body, 'image buttons are not in form.elements');
+        // A region's fields.
+        $this->assertStringContainsString("how.indexOf('fields ') === 0", $body);
+        $this->assertStringContainsString("region.querySelectorAll('input, select, textarea, button')", $body);
+        // Disabled when triggered (htmx:confirm comes before the hx-sync queue), released when sent and done or never sent.
+        foreach (['htmx:confirm', 'queueMicrotask', 'htmx:beforeSend', 'htmx:afterRequest', 'htmx:targetError', 'e.defaultPrevented', 'x.readyState >= 1 && x.readyState <= 3'] as $piece) {
+            $this->assertStringContainsString($piece, $body);
+        }
+        $this->assertStringContainsString("var early = m.how === 'submits';", $body, "only submit controls are disabled while a request waits (a disabled field sends no value)");
+        $this->assertStringContainsString('if (c.disabled) { return; }', $body, 'a control disabled already is not taken over');
 
         $never = new AssetCollector(new NonceGenerator());
-        (new HtmxAssets($never, 'never'))->requireSubmitDisabler();
-        $this->assertStringNotContainsString('preflowSubmitDisabler', $never->renderHead() . $never->renderJsBody());
+        (new HtmxAssets($never, 'never'))->requireDisabler();
+        $this->assertStringNotContainsString('preflowDisabler', $never->renderHead() . $never->renderJsBody());
     }
 
     /** $render in a render frame of its own, as every page render runs (0.81). */

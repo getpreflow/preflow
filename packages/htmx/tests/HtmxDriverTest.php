@@ -132,17 +132,19 @@ final class HtmxDriverTest extends TestCase
         $this->assertFalse($response->hasHeader('HX-Nonce'), 'no nonce without the htmx assets');
     }
 
-    public function test_disable_self_requires_the_submit_disabler(): void
+    public function test_disable_requires_the_disabler(): void
     {
         $collector = new \Preflow\View\AssetCollector(new \Preflow\View\NonceGenerator());
         $this->driver->useAssets(new \Preflow\Htmx\HtmxAssets($collector, 'on-demand'));
-        $this->call(['disable' => 'results']);
-        $this->assertStringNotContainsString('preflowSubmitDisabler', $collector->renderJsBody(), 'only for disable: self');
+        $this->call([]);
+        $this->assertStringNotContainsString('preflowDisabler', $collector->renderJsBody(), 'only for calls with disable');
 
-        $collector = new \Preflow\View\AssetCollector(new \Preflow\View\NonceGenerator());
-        $this->driver->useAssets(new \Preflow\Htmx\HtmxAssets($collector, 'on-demand'));
-        $this->call(['disable' => 'self']);
-        $this->assertStringContainsString("preflowSubmitDisabler('data-preflow-disable');", $collector->renderJsBody());
+        foreach (['self', 'results'] as $disable) {
+            $collector = new \Preflow\View\AssetCollector(new \Preflow\View\NonceGenerator());
+            $this->driver->useAssets(new \Preflow\Htmx\HtmxAssets($collector, 'on-demand'));
+            $this->call(['disable' => $disable]);
+            $this->assertStringContainsString("preflowDisabler('data-preflow-disable');", $collector->renderJsBody(), "disable: {$disable}");
+        }
     }
 
     public function test_apply_effects_announces_the_page_nonce(): void
@@ -262,8 +264,9 @@ final class HtmxDriverTest extends TestCase
         $self = $this->call(['disable' => 'self']);
         $this->assertSame('this', $self['hx-disabled-elt'], 'htmx disables the element itself');
         $this->assertSame('submits', $self['data-preflow-disable'], "the submit controls inside it: preflow's script (htmx 2 can't select all of them)");
-        $this->assertSame('#Box-1-results', $this->call(['disable' => 'results'])['hx-disabled-elt']);
-        $this->assertArrayNotHasKey('data-preflow-disable', $this->call(['disable' => 'results']), 'a region is disabled as a whole');
+        $region = $this->call(['disable' => 'results']);
+        $this->assertSame('#Box-1-results', $region['hx-disabled-elt']);
+        $this->assertSame('fields #Box-1-results', $region['data-preflow-disable'], "the region's fields: preflow's script (disabled on a <div> does nothing)");
         $this->assertArrayNotHasKey('data-preflow-disable', $default);
         $this->assertSame('innerHTML show:#Box-1-results:top', $this->call(['target' => 'results', 'scroll' => 'top'], targetId: 'Box-1-results')['hx-swap']);
         $this->assertArrayNotHasKey('hx-trigger', $default, "no on: htmx's default event for the element");

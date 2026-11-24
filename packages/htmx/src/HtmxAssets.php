@@ -160,66 +160,172 @@ function preflowBusyMarker(busy) {
 JS;
 
     /**
-     * htmx, and the submit disabler for `disable: 'self'`: htmx disables the element itself
-     * (hx-disabled-elt `this`); the disabler also disables the submit controls inside an element
-     * marked with SUBMITS_MARKER (`button` without a type or with type=submit, `input[type=submit]`;
-     * not type=button or reset), so a form sent once can't be sent again by a click or Enter while
-     * its request runs. htmx 2's hx-disabled-elt can't select all of them (its `find` returns the
-     * first match only, and `this` stands only alone).
+     * htmx, and the disabler for the action option `disable`, which htmx 2's hx-disabled-elt can't
+     * do on its own (its `find` returns the first match only, `this` stands only alone, and the
+     * `disabled` attribute it sets does nothing on a <form> or a <div>). The driver marks the
+     * element with DISABLE_MARKER:
      *
-     * Asked for by every call with `disable: 'self'`, so other pages are unchanged. Like the busy
-     * marker it goes with the render's component JS (JsPosition::Body, under the page nonce) and
-     * sets itself up once per page.
+     * - `submits` (`disable: 'self'`): the element itself when it is a button, and its submit
+     *   controls (a form's own control list, so buttons linked with form="…" too: `button` whose
+     *   type is submit, i.e. none, empty or submit, and `input` type submit or image; not
+     *   type=button or reset). They are disabled as soon as the call is triggered, also while the
+     *   request waits for another request of its component, so a second click or Enter finds them
+     *   disabled.
+     * - `fields #<region id>` (`disable: '<region>'`): the region's input, select, textarea and
+     *   button elements, from when the request is sent (a waiting request still reads their values;
+     *   a disabled field sends none).
+     *
+     * Only what the disabler disabled is enabled again: when the request ends (a load, an error,
+     * an abort, a timeout), or when a waiting request is never sent (cancelled at a confirm or
+     * prompt, halted by validation, its target gone).
+     *
+     * Asked for by every call with `disable`, so other pages are unchanged. Like the busy marker it
+     * goes with the render's component JS (JsPosition::Body, under the page nonce) and sets itself
+     * up once per page. In mode `never` nothing is added (the marker is still written).
      *
      * @since 0.87.0
      */
-    public function requireSubmitDisabler(): void
+    public function requireDisabler(): void
     {
         if ($this->mode === 'never') {
             return;
         }
         $this->require();
         $this->assets->addJs(
-            self::SUBMIT_DISABLER . "\npreflowSubmitDisabler('" . self::SUBMITS_MARKER . "');",
+            self::DISABLER . "\npreflowDisabler('" . self::DISABLE_MARKER . "');",
             JsPosition::Body,
-            'preflow-htmx-submits',
+            'preflow-htmx-disable',
         );
     }
 
-    /** The attribute that marks an element whose submit controls are disabled while its request runs (value `submits`). */
-    public const string SUBMITS_MARKER = 'data-preflow-disable';
+    /** The attribute that tells the disabler what a call disables: `submits`, or `fields #<region id>`. */
+    public const string DISABLE_MARKER = 'data-preflow-disable';
 
     /**
-     * On htmx:beforeSend (after htmx has read the form's values, the clicked button's among them)
-     * the marked request element's submit controls that are not disabled yet get `disabled` and
-     * are remembered; on htmx:afterRequest (after a load, an error, an abort and a timeout alike)
-     * exactly those are enabled again, so a control the page disabled itself stays disabled. A
-     * count per element keeps them disabled while another request of the element still runs.
+     * How it works with htmx 2's events. htmx:confirm fires before the hx-sync step; a microtask
+     * afterwards (before any next click) sees whether htmx:beforeSend followed. If not and the
+     * component (the call's hx-sync element) has a request running, the request waits in the
+     * queue: `submits` are disabled now. When the queue sends it, htmx:confirm fires again; if
+     * beforeSend follows, the hold passes to the running request, otherwise it is released.
+     * Running requests per component are the XHRs seen at beforeSend that are still open
+     * (readyState 1–3). A request's end is matched by its XHR, so an htmx:afterRequest that htmx
+     * re-sends to an ancestor after a swap releases nothing there. A confirm prevented by another
+     * handler (an asynchronous confirm) is left alone.
      */
-    private const string SUBMIT_DISABLER = <<<'JS'
-function preflowSubmitDisabler(marker) {
-    if (window.preflowSubmitDisablerOn) { return; }
-    window.preflowSubmitDisablerOn = true;
-    var controls = 'button:not([type]), button[type=submit], input[type=submit]';
-    document.addEventListener('htmx:beforeSend', function (e) {
+    private const string DISABLER = <<<'JS'
+function preflowDisabler(marker) {
+    if (window.preflowDisablerOn) { return; }
+    window.preflowDisablerOn = true;
+    var running = new WeakMap();
+    function isSubmit(c) {
+        return (c.tagName === 'BUTTON' && c.type === 'submit') || (c.tagName === 'INPUT' && (c.type === 'submit' || c.type === 'image'));
+    }
+    function controls(el, how) {
+        var list = [];
+        if (how.indexOf('fields ') === 0) {
+            var region = document.querySelector(how.slice(7));
+            return region ? Array.prototype.slice.call(region.querySelectorAll('input, select, textarea, button')) : [];
+        }
+        if (el.tagName === 'BUTTON' || (el.tagName === 'INPUT' && (el.type === 'submit' || el.type === 'image' || el.type === 'button'))) { list.push(el); }
+        var inner = el.tagName === 'FORM' ? Array.prototype.slice.call(el.elements) : Array.prototype.slice.call(el.querySelectorAll('button, input'));
+        if (el.tagName === 'FORM') {
+            Array.prototype.forEach.call(document.querySelectorAll('input[type=image]'), function (c) { if (c.form === el) { inner.push(c); } });
+        }
+        inner.forEach(function (c) { if (isSubmit(c) && list.indexOf(c) < 0) { list.push(c); } });
+        return list;
+    }
+    function state(el) {
+        if (!el.preflowDisable) { el.preflowDisable = { held: 0, disabled: [], queued: 0, sent: 0, xhrs: [], transfer: 0 }; }
+        return el.preflowDisable;
+    }
+    function hold(el, how) {
+        var st = state(el);
+        st.held = st.held + 1;
+        if (st.held !== 1) { return; }
+        st.disabled = [];
+        controls(el, how).forEach(function (c) {
+            if (c.disabled) { return; }
+            c.disabled = true;
+            st.disabled.push(c);
+        });
+    }
+    function release(el) {
+        var st = state(el);
+        if (st.held === 0) { return; }
+        st.held = st.held - 1;
+        if (st.held !== 0) { return; }
+        st.disabled.forEach(function (c) { c.disabled = false; });
+        st.disabled = [];
+    }
+    function sync(el) {
+        var spec = el.getAttribute && el.getAttribute('hx-sync');
+        if (!spec) { return null; }
+        var at = spec.lastIndexOf(':');
+        var target = null;
+        try { target = document.querySelector(spec.slice(0, at)); } catch (err) { target = null; }
+        return target ? { el: target, queues: spec.slice(at + 1).trim().indexOf('queue') === 0 } : null;
+    }
+    function busy(target) {
+        var xhrs = (running.get(target) || []).filter(function (x) { return x.readyState >= 1 && x.readyState <= 3; });
+        running.set(target, xhrs);
+        return xhrs.length > 0;
+    }
+    function marked(e) {
         var el = e.detail && e.detail.elt;
-        if (!el || !el.getAttribute || el.getAttribute(marker) !== 'submits') { return; }
-        el.preflowSubmitsBusy = (el.preflowSubmitsBusy || 0) + 1;
-        if (el.preflowSubmitsBusy !== 1) { return; }
-        el.preflowSubmitsDisabled = [];
-        el.querySelectorAll(controls).forEach(function (control) {
-            if (control.disabled) { return; }
-            control.disabled = true;
-            el.preflowSubmitsDisabled.push(control);
+        var how = el && el.getAttribute ? el.getAttribute(marker) : null;
+        return how ? { el: el, how: how } : null;
+    }
+    document.addEventListener('htmx:confirm', function (e) {
+        var m = marked(e);
+        if (!m || e.target !== m.el) { return; }
+        var st = state(m.el), s = sync(m.el), sent = st.sent;
+        var early = m.how === 'submits';
+        var dequeued = st.queued > 0 && !(s && busy(s.el));
+        if (dequeued) {
+            st.queued = st.queued - 1;
+            if (early) { st.transfer = st.transfer + 1; }
+        }
+        queueMicrotask(function () {
+            if (st.sent !== sent || e.defaultPrevented) { return; }
+            if (dequeued) {
+                if (early) { st.transfer = st.transfer - 1; release(m.el); }
+                return;
+            }
+            if (s && s.queues && busy(s.el)) {
+                st.queued = st.queued + 1;
+                if (early) { hold(m.el, m.how); }
+            }
         });
     });
+    document.addEventListener('htmx:targetError', function (e) {
+        var m = marked(e);
+        if (!m || e.target !== m.el) { return; }
+        var st = state(m.el), s = sync(m.el);
+        if (st.queued > 0 && !(s && busy(s.el))) {
+            st.queued = st.queued - 1;
+            if (m.how === 'submits') { release(m.el); }
+        }
+    });
+    document.addEventListener('htmx:beforeSend', function (e) {
+        var el = e.detail && e.detail.elt, xhr = e.detail && e.detail.xhr;
+        if (!el || !xhr || e.target !== el) { return; }
+        var s = sync(el);
+        if (s) { busy(s.el); running.get(s.el).push(xhr); }
+        var m = marked(e);
+        if (!m) { return; }
+        var st = state(el);
+        st.sent = st.sent + 1;
+        st.xhrs.push(xhr);
+        if (st.transfer > 0) { st.transfer = st.transfer - 1; return; }
+        hold(el, m.how);
+    });
     document.addEventListener('htmx:afterRequest', function (e) {
-        var el = e.detail && e.detail.elt;
-        if (!el || !el.preflowSubmitsBusy) { return; }
-        el.preflowSubmitsBusy = el.preflowSubmitsBusy - 1;
-        if (el.preflowSubmitsBusy !== 0) { return; }
-        (el.preflowSubmitsDisabled || []).forEach(function (control) { control.disabled = false; });
-        el.preflowSubmitsDisabled = [];
+        var el = e.detail && e.detail.elt, xhr = e.detail && e.detail.xhr;
+        if (!el || !el.preflowDisable) { return; }
+        var st = el.preflowDisable, at = st.xhrs.indexOf(xhr);
+        if (at < 0) { return; }
+        st.xhrs.splice(at, 1);
+        release(el);
     });
 }
 JS;

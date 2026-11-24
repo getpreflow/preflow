@@ -286,7 +286,7 @@ A small, fixed set of words that every driver translates (`Preflow\Core\Http\Hyp
 | `debounce` | milliseconds | wait this long after the last typing (`input`) event; clicks and changes go at once. Only with `input` in `on` | `delay:300ms` |
 | `latest` | `true` | a newer request replaces one still running (for searches) | `hx-sync` `replace` |
 | `include` | a region or field name, or a list | extra fields to send | `hx-include` |
-| `disable` | `'self'`, a region name | disabled while the request runs. `'self'`: the element, and (0.87) the submit controls inside it (`button` without a type or with `type="submit"`, `input type="submit"`; not `type="button"` or `"reset"`), so a form can't be sent twice by a click or Enter. A region: its fields | `hx-disabled-elt` (`this` for `'self'`, plus `data-preflow-disable="submits"` and a small preflow script for the submit controls) |
+| `disable` | `'self'`, a region name | what can't be used while the request runs. `'self'` (0.87): the element if it is a button, and its submit controls (a form's buttons whose type is submit, i.e. none or `submit`, and `input` type `submit` or `image`, also those linked with `form="…"`; not `type="button"` or `"reset"`), from the moment the call is triggered, so a second click or Enter sends nothing, even while the request waits for another request of the component. A region (0.87): the region's `input`, `select`, `textarea` and `button` elements, from when the request is sent | `hx-disabled-elt` (`this`, or the region), plus `data-preflow-disable` (`submits`, or `fields #<region id>`) read by a small preflow script |
 | `scroll` | `'top'` | show the top of the target after the swap | `show:…:top` |
 | `component` | `'parent'` | run the action of the component whose template rendered this one | the parent's token and id |
 
@@ -313,14 +313,39 @@ A small, fixed set of words that every driver translates (`Preflow\Core\Http\Hyp
 
   ```twig
   <form {{ hd.post('send', {}, { disable: 'self' }) }}>
+      <input name="email" {{ hd.post('checkEmail', {}, { target: 'emailHint', on: 'blur' }) }}>
       <textarea name="message"></textarea>
       <button>Send</button>
   </form>
   ```
 
-  htmx 2 can disable the form itself but not all the buttons inside it, so preflow adds a small
-  script (under the page nonce, once per page) to pages with such a call. A button the page had
-  disabled already stays disabled afterwards.
+  The buttons are disabled as soon as the form is sent, not only when its request leaves. Say the
+  visitor types an address and double-clicks Send: leaving the field starts `checkEmail`, the
+  first click makes `send` wait for it (one request per component at a time), and the second
+  click finds the button disabled.
+
+  htmx puts `disabled` on the form, but that does nothing on a `<form>` (or a `<div>`). What
+  protects the buttons is a small preflow script, added under the page nonce, once per page, to
+  pages with a `disable` call. It enables again only what it disabled: a button the page had
+  disabled stays disabled. It also enables the buttons when a waiting request is never sent
+  (an `hx-confirm` answered with no, a validation error).
+
+  A region works the same way for its fields, but they are disabled only once the request is sent:
+  a waiting request still reads their values, and a disabled field sends none.
+
+  With the htmx include mode `never` (a site brings its own htmx), the driver still writes the
+  `data-preflow-disable` marker but adds no script, so only htmx's own `disabled` applies. Such a
+  site adds its own script for the marker.
+
+  Known limits:
+  - If a swap fails with a script error (`htmx:onLoadError`), htmx sends no `htmx:afterRequest`,
+    so the buttons stay disabled (htmx's own `hx-disabled-elt` behaves the same way).
+  - A button kept across the swap (`hx-preserve`) keeps its `disabled`.
+  - A confirm handled outside htmx's events (a handler that cancels `htmx:confirm` and sends
+    later) is not tracked: its buttons are disabled only from when the request is sent.
+  - Some browsers drop the focus from a button when it is disabled. htmx then forgets which button
+    was clicked, so a form that waited for another request may arrive without that button's
+    `name`/`value`. Don't rely on the clicked button's value for a form with `disable: 'self'`.
 
 - **One action at a time per component.** Requests of one component wait for each other, so two
   quick clicks on "Add another" give two rows. `latest: true` opts into "a newer request cancels
