@@ -182,6 +182,37 @@ final class ComponentStateLifecycleTest extends TestCase
         $this->assertFalse($this->renderer->standsIn($parent));
     }
 
+    public function test_has_parent_answers_without_the_parents_instance(): void
+    {
+        $seen = [];
+        $renderer = $this->renderer;
+        $this->templates['RowsForm'] = function (array $c) use (&$seen, $renderer): string {
+            $seen['parent'] = $renderer->hasParent($renderer->current() ?? throw new \LogicException('no current'));
+
+            return $renderer->render($this->make(Counter::class, ['key' => 'child']));
+        };
+        $this->templates['Counter'] = static function (array $c) use (&$seen, $renderer): string {
+            $seen['child'] = $renderer->hasParent($renderer->current() ?? throw new \LogicException('no current'));
+
+            return '';
+        };
+        $this->renderer->render($this->make(RowsForm::class, []));
+        $this->assertSame(['parent' => false, 'child' => true], $seen, 'top level: none; inside a template: yes');
+
+        // Rendered alone, placed inside a parent on the page: yes.
+        $seen = [];
+        $child = $this->make(Counter::class, ['key' => 'child']);
+        $this->renderer->placeInside($child, $this->make(RowsForm::class, []));
+        $this->assertTrue($this->renderer->hasParent($child), 'known from placeInside(), before it renders');
+        $this->renderer->render($child);
+        $this->assertSame(['child' => true], $seen);
+
+        // Rendered alone, not placed: no.
+        $seen = [];
+        $this->renderer->render($this->make(Counter::class, ['key' => 'other']));
+        $this->assertSame(['child' => false], $seen);
+    }
+
     public function test_equal_state_renders_equal_html(): void
     {
         $first = $this->make(Counter::class, ['start' => 4, 'key' => 'a']);

@@ -160,6 +160,22 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
     }
 
     /**
+     * Whether the component whose template renders has a parent on the page: it renders inside
+     * another component's template, or alone for its own action (or refresh) with a parent named
+     * in its token. Guards a `component: 'parent'` call in a component that is also shown on its
+     * own: `{% if hd.hasParent() %}{{ hd.post('answer', {}, {component: 'parent'}) }}{% endif %}`.
+     *
+     * @throws \LogicException outside a component's render
+     * @since 0.87.0
+     */
+    public function hasParent(): bool
+    {
+        $component = $this->rendering('hd.hasParent()');
+
+        return $this->renderer !== null && $this->renderer->hasParent($component);
+    }
+
+    /**
      * Marks htmx as needed on this page and returns '' (htmx is inlined by
      * HtmxAssets, never loaded through a tag).
      */

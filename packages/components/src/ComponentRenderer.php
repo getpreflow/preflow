@@ -265,7 +265,19 @@ final class ComponentRenderer
      */
     public function parentOf(Component $component): ?Component
     {
-        return $this->parents[$component] ?? null;
+        return $this->parents[$component] ?? $this->placedIn[$component] ?? null;
+    }
+
+    /**
+     * Whether $component has a parent on the page: it renders inside another component's
+     * template, or placeInside() named the parent it sits in on the page. Answers from what is
+     * known about the parent being there, without asking for the parent itself.
+     *
+     * @since 0.87.0
+     */
+    public function hasParent(Component $component): bool
+    {
+        return isset($this->parents[$component]) || isset($this->placedIn[$component]);
     }
 
     /**
@@ -588,10 +600,9 @@ final class ComponentRenderer
         $parent = $this->current();
         if ($parent !== null && $parent !== $component) {
             $this->parents[$component] = $parent;
-        } elseif ($parent === null && isset($this->placedIn[$component])) {
-            $this->parents[$component] = $this->placedIn[$component]; // alone here, inside it on the page
         } elseif ($parent === null) {
-            unset($this->parents[$component]); // rendered on its own this time
+            // Rendered on its own this time: parentOf() falls back to the parent placeInside() named.
+            unset($this->parents[$component]);
         }
         $this->stack[] = $component;
         try {

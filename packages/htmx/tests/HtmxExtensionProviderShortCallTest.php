@@ -396,6 +396,89 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         $this->assertStringContainsString('parent', $this->errors[0]->getMessage());
     }
 
+    public function test_has_parent(): void
+    {
+        $seen = [];
+        CallbackEngine::$templates['ShortSearch'] = function () use (&$seen): string {
+            $seen['search'] = $this->hd->hasParent();
+
+            return $this->renderer->render($this->component(ShortPager::class, ['key' => 'p']));
+        };
+        CallbackEngine::$templates['ShortPager'] = function () use (&$seen): string {
+            $seen['pager'] = $this->hd->hasParent();
+
+            return '';
+        };
+        $this->renderer->render($this->component(ShortSearch::class, ['key' => 's']));
+        $this->assertSame([], $this->errors);
+        $this->assertSame(['search' => false, 'pager' => true], $seen, 'top level: no parent; inside the parent\'s template: one');
+    }
+
+    public function test_has_parent_in_a_child_rendered_alone_for_its_own_action(): void
+    {
+        $own = '';
+        $seen = [];
+        CallbackEngine::$templates['ShortRow'] = function () use (&$own, &$seen): string {
+            $own = (string) $this->hd->post('toggle');
+            $seen[] = $this->hd->hasParent();
+
+            return '';
+        };
+        CallbackEngine::$templates['ShortSearch'] = fn (): string => $this->renderer->render($this->component(ShortRow::class, ['key' => 'r1']));
+        $this->renderer->render($this->component(ShortSearch::class, ['key' => 's']));
+
+        // The token names the parent (pc/pk): the endpoint renders the row alone, still with a parent.
+        $this->freshRequest();
+        $this->endpoint()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
+            ->createServerRequest('POST', '/--component/action')
+            ->withHeader('HX-Request', 'true')
+            ->withParsedBody(['token' => $this->token(self::attributes($own)['hx-post'])]));
+        $this->assertSame([], $this->errors);
+        $this->assertSame([true, true], $seen);
+
+        // Rendered alone without a parent in its token (e.g. a preview): none.
+        $this->freshRequest();
+        $seen = [];
+        $this->renderer->render($this->component(ShortRow::class, ['key' => 'r2']));
+        $this->assertSame([false], $seen);
+    }
+
+    public function test_has_parent_in_twig_and_blade(): void
+    {
+        $dir = sys_get_temp_dir() . '/preflow_has_parent_' . bin2hex(random_bytes(4));
+        mkdir($dir . '/cache', 0777, true);
+        try {
+            file_put_contents($dir . '/ShortBox', "{% if hd.hasParent() %}<a {{ hd.post('search', {}, {component: 'parent'}) }}>p</a>{% else %}alone{% endif %}");
+            file_put_contents($dir . '/ShortBox.blade.php', "@if(\$hd->hasParent())<a {{ \$hd->post('search', [], ['component' => 'parent']) }}>p</a>@else alone @endif");
+            $engines = [
+                'twig' => new \Preflow\Twig\TwigEngine([$dir], new \Preflow\View\AssetCollector(new \Preflow\View\NonceGenerator()), debug: true),
+                'blade' => new \Preflow\Blade\BladeEngine([$dir], new \Preflow\View\AssetCollector(new \Preflow\View\NonceGenerator()), cachePath: $dir . '/cache'),
+            ];
+            $html = [];
+            foreach ($engines as $name => $engine) {
+                $driver = new HtmxDriver(new ResponseHeaders(), true);
+                $renderer = new ComponentRenderer($engine, new ErrorBoundary(debug: DebugLevel::On, onError: function (\Throwable $e): void {
+                    $this->errors[] = $e;
+                }));
+                $engine->addGlobal('hd', new HtmxExtensionProvider($driver, $this->tokens, renderer: $renderer, debug: true));
+
+                $html[$name]['alone'] = $renderer->render($this->component(ShortBox::class, ['key' => 'a']));
+                $placed = $this->component(ShortBox::class, ['key' => 'b']);
+                $renderer->placeInside($placed, $this->component(ShortSearch::class, ['key' => 's']));
+                $html[$name]['placed'] = $renderer->render($placed);
+            }
+        } finally {
+            exec('rm -rf ' . escapeshellarg($dir));
+        }
+
+        $this->assertSame([], $this->errors);
+        foreach ($html as $name => $rendered) {
+            $this->assertStringContainsString('alone', $rendered['alone'], $name);
+            $this->assertStringNotContainsString('hx-post', $rendered['alone'], $name);
+            $this->assertStringContainsString('<a hx-post="/--component/action?token=', $rendered['placed'], $name);
+        }
+    }
+
     public function test_target_parent_is_refused(): void
     {
         $pager = $this->component(ShortPager::class, []);
@@ -537,12 +620,12 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
 
     public function test_short_call_outside_a_component_fails(): void
     {
-        foreach ([fn () => $this->hd->post('add'), fn () => $this->hd->get('add', ['a' => 1]), fn () => $this->hd->on('saved'), fn () => $this->hd->region('rows')] as $i => $call) {
+        foreach ([fn () => $this->hd->post('add'), fn () => $this->hd->get('add', ['a' => 1]), fn () => $this->hd->on('saved'), fn () => $this->hd->region('rows'), fn () => $this->hd->hasParent()] as $i => $call) {
             try {
                 $call();
                 $this->fail("call {$i} outside a component's render worked");
             } catch (\LogicException $e) {
-                $this->assertStringContainsString($i === 2 ? "'saved'" : ($i === 3 ? "'rows'" : "'add'"), $e->getMessage());
+                $this->assertStringContainsString([2 => "'saved'", 3 => "'rows'", 4 => 'hd.hasParent()'][$i] ?? "'add'", $e->getMessage());
                 $this->assertStringContainsString("component's template", $e->getMessage());
             }
         }

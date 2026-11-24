@@ -211,6 +211,7 @@ Inside a component's template, call an action by its name, with only the values 
 | `hd.get(action, values = {}, options = {})` | the same with a GET. On a component with state the state then travels in the address, which has a length limit: prefer `post` |
 | `hd.on(event, options = {})` | an element that renders the component again when an action's answer fires `event` |
 | `hd.region(name)` | `id="{componentId}-{name}"`, for an element made by hand that a call targets |
+| `hd.hasParent()` | not markup: `true` when the component has a parent on the page (see "Calling the parent") |
 
 The component is the one whose template is rendering: no class, no id. The helpers return markup
 marked safe, so no `| raw`. In Blade the same calls are `{{ $hd->post('addRow') }}`.
@@ -340,6 +341,22 @@ A small, fixed set of words that every driver translates (`Preflow\Core\Http\Hyp
   token, and they aren't known when the child renders alone, so the call fails there (a
   `LogicException`; the child's error boundary shows its fallback). A component rendered on its own
   (by a page template) has no parent; the call then fails too.
+
+  A component that is shown both inside a parent and on its own (say, a step in an editor's
+  preview) asks first with `hd.hasParent()`. It is true inside another component's template, and
+  when the child renders alone for its own action with a parent named in its token. On its own it
+  is false, so the buttons render without calls:
+
+  ```twig
+  {% if hd.hasParent() %}
+      <button {{ hd.post('answer', { choice: 'a' }, { component: 'parent' }) }}>A</button>
+  {% else %}
+      <button type="button">A</button>
+  {% endif %}
+  ```
+
+  In Blade: `@if($hd->hasParent()) … @endif`. Like the other short calls it throws a
+  `LogicException` outside a component's template.
 - The set stays small: a new option comes only when at least two real templates need it.
   Everything else goes through the escape hatch.
 
