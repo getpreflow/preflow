@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-24 (v0.85.0)
+> Last updated: 2026-11-24 (v0.86.0)
 
 ## Current State
 
-**v0.85.0** — 10342 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.86.0** — 10510 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -532,10 +532,11 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   - **Added (view, twig, blade):** regions, `{% region 'results' {class: …} %}…{% endregion %}` and `@region('results', [...]) … @endregion`: a call with `target: 'results'` renders only that region on the server and swaps its contents. `RendersRegions` (optional engine interface) and `Regions`. `SafeHtml`, printed unescaped by every engine.
   - **Added (core):** the optional driver interface `Hypermedia\DrivesComponentActions` (`callAttributes()`, `listenAttributes()`, `stateCarrier()`, `stateUpdate()`, `BUSY_CLASS`) with `ActionCall` and `ActionOptions`; the neutral request fields `_state[<componentId>]`, `_values` and `_region`. `HypermediaDriver` is unchanged; a driver without the interface serves the old calls.
   - **Added (testing):** `WebApplication::componentAction($app, $pageHtml, $class, $action, $params, key:, localePrefix:, props:)` runs an action the way the page does (state from the page), and `WebApplication::stateFrom($html, $componentId)`. `StateStoreContract`; `HypermediaDriverContract` checks `DrivesComponentActions`.
-  - **Changed:** the starters' `JobSearch` keeps its filters as state (a `JobFilters` `StateValue`), has separate `search` and `page` actions, renders only its `results` region, and no longer searches twice per action; `Pager` calls the search with `component: 'parent'`. Their templates have no `hx-` attribute.
+  - **Changed:** the starters' `JobSearch` keeps its filters as state (a `JobFilters` `StateValue`), has separate `search` and `page` actions, renders only its `results` region, and no longer searches twice per action; `Pager` calls the search with `component: 'parent'`. Their templates have no `hx-` attribute. The starters and the skeleton pin `^0.86`.
   - **Fixed:** the pager's "Page :page of :pages" showed "Page 1 of 1s": a translation placeholder that is the start of a longer one (`:page` in `:pages`) is replaced after the longer one.
   - **Docs:** components (state, lifecycle, what may be state, expiry, the session store), htmx (the short call, regions, options, escape hatch, busy class, quick clicks, the driver interface), testing (`componentAction`).
   - **Upgrading:** nothing required. The old call `hd.post('x', componentClass, componentId, props, swap, extra)` keeps working unchanged and is not deprecated; components without `#[State]` behave as in 0.85. Upgrade every `preflow/*` package together.
+    - **Upgrade every `preflow/*` package together to `^0.86`** (one `composer update "preflow/*"`): the new APIs cross packages, so 0.86 raises their constraints and Composer refuses a mix. htmx needs core, components and view 0.86 and conflicts with twig and blade before 0.86 (the short call returns `SafeHtml`, which only 0.86 engines print unescaped); components, twig and blade need view 0.86 (`Regions`, `RendersRegions`, `SafeHtml`); core conflicts with components before 0.86 (it wires `#[State]` at boot); testing needs core, view, components and htmx 0.86. A site that pins one of these packages to `^0.85` must raise the pin. The starters and the skeleton pin `^0.86`.
     - **Blade sites:** compiled views must be compiled once more so `SafeHtml` prints unescaped: clear the view cache after the upgrade (`php preflow cache:clear blade`).
     - **The busy class:** CSS on `htmx-request` keeps working. For CSS that names no client library, use `.preflow-busy` (on the element of a short call while its request runs).
     - **Moving a component to state (optional):**

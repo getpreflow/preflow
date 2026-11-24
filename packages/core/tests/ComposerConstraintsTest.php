@@ -7,6 +7,8 @@ namespace Preflow\Core\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.86: components 0.86.0 (ComponentRenderer::enableState() and carryStateWith(), StateStore and
+ * SignedStateStore, which the component boot wires for #[State]; an older components would fail at every boot).
  * Since 0.83: i18n 0.83.0 (LocaleMiddleware without the translator it no longer used, which the locale boot builds).
  * Since 0.81: data 0.81.0 (incrementIn()'s accounting flag, which Throttle::hit() passes for the per-person AI limits);
  * view 0.81.0 (PageRenderer and GeoMiddleware take the app's render closure first, without AssetCollector or
@@ -66,7 +68,7 @@ final class ComposerConstraintsTest extends TestCase
 
         $this->assertSame([
             'preflow/auth' => '<0.81.0',
-            'preflow/components' => '<0.60',
+            'preflow/components' => '<0.86.0',
             'preflow/data' => '<0.84.0',
             'preflow/htmx' => '<0.65',
             'preflow/i18n' => '<0.83.0',

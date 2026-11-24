@@ -7,6 +7,11 @@ namespace Preflow\Testing\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.86: core 0.86 (Http\Hypermedia\DrivesComponentActions, ActionCall and ActionOptions, which
+ * HypermediaDriverContract tests); htmx 0.86 (ComponentToken::encodeFor() and the neutral _state/_region/_values
+ * fields, with which WebApplication::componentAction() calls an action the way a page does); components 0.86
+ * (StateStore, SignedStateStore and StateRefused, which StateStoreContract tests; enableState(), which TestApplication
+ * turns on); view 0.86 (SafeHtml and RendersRegions, which TemplateEngineContract tests).
  * Since 0.85: core 0.85 (PageCache\Cacheability, which WebApplication::assertPageCacheable() asks).
  * Since 0.82: core 0.82 (Deprecations::expected(), with which RenderIsolationContract marks its own calls of the deprecated
  * setters).
@@ -31,7 +36,9 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(['preflow/auth' => '<0.81.0', 'preflow/core' => '<0.85.0', 'preflow/data' => '<0.84.0', 'preflow/htmx' => '<0.65', 'preflow/view' => '<0.81.0'], $composer['conflict'] ?? null);
-        $this->assertSame('^0.85.0 || @dev', $composer['require']['preflow/core'] ?? null);
+        $this->assertSame(['preflow/auth' => '<0.81.0', 'preflow/core' => '<0.86.0', 'preflow/data' => '<0.84.0', 'preflow/htmx' => '<0.86.0', 'preflow/view' => '<0.86.0', 'preflow/components' => '<0.86.0'], $composer['conflict'] ?? null);
+        foreach (['core', 'view', 'components', 'htmx'] as $package) {
+            $this->assertSame('^0.86.0 || @dev', $composer['require']['preflow/' . $package] ?? null, $package);
+        }
     }
 }

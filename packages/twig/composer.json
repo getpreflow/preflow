@@ -6,7 +6,7 @@
     "require": {
         "php": ">=8.4",
         "preflow/core": "^0.81.0 || @dev",
-        "preflow/view": "^0.72 || @dev",
+        "preflow/view": "^0.86.0 || @dev",
         "preflow/components": "^0.1 || @dev",
         "twig/twig": "^3.21"
     },
@@ -19,7 +19,7 @@
     },
     "conflict": {
         "preflow/core": "<0.81.0",
-        "preflow/view": "<0.72"
+        "preflow/view": "<0.86.0"
     },
     "autoload": {
         "psr-4": {
