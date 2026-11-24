@@ -7,6 +7,7 @@ namespace Preflow\Testing\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.85: core 0.85 (PageCache\Cacheability, which WebApplication::assertPageCacheable() asks).
  * Since 0.82: core 0.82 (Deprecations::expected(), with which RenderIsolationContract marks its own calls of the deprecated
  * setters).
  * Since 0.81: core 0.81 (the render context: ContextFactory builds a RenderContext on a FrozenClock,
@@ -30,7 +31,7 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(['preflow/auth' => '<0.81.0', 'preflow/core' => '<0.84.0', 'preflow/data' => '<0.84.0', 'preflow/htmx' => '<0.65', 'preflow/view' => '<0.81.0'], $composer['conflict'] ?? null);
-        $this->assertSame('^0.84.0 || @dev', $composer['require']['preflow/core'] ?? null);
+        $this->assertSame(['preflow/auth' => '<0.81.0', 'preflow/core' => '<0.85.0', 'preflow/data' => '<0.84.0', 'preflow/htmx' => '<0.65', 'preflow/view' => '<0.81.0'], $composer['conflict'] ?? null);
+        $this->assertSame('^0.85.0 || @dev', $composer['require']['preflow/core'] ?? null);
     }
 }

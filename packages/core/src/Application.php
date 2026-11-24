@@ -145,8 +145,9 @@ final class Application
      * Create and auto-configure the application.
      *
      * @param string|array $basePath Project root directory, or config array for testing
+     * @param bool|null $console Overrides runningInConsole() from the start (see setRunningInConsole()); null follows PHP_SAPI. The web FailureGuard is installed when the app is not the console.
      */
-    public static function create(string|array $basePath = '.'): self
+    public static function create(string|array $basePath = '.', ?bool $console = null): self
     {
         if (is_array($basePath)) {
             // Legacy/testing: pass config directly
@@ -156,9 +157,12 @@ final class Application
         EnvLoader::load(rtrim($basePath, '/') . '/.env');
 
         $app = new self(new Config(), $basePath);
+        if ($console !== null) {
+            $app->setRunningInConsole($console);
+        }
         // A web request that fails before the kernel (a broken config file, boot, a PHP Error, a
         // fatal) answers 500, not PHP's raw output; the console keeps its own exception output.
-        if (!in_array(PHP_SAPI, ['cli', 'phpdbg'], true)) {
+        if (!$app->runningInConsole()) {
             \Preflow\Core\Error\FailureGuard::install($app);
         }
         $app->config->replace(self::configItems($app->configFile(...)));
@@ -2122,6 +2126,13 @@ final class Application
         if (session_status() === PHP_SESSION_ACTIVE) {
             return new \Nyholm\Psr7\Response(200, [\Preflow\Core\PageCache\PageCacheMiddleware::SKIP_HEADER => 'session']);
         }
+
+        return $this->renderAsRebuild($request);
+    }
+
+    /** $request as the internal Rebuild render renderRebuild() makes of it (also for a Cacheability probe). */
+    private function renderAsRebuild(ServerRequestInterface $request): ResponseInterface
+    {
         $site = $this->site();
         $path = $request->getUri()->getPath();
         $path = $path === '' ? '/' : $path;
@@ -2203,9 +2214,12 @@ final class Application
     private function bootPageCacheServing(DebugLevel $debug): void
     {
         $config = $this->container->get(\Preflow\Core\PageCache\PageCacheConfig::class);
-        if (!$config->enabled || $this->pageChanges === null || $debug->isDebug()) {
+        if (!$config->enabled || $this->pageChanges === null) {
             return;
         }
+        // In debug mode the cache does not serve or store, but the middleware stays in the pipeline
+        // for Cacheability's probes (`pages:why`) only: it passes every other request on, rebuilds included.
+        $probeOnly = $debug->isDebug();
         $container = $this->container;
         $source = $this->pageCacheSource;
         $logger = $this->pageCacheLogger();
@@ -2233,6 +2247,7 @@ final class Application
             verify: $config->verify,
             applyPending: static fn (): bool => $container->get(\Preflow\Core\PageCache\Refresher::class)->applyPending(),
             rebuildOnly: $this->runningInConsole(),
+            probeOnly: $probeOnly,
             hypermedia: $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
             // Verify's second render: in a frame of its own as render() opens one (its own page
             // meta and nonce, the assets boot registered, nobody signed in, its queued mail
@@ -2243,8 +2258,20 @@ final class Application
             // A cookie a render left queued keeps its page out of the store (since 0.81.1).
             cookies: $container->get(\Preflow\Core\Http\CookieQueue::class),
         );
-        $this->container->instance(\Preflow\Core\PageCache\PageCacheMiddleware::class, $middleware);
+        if (!$probeOnly) {
+            $this->container->instance(\Preflow\Core\PageCache\PageCacheMiddleware::class, $middleware);
+        }
         $this->addMiddleware($middleware);
+        // pages:why and the page-cache test assertion: why a page would not be stored, in any mode.
+        $origin = $this->config->get('app.url');
+        $this->container->singleton(
+            \Preflow\Core\PageCache\Cacheability::class,
+            fn (): \Preflow\Core\PageCache\Cacheability => new \Preflow\Core\PageCache\Cacheability(
+                $this->renderAsRebuild(...),
+                is_string($origin) && $origin !== '' ? $origin : null,
+                fn (): array => $this->site()->locales,
+            ),
+        );
     }
 
     /** Minified CSS and JS live in storage/cache/assets, keyed by content. */
@@ -3088,14 +3115,37 @@ final class Application
         $providers = $this->configFile('providers');
         if ($providers !== null) {
             foreach ($providers as $providerClass) {
-                if (class_exists($providerClass)) {
-                    $provider = new $providerClass();
-                    $this->registerProvider($provider);
+                if (!class_exists($providerClass)) {
+                    $this->reportMissingProvider((string) $providerClass);
+
+                    continue;
                 }
+                $provider = new $providerClass();
+                $this->registerProvider($provider);
             }
         }
 
         $this->container->bootProviders();
+    }
+
+    /**
+     * A class listed in config/providers.php that does not exist (a typo, a package not installed):
+     * with app.debug on the boot stops naming it; in production it goes to the site's logger
+     * (error level; PHP's error log when none is bound yet) and the boot goes on, so one wrong
+     * line does not take the site down.
+     */
+    private function reportMissingProvider(string $class): void
+    {
+        $message = sprintf('config/providers.php lists "%s", which does not exist (misspelt, or its package is not installed).', $class);
+        if (DebugLevel::from((int) $this->config->get('app.debug', 0))->isDebug()) {
+            throw new \RuntimeException($message);
+        }
+        if ($this->container->bound(\Psr\Log\LoggerInterface::class)) {
+            $this->container->get(\Psr\Log\LoggerInterface::class)->error($message);
+
+            return;
+        }
+        error_log($message);
     }
 
     private function bootMiddleware(): void

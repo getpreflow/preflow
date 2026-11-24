@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs, tests and proves a starter (packages/starter, packages/starter-folio) against the
+# Installs, tests and proves a starter (packages/starter, packages/starter-folio, packages/skeleton) against the
 # packages of this monorepo, before they are released.
 #
 #   bin/starter install <name>            install into packages/<name> (composer.dev.json, gitignored)
@@ -14,6 +14,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 check_paths_for() {
     case "$1" in
         starter-folio) echo "/ /jobs /api/jobs /news /about-error-boundaries" ;;
+        skeleton) echo "/ /de" ;;
         *) echo "/ /jobs /api/jobs /employer/login" ;;
     esac
 }

@@ -46,7 +46,7 @@ php preflow serve
 | [`preflow/devtools`](packages/devtools) | CLI commands (serve, migrate, make:component, etc.) |
 | [`preflow/starter`](packages/starter) | Project starter: a job board with employer accounts and a JSON API |
 | [`preflow/starter-folio`](packages/starter-folio) | The same starter with the Folio CMS admin wired in |
-| [`preflow/skeleton`](packages/skeleton) | Abandoned: use `preflow/starter` |
+| [`preflow/skeleton`](packages/skeleton) | An empty app: one home page; add Folio with `folio:install` |
 
 ## Architecture
 

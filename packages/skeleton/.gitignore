@@ -2,12 +2,19 @@
 .phpunit.result.cache
 .phpunit.cache/
 .env
+composer.dev.json
+composer.dev.lock
 storage/cache/*
 storage/logs/*
-storage/data/*.sqlite
+storage/data/*
 # The boot manifest (preflow optimize), written per release.
 /bootstrap/cache/
 !storage/cache/.gitkeep
 !storage/logs/.gitkeep
 !storage/data/.gitkeep
 .DS_Store
+
+# The media library (folio:install adds it): uploads and their earlier versions.
+/public/media/
+/storage/media-bin/
+/storage/media-versions/

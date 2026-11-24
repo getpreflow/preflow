@@ -1,138 +1,34 @@
 {% extends "_layout.twig" %}
 
-{% block title %}Home — Preflow App{% endblock %}
+{% block title %}{{ t('app.home.title') }}{% endblock %}
 
 {% block content %}
+{% do seo({ title: t('app.home.title'), description: t('app.home.seo_description') }) %}
+
+<h1>{{ t('app.home.title') }}</h1>
+<p class="lead">{{ t('app.home.lead') }}</p>
+
+<h2>{{ t('app.home.next') }}</h2>
+
+<section class="step">
+    <h3>1. {{ t('app.home.page_title') }}</h3>
+    <p>{{ t('app.home.page_text') }}</p>
+</section>
+
+<section class="step">
+    <h3>2. {{ t('app.home.admin_title') }}</h3>
+    <p>{{ t('app.home.admin_text') }}</p>
+    <pre><code>composer require preflow/folio preflow/rbac
+php preflow folio:install</code></pre>
+    <p class="hint">{{ t('app.home.admin_hint') }}</p>
+</section>
+
 {% apply css %}
-.hero {
-    text-align: center;
-    padding: 3rem 0 2rem;
-}
-
-.hero h1 {
-    font-size: 3rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-}
-
-.hero-subtitle {
-    color: #666;
-    font-size: 1.25rem;
-    margin-top: 0.5rem;
-}
-
-.features {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1.5rem;
-    margin-top: 3rem;
-}
-
-.feature {
-    padding: 1.5rem;
-    background: #f8f9fa;
-    border-radius: 0.5rem;
-}
-
-.feature h3 {
-    margin-bottom: 0.5rem;
-    font-size: 1rem;
-}
-
-.feature p {
-    color: #666;
-    font-size: 0.875rem;
-}
-
-.demo-intro {
-    margin-top: 3rem;
-    margin-bottom: 0.5rem;
-}
-
-.demo-intro h2 {
-    font-size: 1.25rem;
-    margin-bottom: 0.5rem;
-}
-
-.demo-intro p {
-    color: #666;
-    font-size: 0.9375rem;
-}
-
-.error-demo-fallback {
-    display: flex;
-    gap: 1rem;
-    align-items: flex-start;
-    padding: 1.5rem;
-    background: #fff8f0;
-    border: 1px solid #f0c040;
-    border-radius: 0.5rem;
-    margin-top: 2rem;
-}
-
-.error-demo-fallback .error-demo-icon {
-    font-size: 1.5rem;
-    line-height: 1;
-}
-
-.error-demo-fallback strong {
-    display: block;
-    margin-bottom: 0.25rem;
-}
-
-.error-demo-fallback p {
-    color: #666;
-    font-size: 0.875rem;
-    margin: 0;
-}
+.lead { color: var(--muted); margin-top: 0.5rem; }
+h2 { margin-top: 2rem; font-size: 1.2rem; }
+.step { margin-top: 1rem; padding: 1rem; background: var(--card); border: 1px solid var(--line); border-radius: 0.5rem; }
+.step h3 { font-size: 1rem; margin-bottom: 0.25rem; }
+.step pre { margin-top: 0.75rem; padding: 0.75rem; overflow-x: auto; border: 1px solid var(--line); border-radius: 0.25rem; }
+.hint { margin-top: 0.75rem; color: var(--muted); font-size: 0.875rem; }
 {% endapply %}
-
-<div class="hero">
-    <h1>Preflow</h1>
-    <p class="hero-subtitle">HTML over the wire. No build step. No JS framework.</p>
-</div>
-
-{{ component('ExampleCard', {
-    title: 'Hello, Preflow',
-    message: 'This component has co-located CSS, JS, and a session-persisted HTMX counter. Try incrementing and refreshing the page.'
-}) }}
-
-{{ component('ErrorDemo') }}
-
-{{ component('ErrorDemoRaw') }}
-
-<div class="demo-intro">
-    <h2>What this demo shows</h2>
-    <p>
-        This skeleton ships with opinionated defaults — Twig for templating, HTMX for hypermedia —
-        but every layer sits behind an interface. Swap in Blade, Datastar, or your own implementation.
-    </p>
-</div>
-
-<div class="features">
-    <div class="feature">
-        <h3>Components</h3>
-        <p>Co-located PHP + template + CSS + JS. Drop a directory, it auto-discovers.</p>
-    </div>
-    <div class="feature">
-        <h3>Inline Assets</h3>
-        <p>Your CSS and JS are inlined in the HTML document. Hash-deduplicated. CSP nonces. No bundler needed.</p>
-    </div>
-    <div class="feature">
-        <h3>Hypermedia</h3>
-        <p>Server renders HTML fragments, the browser swaps them in. HTMX by default, abstracted behind a driver interface.</p>
-    </div>
-    <div class="feature">
-        <h3>Error Boundaries</h3>
-        <p>Components crash gracefully. Custom fallbacks or dev panels — the rest of the page keeps rendering.</p>
-    </div>
-    <div class="feature">
-        <h3>Multi-Storage</h3>
-        <p>SQLite, JSON files, or both in the same app. Each model picks its backend via attributes.</p>
-    </div>
-    <div class="feature">
-        <h3>i18n</h3>
-        <p>Translations, pluralization, and locale detection built in from day one. Not an afterthought.</p>
-    </div>
-</div>
 {% endblock %}

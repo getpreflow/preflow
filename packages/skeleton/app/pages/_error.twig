@@ -1,42 +1,13 @@
 {% extends "_layout.twig" %}
 
-{% block title %}Error {{ status|default(404) }}{% endblock %}
+{% block title %}{{ t('app.error.title', { status: status|default(404) }) }}{% endblock %}
 
 {% block content %}
+<h1>{{ status|default(404) }}</h1>
+<p class="error-message">{{ message|default('Page not found') }}</p>
+<p><a href="{{ locale_url('/') }}">{{ t('app.error.home') }}</a></p>
+
 {% apply css %}
-.error-page {
-    text-align: center;
-    padding: 4rem 0;
-}
-
-.error-code {
-    font-size: 6rem;
-    font-weight: 700;
-    color: #dee2e6;
-    line-height: 1;
-}
-
-.error-message {
-    color: #666;
-    font-size: 1.125rem;
-    margin-top: 0.5rem;
-}
-
-.error-link {
-    display: inline-block;
-    margin-top: 1.5rem;
-    color: #0066ff;
-    text-decoration: none;
-}
-
-.error-link:hover {
-    text-decoration: underline;
-}
+.error-message { color: var(--muted); margin: 0.5rem 0 1rem; }
 {% endapply %}
-
-<div class="error-page">
-    <h1 class="error-code">{{ status|default(404) }}</h1>
-    <p class="error-message">{{ message|default('Page not found') }}</p>
-    <a href="/" class="error-link">Go home</a>
-</div>
 {% endblock %}

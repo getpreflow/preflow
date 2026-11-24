@@ -17,7 +17,8 @@ use Psr\Http\Message\ServerRequestInterface;
  * fatal error. Without it PHP prints "Fatal error: Uncaught …" with the stack trace and, with
  * display_errors on, the status 200.
  *
- * Application::create() installs it for web SAPIs (not the console), so a site's public/index.php
+ * Application::create() installs it unless the app runs the console (runningInConsole(): the CLI
+ * SAPI, or the override create() takes), so a site's public/index.php
  * needs no change. An uncaught exception is answered 500 (or its HttpException status) with the
  * app's error handler once boot built it; before that, with the dev error page when app.debug is
  * on and the plain page (no trace) when off. A fatal error, which PHP cannot hand to a handler,
@@ -57,6 +58,16 @@ final class FailureGuard
             $reserve = null;
             self::answerFatal(error_get_last());
         });
+    }
+
+    /**
+     * The app the guard answers for, null when none was installed (the console).
+     *
+     * @since 0.85.0
+     */
+    public static function guarding(): ?Application
+    {
+        return self::$app;
     }
 
     /**

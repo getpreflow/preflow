@@ -121,6 +121,12 @@ return [
             'return (hrtime(true) - $this->startTime) / 1_000_000;' => 'measures elapsed time or a deadline; a frozen context clock must not apply',
         ],
     ],
+    'devtools/src/Config/ConfigFileEditor.php' => [
+        'clock' => [
+            '$deadline = hrtime(true) + (int) ($this->timeout * 1e9);' => 'the check process\'s deadline: measures elapsed time or a deadline; a frozen context clock must not apply',
+            '$left = ($deadline - hrtime(true)) / 1e9;' => 'the check process\'s deadline: measures elapsed time or a deadline; a frozen context clock must not apply',
+        ],
+    ],
     'devtools/src/Command/PagesWorkCommand.php' => [
         'clock' => [
             '$started = microtime(true);' => 'measures elapsed time or a deadline; a frozen context clock must not apply',

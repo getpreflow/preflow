@@ -9,6 +9,7 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Purpose;
 use Preflow\Core\Debug\DebugCollector;
 use Preflow\Core\Http\RequestLimits;
 use Preflow\Core\Http\ContentSecurityPolicy;
@@ -16,7 +17,7 @@ use Preflow\DevTools\DebugToolbar;
 
 /**
  * Adds the debug toolbar to HTML pages; a render that leaves no trace (Purpose::leavesNoTrace():
- * audit, GEO, rebuild, preview) gets none.
+ * audit, GEO, rebuild, preview) gets none, nor does the page cache's verify render.
  *
  * Since 0.82.0 the toolbar's script and style carry the nonces of the policy the page is sent
  * with: the response's own Content-Security-Policy (else its Report-Only trial,
@@ -37,7 +38,8 @@ final class DebugToolbarMiddleware implements MiddlewareInterface
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $response = $handler->handle($request);
-        if (Contexts::depth() > 0 && Contexts::current()->purpose->leavesNoTrace()) {
+        // Verify's second render (page cache) reaches nobody: a toolbar there would only make pages differ.
+        if (Contexts::depth() > 0 && (Contexts::current()->purpose->leavesNoTrace() || Contexts::current()->purpose === Purpose::Verify)) {
             return $response;
         }
 

@@ -1,28 +1,33 @@
 {
     "name": "preflow/skeleton",
-    "description": "Preflow project skeleton",
+    "description": "An empty Preflow app",
     "type": "project",
-    "abandoned": "preflow/starter",
     "license": "MIT",
-    "minimum-stability": "dev",
-    "prefer-stable": true,
+    "minimum-stability": "stable",
     "require": {
         "php": ">=8.4",
-        "preflow/core": "dev-main",
-        "preflow/routing": "dev-main",
-        "preflow/view": "dev-main",
-        "preflow/twig": "dev-main",
-        "preflow/components": "dev-main",
-        "preflow/auth": "^0.1 || @dev",
-        "preflow/data": "dev-main",
-        "preflow/htmx": "dev-main",
-        "preflow/i18n": "dev-main",
+        "preflow/core": "^0.85",
+        "preflow/routing": "^0.85",
+        "preflow/view": "^0.85",
+        "preflow/twig": "^0.85",
+        "preflow/components": "^0.85",
+        "preflow/htmx": "^0.85",
+        "preflow/i18n": "^0.85",
+        "preflow/data": "^0.85",
+        "preflow/validation": "^0.85",
+        "preflow/form": "^0.85",
+        "preflow/devtools": "^0.85",
         "nyholm/psr7": "^1.8",
         "nyholm/psr7-server": "^1.1"
     },
     "require-dev": {
-        "preflow/testing": "dev-main",
-        "preflow/devtools": "dev-main"
+        "preflow/testing": "^0.85",
+        "phpunit/phpunit": "^11.0"
+    },
+    "config": {
+        "allow-plugins": {
+            "php-http/discovery": false
+        }
     },
     "autoload": {
         "psr-4": {
@@ -38,8 +43,11 @@
         "post-create-project-cmd": [
             "@php -r \"copy('.env.example', '.env');\"",
             "@php preflow key:generate",
-            "@php preflow migrate",
-            "@php preflow db:seed"
+            "@php preflow migrate"
+        ],
+        "test": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php vendor/bin/phpunit"
         ]
     }
 }

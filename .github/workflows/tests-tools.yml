@@ -25,6 +25,11 @@ jobs:
 
       - run: composer install --no-interaction --no-progress --prefer-dist
 
+      # Static analysis against the 8.4 floor (phpVersion in phpstan.neon): a call to anything newer
+      # than 8.4 fails here, which the tests on 8.4 may never reach. Run it on the 8.4 leg only.
+      - run: composer analyse
+        if: matrix.php == '8.4'
+
       # The tools tests: the architecture guards and the convert tool. The MySQL tests skip
       # without MYSQL_HOST/MYSQL_DATABASE; no database service and no secrets are needed.
       - run: vendor/bin/phpunit tools/tests
