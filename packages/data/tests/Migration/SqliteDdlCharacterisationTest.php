@@ -27,11 +27,11 @@ final class SqliteDdlCharacterisationTest extends TestCase
         $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         SqliteDialect::prepare($pdo);
 
-        // The starters are apps, not packages: their migrations repeat each other's names
-        // (starter and starter-folio both create users), so they are not part of this pin.
+        // The starters and the skeleton are apps, not packages: their migrations repeat each
+        // other's names (starter and starter-folio both create users), so they are not part of this pin.
         $paths = array_values(array_filter(
             glob(dirname(__DIR__, 3) . '/*/migrations'),
-            static fn (string $path): bool => !str_starts_with(basename(dirname($path)), 'starter'),
+            static fn (string $path): bool => !str_starts_with(basename(dirname($path)), 'starter') && basename(dirname($path)) !== 'skeleton',
         ));
         $this->assertNotEmpty($paths);
         (new Migrator($pdo, $paths))->migrate();
