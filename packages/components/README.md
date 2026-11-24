@@ -129,7 +129,9 @@ public function actionPage(array $params): void
     if ($page === false) {
         throw new HttpException(400, 'Not a page number.');
     }
+    // A page past the end shows no jobs, as the address bar does for it.
     $this->filters = $this->filters->with(['page' => $page]);
+    $this->hd->pushUrl($this->filters->url());
 }
 ```
 

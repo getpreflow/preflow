@@ -226,10 +226,12 @@ final class JobSearchTest extends TestCase
         foreach (['two', 0, -1, ['2']] as $bad) {
             $this->assertSame(400, $this->act($page, 'page', ['page' => $bad])->getStatusCode(), var_export($bad, true));
         }
-        // Past the last page (the list may have got shorter since the page was rendered): the last page.
-        $last = $this->act($page, 'page', ['page' => 99]);
-        $this->assertSame(array_slice($this->expected(fn (): bool => true), 24), $this->listed((string) $last->getBody()));
-        $this->assertSame('/jobs?page=3', $last->getHeaderLine('HX-Push-Url'));
+        // Past the end (the list may have got shorter since the page was rendered): like the address bar, no jobs.
+        $past = $this->act($page, 'page', ['page' => 99]);
+        $this->assertSame(200, $past->getStatusCode());
+        $this->assertStringContainsString('No jobs match.', (string) $past->getBody());
+        $this->assertSame([], $this->listed((string) $past->getBody()));
+        $this->assertSame('/jobs?page=99', $past->getHeaderLine('HX-Push-Url'));
     }
 
     public function test_search_runs_once_per_action(): void
@@ -264,10 +266,13 @@ final class JobSearchTest extends TestCase
     {
         $app = $this->app();
         [$response, $reads] = $app->container()->get(DataManager::class)->captureReads(fn (): ResponseInterface => $request($app));
-        $listings = array_filter(
-            $reads,
-            static fn (array $read): bool => $read[0] === 'read' && str_contains((string) $read[2], 'job') && ($read[3] ?? null) === null,
-        );
+        $listings = array_filter($reads, static function (array $read): bool {
+            // A read is [kind ('read' or 'raw'), storage, table, record id]; no id: a listing.
+            [$kind, , $table] = $read;
+            $id = $read[3] ?? null;
+
+            return $kind === 'read' && str_contains((string) $table, 'job') && $id === null;
+        });
 
         return [$response, count($listings)];
     }

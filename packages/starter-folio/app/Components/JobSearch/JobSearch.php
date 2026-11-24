@@ -82,8 +82,8 @@ final class JobSearch extends Component
 
     /**
      * A pager link: only the page changes, the filters are the ones the page shows. The page is
-     * input: a whole number from 1, or the request is refused. Past the last page (the list got
-     * shorter since the page was rendered) it shows the last one.
+     * input: a whole number from 1, or the request is refused. A page past the end (the list got
+     * shorter since the page was rendered) shows what the address bar shows for it: no jobs.
      *
      * @param array<string, mixed> $params
      */
@@ -93,7 +93,7 @@ final class JobSearch extends Component
         if ($page === false) {
             throw new HttpException(400, 'Not a page number.');
         }
-        $this->filters = $this->filters->with(['page' => min($page, $this->search->lastPage($this->filters))]);
+        $this->filters = $this->filters->with(['page' => $page]);
         $this->hd->pushUrl($this->filters->url());
     }
 }

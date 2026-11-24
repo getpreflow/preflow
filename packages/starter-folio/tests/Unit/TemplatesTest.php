@@ -9,7 +9,7 @@ use PHPUnit\Framework\TestCase;
 /** The app's code says what a call does (hd.post with neutral options), never how a driver does it. */
 final class TemplatesTest extends TestCase
 {
-    public function test_no_htmx_attributes_in_templates(): void
+    public function test_app_code_names_no_htmx(): void
     {
         $app = dirname(__DIR__, 2) . '/app';
         $found = [];
