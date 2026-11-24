@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-24 (v0.86.0)
+> Last updated: 2026-11-24 (v0.87.0)
 
 ## Current State
 
-**v0.86.0** — 10510 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.87.0** — 10543 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -525,7 +525,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
-- **Small gaps in short calls and forms (v0.87.0):** polish on the 0.86 short call, found while using it on real forms.
+- **Small gaps in short calls and forms (v0.87.0, released 2026-11-24):** polish on the 0.86 short call, found while using it on real forms.
   - **Added (htmx, core):** `on: 'blur'` for the action option `on`: a field checks itself when it is left. `debounce` stays for typing only: with `debounce` and no `input` in `on` (e.g. `on: 'blur', debounce: 300`) the option fails in debug, and outside debug it is logged and left out; `on: ['input', 'blur'], debounce: 300` delays the typing only. `disable: 'self'` now covers a form's submit controls from the moment the call is triggered, so a form cannot be sent twice; only the controls it disabled itself are enabled again afterwards. `disable: '<region>'` really disables the region's fields, from the moment the request is sent (a request still has to read their values first). htmx does this with a small script, `HtmxAssets::requireDisabler()`, which reads the marker attribute `HtmxAssets::DISABLE_MARKER` (`data-preflow-disable`).
   - **Added (form):** form-builder fields take `call`, the result of a short call (`hd.post(...)`), so a field can check itself through a component action. A `call` that also writes an attribute the field's `attrs` writes is refused, naming the attribute.
   - **Added (components, htmx):** `hd.hasParent()` tells a template whether it was placed inside another component, without building the parent. New in components: `ComponentRenderer::hasParent()`, `placeInsideLazily()` and `parentRefOf()`, and the class `ParentRef` (class and optional key): a parent is built only when something asks for it. The htmx driver no longer builds a parent stand-in unless it is needed.
@@ -535,7 +535,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - `HdExtension` (preflow/twig) is removed. Nothing in the framework used it; the `hd.*` helpers come from `HtmxExtensionProvider`. preflow/twig no longer suggests preflow/htmx.
     - `ComponentToken::encodeFor()`: the third parameter is widened to `Component|ParentRef|null`. Only a subclass that overrides it breaks.
     - Behaviour change: `disable: '<region>'` now really disables the region's fields. In 0.86 it did nothing on a `<div>`. A field inside the region it disables loses focus while the user types, so check existing uses.
-    - Upgrade all `preflow/*` packages together.
+    - **Upgrade every `preflow/*` package together to `^0.87`** (one `composer update "preflow/*"`): htmx needs core and components 0.87 (`ActionCall::$carriesState`, `on: 'blur'`, `ParentRef` and the lazy parent placement); core conflicts with htmx before 0.87 (htmx 0.86 can't map `on: 'blur'` and doesn't disable a form's submit controls); testing needs core 0.87 (the driver contract suite passes `carriesState`); form needs view 0.86 (`SafeHtml` for a field's `call`). A site that pins one of these packages to `^0.86` must raise the pin. The starters and the skeleton pin `^0.87`.
 - **Components that keep their own state (v0.86.0, released 2026-11-24):** a component names its state once, in its class. Templates call an action by its name with only the values that change, in neutral options that name no client library. An action can render only the part of the component it changed.
   - **Why:** every action call passed the component's whole view by hand (a filter call sent all the other filters, so they survived), repeated the component's class, id and `| raw`, and passed `hx-` attributes straight in, which tied templates to htmx. The endpoint ran `resolveState()` before every action, so an action that loaded its own data loaded it twice.
   - **Added (components):** `#[State]` on a property: its value survives the component's own actions (the page carries it, signed; each action sends it back; the answer brings the new value). Allowed: scalars, null, arrays of those, backed enums, `StateValue` objects (`toState()` / `fromState()`), and nullable class types; anything else fails on the first render, naming class and property. New hooks for components with state: `mount()` (first render only, from props) and `prepare()` (before every render); the action runs on the restored state with nothing loaded before it; an event refresh restores the state and does not mount again. `resolveState()` is unchanged for components without state, and fails in debug on one with state. Nested components start from their props when their parent renders again. `StateStore` with `SignedStateStore` (default; 24 h like action tokens; bound to class and id; pages with state stay page-cacheable) and `SessionStateStore` (`#[StateIn(SessionStateStore::class)]`, for large state behind a login; refused on a page the page cache stores). `StateRefused` (403). `Component::hasState()`. `ComponentRenderer::enableState()`, `carryStateWith()`, `stateFor()`, `restore()`, `renderAfterAction()`, `regionsOf()`, `current()`, `parentOf()`.

@@ -9,6 +9,10 @@ use PHPUnit\Framework\TestCase;
 /**
  * "^0.81.0 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
  * Composer from pairing htmx with a core release that lacks what it calls.
+ * Since 0.87: core 0.87.0 (ActionCall's carriesState:, which hd.post/get/on pass so a stateless component names no
+ * state carrier; on core 0.86 the named argument is fatal in hd.on; 'blur' in ActionOptions::EVENTS, which HtmxDriver
+ * maps to hx-trigger); components 0.87.0 (ParentRef, ComponentRenderer::placeInsideLazily(), parentRefOf() and
+ * hasParent(), with which a child names its parent without building it and hd.hasParent() answers).
  * Since 0.86: core 0.86.0 (Http\Hypermedia\DrivesComponentActions, ActionCall and ActionOptions, which HtmxDriver
  * implements and the hd.post/get/on short form builds); components 0.86.0 (#[State] and the state stores, hasState(),
  * stateFor(), restore(), renderAfterAction(), parentOf(), with which the endpoint carries a component's state);
@@ -25,12 +29,12 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame('^0.86.0 || @dev', $composer['require']['preflow/core'] ?? null);
-        $this->assertSame('^0.86.0 || @dev', $composer['require']['preflow/components'] ?? null);
+        $this->assertSame('^0.87.0 || @dev', $composer['require']['preflow/core'] ?? null);
+        $this->assertSame('^0.87.0 || @dev', $composer['require']['preflow/components'] ?? null);
         $this->assertSame([
-            'preflow/core' => '<0.86.0',
+            'preflow/core' => '<0.87.0',
             'preflow/view' => '<0.86.0',
-            'preflow/components' => '<0.86.0',
+            'preflow/components' => '<0.87.0',
             'preflow/twig' => '<0.86.0',
             'preflow/blade' => '<0.86.0',
         ], $composer['conflict'] ?? null);

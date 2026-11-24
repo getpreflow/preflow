@@ -6,7 +6,7 @@
     "require": {
         "php": ">=8.4",
         "phpunit/phpunit": "^11.0",
-        "preflow/core": "^0.86.0 || @dev",
+        "preflow/core": "^0.87.0 || @dev",
         "preflow/routing": "^0.1 || @dev",
         "preflow/view": "^0.86.0 || @dev",
         "preflow/components": "^0.86.0 || @dev",
@@ -18,7 +18,7 @@
     },
     "conflict": {
         "preflow/auth": "<0.81.0",
-        "preflow/core": "<0.86.0",
+        "preflow/core": "<0.87.0",
         "preflow/data": "<0.84.0",
         "preflow/htmx": "<0.86.0",
         "preflow/view": "<0.86.0",
