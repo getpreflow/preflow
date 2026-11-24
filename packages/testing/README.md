@@ -85,6 +85,8 @@ $answer = WebApplication::componentAction($app, $page, JobSearch::class, 'search
 - `localePrefix: '/de'` runs the action in that locale (the page's HTML doesn't say its locale).
 - `props:` are the props of a component **without** state (its token carries them, as the page's
   does). A component with state carries only its key, so props fail there.
+- `cookies:` are the request's cookies (`['visitor' => $token]`), sent as a browser would: in the
+  request's cookie params and its `Cookie` header. Default: none.
 - A page without the component's state carrier fails the test and names the components that have
   one.
 

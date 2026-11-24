@@ -119,7 +119,9 @@ final class WebApplication
      * @param string $localePrefix the prefix of a localised page ('/de'): its actions run in that locale
      * @param array<string, mixed> $props the props of a component without state (its token carries them,
      *        as the page's token does); a component with state carries its key only, so props fail there
-     * @since 0.86.0
+     * @param array<string, string> $cookies the request's cookies, as the browser would send them (the
+     *        request's cookie params and its Cookie header), e.g. a visitor token the action reads
+     * @since 0.86.0 ($cookies 0.87.0)
      */
     public static function componentAction(
         Application $app,
@@ -130,6 +132,7 @@ final class WebApplication
         ?string $key = null,
         string $localePrefix = '',
         array $props = [],
+        array $cookies = [],
     ): ResponseInterface {
         $container = $app->container();
         $component = $container->has($componentClass) ? $container->get($componentClass) : $container->make($componentClass);
@@ -160,6 +163,15 @@ final class WebApplication
         $token = $container->get(ComponentToken::class)->encodeFor($component, $action);
         $request = (new ServerRequest('POST', 'http://localhost' . $localePrefix . '/--component/action?token=' . urlencode($token)))
             ->withParsedBody($body);
+        if ($cookies !== []) {
+            $request = $request
+                ->withCookieParams($cookies)
+                ->withHeader('Cookie', implode('; ', array_map(
+                    static fn (string|int $name, string $value): string => $name . '=' . rawurlencode($value),
+                    array_keys($cookies),
+                    $cookies,
+                )));
+        }
 
         return $app->handle($request);
     }
