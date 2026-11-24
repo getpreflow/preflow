@@ -48,6 +48,12 @@ final class ComponentRenderer
     /** @var \WeakMap<Component, string> */
     private \WeakMap $carried;
 
+    /** @var \WeakMap<Component, Component> the parent on the page of a component rendered alone (placeInside()) */
+    private \WeakMap $placedIn;
+
+    /** @var \WeakMap<Component, true> parents that stand in for the one on the page (placeInside()) */
+    private \WeakMap $standIns;
+
     /** @var \WeakMap<Component, true> */
     private \WeakMap $restored;
 
@@ -60,6 +66,8 @@ final class ComponentRenderer
     ) {
         $this->parents = new \WeakMap();
         $this->carried = new \WeakMap();
+        $this->placedIn = new \WeakMap();
+        $this->standIns = new \WeakMap();
         $this->restored = new \WeakMap();
     }
 
@@ -251,13 +259,39 @@ final class ComponentRenderer
 
     /**
      * The component whose template rendered $component, null for one rendered on its own (by a
-     * page template, the endpoint, a live part).
+     * page template, the endpoint, a live part) unless placeInside() named its parent on the page.
      *
      * @since 0.86.0
      */
     public function parentOf(Component $component): ?Component
     {
         return $this->parents[$component] ?? null;
+    }
+
+    /**
+     * Renders $component, which sits inside $parent's template on the page, on its own here (the
+     * endpoint renders a child alone for its action or its refresh): parentOf() gives $parent
+     * while $component renders without another component's template around it. $parent stands in
+     * for the one on the page (standsIn()): built from its class and key, never mounted, restored
+     * nor rendered here, so only its class, its id and its key are known.
+     *
+     * @since 0.86.0
+     */
+    public function placeInside(Component $component, Component $parent): void
+    {
+        $this->placedIn[$component] = $parent;
+        $this->standIns[$parent] = true;
+    }
+
+    /**
+     * Whether $component stands in for a parent on the page (placeInside()): its props other
+     * than its key and its state are not known here.
+     *
+     * @since 0.86.0
+     */
+    public function standsIn(Component $component): bool
+    {
+        return isset($this->standIns[$component]);
     }
 
     /**
@@ -554,6 +588,8 @@ final class ComponentRenderer
         $parent = $this->current();
         if ($parent !== null && $parent !== $component) {
             $this->parents[$component] = $parent;
+        } elseif ($parent === null && isset($this->placedIn[$component])) {
+            $this->parents[$component] = $this->placedIn[$component]; // alone here, inside it on the page
         } elseif ($parent === null) {
             unset($this->parents[$component]); // rendered on its own this time
         }

@@ -156,6 +156,32 @@ final class ComponentStateLifecycleTest extends TestCase
         $this->assertNull($this->renderer->current());
     }
 
+    public function test_a_child_rendered_alone_has_the_parent_it_was_placed_inside(): void
+    {
+        $seen = [];
+        $renderer = $this->renderer;
+        $this->templates['Counter'] = static function (array $c) use (&$seen, $renderer): string {
+            $seen[] = $renderer->parentOf($renderer->current() ?? throw new \LogicException('no current'));
+
+            return '';
+        };
+        $child = $this->make(Counter::class, ['key' => 'child']);
+        $standIn = $this->make(RowsForm::class, []);
+        $this->renderer->placeInside($child, $standIn);
+        $this->renderer->render($child);
+
+        $this->assertSame([$standIn], $seen, 'alone here, inside its parent on the page');
+        $this->assertTrue($this->renderer->standsIn($standIn));
+        $this->assertFalse($this->renderer->standsIn($child));
+
+        // Inside a parent's template, the parent rendering it wins.
+        $this->templates['RowsForm'] = fn (array $c): string => $renderer->render($child);
+        $parent = $this->make(RowsForm::class, []);
+        $this->renderer->render($parent);
+        $this->assertSame($parent, $seen[1]);
+        $this->assertFalse($this->renderer->standsIn($parent));
+    }
+
     public function test_equal_state_renders_equal_html(): void
     {
         $first = $this->make(Counter::class, ['start' => 4, 'key' => 'a']);

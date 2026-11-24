@@ -273,11 +273,22 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
         }
         $options = ActionOptions::from($options, $this->debug, $this->log);
         if ($options->component === 'parent') {
-            $component = $this->renderer?->parentOf($component) ?? throw new \LogicException(sprintf(
+            $child = $component;
+            $component = $this->renderer?->parentOf($child) ?? throw new \LogicException(sprintf(
                 "%s with component: 'parent': %s was rendered on its own, not inside another component's template, so it has no parent.",
                 $what,
-                $component::class,
+                $child::class,
             ));
+            if (!$component->hasState() && $this->renderer->standsIn($component)) {
+                // Rendered alone (its own action, its refresh): the parent is known by class and key
+                // only, and a parent without state needs all its props in its token.
+                throw new \LogicException(sprintf(
+                    "%s with component: 'parent': a child rendered alone can call its parent only when the parent keeps state (#[State]); %s keeps none, so its props are not known when %s renders alone.",
+                    $what,
+                    $component::class,
+                    $child::class,
+                ));
+            }
         }
 
         return [$component, $options, $driver];
@@ -300,10 +311,16 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
         return $component->getComponentId() . ($region === null ? '' : '-' . $region);
     }
 
-    /** The endpoint URL of $action on $component: one token per action and component, whatever the values. */
+    /**
+     * The endpoint URL of $action on $component: one token per action and component, whatever the
+     * values. The token names $component's parent, so a call to the parent still works when the
+     * endpoint renders $component alone.
+     */
     private function url(string $path, Component $component, string $action): string
     {
-        return PreviewUrls::carry($this->endpoint() . '/' . $path . '?token=' . urlencode($this->token->encodeFor($component, $action)));
+        $token = $this->token->encodeFor($component, $action, $this->renderer?->parentOf($component));
+
+        return PreviewUrls::carry($this->endpoint() . '/' . $path . '?token=' . urlencode($token));
     }
 
     /** @param array<string, string> $attributes */

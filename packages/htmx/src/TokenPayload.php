@@ -18,5 +18,9 @@ final readonly class TokenPayload
         public bool $stateCarried = false,
         /** Issued by ComponentToken::encodeFor() for a 0.86 call: its request's values and region are read; an old-style token's never are (since 0.86.0). */
         public bool $neutralCall = false,
+        /** Issued by ComponentToken::encodeFor() for a component rendered inside another: the class of that parent (since 0.86.0). */
+        public ?string $parentClass = null,
+        /** The parent's `key` prop, null for none (since 0.86.0). */
+        public string|int|null $parentKey = null,
     ) {}
 }

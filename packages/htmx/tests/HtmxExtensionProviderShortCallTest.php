@@ -114,6 +114,36 @@ final class ShortPager extends Component
     }
 }
 
+/** A row with its own action; its template also calls its parent's action. */
+final class ShortRow extends Component
+{
+    public function actions(): array
+    {
+        return ['toggle'];
+    }
+
+    public function actionToggle(array $params = []): void {}
+
+    public function getTemplatePath(string $extension = 'twig'): string
+    {
+        return 'ShortRow';
+    }
+}
+
+/** Without #[State]; renders a ShortRow inside. */
+final class ShortList extends Component
+{
+    public function actions(): array
+    {
+        return ['reload'];
+    }
+
+    public function getTemplatePath(string $extension = 'twig'): string
+    {
+        return 'ShortList';
+    }
+}
+
 /** A driver that knows only the old calls (no DrivesComponentActions). */
 final class OldCallsDriver implements HypermediaDriver
 {
@@ -280,6 +310,79 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         $this->assertStringContainsString('#preflow-state--' . $parentId, $attributes['hx-include'], "the parent's state goes with it");
         $this->assertStringNotContainsString($pager->getComponentId(), $attributes['hx-include'] . $attributes['hx-sync']);
         $this->assertStringStartsWith('#' . $parentId . ':', $attributes['hx-sync'], "queued with the parent's other actions");
+    }
+
+    public function test_parent_call_works_in_the_answer_of_the_childs_own_action(): void
+    {
+        $calls = [];
+        CallbackEngine::$templates['ShortRow'] = function () use (&$calls): string {
+            $calls = [
+                'own' => (string) $this->hd->post('toggle'),
+                'refresh' => (string) $this->hd->on('saved'),
+                'parent' => (string) $this->hd->post('search', ['page' => 2], ['component' => 'parent', 'target' => 'results']),
+            ];
+
+            return '<button ' . $calls['own'] . '>t</button><a ' . $calls['parent'] . '>2</a>';
+        };
+        CallbackEngine::$templates['ShortSearch'] = fn (): string => $this->renderer->render($this->component(ShortRow::class, ['key' => 'r1']));
+        $search = $this->component(ShortSearch::class, ['key' => 's']);
+        $parentId = $search->getComponentId();
+        $this->renderer->render($search);
+        $this->assertSame([], $this->errors);
+
+        // The row's own tokens name its parent, for when the endpoint renders the row alone.
+        $own = $this->payload(self::attributes($calls['own'])['hx-post']);
+        $this->assertSame(ShortRow::class, $own->componentClass);
+        $this->assertSame(ShortSearch::class, $own->parentClass);
+        $this->assertSame('s', $own->parentKey);
+        $this->assertSame(ShortSearch::class, $this->payload(self::attributes($calls['refresh'])['hx-post'])->parentClass);
+
+        // The row's action and its refresh, each in a new request: the endpoint renders the row alone.
+        $urls = ['own' => self::attributes($calls['own'])['hx-post'], 'refresh' => self::attributes($calls['refresh'])['hx-post']];
+        foreach ($urls as $which => $url) {
+            $calls['parent'] = '';
+            $this->freshRequest();
+            $response = $this->endpoint()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
+                ->createServerRequest('POST', (string) parse_url($url, PHP_URL_PATH))
+                ->withHeader('HX-Request', 'true')
+                ->withParsedBody(['token' => $this->token($url)]));
+            $this->assertSame(200, $response->getStatusCode());
+            $this->assertSame([], $this->errors, "{$which}: the parent call in the row's answer works");
+
+            $attributes = self::attributes($calls['parent']);
+            $payload = $this->payload($attributes['hx-post']);
+            $this->assertSame(ShortSearch::class, $payload->componentClass, "{$which}: the parent's action");
+            $this->assertSame('search', $payload->action);
+            $this->assertSame(['key' => 's'], $payload->props, "{$which}: the parent's key");
+            $this->assertTrue($payload->stateCarried, "{$which}: the parent's state travels beside the token");
+            $this->assertSame('#' . $parentId . '-results', $attributes['hx-target'], "{$which}: the parent on the page");
+            $this->assertStringContainsString('#preflow-state--' . $parentId, $attributes['hx-include'], "{$which}: the parent's carrier, already on the page, goes with it");
+            $this->assertStringContainsString('<button ', (string) $response->getBody());
+        }
+    }
+
+    public function test_parent_call_from_a_child_rendered_alone_needs_a_parent_with_state(): void
+    {
+        $own = '';
+        CallbackEngine::$templates['ShortRow'] = function () use (&$own): string {
+            $own = (string) $this->hd->post('toggle');
+
+            return '<a ' . $this->hd->post('reload', [], ['component' => 'parent']) . '>r</a>';
+        };
+        CallbackEngine::$templates['ShortList'] = fn (): string => $this->renderer->render($this->component(ShortRow::class, ['key' => 'r1']));
+        $this->renderer->render($this->component(ShortList::class, ['key' => 'l', 'filter' => 'open']));
+        $this->assertSame([], $this->errors, 'on the page the parent is known: all its props');
+
+        $this->freshRequest();
+        $this->endpoint()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
+            ->createServerRequest('POST', '/--component/action')
+            ->withHeader('HX-Request', 'true')
+            ->withParsedBody(['token' => $this->token(self::attributes($own)['hx-post'])]));
+
+        $this->assertCount(1, $this->errors);
+        $this->assertInstanceOf(\LogicException::class, $this->errors[0]);
+        $this->assertStringContainsString('a child rendered alone can call its parent only when the parent keeps state (#[State])', $this->errors[0]->getMessage());
+        $this->assertStringContainsString(ShortList::class, $this->errors[0]->getMessage());
     }
 
     public function test_parent_call_without_a_parent_fails(): void
@@ -557,9 +660,36 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
 
     private function payload(string $url): \Preflow\Htmx\TokenPayload
     {
+        return $this->tokens->decode($this->token($url));
+    }
+
+    private function token(string $url): string
+    {
         parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
 
-        return $this->tokens->decode((string) $query['token']);
+        return (string) $query['token'];
+    }
+
+    /** A new request: a new renderer and hd, as the endpoint has them. */
+    private function freshRequest(): void
+    {
+        $this->errors = [];
+        $driver = new HtmxDriver(new ResponseHeaders(), true);
+        $this->renderer = $this->renderer($driver);
+        $this->hd = new HtmxExtensionProvider($driver, $this->tokens, renderer: $this->renderer, debug: true);
+    }
+
+    private function endpoint(): \Preflow\Htmx\ComponentEndpoint
+    {
+        return new \Preflow\Htmx\ComponentEndpoint(
+            token: $this->tokens,
+            renderer: $this->renderer,
+            driver: new HtmxDriver(new ResponseHeaders(), true),
+            componentFactory: function (string $class, array $props): Component {
+                return $this->component($class, $props);
+            },
+            debug: true,
+        );
     }
 
     /**

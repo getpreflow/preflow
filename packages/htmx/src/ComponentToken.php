@@ -61,20 +61,41 @@ class ComponentToken
      * component without state carries all its props, as encode(). Every token made here is for a
      * 0.86 call (TokenPayload::$neutralCall): only such a request's values and region are read.
      *
+     * With $parent (the component whose template rendered $component), the token also names the
+     * parent's class and key (TokenPayload::$parentClass, $parentKey): when the endpoint renders
+     * $component alone, its template can still call the parent (`component: 'parent'`).
+     *
      * @since 0.86.0
      */
-    public function encodeFor(Component $component, string $action = 'render'): string
+    public function encodeFor(Component $component, string $action = 'render', ?Component $parent = null): string
     {
         $props = $component->getProps();
         $data = ['c' => $component::class, 'p' => $props, 'a' => $action, 't' => $this->issuedAt ??= $this->currentTime()];
         if ($component->hasState()) {
-            $key = $props['key'] ?? null;
-            $data['p'] = $key === null || $key === '' ? [] : ['key' => $key];
+            $data['p'] = self::keyOnly($props);
             $data['s'] = 1;
         }
         $data['n'] = 1;
+        if ($parent !== null) {
+            $data['pc'] = $parent::class;
+            $parentKey = self::keyOnly($parent->getProps())['key'] ?? null;
+            if ($parentKey !== null) {
+                $data['pk'] = $parentKey;
+            }
+        }
 
         return $this->sign($data);
+    }
+
+    /**
+     * @param array<string, mixed> $props
+     * @return array<string, mixed> the `key` of $props alone, or nothing for none
+     */
+    private static function keyOnly(array $props): array
+    {
+        $key = $props['key'] ?? null;
+
+        return $key === null || $key === '' ? [] : ['key' => $key];
     }
 
     public function decode(string $token, ?int $maxAge = null): TokenPayload
@@ -112,6 +133,8 @@ class ComponentToken
             timestamp: $data['t'] ?? 0,
             stateCarried: ($data['s'] ?? 0) === 1,
             neutralCall: ($data['n'] ?? 0) === 1,
+            parentClass: isset($data['pc']) && is_string($data['pc']) ? $data['pc'] : null,
+            parentKey: isset($data['pk']) && (is_string($data['pk']) || is_int($data['pk'])) ? $data['pk'] : null,
         );
     }
 

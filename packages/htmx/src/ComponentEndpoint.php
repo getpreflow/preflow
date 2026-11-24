@@ -87,6 +87,11 @@ final class ComponentEndpoint
             $component->authorize($payload->action, $request);
         }
 
+        // A child rendered alone that sits inside a parent on the page: its template can call the parent.
+        if ($payload->parentClass !== null && $payload->neutralCall) {
+            $this->placeInParent($component, $payload->parentClass, $payload->parentKey);
+        }
+
         // The client swaps the response into another element than the component: no wrapper
         $target = $this->driver->fragmentTarget($request);
         $isFragmentRequest = $target !== null && $target !== ''
@@ -124,6 +129,20 @@ final class ComponentEndpoint
         }
 
         return $this->respond($html);
+    }
+
+    /**
+     * Tells the renderer that $component sits inside a $parentClass with key $parentKey on the
+     * page: a stand-in built from them (no mount(), no state) has the parent's id, so a
+     * `component: 'parent'` call in $component's answer targets the parent on the page.
+     */
+    private function placeInParent(Component $component, string $parentClass, string|int|null $parentKey): void
+    {
+        if (!class_exists($parentClass) || !is_subclass_of($parentClass, Component::class)) {
+            throw new SecurityException("Invalid parent component class [{$parentClass}].");
+        }
+        $parent = ($this->componentFactory)($parentClass, $parentKey === null ? [] : ['key' => $parentKey]);
+        $this->renderer->placeInside($component, $parent);
     }
 
     /** $html with the CSS/JS the render collected and the effects the action asked for. */

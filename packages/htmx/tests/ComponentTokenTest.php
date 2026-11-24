@@ -148,6 +148,27 @@ final class ComponentTokenTest extends TestCase
         $this->assertSame([], $decoded->props);
     }
 
+    public function test_encode_for_names_the_parent_by_class_and_key(): void
+    {
+        $child = new TokenChild();
+        $child->setProps(['key' => 'r1', 'label' => 'x']);
+        $parent = new TokenChild();
+        $parent->setProps(['key' => 7, 'label' => 'y']);
+
+        $with = $this->token->decode($this->token->encodeFor($child, 'render', $parent));
+        $this->assertSame(TokenChild::class, $with->parentClass);
+        $this->assertSame(7, $with->parentKey, "only the parent's key, never its other props");
+
+        $parent->setProps(['label' => 'y']);
+        $keyless = $this->token->decode($this->token->encodeFor($child, 'render', $parent));
+        $this->assertSame(TokenChild::class, $keyless->parentClass);
+        $this->assertNull($keyless->parentKey);
+
+        $alone = $this->token->decode($this->token->encodeFor($child));
+        $this->assertNull($alone->parentClass);
+        $this->assertNull($alone->parentKey);
+    }
+
     public function test_a_component_state_string_is_not_a_valid_token(): void
     {
         $state = (new \Preflow\Components\SignedStateStore('test-secret-key-32-chars-long!!'))
@@ -157,3 +178,5 @@ final class ComponentTokenTest extends TestCase
         $this->token->decode($state, maxAge: 86400);
     }
 }
+
+final class TokenChild extends \Preflow\Components\Component {}

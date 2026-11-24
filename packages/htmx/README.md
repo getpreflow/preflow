@@ -308,8 +308,13 @@ A small, fixed set of words that every driver translates (`Preflow\Core\Http\Hyp
       {{ hd.post('page', { page: next }, { component: 'parent', target: 'results', scroll: 'top' }) }}>…</a>
   ```
 
-  It also works for a child rendered inside an action's answer. A component rendered on its own
-  (by a page template) has no parent; the call then fails.
+  It also works for a child rendered inside an action's answer, and in the child's own answer:
+  when the child's action or `hd.on` refresh renders the child alone, its token named the parent
+  (class and key), so the call still goes to the parent on the page, with the parent's state. That
+  needs a parent that keeps state (`#[State]`): a parent without state needs all its props in its
+  token, and they aren't known when the child renders alone, so the call fails there (a
+  `LogicException`; the child's error boundary shows its fallback). A component rendered on its own
+  (by a page template) has no parent; the call then fails too.
 - The set stays small: a new option comes only when at least two real templates need it.
   Everything else goes through the escape hatch.
 
