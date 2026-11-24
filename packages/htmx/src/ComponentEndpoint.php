@@ -18,6 +18,12 @@ use Preflow\View\AssetCollector;
 
 final class ComponentEndpoint
 {
+    /** The fields of a 0.86 call: read only for a token from ComponentToken::encodeFor(). */
+    private const array NEUTRAL_FIELDS = [
+        DrivesComponentActions::VALUES_FIELD => true,
+        DrivesComponentActions::REGION_FIELD => true,
+    ];
+
     /** The request fields the framework reads itself; never part of an action's params. */
     private const array OWN_FIELDS = [
         'token' => true,
@@ -90,13 +96,15 @@ final class ComponentEndpoint
         $fields = array_replace($queryParams, is_array($bodyParams) ? $bodyParams : []);
         if ($component->hasState()) {
             $html = $this->handleStateful($component, $payload, $fields, $isFragmentRequest);
-        } elseif (array_key_exists(DrivesComponentActions::VALUES_FIELD, $fields) || array_key_exists(DrivesComponentActions::REGION_FIELD, $fields)) {
+        } elseif ($payload->neutralCall) {
             $html = $this->handleNeutralCall($component, $payload->action, $fields, $isFragmentRequest);
         } elseif ($payload->action !== 'render') {
             try {
                 // Resolve state first so the action operates on correct base state
                 $component->resolveState();
-                $params = is_array($bodyParams) ? $bodyParams : [];
+                // An old-style call: the body as in 0.85, without the values and region a 0.86 call
+                // around the element may have given it (htmx merges hx-vals of every ancestor).
+                $params = array_diff_key(is_array($bodyParams) ? $bodyParams : [], self::NEUTRAL_FIELDS);
                 $component->handleAction($payload->action, $params);
                 // Render without re-calling resolveState so action side-effects are preserved
                 $html = $isFragmentRequest
@@ -171,9 +179,10 @@ final class ComponentEndpoint
         if ($carried !== null) {
             $this->renderer->restore($component, $carried); // StateRefused: 403, like a refused token
         }
-        // Checked before the action runs: a bad region or bad values change nothing.
-        $region = $this->requestedRegion($component, $fields[DrivesComponentActions::REGION_FIELD] ?? null);
-        $params = $this->params($fields);
+        // Checked before the action runs: a bad region or bad values change nothing. An old-style
+        // token's request has neither (values or a region there came from a 0.86 call around it).
+        $region = $payload->neutralCall ? $this->requestedRegion($component, $fields[DrivesComponentActions::REGION_FIELD] ?? null) : null;
+        $params = $payload->neutralCall ? $this->params($fields) : array_diff_key($fields, self::OWN_FIELDS);
 
         if ($carried === null) {
             try {
@@ -218,7 +227,7 @@ final class ComponentEndpoint
     }
 
     /**
-     * A 0.86 call (it sends VALUES_FIELD or REGION_FIELD) on a component without #[State]: as an
+     * A 0.86 call (a token from ComponentToken::encodeFor()) on a component without #[State]: as an
      * old-style call (resolveState(), then the action), with the values under the form's fields
      * as the action's params and the region it asked for rendered alone.
      *

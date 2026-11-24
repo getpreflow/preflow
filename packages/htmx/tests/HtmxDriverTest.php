@@ -222,7 +222,7 @@ final class HtmxDriverTest extends TestCase
             'hx-include' => '#preflow-state--Box-1',
             'hx-sync' => '#Box-1:queue all',
             'hx-vals' => '{"_values":"{}","_region":""}',
-            'hx-disinherit' => '*',
+            'hx-disinherit' => 'hx-target hx-swap hx-include hx-sync',
         ], $default, 'one request per component at a time: queued; values and region always explicit');
 
         $swaps = ['outer' => 'outerHTML', 'inner' => 'innerHTML', 'before' => 'beforebegin', 'after' => 'afterend',
@@ -268,7 +268,9 @@ final class HtmxDriverTest extends TestCase
         $form = $this->call(['target' => 'results', 'disable' => 'self'], ['q' => 'bern'], targetId: 'Box-1-results');
         $button = $this->call([], ['page' => 2]);
 
-        $this->assertSame('*', $form['hx-disinherit'], 'its hx-disabled-elt and the rest never reach the button');
+        $this->assertSame('hx-target hx-swap hx-include hx-sync hx-disabled-elt', $form['hx-disinherit'], 'what the form call set never reaches the button; everything else inherits');
+        $withHatch = $this->call(['htmx' => ['hx-confirm' => 'Sure?', 'data-hx-indicator' => '#spin']]);
+        $this->assertSame('hx-target hx-swap hx-include hx-sync hx-confirm hx-indicator', $withHatch['hx-disinherit'], "the escape hatch's names too");
         // htmx merges the hx-vals of every ancestor, the element's own keys first: the button defines both keys.
         $merged = json_decode($button['hx-vals'], true) + json_decode($form['hx-vals'], true);
         $this->assertSame('', $merged['_region'], 'the whole component, not the form\'s region');

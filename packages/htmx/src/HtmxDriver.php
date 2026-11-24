@@ -72,8 +72,9 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
      *
      * Both fields are always written, so a call inside another call's element (a button in a form
      * that calls an action) never sends the outer call's values or region: htmx merges hx-vals of
-     * every ancestor, the element's own keys first. hx-disinherit="*" keeps the element's other
-     * attributes (hx-disabled-elt, hx-confirm…) from reaching the calls inside it.
+     * every ancestor, the element's own keys first. hx-disinherit names the attributes the call set
+     * (hx-target, hx-swap, hx-include, hx-sync, hx-disabled-elt, hx-trigger and the escape hatch's),
+     * so they never reach the elements inside it; everything else inherits as htmx does.
      *
      * Attributes under the `htmx` key are added last, as given, except the ones the call needs
      * for its state and target (hx-include, hx-vals, hx-sync, hx-target): those fail in debug and
@@ -107,7 +108,6 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
                 self::VALUES_FIELD => $call->values === [] ? '{}' : json_encode(self::plain(self::VALUES_FIELD, $call->values), self::JSON),
                 self::REGION_FIELD => $options->region() ?? '',
             ], self::JSON),
-            'hx-disinherit' => '*',
         ];
         if ($options->on !== []) {
             $attributes['hx-trigger'] = implode(', ', array_map(
@@ -137,6 +137,15 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
                 ? (is_bool($value) ? ($value ? 'true' : 'false') : (string) $value)
                 : json_encode($value, self::JSON);
         }
+        // Only what the call set stays on its element: calls (and old-style elements) inside it keep their own.
+        $set = [];
+        foreach (array_keys($attributes) as $name) {
+            $name = strtolower((string) preg_replace('/^data-/i', '', (string) $name));
+            if (str_starts_with($name, 'hx-') && !in_array($name, ['hx-get', 'hx-post', 'hx-vals'], true)) {
+                $set[$name] = true;
+            }
+        }
+        $attributes['hx-disinherit'] = implode(' ', array_keys($set));
 
         return $attributes;
     }

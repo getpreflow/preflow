@@ -46,15 +46,19 @@ final class HtmxAssetsTest extends TestCase
         $assets->requireBusyMarker();
         $head = $collector->renderHead();
         $this->assertTrue($assets->isRequired(), 'the marker needs htmx');
-        $this->assertSame(1, substr_count($head, "preflowBusyMarker('" . \Preflow\Core\Http\Hypermedia\DrivesComponentActions::BUSY_CLASS . "')"));
-        $this->assertStringContainsString('htmx:beforeRequest', $head);
-        $this->assertStringContainsString('htmx:afterRequest', $head);
+        $this->assertStringNotContainsString('preflowBusyMarker', $head, 'not in the head');
+        $body = $collector->renderJsBody();
+        $this->assertSame(1, substr_count($body, "preflowBusyMarker('" . \Preflow\Core\Http\Hypermedia\DrivesComponentActions::BUSY_CLASS . "')"));
+        $this->assertStringContainsString('htmx:beforeSend', $body);
+        $this->assertStringContainsString('htmx:afterRequest', $body);
+        $this->assertStringContainsString('e.detail.elt', $body);
+        $this->assertStringContainsString('window.preflowBusyMarkerOn', $body, 'set up once per page, also when an answer brings it again');
         $this->assertMatchesRegularExpression('/<meta name="htmx-config" content=\'\{"inlineScriptNonce":"[^"]+","inlineStyleNonce":"[^"]+"\}\'>/', $head);
-        $this->assertStringContainsString('function preflowBusyMarker(', $head, 'a named function, not an IIFE (inline scripts are joined)');
+        $this->assertStringContainsString('function preflowBusyMarker(', $body, 'a named function, not an IIFE (inline scripts are joined)');
 
         $never = new AssetCollector(new NonceGenerator());
         (new HtmxAssets($never, 'never'))->requireBusyMarker();
-        $this->assertStringNotContainsString('preflowBusyMarker', $never->renderHead());
+        $this->assertStringNotContainsString('preflowBusyMarker', $never->renderHead() . $never->renderJsBody());
     }
 
     /** $render in a render frame of its own, as every page render runs (0.81). */

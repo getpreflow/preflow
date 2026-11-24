@@ -326,7 +326,7 @@ final class ComponentEndpointStateTest extends TestCase
     public function test_old_style_call_on_a_stateful_component(): void
     {
         // No state on the page (a template written before the component had state): mount() from the token's props.
-        $html = $this->body($this->post(StateCounter::class, 'add', ['start' => 4]));
+        $html = $this->body($this->post(StateCounter::class, 'add', ['start' => 4], oldStyle: true));
         $this->assertSame(['mount', 'add', 'prepare'], Hooks::$calls);
         $this->assertStringContainsString('<p>count 5</p>', $html);
 
@@ -335,13 +335,13 @@ final class ComponentEndpointStateTest extends TestCase
         $id = $this->id(StateCounter::class, null);
         $html = $this->body($this->post(StateCounter::class, 'add', ['start' => 4], [
             '_state' => [$id => $this->carried(StateCounter::class, [], 10)],
-        ]));
+        ], oldStyle: true));
         $this->assertSame(['add', 'prepare'], Hooks::$calls);
         $this->assertStringContainsString('<p>count 11</p>', $html);
 
         // An old-style call swapped into another element: no wrapper, the state still goes back.
         Hooks::$calls = [];
-        $html = $this->body($this->post(StateCounter::class, 'add', ['start' => 1], [], headers: ['HX-Request' => 'true', 'HX-Target' => 'elsewhere']));
+        $html = $this->body($this->post(StateCounter::class, 'add', ['start' => 1], [], headers: ['HX-Request' => 'true', 'HX-Target' => 'elsewhere'], oldStyle: true));
         $this->assertSame(['mount', 'add', 'prepare'], Hooks::$calls);
         $this->assertStringStartsWith('<p>count 2</p>', $html);
         $this->assertStringContainsString('hx-swap-oob="true"', $html);
@@ -487,7 +487,7 @@ final class ComponentEndpointStateTest extends TestCase
 
     public function test_mount_failure_on_an_action_call_is_a_mount_failure(): void
     {
-        $html = $this->body($this->post(FailingMountCounter::class, 'add', ['start' => 1]));
+        $html = $this->body($this->post(FailingMountCounter::class, 'add', ['start' => 1], oldStyle: true));
 
         $this->assertMatchesRegularExpression('#Phase</dt><dd[^>]*>mount</dd>#', $html, 'the boundary names the phase that failed');
         $this->assertStringNotContainsString('_state[', $html);
@@ -518,6 +518,70 @@ final class ComponentEndpointStateTest extends TestCase
 
         $this->assertSame(['q' => 'x', 'token' => $token], Hooks::$params, 'the whole body, as in 0.85');
         $this->assertSame('<div id="' . $this->id(PlainCounter::class, null) . '"><p>plain 2</p><div id="' . $this->id(PlainCounter::class, null) . '-results"><b>results 2</b></div></div>', $html);
+    }
+
+    public function test_an_old_style_call_inside_a_short_call_element_is_handled_as_in_0_85(): void
+    {
+        // htmx gives the nested old-style request the outer 0.86 call's hx-vals: values and a region.
+        $leaked = ['_values' => '{"q":"outer"}', '_region' => 'elsewhere'];
+
+        $token = $this->tokens->encode(PlainCounter::class, ['start' => 2], 'echo');
+        $html = $this->body($this->post(PlainCounter::class, 'echo', ['start' => 2], $leaked + ['q' => 'x'], token: $token));
+        $this->assertSame(['q' => 'x', 'token' => $token], Hooks::$params, 'params as in 0.85, nothing of the outer call');
+        $this->assertStringStartsWith('<div id="' . $this->id(PlainCounter::class, null) . '"><p>plain 2</p>', $html, 'the whole component, no region');
+
+        // The same for a component with state called the old way.
+        Hooks::$params = null;
+        $html = $this->body($this->post(StateCounter::class, 'echo', ['start' => 4], $leaked + ['q' => 'x'], oldStyle: true));
+        $this->assertSame(['q' => 'x'], Hooks::$params);
+        $this->assertStringContainsString('<p>count 4</p>', $html);
+    }
+
+    public function test_an_answer_with_a_short_call_brings_the_busy_marker(): void
+    {
+        $collector = new \Preflow\View\AssetCollector(new \Preflow\View\NonceGenerator());
+        $driver = new HtmxDriver(new ResponseHeaders());
+        $driver->useAssets(new \Preflow\Htmx\HtmxAssets($collector, 'on-demand'));
+        // A template that writes a 0.86 call, as hd.post() will.
+        $engine = new class ($driver) implements TemplateEngineInterface {
+            public function __construct(private readonly HtmxDriver $driver) {}
+
+            public function render(string $template, array $context = []): string
+            {
+                $call = new \Preflow\Core\Http\Hypermedia\ActionCall('post', '/a', $context['componentId'], $context['componentId'], \Preflow\Core\Http\Hypermedia\ActionOptions::from([], true));
+
+                return '<button ' . (string) new \Preflow\Htmx\HtmlAttributes($this->driver->callAttributes($call)) . '>+</button>';
+            }
+
+            public function exists(string $template): bool
+            {
+                return true;
+            }
+
+            public function addFunction(TemplateFunctionDefinition $function): void {}
+
+            public function addGlobal(string $name, mixed $value): void {}
+
+            public function getTemplateExtension(): string
+            {
+                return 'twig';
+            }
+
+            public function addNamespace(string $namespace, string $path): void {}
+        };
+        $renderer = new ComponentRenderer($engine, new ErrorBoundary(debug: DebugLevel::On));
+        $endpoint = new ComponentEndpoint(
+            token: $this->tokens,
+            renderer: $renderer,
+            driver: $driver,
+            componentFactory: static fn (string $class, array $props): Component => new $class(),
+            assetCollector: $collector,
+        );
+        $html = (string) $endpoint->handle((new Psr17Factory())->createServerRequest('POST', '/--component/action')
+            ->withParsedBody(['token' => $this->tokens->encode(PlainCounter::class, [], 'render')])->withHeader('HX-Request', 'true'))->getBody();
+
+        $this->assertStringContainsString('hx-post="/a"', $html);
+        $this->assertStringContainsString("preflowBusyMarker('preflow-busy')", $html, 'the first short call of a page may arrive in an answer');
     }
 
     /** @param array<string, mixed> $props */
@@ -563,7 +627,14 @@ final class ComponentEndpointStateTest extends TestCase
         bool $endpointDebug = false,
         array $headers = ['HX-Request' => 'true'],
         ?string $token = null,
+        bool $oldStyle = false,
     ): ResponseInterface {
+        if ($token === null) {
+            $made = new $class();
+            $made->setProps($props);
+            // A 0.86 call's token (encodeFor()), or an old-style one with all props (encode()).
+            $token = $oldStyle ? $this->tokens->encode($class, $props, $action) : $this->tokens->encodeFor($made, $action);
+        }
         $endpoint = new ComponentEndpoint(
             token: $this->tokens,
             renderer: $renderer ?? $this->renderer,
@@ -577,7 +648,7 @@ final class ComponentEndpointStateTest extends TestCase
             debug: $endpointDebug,
         );
         $request = (new Psr17Factory())->createServerRequest('POST', '/--component/action')
-            ->withParsedBody($body + ['token' => $token ?? $this->tokens->encode($class, $props, $action)]);
+            ->withParsedBody($body + ['token' => $token]);
         foreach ($headers as $name => $value) {
             $request = $request->withHeader($name, $value);
         }

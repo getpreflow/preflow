@@ -58,27 +58,23 @@ class ComponentToken
      * identity): the rest of its props were used by mount() and live on as its state, which the
      * page carries beside the token, and the token says so (TokenPayload::$stateCarried): the
      * endpoint then refuses a request without that state instead of mounting from no props. A
-     * component without state carries all its props, as encode().
+     * component without state carries all its props, as encode(). Every token made here is for a
+     * 0.86 call (TokenPayload::$neutralCall): only such a request's values and region are read.
      *
      * @since 0.86.0
      */
     public function encodeFor(Component $component, string $action = 'render'): string
     {
         $props = $component->getProps();
+        $data = ['c' => $component::class, 'p' => $props, 'a' => $action, 't' => $this->issuedAt ??= $this->currentTime()];
         if ($component->hasState()) {
             $key = $props['key'] ?? null;
-            $props = $key === null || $key === '' ? [] : ['key' => $key];
-
-            return $this->sign([
-                'c' => $component::class,
-                'p' => $props,
-                'a' => $action,
-                't' => $this->issuedAt ??= $this->currentTime(),
-                's' => 1,
-            ]);
+            $data['p'] = $key === null || $key === '' ? [] : ['key' => $key];
+            $data['s'] = 1;
         }
+        $data['n'] = 1;
 
-        return $this->encode($component::class, $props, $action);
+        return $this->sign($data);
     }
 
     public function decode(string $token, ?int $maxAge = null): TokenPayload
@@ -115,6 +111,7 @@ class ComponentToken
             action: $data['a'] ?? 'render',
             timestamp: $data['t'] ?? 0,
             stateCarried: ($data['s'] ?? 0) === 1,
+            neutralCall: ($data['n'] ?? 0) === 1,
         );
     }
 
