@@ -10,6 +10,8 @@ use Preflow\View\NonceGenerator;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\Components\ComponentRenderer;
 use Preflow\Components\ErrorBoundary;
+use Preflow\Components\SignedStateStore;
+use Preflow\Components\StateStore;
 use Preflow\Core\DebugLevel;
 use Preflow\Htmx\ComponentToken;
 use Preflow\Htmx\ResponseHeaders;
@@ -55,6 +57,17 @@ final class TestApplication
             },
             errorBoundary: $errorBoundary,
         );
+
+        // Components with #[State] keep it in a signed store, as the app's renderer does
+        // (Application::enableState: the signed store with the app key).
+        $signed = new SignedStateStore($secretKey);
+        $this->renderer->enableState(function (string $store) use ($signed): StateStore {
+            if ($store !== SignedStateStore::class) {
+                throw new \LogicException(sprintf('TestApplication keeps state in the signed store only; %s needs a booted app.', $store));
+            }
+
+            return $signed;
+        }, $debug->isDebug());
 
         // Register in container
         $this->container->instance(AssetCollector::class, $this->assets);

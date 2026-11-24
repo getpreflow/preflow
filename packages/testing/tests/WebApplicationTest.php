@@ -9,8 +9,11 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\PageCache\PageCacheConfig;
 use Preflow\Core\PageCache\PageCacheMiddleware;
+use Preflow\Testing\Tests\Fixtures\State\Tally;
 use Preflow\Testing\WebApplication;
 use Preflow\Testing\ChecksFrameBalance;
+
+require_once __DIR__ . '/Fixtures/State/Tally.php';
 
 final class WebApplicationTest extends TestCase
 {
@@ -81,5 +84,71 @@ final class WebApplicationTest extends TestCase
         } catch (\PHPUnit\Framework\AssertionFailedError $e) {
             $this->assertStringContainsString('The page cache is off for this app', $e->getMessage());
         }
+    }
+
+    private function statefulApp(): \Preflow\Core\Application
+    {
+        file_put_contents($this->dir . '/config/page_cache.php', "<?php\nreturn ['enabled' => false];\n");
+        file_put_contents($this->dir . '/app/pages/tally.twig', '<html><head></head><body>'
+            . '{{ component(' . json_encode(Tally::class) . ', {start: 4}) }}</body></html>');
+
+        return WebApplication::boot($this->dir);
+    }
+
+    private function page(): string
+    {
+        return (string) $this->statefulApp()->handle(new ServerRequest('GET', 'https://example.com/tally'))->getBody();
+    }
+
+    #[RunInSeparateProcess]
+    public function test_calls_an_action_like_the_page_does(): void
+    {
+        $page = $this->page();
+
+        $response = WebApplication::componentAction(WebApplication::boot($this->dir), $page, Tally::class, 'bump', ['by' => 3]);
+
+        $this->assertSame(200, $response->getStatusCode(), (string) $response->getBody());
+        $this->assertStringContainsString('Tally 7', (string) $response->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_missing_component_lists_the_ones_on_the_page(): void
+    {
+        $page = $this->page();
+        $id = (new Tally())->getComponentId();
+        $other = new Tally();
+        $other->setProps(['key' => 'other']);
+
+        try {
+            WebApplication::componentAction(WebApplication::boot($this->dir), $page, Tally::class, 'bump', [], 'other');
+            $this->fail('A component whose state is not on the page must fail.');
+        } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+            $this->assertStringContainsString($other->getComponentId(), $e->getMessage());
+            $this->assertStringContainsString($id, $e->getMessage(), 'the ones on the page');
+        }
+    }
+
+    #[RunInSeparateProcess]
+    public function test_returned_state_can_be_used_for_the_next_call(): void
+    {
+        $page = $this->page();
+        $id = (new Tally())->getComponentId();
+
+        $first = (string) WebApplication::componentAction(WebApplication::boot($this->dir), $page, Tally::class, 'bump', ['by' => 2])->getBody();
+        $this->assertStringContainsString('Tally 6', $first);
+        $next = WebApplication::stateFrom($first, $id);
+        $this->assertNotNull($next, 'the answer carries the new state');
+        $this->assertNull(WebApplication::stateFrom($page, 'Nope-00000000'));
+
+        // The next page is the answer's state in the old page's place.
+        $again = (string) WebApplication::componentAction(
+            WebApplication::boot($this->dir),
+            '<input type="hidden" id="preflow-state--' . $id . '" name="_state[' . $id . ']" value="' . htmlspecialchars($next) . '">',
+            Tally::class,
+            'bump',
+            ['by' => 5],
+        )->getBody();
+
+        $this->assertStringContainsString('Tally 11', $again);
     }
 }

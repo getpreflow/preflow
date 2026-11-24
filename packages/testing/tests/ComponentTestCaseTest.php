@@ -42,6 +42,8 @@ class BrokenTestComponent extends Component
     }
 }
 
+require_once __DIR__ . '/Fixtures/State/Tally.php';
+
 final class ComponentTestCaseTest extends ComponentTestCase
 {
     public function test_render_returns_result(): void
@@ -65,6 +67,17 @@ final class ComponentTestCaseTest extends ComponentTestCase
         $component->handleAction('increment');
 
         $this->assertSame(1, $component->count);
+    }
+
+    public function test_a_component_with_state_renders(): void
+    {
+        $tally = $this->createComponent(\Preflow\Testing\Tests\Fixtures\State\Tally::class, ['start' => 3]);
+        $this->app->renderer->carryStateWith(static fn (string $id, string $carried): string => '[' . $id . '=' . $carried . ']');
+
+        $result = $this->app->renderer->render($tally);
+
+        $this->assertStringContainsString('[' . $tally->getComponentId() . '=', $result, 'the state is kept in the signed store');
+        $this->assertSame(3, $tally->tally);
     }
 
     public function test_error_boundary_catches(): void

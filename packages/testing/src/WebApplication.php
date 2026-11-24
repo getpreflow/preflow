@@ -4,11 +4,16 @@ declare(strict_types=1);
 
 namespace Preflow\Testing;
 
+use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\Assert;
 use Preflow\Core\Application;
 use Preflow\Core\PageCache\Cacheability;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\PageCache\PageCacheConfig;
+use Preflow\Components\Component;
+use Preflow\Core\Http\Hypermedia\DrivesComponentActions;
+use Preflow\Htmx\ComponentToken;
+use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
@@ -94,5 +99,116 @@ final class WebApplication
     public static function withContext(\Closure $derive, ServerRequestInterface $request): ServerRequestInterface
     {
         return Application::withDerivedContext($request, static fn (RenderContext $ctx): RenderContext => $derive($ctx));
+    }
+
+    /**
+     * Runs $action of a component the way the page does, so a test never reads an address or an
+     * attribute out of the HTML. The action token is made as a short call makes it (signed with
+     * the app's key; a component with state carries its key only), the state is taken from the
+     * page's state carrier of that component, and the request goes to the component endpoint of
+     * $app with the neutral fields: $params as the form fields, the state, and `_values` or
+     * `_region` when $params has them under those names. The component is the one of $componentClass
+     * with $key (as `key` in its props); a component without state needs no carrier.
+     *
+     *     $page = (string) $app->handle($request)->getBody();
+     *     $answer = WebApplication::componentAction(WebApplication::boot($basePath), $page, Tally::class, 'bump', ['by' => 2]);
+     *
+     * For the next call take the new state from the answer (stateFrom()) and put it into the page.
+     *
+     * @param array<string, mixed> $params
+     * @param string $localePrefix the prefix of a localised page ('/de'): its actions run in that locale
+     * @since 0.86.0
+     */
+    public static function componentAction(
+        Application $app,
+        string $pageHtml,
+        string $componentClass,
+        string $action,
+        array $params = [],
+        ?string $key = null,
+        string $localePrefix = '',
+    ): ResponseInterface {
+        $container = $app->container();
+        $component = $container->has($componentClass) ? $container->get($componentClass) : $container->make($componentClass);
+        if (!$component instanceof Component) {
+            Assert::fail(sprintf('%s is no component.', $componentClass));
+        }
+        $component->setProps($key === null || $key === '' ? [] : ['key' => $key]);
+        $id = $component->getComponentId();
+
+        $body = $params;
+        if ($component->hasState()) {
+            $state = self::stateFrom($pageHtml, $id);
+            if ($state === null) {
+                $found = self::carriedIds($pageHtml);
+                Assert::fail(sprintf(
+                    'The page has no state carrier for %s. Components with state on the page: %s.',
+                    $id,
+                    $found === [] ? 'none' : implode(', ', $found),
+                ));
+            }
+            $body[DrivesComponentActions::STATE_FIELD] = [$id => $state];
+        }
+
+        $token = $container->get(ComponentToken::class)->encodeFor($component, $action);
+        $request = (new ServerRequest('POST', 'http://localhost' . $localePrefix . '/--component/action?token=' . urlencode($token)))
+            ->withParsedBody($body)
+            ->withHeader('HX-Request', 'true');
+
+        return $app->handle($request);
+    }
+
+    /**
+     * The state the page, or an answer's state update, carries for $componentId, or null: the
+     * value of its hidden state field (id `preflow-state--{componentId}`).
+     *
+     * @since 0.86.0
+     */
+    public static function stateFrom(string $html, string $componentId): ?string
+    {
+        foreach (self::carriers($html) as $id => $value) {
+            if ($id === $componentId) {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    /** @return list<string> */
+    private static function carriedIds(string $html): array
+    {
+        return array_keys(self::carriers($html));
+    }
+
+    /**
+     * Every state field of $html: component id => state string.
+     *
+     * @return array<string, string>
+     */
+    private static function carriers(string $html): array
+    {
+        if (trim($html) === '') {
+            return [];
+        }
+        $document = new \DOMDocument();
+        $previous = libxml_use_internal_errors(true);
+        try {
+            $document->loadHTML('<?xml encoding="UTF-8">' . $html);
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
+        $found = [];
+        foreach ((new \DOMXPath($document))->query('//input[@type="hidden"]') ?: [] as $input) {
+            \assert($input instanceof \DOMElement);
+            $name = $input->getAttribute('name');
+            $prefix = DrivesComponentActions::STATE_FIELD . '[';
+            if (str_starts_with($name, $prefix) && str_ends_with($name, ']')) {
+                $found[substr($name, strlen($prefix), -1)] = $input->getAttribute('value');
+            }
+        }
+
+        return $found;
     }
 }
