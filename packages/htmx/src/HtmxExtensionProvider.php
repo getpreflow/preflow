@@ -10,6 +10,7 @@ use Preflow\Core\Context\Preview\PreviewUrls;
 use Preflow\Core\Http\Hypermedia\ActionCall;
 use Preflow\Core\Http\Hypermedia\ActionOptions;
 use Preflow\Core\Http\Hypermedia\DrivesComponentActions;
+use Preflow\View\Regions;
 use Preflow\View\SafeHtml;
 use Preflow\View\TemplateFunctionDefinition;
 use Preflow\View\TemplateExtensionProvider;
@@ -93,7 +94,8 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
      * SwapStrategy $swap = SwapStrategy::OuterHTML, array $extra = [])`, as in 0.85. Returns text.
      *
      * @throws \LogicException a short call outside a component's render, without a parent for
-     *         `component: 'parent'`, or under a driver that does not drive component actions
+     *         `component: 'parent'`, `target: 'parent'` in debug (the parent's action is
+     *         `component: 'parent'`), or under a driver that does not drive component actions
      * @throws \InvalidArgumentException bad options (an unknown one in debug)
      */
     public function post(string $action, mixed ...$args): SafeHtml|string
@@ -150,16 +152,13 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
     public function region(string $name): SafeHtml
     {
         $component = $this->rendering(sprintf("hd.region('%s')", $name));
-        if (preg_match('/^[A-Za-z][A-Za-z0-9_-]*$/', $name) !== 1) {
+        if (!Regions::validName($name)) {
             throw new \InvalidArgumentException(sprintf("A region name is a letter, then letters, digits, - and _, not '%s'.", $name));
         }
 
         return new SafeHtml('id="' . htmlspecialchars($component->getComponentId() . '-' . $name, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '"');
     }
 
-    /**
-     * Get the hypermedia library asset tag.
-     */
     /**
      * Marks htmx as needed on this page and returns '' (htmx is inlined by
      * HtmxAssets, never loaded through a tag).
@@ -224,7 +223,7 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
     {
         $what = sprintf("hd.%s('%s')", $method, $action);
         [$component, $options, $driver] = $this->resolve($what, $options);
-        $call = new ActionCall($method, $this->url('action', $component, $action), $component->getComponentId(), $this->targetId($component, $options, $what), $options, $values);
+        $call = new ActionCall($method, $this->url('action', $component, $action), $component->getComponentId(), $this->targetId($component, $options), $options, $values);
 
         return $this->attributes($driver->callAttributes($call));
     }
@@ -239,7 +238,7 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
         $what = sprintf("hd.on('%s')", $event);
         [$component, $options, $driver] = $this->resolve($what, $options);
         // A POST: a component's state goes in the body, whatever its size.
-        $call = new ActionCall('post', $this->url('render', $component, 'render'), $component->getComponentId(), $this->targetId($component, $options, $what), $options);
+        $call = new ActionCall('post', $this->url('render', $component, 'render'), $component->getComponentId(), $this->targetId($component, $options), $options);
 
         return $this->attributes($driver->listenAttributes($call, $event));
     }
@@ -263,12 +262,20 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
                 $driver::class,
             ));
         }
+        if (($options['target'] ?? null) === 'parent') {
+            // The child's action with the parent as target would swap the child's answer over the parent.
+            $message = sprintf("%s with target: 'parent': an action's answer goes into its own component or one of its regions; to run the parent's action use component: 'parent' (its answer replaces the parent).", $what);
+            if ($this->debug) {
+                throw new \LogicException($message);
+            }
+            $this->log !== null ? ($this->log)($message . ' Targets the component itself.') : error_log($message . ' Targets the component itself.');
+            unset($options['target']);
+        }
         $options = ActionOptions::from($options, $this->debug, $this->log);
         if ($options->component === 'parent') {
             $component = $this->renderer?->parentOf($component) ?? throw new \LogicException(sprintf(
-                "%s with component: 'parent' in %s's template: %s was not rendered by another component's template.",
+                "%s with component: 'parent': %s was rendered on its own, not inside another component's template, so it has no parent.",
                 $what,
-                $component::class,
                 $component::class,
             ));
         }
@@ -285,24 +292,12 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
         ));
     }
 
-    /** The id of the element the answer goes into: the component, its parent, or one of its regions. */
-    private function targetId(Component $component, ActionOptions $options, string $what): string
+    /** The id of the element the answer goes into: the component whose action runs, or one of its regions. */
+    private function targetId(Component $component, ActionOptions $options): string
     {
         $region = $options->region();
-        if ($region !== null) {
-            return $component->getComponentId() . '-' . $region;
-        }
-        if ($options->target === 'parent') {
-            $parent = $this->renderer?->parentOf($component) ?? throw new \LogicException(sprintf(
-                "%s with target: 'parent': %s was not rendered by another component's template.",
-                $what,
-                $component::class,
-            ));
 
-            return $parent->getComponentId();
-        }
-
-        return $component->getComponentId();
+        return $component->getComponentId() . ($region === null ? '' : '-' . $region);
     }
 
     /** The endpoint URL of $action on $component: one token per action and component, whatever the values. */

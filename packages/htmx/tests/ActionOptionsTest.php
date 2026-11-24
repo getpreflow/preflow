@@ -45,8 +45,6 @@ final class ActionOptionsTest extends TestCase
         $this->assertSame('outer', $self->swap);
         $this->assertNull($self->region());
 
-        $this->assertSame('outer', ActionOptions::from(['target' => 'parent'], true)->swap);
-        $this->assertNull(ActionOptions::from(['target' => 'parent'], true)->region());
         $this->assertSame('outer', ActionOptions::from(['target' => 'results', 'swap' => 'outer'], true)->swap, 'an explicit swap wins');
     }
 
@@ -75,6 +73,7 @@ final class ActionOptionsTest extends TestCase
     public static function badValues(): iterable
     {
         yield 'target' => [['target' => '1bad']];
+        yield 'target parent' => [['target' => 'parent']]; // the parent's action is component: 'parent'
         yield 'swap' => [['swap' => 'outerHTML']];
         yield 'on' => [['on' => 'keyup']];
         yield 'on list' => [['on' => [['click']]]];

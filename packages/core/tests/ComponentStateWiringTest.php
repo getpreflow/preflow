@@ -162,4 +162,37 @@ final class ComponentStateWiringTest extends TestCase
         $this->assertSame(200, $response->getStatusCode(), (string) $response->getBody());
         $this->assertStringContainsString('<p>Tally 5</p>', (string) $response->getBody(), 'the action ran on the carried state');
     }
+
+    #[RunInSeparateProcess]
+    public function test_the_short_on_refreshes_with_the_carried_state(): void
+    {
+        file_put_contents($this->dir . '/app/pages/index.phtml', '<html><head></head><body>'
+            . '<?= $call("component", ' . var_export(ShortTally::class, true) . ', ["start" => 4]) ?></body></html>');
+        $page = (string) $this->app()->handle((new Psr17Factory())->createServerRequest('GET', 'http://localhost/'))->getBody();
+        $tally = new ShortTally();
+        $tally->setProps(['start' => 4]);
+        $id = $tally->getComponentId();
+        $this->assertSame(1, preg_match('/<button hx-post="([^"]+)"/', $page, $post), $page);
+        $this->assertSame(1, preg_match('/<div hx-post="([^"]+)"[^>]*hx-trigger="tallied from:body"/', $page, $listen), $page);
+        $this->assertStringContainsString('/--component/render?token=', html_entity_decode($listen[1]));
+        $carried = static function (string $html) use ($id): string {
+            preg_match('/name="_state\[' . preg_quote($id, '/') . '\]"[^>]*value="([^"]+)"/', $html, $m);
+
+            return html_entity_decode($m[1] ?? '');
+        };
+
+        // The action bumps the tally to 5; the answer carries the new state.
+        $bumped = (string) $this->app()->handle((new Psr17Factory())->createServerRequest('POST', 'http://localhost' . html_entity_decode($post[1]))
+            ->withParsedBody(['_state' => [$id => $carried($page)], '_values' => '{}', '_region' => ''])
+            ->withHeader('HX-Request', 'true'))->getBody();
+        $this->assertStringContainsString('<p>Tally 5</p>', $bumped);
+
+        // The event refresh with that state renders 5 again (mounting from the props would give 4).
+        $response = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', 'http://localhost' . html_entity_decode($listen[1]))
+            ->withParsedBody(['_state' => [$id => $carried($bumped)], '_values' => '{}', '_region' => ''])
+            ->withHeader('HX-Request', 'true'));
+
+        $this->assertSame(200, $response->getStatusCode(), (string) $response->getBody());
+        $this->assertStringContainsString('<p>Tally 5</p>', (string) $response->getBody(), 'refreshed on the carried state, not mounted again');
+    }
 }

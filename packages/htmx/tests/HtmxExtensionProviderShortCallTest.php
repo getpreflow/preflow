@@ -293,6 +293,68 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         $this->assertStringContainsString('parent', $this->errors[0]->getMessage());
     }
 
+    public function test_target_parent_is_refused(): void
+    {
+        $pager = $this->component(ShortPager::class, []);
+        CallbackEngine::$templates['ShortSearch'] = fn (): string => $this->renderer->render($pager);
+        CallbackEngine::$templates['ShortPager'] = fn (): string => (string) $this->hd->post('next', [], ['target' => 'parent']);
+        $this->renderer->render($this->component(ShortSearch::class, ['key' => 's']));
+
+        // In debug: refused, pointing at component: 'parent'.
+        $this->assertCount(1, $this->errors);
+        $this->assertInstanceOf(\LogicException::class, $this->errors[0]);
+        $this->assertStringContainsString("hd.post('next') with target: 'parent'", $this->errors[0]->getMessage());
+        $this->assertStringContainsString("to run the parent's action use component: 'parent'", $this->errors[0]->getMessage());
+
+        // Outside debug: a log line, and the call targets its own component (never the child's answer over the parent).
+        $logged = [];
+        $hd = new HtmxExtensionProvider(new HtmxDriver(new ResponseHeaders()), $this->tokens, renderer: $this->renderer, log: static function (string $line) use (&$logged): void {
+            $logged[] = $line;
+        });
+        $this->errors = [];
+        $seen = null;
+        CallbackEngine::$templates['ShortPager'] = static function () use ($hd, &$seen): string {
+            $seen = (string) $hd->post('next', [], ['target' => 'parent']);
+
+            return '';
+        };
+        $this->renderer->render($this->component(ShortSearch::class, ['key' => 's']));
+        $this->assertSame([], $this->errors);
+        $this->assertCount(1, $logged);
+        $this->assertStringContainsString("component: 'parent'", $logged[0]);
+        $attributes = self::attributes((string) $seen);
+        $this->assertSame('#' . $pager->getComponentId(), $attributes['hx-target']);
+        $this->assertSame(ShortPager::class, $this->payload($attributes['hx-post'])->componentClass);
+    }
+
+    public function test_short_call_needs_no_escaping_in_blade(): void
+    {
+        $dir = sys_get_temp_dir() . '/preflow_short_call_blade_' . bin2hex(random_bytes(4));
+        mkdir($dir . '/cache', 0777, true);
+        try {
+            file_put_contents($dir . '/ShortBox.blade.php', "<button {{ \$hd->post('add', ['row' => 1]) }}>a</button><ul {{ \$hd->region('rows') }}></ul>"
+                . "<i {{ \$hd->post('add', \$componentClass, \$componentId) }}></i><b {!! \$hd->post('add', \$componentClass, \$componentId) !!}></b>");
+            $blade = new \Preflow\Blade\BladeEngine([$dir], new \Preflow\View\AssetCollector(new \Preflow\View\NonceGenerator()), cachePath: $dir . '/cache');
+            $driver = new HtmxDriver(new ResponseHeaders(), true);
+            $renderer = new ComponentRenderer($blade, new ErrorBoundary(debug: DebugLevel::On, onError: function (\Throwable $e): void {
+                $this->errors[] = $e;
+            }));
+            $blade->addGlobal('hd', new HtmxExtensionProvider($driver, $this->tokens, renderer: $renderer, debug: true));
+
+            $box = $this->component(ShortBox::class, ['key' => 'a']);
+            $html = $renderer->render($box);
+        } finally {
+            exec('rm -rf ' . escapeshellarg($dir));
+        }
+
+        $this->assertSame([], $this->errors);
+        $this->assertStringContainsString('<button hx-post="/--component/action?token=', $html, 'printed as markup by {{ }}');
+        $this->assertStringContainsString('hx-vals="{&quot;_values&quot;:&quot;{\\&quot;row\\&quot;:1}&quot;', $html, 'escaped once, by the helper');
+        $this->assertStringContainsString('<ul id="' . $box->getComponentId() . '-rows"></ul>', $html);
+        $this->assertStringContainsString('<i hx-post=&quot;', $html, 'the old form still returns text, escaped by {{ }}');
+        $this->assertStringContainsString('<b hx-post="/--component/action?token=', $html, 'the old form with {!! !!} as before');
+    }
+
     public function test_short_call_needs_no_raw(): void
     {
         $dir = sys_get_temp_dir() . '/preflow_short_call_' . bin2hex(random_bytes(4));
@@ -386,15 +448,18 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
     public function test_short_call_with_a_driver_without_state_support_fails(): void
     {
         foreach ([new OldCallsDriver(), new LazyHypermediaDriver(static fn (): HypermediaDriver => new OldCallsDriver(), OldCallsDriver::class)] as $driver) {
-            $this->errors = [];
             $hd = new HtmxExtensionProvider($driver, $this->tokens, renderer: $this->renderer, debug: true);
-            CallbackEngine::$templates['ShortBox'] = static fn (): string => (string) $hd->post('add') . (string) $hd->on('saved');
-            $this->renderer->render($this->component(ShortBox::class, []));
+            foreach (['post' => static fn (): string => (string) $hd->post('add'), 'on' => static fn (): string => (string) $hd->on('saved')] as $what => $call) {
+                $this->errors = [];
+                CallbackEngine::$templates['ShortBox'] = $call;
+                $this->renderer->render($this->component(ShortBox::class, []));
 
-            $this->assertCount(1, $this->errors);
-            $this->assertInstanceOf(\LogicException::class, $this->errors[0]);
-            $this->assertStringContainsString(OldCallsDriver::class, $this->errors[0]->getMessage());
-            $this->assertStringContainsString('DrivesComponentActions', $this->errors[0]->getMessage());
+                $this->assertCount(1, $this->errors, $what);
+                $this->assertInstanceOf(\LogicException::class, $this->errors[0]);
+                $this->assertStringContainsString(OldCallsDriver::class, $this->errors[0]->getMessage(), $what);
+                $this->assertStringContainsString('DrivesComponentActions', $this->errors[0]->getMessage(), $what);
+                $this->assertStringContainsString($what === 'on' ? "hd.on('saved')" : "hd.post('add')", $this->errors[0]->getMessage());
+            }
         }
     }
 
@@ -465,9 +530,13 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         $this->assertInstanceOf(SafeHtml::class, $seen);
         $this->assertSame('id="' . htmlspecialchars($box->getComponentId() . '-results', ENT_QUOTES) . '"', (string) $seen);
 
+        $this->assertSame([], $this->errors);
+
         CallbackEngine::$templates['ShortBox'] = fn (): string => (string) $this->hd->region('no region');
         $this->renderer->render($this->component(ShortBox::class, []));
-        $this->assertInstanceOf(\InvalidArgumentException::class, $this->errors[0] ?? null);
+        $this->assertCount(1, $this->errors);
+        $this->assertInstanceOf(\InvalidArgumentException::class, $this->errors[0]);
+        $this->assertStringContainsString("'no region'", $this->errors[0]->getMessage());
     }
 
     /**

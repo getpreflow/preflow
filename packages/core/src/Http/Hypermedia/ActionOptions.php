@@ -37,7 +37,8 @@ final class ActionOptions
     private const string DRIVER_KEY_PATTERN = '/^[a-z][a-z0-9]*$/';
 
     /**
-     * @param string $target `self`, `parent`, or the name of a region of the component
+     * @param string $target `self` or the name of a region of the component (never `parent`: the
+     *        parent's action, which replaces the parent, is `component: 'parent'`)
      * @param string $swap one of SWAPS
      * @param list<string> $on events of EVENTS; empty: the client's default for the element
      * @param int|null $debounce milliseconds after the last typing (`input`) event; other events send at once
@@ -105,8 +106,11 @@ final class ActionOptions
         }
 
         $target = $options['target'] ?? 'self';
-        if (!is_string($target) || ($target !== 'self' && $target !== 'parent' && !self::isName($target))) {
-            throw new \InvalidArgumentException(sprintf("The action option target is 'self', 'parent' or a region name, not %s.", self::shown($target)));
+        if ($target === 'parent') {
+            throw new \InvalidArgumentException("The action option target is 'self' or a region name, not 'parent': to run the parent's action (its answer replaces the parent) use component: 'parent'.");
+        }
+        if (!is_string($target) || ($target !== 'self' && !self::isName($target))) {
+            throw new \InvalidArgumentException(sprintf("The action option target is 'self' or a region name, not %s.", self::shown($target)));
         }
         $swap = $options['swap'] ?? (self::isRegion($target) ? 'inner' : 'outer');
         if (!is_string($swap) || !in_array($swap, self::SWAPS, true)) {
@@ -157,7 +161,7 @@ final class ActionOptions
         return new self($target, $swap, $on, $debounce, $latest, $include, $disable, $scroll, $component, $drivers);
     }
 
-    /** The region the answer goes into, null for `self` and `parent`. */
+    /** The region the answer goes into, null for `self`. */
     public function region(): ?string
     {
         return self::isRegion($this->target) ? $this->target : null;
@@ -186,7 +190,7 @@ final class ActionOptions
 
     private static function isRegion(mixed $target): bool
     {
-        return is_string($target) && $target !== 'self' && $target !== 'parent';
+        return is_string($target) && $target !== 'self';
     }
 
     private static function isName(string $name): bool
