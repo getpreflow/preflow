@@ -40,8 +40,11 @@ final class ActionOptions
      */
     public const array REGION_SWAPS = ['inner', 'append', 'prepend', 'none'];
 
-    /** The events that send the request. `visible`: when the element scrolls into view. */
-    public const array EVENTS = ['click', 'submit', 'change', 'input', 'load', 'visible'];
+    /**
+     * The events that send the request. `visible`: when the element scrolls into view; `blur`
+     * (0.87): when the element loses focus (a field checked once it is left).
+     */
+    public const array EVENTS = ['click', 'submit', 'change', 'input', 'load', 'visible', 'blur'];
 
     /** A region name or a field name: a letter, then letters, digits, - and _ (the rule the view package's Regions class applies). */
     private const string NAME_PATTERN = '/^[A-Za-z][A-Za-z0-9_-]*$/';

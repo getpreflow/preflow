@@ -281,7 +281,7 @@ A small, fixed set of words that every driver translates (`Preflow\Core\Http\Hyp
 |---|---|---|---|
 | `target` | `'self'` (default), a region name | where the answer goes | `hx-target` |
 | `swap` | for `self`: `'outer'` (default), `'delete'`, `'none'`; for a region: `'inner'` (default), `'append'`, `'prepend'`, `'none'` | how it goes in | `hx-swap` |
-| `on` | `'click'`, `'submit'`, `'change'`, `'input'`, `'load'`, `'visible'`, or a list | the events that send the request; none: the element's usual one | `hx-trigger` |
+| `on` | `'click'`, `'submit'`, `'change'`, `'input'`, `'load'`, `'visible'`, `'blur'` (0.87), or a list | the events that send the request; none: the element's usual one. `visible`: the element scrolls into view; `blur`: the field is left (check a field once the visitor moves on) | `hx-trigger` (`visible` is `revealed`) |
 | `debounce` | milliseconds | wait this long after the last typing (`input`) event; clicks and changes go at once. Only with `input` in `on` | `delay:300ms` |
 | `latest` | `true` | a newer request replaces one still running (for searches) | `hx-sync` `replace` |
 | `include` | a region or field name, or a list | extra fields to send | `hx-include` |
@@ -299,6 +299,14 @@ A small, fixed set of words that every driver translates (`Preflow\Core\Http\Hyp
   new items, e.g. "load more": the action renders the next page's rows, and they go below the rows
   already there. Another pair fails in debug and names the swaps that fit; outside debug it logs a
   line and uses the target's default.
+- **Checking a field when it is left.** `on: 'blur'` sends the request when the field loses
+  focus, so a message shows once the visitor moves on, not on every key:
+
+  ```twig
+  <input name="email" value="{{ email }}"
+      {{ hd.post('checkEmail', {}, { target: 'emailHint', on: 'blur', include: 'email' }) }}>
+  ```
+
 - **One action at a time per component.** Requests of one component wait for each other, so two
   quick clicks on "Add another" give two rows. `latest: true` opts into "a newer request cancels
   the older one".

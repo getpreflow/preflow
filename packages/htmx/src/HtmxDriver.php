@@ -27,6 +27,7 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
     /** The neutral events (ActionOptions::EVENTS) as hx-trigger events. */
     private const array EVENTS = [
         'click' => 'click', 'submit' => 'submit', 'change' => 'change', 'input' => 'input', 'load' => 'load', 'visible' => 'revealed',
+        'blur' => 'blur',
     ];
 
     /**

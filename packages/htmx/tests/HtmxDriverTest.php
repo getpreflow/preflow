@@ -239,6 +239,7 @@ final class HtmxDriverTest extends TestCase
 
         $this->assertSame('click, change', $this->call(['on' => ['click', 'change']])['hx-trigger']);
         $this->assertSame('revealed', $this->call(['on' => 'visible'])['hx-trigger']);
+        $this->assertSame('blur', $this->call(['on' => 'blur'])['hx-trigger']);
         $this->assertSame('load', $this->call(['on' => 'load'])['hx-trigger']);
         $this->assertSame('submit', $this->call(['on' => 'submit'])['hx-trigger']);
         $this->assertSame('input delay:300ms, change', $this->call(['on' => ['input', 'change'], 'debounce' => 300])['hx-trigger'], 'debounce delays typing only');
