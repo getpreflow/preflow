@@ -9,11 +9,13 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\PageCache\PageCacheConfig;
 use Preflow\Core\PageCache\PageCacheMiddleware;
+use Preflow\Testing\Tests\Fixtures\State\Greeter;
 use Preflow\Testing\Tests\Fixtures\State\Tally;
 use Preflow\Testing\WebApplication;
 use Preflow\Testing\ChecksFrameBalance;
 
 require_once __DIR__ . '/Fixtures/State/Tally.php';
+require_once __DIR__ . '/Fixtures/State/Greeter.php';
 
 final class WebApplicationTest extends TestCase
 {
@@ -118,12 +120,13 @@ final class WebApplicationTest extends TestCase
         $id = (new Tally())->getComponentId();
         $other = new Tally();
         $other->setProps(['key' => 'other']);
+        $otherId = $other->getComponentId();
 
         try {
             WebApplication::componentAction(WebApplication::boot($this->dir), $page, Tally::class, 'bump', [], 'other');
             $this->fail('A component whose state is not on the page must fail.');
         } catch (\PHPUnit\Framework\AssertionFailedError $e) {
-            $this->assertStringContainsString($other->getComponentId(), $e->getMessage());
+            $this->assertStringContainsString($otherId, $e->getMessage());
             $this->assertStringContainsString($id, $e->getMessage(), 'the ones on the page');
         }
     }
@@ -150,5 +153,43 @@ final class WebApplicationTest extends TestCase
         )->getBody();
 
         $this->assertStringContainsString('Tally 11', $again);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_calls_an_action_of_a_component_without_state_with_its_props(): void
+    {
+        $app = WebApplication::boot($this->dir);
+
+        $answer = (string) WebApplication::componentAction($app, '<p>no carrier needed</p>', Greeter::class, 'greet', ['name' => 'Ada'], props: ['greeting' => 'Hello'])->getBody();
+        $this->assertStringContainsString('Hello, Ada', $answer, 'the prop and the param');
+
+        $keyed = (string) WebApplication::componentAction(WebApplication::boot($this->dir), '', Greeter::class, 'greet', ['name' => 'Bo'], 'k1', props: ['greeting' => 'Hi'])->getBody();
+        $this->assertStringContainsString('Hi, Bo', $keyed);
+        $this->assertStringContainsString('Greeter-', $keyed);
+        $this->assertStringContainsString('-k1', $keyed, 'the key is part of the id');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_localised_page_calls_through_its_prefix(): void
+    {
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name'=>'t','debug'=>0,'engine'=>'twig','key'=>'web-application-test-key-0123456','url'=>'https://example.com','locale'=>'en'];\n");
+        file_put_contents($this->dir . '/config/i18n.php', "<?php\nreturn ['default'=>'en','available'=>['en','de']];\n");
+        $app = WebApplication::boot($this->dir);
+
+        $answer = WebApplication::componentAction($app, '', Greeter::class, 'greet', ['name' => 'Eva'], localePrefix: '/de', props: ['greeting' => 'Hallo']);
+
+        $this->assertSame(200, $answer->getStatusCode(), (string) $answer->getBody());
+        $this->assertStringContainsString('Hallo, Eva', (string) $answer->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_props_are_refused_for_a_component_with_state(): void
+    {
+        try {
+            WebApplication::componentAction($this->statefulApp(), $this->page(), Tally::class, 'bump', props: ['start' => 1]);
+            $this->fail('Props for a component with state must fail.');
+        } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+            $this->assertStringContainsString('has state', $e->getMessage());
+        }
     }
 }

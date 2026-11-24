@@ -117,6 +117,8 @@ final class WebApplication
      *
      * @param array<string, mixed> $params
      * @param string $localePrefix the prefix of a localised page ('/de'): its actions run in that locale
+     * @param array<string, mixed> $props the props of a component without state (its token carries them,
+     *        as the page's token does); a component with state carries its key only, so props fail there
      * @since 0.86.0
      */
     public static function componentAction(
@@ -127,17 +129,22 @@ final class WebApplication
         array $params = [],
         ?string $key = null,
         string $localePrefix = '',
+        array $props = [],
     ): ResponseInterface {
         $container = $app->container();
         $component = $container->has($componentClass) ? $container->get($componentClass) : $container->make($componentClass);
         if (!$component instanceof Component) {
             Assert::fail(sprintf('%s is no component.', $componentClass));
         }
-        $component->setProps($key === null || $key === '' ? [] : ['key' => $key]);
+        $hasState = $component->hasState();
+        if ($hasState && $props !== []) {
+            Assert::fail(sprintf('%s has state: its token carries the key only, so $props has no use; its state comes from the page.', $componentClass));
+        }
+        $component->setProps($props + ($key === null || $key === '' ? [] : ['key' => $key]));
         $id = $component->getComponentId();
 
         $body = $params;
-        if ($component->hasState()) {
+        if ($hasState) {
             $state = self::stateFrom($pageHtml, $id);
             if ($state === null) {
                 $found = self::carriedIds($pageHtml);
@@ -152,8 +159,7 @@ final class WebApplication
 
         $token = $container->get(ComponentToken::class)->encodeFor($component, $action);
         $request = (new ServerRequest('POST', 'http://localhost' . $localePrefix . '/--component/action?token=' . urlencode($token)))
-            ->withParsedBody($body)
-            ->withHeader('HX-Request', 'true');
+            ->withParsedBody($body);
 
         return $app->handle($request);
     }
@@ -166,13 +172,7 @@ final class WebApplication
      */
     public static function stateFrom(string $html, string $componentId): ?string
     {
-        foreach (self::carriers($html) as $id => $value) {
-            if ($id === $componentId) {
-                return $value;
-            }
-        }
-
-        return null;
+        return self::carriers($html)[$componentId] ?? null;
     }
 
     /** @return list<string> */
