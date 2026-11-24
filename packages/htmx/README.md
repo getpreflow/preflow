@@ -95,8 +95,8 @@ render never reaches another render's response. An unknown class throws at boot.
 
 The short call (`hd.post('search', {}, {target: 'results'})`, below) names no client library. A
 driver turns it into its own markup, and it carries a component's state with each action. That is
-the optional interface `Preflow\Core\Http\Hypermedia\DrivesComponentActions`, beside
-`HypermediaDriver` (which is unchanged). `HtmxDriver` implements it.
+the optional interface `Preflow\Core\Http\Hypermedia\DrivesComponentActions`, next to
+`Preflow\Htmx\HypermediaDriver` (which is unchanged). `HtmxDriver` implements it.
 
 A driver without it still serves every old-style call (`hd.post('x', componentClass, componentId,
 props)`). A short call under such a driver fails when the template renders, with a message naming
@@ -255,7 +255,10 @@ A region is a named part of a component's template:
   (`swap: 'inner'`); the region element stays on the page. The new state still reaches the page.
 - A region sees only the component's own variables (its public properties, `componentId`,
   `props`…), not variables set with `{% set %}` (Blade: `@php`) earlier in the template, because it
-  must render the same on its own as in place.
+  must render the same on its own as in place. A Twig component template that `extends` a layout
+  with regions is the one exception that looks like it works: the child's top-level `{% set %}`
+  reaches the layout's regions on a page render, but not when the region renders alone. Don't rely
+  on it.
 - Names are a letter, then letters, digits, `-` and `_`, unique in the template. Regions don't
   nest.
 - Only regions in the component's own template file can be targeted. A region in an included

@@ -455,8 +455,9 @@ request.
 | `ownedHeaders()` (0.81, optional interface `OwnsResponseHeaders`) | `ResponseHeaderHints`: a page or component may not set the headers a client owns (htmx: `HX-*`; a trailing `*` is a prefix), nor its nonce headers. A client without the interface gets only its nonce headers reserved |
 | `pageNonce($request)` | `handle()`: a client that sends its page's CSP nonce back is answered with it (`NonceGenerator::adoptInFrame()`, for that request's frame), so the scripts and styles the response puts into the page pass the page's policy |
 
-Since 0.86 the same namespace holds the optional `DrivesComponentActions` (with `ActionCall` and
-`ActionOptions`): a client that writes the short action calls from neutral options and carries a
+Since 0.86 the same namespace holds the optional `Preflow\Core\Http\Hypermedia\DrivesComponentActions`
+(with `ActionCall` and `ActionOptions`), next to `Preflow\Htmx\HypermediaDriver` (which is
+unchanged): a client that writes the short action calls from neutral options and carries a
 component's state with each action. What a driver implements, and the request fields every driver
 shares (`_state[<componentId>]`, `_values`, `_region`), are in preflow/htmx's README.
 

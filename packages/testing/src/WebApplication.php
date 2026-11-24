@@ -166,7 +166,7 @@ final class WebApplication
 
     /**
      * The state the page, or an answer's state update, carries for $componentId, or null: the
-     * value of its hidden state field (id `preflow-state--{componentId}`).
+     * value of the hidden input named `_state[<componentId>]`.
      *
      * @since 0.86.0
      */
