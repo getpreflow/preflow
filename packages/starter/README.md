@@ -43,7 +43,7 @@ A few more things to know:
 **1. Add a filter.** Let visitors filter by a minimum salary.
 - Add `salaryMin` to `JobFilters` (`app/Jobs/JobFilters.php`). It must never throw: turn anything odd into the default. Add it to `toState()` too: that is what the search component keeps between its actions.
 - Add a `where('salaryTo', '>=', ...)` to `JobSearch::matching()` (`app/Jobs/JobSearch.php`).
-- Add an input to `app/Components/JobSearch/JobSearch.twig`. The page, the HTMX search and `/api/jobs` all pick it up, because they share `JobFilters`.
+- Add an input to `app/Components/JobSearch/JobSearch.twig`. The page, the search as you type (the component's `search` action) and `/api/jobs` all pick it up, because they share `JobFilters`.
 
 **2. Add a field to Job, end to end.** For example `applyUrl`.
 - Add a column in a new migration, `php preflow make:migration`, then `php preflow migrate`.

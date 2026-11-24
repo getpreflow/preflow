@@ -455,6 +455,11 @@ request.
 | `ownedHeaders()` (0.81, optional interface `OwnsResponseHeaders`) | `ResponseHeaderHints`: a page or component may not set the headers a client owns (htmx: `HX-*`; a trailing `*` is a prefix), nor its nonce headers. A client without the interface gets only its nonce headers reserved |
 | `pageNonce($request)` | `handle()`: a client that sends its page's CSP nonce back is answered with it (`NonceGenerator::adoptInFrame()`, for that request's frame), so the scripts and styles the response puts into the page pass the page's policy |
 
+Since 0.86 the same namespace holds the optional `DrivesComponentActions` (with `ActionCall` and
+`ActionOptions`): a client that writes the short action calls from neutral options and carries a
+component's state with each action. What a driver implements, and the request fields every driver
+shares (`_state[<componentId>]`, `_values`, `_region`), are in preflow/htmx's README.
+
 Every HTML answer says `Vary` for the client's request headers (`varyHeaders()`; added by `SecurityHeadersMiddleware`). `Preflow\Core\Http\Vary::add($response, ...$names)` (0.84) is the one `Vary` merge: names already there stay, each is listed once (case-insensitive), several lines become one, and `Vary: *` is left alone. Use it when your own middleware varies a response.
 
 The configured driver (`hypermedia` other than htmx) is built eagerly at the end of the boot, right

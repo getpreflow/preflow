@@ -14,6 +14,10 @@ Requires PHP 8.4+, `ext-sodium`. Twig integration requires `twig/twig ^3.0`.
 
 `ComponentToken` issues HMAC-SHA256-signed tokens that encode a component class, props, and action name. `ComponentEndpoint` handles incoming hypermedia requests through five security layers: token verification → class validation → action whitelist → `Guarded` interface → dispatch. `HtmxDriver` generates `hx-*` attributes and sets response headers. The `hd` Twig global surfaces all of this as template helpers.
 
+Since 0.86 a template calls an action by its name with neutral options (no `hx-` attribute), an
+action can render only one region of its component, and a component's `#[State]` travels with its
+actions: see "Calling actions from a template" below, and preflow/components' README for state.
+
 ## API
 
 ### `HtmxDriver`
@@ -87,14 +91,62 @@ record per render frame (a frame slot, as `ResponseHeaders` does): an effect rec
 render never reaches another render's response. An unknown class throws at boot. Check a driver with
 `Preflow\Testing\Contract\HypermediaDriverContract` (preflow/testing).
 
+### A driver that runs component actions: `DrivesComponentActions` (0.86)
+
+The short call (`hd.post('search', {}, {target: 'results'})`, below) names no client library. A
+driver turns it into its own markup, and it carries a component's state with each action. That is
+the optional interface `Preflow\Core\Http\Hypermedia\DrivesComponentActions`, beside
+`HypermediaDriver` (which is unchanged). `HtmxDriver` implements it.
+
+A driver without it still serves every old-style call (`hd.post('x', componentClass, componentId,
+props)`). A short call under such a driver fails when the template renders, with a message naming
+the driver, so state is never lost silently.
+
+**What a new driver implements:**
+
+| Method | What it returns | htmx |
+|---|---|---|
+| `callAttributes(ActionCall $call): array` | The attributes (name => unescaped value) of an element that runs `$call`: method and URL, target and swap, trigger, the call's values, the target region, and what makes it send the component's state. One request per component at a time: a second waits for the first, or with `latest` replaces it. | `hx-post`, `hx-target`, `hx-swap`, `hx-trigger`, `hx-include` (the state carrier first), `hx-sync`, `hx-vals`, `hx-disabled-elt`, `hx-disinherit` |
+| `listenAttributes(ActionCall $call, string $event): array` | `callAttributes()` with `$event` (fired anywhere on the page by an action's answer) as the only trigger. `$call` is the component's `render` call, with its state. | `hx-trigger="{event} from:body"` |
+| `stateCarrier(string $componentId, string $carried): string` | The markup that carries a component's state on the page. The renderer puts it first inside the component's wrapper. It belongs to no form of the page. | a hidden input `preflow-state--{componentId}` with `form="preflow-no-form"` |
+| `stateUpdate(string $componentId, string $carried): string` | The markup appended to an action's answer so the page's carrier holds the new state, also when the answer replaced only a region. | the carrier with `hx-swap-oob="true"` |
+
+`ActionCall` (core) holds `method` (`get` or `post`), `url` (the endpoint with the action's
+token), `componentId` (whose state goes along), `targetId` (the element the answer goes into: the
+component or one of its regions), `options` (`ActionOptions`, the checked neutral options) and
+`values`. `ActionOptions::driverOptions($name)` gives what a template put under the driver's own
+key (the escape hatch, below); `drivers()` names every key given, so a driver can warn about keys
+not its own.
+
+**The request fields are the same for every driver,** so the component endpoint reads them
+without knowing the client:
+
+| Field | Holds |
+|---|---|
+| `_state[<componentId>]` (`STATE_FIELD`) | the state string the page carries for that component |
+| `_values` (`VALUES_FIELD`) | the values the call sends: one JSON object as a string, or fields `_values[<name>]`. Unsigned input; the fields of the form the element sits in win over them |
+| `_region` (`REGION_FIELD`) | the region the answer renders; empty or missing for the whole component |
+
+**The busy class.** While a request runs, the element that sent it carries the class
+`preflow-busy` (`BUSY_CLASS`), so CSS for "loading" names no client library. A driver adds and
+removes it in its client (htmx: a few lines of script that `HtmxAssets` adds to a page with a
+short call).
+
+`HypermediaDriverContract` checks a driver that implements the interface (and skips those tests
+for one that doesn't): every neutral option and the values change the call's attributes, the
+listen attributes name the event, the carrier and the update hold the state string.
+
 ### `ComponentToken`
 
 ```php
 $token->encode(componentClass: Post::class, props: ['id' => 1], action: 'save'): string
 $token->decode(tokenString: $str, maxAge: 86400): TokenPayload
+$token->encodeFor(component: $component, action: 'save'): string // 0.86: the short call's token
 ```
 
-Tokens are URL-safe base64 strings. `maxAge` (seconds) enforces expiry.
+Tokens are URL-safe base64 strings. `maxAge` (seconds) enforces expiry. `encodeFor()` makes one
+token per action and component, whatever the values: for a component with state it carries only
+the `key` prop (the rest lives on as state).
 
 ### `ComponentEndpoint`
 
@@ -110,6 +162,13 @@ Security layers applied on every request:
 3. `componentClass` is a real subclass of `Component`
 4. `action` is in `$component->actions()` (or `'render'`)
 5. If component implements `Guarded`, `authorize(action, request)` is called
+
+Since 0.86, for a component with `#[State]`: the state the request carries (`_state[<id>]`) is
+restored from its store before the action; tampered, foreign, expired or missing state answers
+403 (`StateRefused`), like a refused token. A region the request names (`_region`) is checked
+against the component's template before the action runs; an unknown one answers 400 (in debug the
+message names the template's regions). The answer carries the new state (`stateUpdate()`), unless
+the action or the render failed.
 
 ### `Guarded` interface
 
@@ -128,23 +187,200 @@ Throw `ForbiddenHttpException` to deny access.
 
 `OuterHTML`, `InnerHTML`, `BeforeBegin`, `AfterBegin`, `BeforeEnd`, `AfterEnd`, `Delete`, `None`
 
-### Twig `hd` global (`HdExtension`)
+### Calling actions from a template (0.86)
 
-Available as `hd` in all templates once the extension is registered.
+#### The problem it solves
+
+Before 0.86 every action call repeated the component's class and id, its props and `| raw`, and
+passed htmx attributes (`'hx-target'`, `'hx-trigger'`, `'hx-sync'`) straight in. Preflow promises
+that htmx is one driver and another can take its place; a template full of `hx-` options breaks
+that promise.
+
+#### The short call
+
+Inside a component's template, call an action by its name, with only the values that change:
 
 ```twig
-{# POST action — renders hx-post, hx-target, hx-swap attributes #}
-<button {{ hd.post('increment', 'App\\Counter', componentId, props) }}>+1</button>
-
-{# GET action #}
-<div {{ hd.get('load', 'App\\Feed', componentId, {page: 2}) }}></div>
-
-{# Listen for a server-sent event and re-render #}
-<div {{ hd.on('itemSaved', 'App\\List', componentId, props) }}></div>
-
-{# HTMX script tag #}
-{{ hd.assetTag() }}
+<button {{ hd.post('addRow') }}>Add another</button>
+<a href="{{ nextUrl }}" {{ hd.post('page', { page: next }, { component: 'parent', target: 'results', scroll: 'top' }) }}>Next</a>
 ```
+
+| Helper | What it prints |
+|---|---|
+| `hd.post(action, values = {}, options = {})` | an element that runs `action` with a POST |
+| `hd.get(action, values = {}, options = {})` | the same with a GET. On a component with state the state then travels in the address, which has a length limit: prefer `post` |
+| `hd.on(event, options = {})` | an element that renders the component again when an action's answer fires `event` |
+| `hd.region(name)` | `id="{componentId}-{name}"`, for an element made by hand that a call targets |
+
+The component is the one whose template is rendering: no class, no id. The helpers return markup
+marked safe, so no `| raw`. In Blade the same calls are `{{ $hd->post('addRow') }}`.
+
+The `values` travel unsigned, with the fields of the form the element sits in (a form field wins
+over a value of the same name). The action gets all of it as `$params`, which is input to check;
+only the component's state is trusted (preflow/components' README, "`$params` is input").
+
+The starter's search form (`packages/starter/app/Components/JobSearch/JobSearch.twig`): a change
+runs `search` at once, typing runs it once the visitor pauses, and only the results come back, so
+the search box keeps its focus:
+
+```twig
+<form class="job-search__form" method="get" action="/jobs"
+    {{ hd.post('search', {}, { target: 'results', on: ['change', 'submit'], latest: true }) }}>
+    <input class="job-search__q" type="search" name="q" value="{{ filters.q }}"
+        {{ hd.post('search', {}, { target: 'results', on: 'input', debounce: 300, latest: true }) }}>
+    …
+    {% region 'results' { class: 'job-search__results' } %}
+        {{ component('JobResults', { jobs: jobs, total: total, view: filters.view }) }}
+        {{ component('Pager', { lastPage: lastPage, query: filters.toQuery() }) }}
+    {% endregion %}
+</form>
+```
+
+#### Regions: an action renders only the part it changes
+
+A region is a named part of a component's template:
+
+```twig
+{% region 'results' { class: 'job-search__results' } %}…{% endregion %}
+```
+
+```blade
+@region('results', ['class' => 'job-search__results']) … @endregion
+```
+
+- On a page it renders in place, inside `<div id="{componentId}-{name}">` with the attributes you
+  give (the attributes may be left out; `id` is the region's own).
+- A call with `target: 'results'` renders **only that region** on the server (after the action
+  and `prepare()`), and the driver swaps it in. By default it replaces the region's contents
+  (`swap: 'inner'`); the region element stays on the page. The new state still reaches the page.
+- A region sees only the component's own variables (its public properties, `componentId`,
+  `props`…), not variables set with `{% set %}` (Blade: `@php`) earlier in the template, because it
+  must render the same on its own as in place.
+- Names are a letter, then letters, digits, `-` and `_`, unique in the template. Regions don't
+  nest.
+- Only regions in the component's own template file can be targeted. A region in an included
+  partial is not found, and a region inside a loop prints the same id many times: keep target
+  regions at the top level of the template.
+- A region named `parent` cannot be targeted (`target: 'parent'` is refused; the parent's action is
+  `component: 'parent'`).
+- A call that names a region the template doesn't have answers 400 (in debug the message lists the
+  regions). So does any region under a template engine without regions (`RendersRegions`).
+- Blade finds `@region` also inside `{{-- --}}` comments and `@verbatim`: don't write the word there
+  with parentheses after it.
+
+A region replaces flags like a `resultsOnly` prop that told the template to print only a part.
+
+#### Options
+
+A small, fixed set of words that every driver translates (`Preflow\Core\Http\Hypermedia\ActionOptions`):
+
+| Option | Values | Meaning | htmx |
+|---|---|---|---|
+| `target` | `'self'` (default), a region name | where the answer goes | `hx-target` |
+| `swap` | `'outer'` (default for `self`), `'inner'` (default for a region), `'before'`, `'after'`, `'prepend'`, `'append'`, `'delete'`, `'none'` | how it goes in | `hx-swap` |
+| `on` | `'click'`, `'submit'`, `'change'`, `'input'`, `'load'`, `'visible'`, or a list | the events that send the request; none: the element's usual one | `hx-trigger` |
+| `debounce` | milliseconds | wait this long after the last typing (`input`) event; clicks and changes go at once. Only with `input` in `on` | `delay:300ms` |
+| `latest` | `true` | a newer request replaces one still running (for searches) | `hx-sync` `replace` |
+| `include` | a region or field name, or a list | extra fields to send | `hx-include` |
+| `disable` | `'self'`, a region name | disabled while the request runs | `hx-disabled-elt` |
+| `scroll` | `'top'` | show the top of the target after the swap | `show:…:top` |
+| `component` | `'parent'` | run the action of the component whose template rendered this one | the parent's token and id |
+
+- A value of the wrong kind always fails. An unknown option fails in debug with the list of known
+  ones; outside debug it is left out with a log line, so the page keeps working. The same goes for
+  `debounce` without `input` in `on`.
+- **One action at a time per component.** Requests of one component wait for each other, so two
+  quick clicks on "Add another" give two rows. `latest: true` opts into "a newer request cancels
+  the older one".
+- **Calling the parent.** `component: 'parent'` runs the parent's action with the parent's state;
+  `target` then names a region of the parent. The starter's `Pager` sits inside `JobSearch`'s
+  `results` region and calls its `page` action:
+
+  ```twig
+  <a class="pager__link" href="{{ nextUrl }}" rel="next"
+      {{ hd.post('page', { page: next }, { component: 'parent', target: 'results', scroll: 'top' }) }}>…</a>
+  ```
+
+  It also works for a child rendered inside an action's answer. A component rendered on its own
+  (by a page template) has no parent; the call then fails.
+- The set stays small: a new option comes only when at least two real templates need it.
+  Everything else goes through the escape hatch.
+
+#### The escape hatch: the driver's own attributes
+
+What the neutral set doesn't cover goes under a key named after the driver:
+
+```twig
+<button {{ hd.post('removeRow', { row: row.id }, { target: 'rows', htmx: { 'hx-confirm': 'Remove this row?' } }) }}>Remove</button>
+```
+
+A template that does this is visibly tied to htmx. Another driver ignores the key (in debug it
+logs one warning per key and request). The attributes are added as given, except the ones the call
+needs for its state and target: `hx-include`, `hx-vals`, `hx-sync` and `hx-target` (also with
+`data-`) fail in debug and are left out otherwise; `hx-disinherit` is always the call's own.
+
+#### The busy class
+
+While an action runs, the element that sent it carries the class `preflow-busy`, so CSS for
+"loading" names no client library. htmx's own `htmx-request` class stays as it was. The starter
+dims its results while a search or a page runs:
+
+```css
+.job-search__form:is(.preflow-busy, :has(.preflow-busy)) .job-search__results { opacity: 0.6; }
+```
+
+#### Quick clicks inside a region that gets replaced
+
+A click on an element inside the part the previous answer replaces is dropped: the element is gone
+before its request could leave. That is safe (a "Remove" by position would hit the wrong row), but
+plan for it:
+
+- Put "Add" buttons **outside** the region they add to.
+- Give rows **stable keys** (an id in the state), not positions.
+
+```twig
+{% region 'rows' %}
+    {% for row in rows %}
+        <input name="rows[{{ row.id }}][name]" value="{{ row.name }}">
+        <button {{ hd.post('removeRow', { row: row.id }, { target: 'rows' }) }}>Remove</button>
+    {% endfor %}
+{% endregion %}
+<button {{ hd.post('addRow', {}, { target: 'rows' }) }}>Add another</button>
+```
+
+```php
+#[State] public array $rows = [];
+
+public function actionRemoveRow(array $params): void
+{
+    $id = (string) ($params['row'] ?? '');   // input: checked against the state
+    $this->rows = array_values(array_filter($this->rows, fn (array $row): bool => $row['id'] !== $id));
+}
+```
+
+#### Refreshing on an event
+
+An action fires an event with `$hd->triggerEvent('cartChanged')`; another component listens:
+
+```twig
+<div {{ hd.on('cartChanged', { target: 'summary' }) }}></div>
+```
+
+The refresh sends the component's state (as a POST), so it renders as the page has it: no
+`mount()` again, only `prepare()`. `target` names a region to render alone; `on` is not allowed
+here (the event is the trigger).
+
+#### Before 0.86
+
+The old form, `hd.post('increment', componentClass, componentId, props, swap, extra)` (and
+`hd.get`, `hd.on('itemSaved', componentClass, componentId, props)`), keeps working unchanged and
+is not deprecated; it is recognised by its second argument, a class name. Components without
+`#[State]` behave exactly as in 0.85 with either form. An old-style call on a component with state
+sends no state: the component mounts from the props in the call again. A short call inside an
+old-style call's element inherits that element's htmx attributes the short call doesn't set
+(`hx-confirm`, `hx-indicator`, …), as any htmx element does.
+
+`{{ hd.assetTag() }}` marks htmx as needed on the page.
 
 #### Locale prefix
 
@@ -187,8 +423,11 @@ final class Counter extends Component
 
 ```twig
 <p>Count: {{ count }}</p>
-<button {{ hd.post('increment', 'App\\Counter', componentId, props) }}>+1</button>
+<button {{ hd.post('increment') }}>+1</button>
 ```
+
+The counter keeps its number in the session because it must outlive the page. A number that only
+this view needs (a page of results, the rows of a form) is `#[State]` instead: see preflow/components.
 
 **Guarded component:**
 
