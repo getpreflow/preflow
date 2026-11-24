@@ -32,7 +32,8 @@ final class FieldCall
     }
 
     /**
-     * The attribute names a call writes, lower-cased, in order.
+     * The attribute names a call writes, in order, as compared: lower-cased and without a leading
+     * `data-` (htmx reads `data-hx-trigger` as `hx-trigger`).
      *
      * @return list<string>
      */
@@ -44,12 +45,12 @@ final class FieldCall
             $matches,
         );
 
-        return array_values(array_unique(array_map('strtolower', $matches[1])));
+        return array_values(array_unique(array_map(self::comparable(...), $matches[1])));
     }
 
     /**
-     * The names in $names that $attrs also writes (an attribute set to false or null is left out, so it
-     * writes nothing).
+     * The names in $names (from attributeNames()) that $attrs also writes, compared the same way. An
+     * attribute set to false or null is left out: it writes nothing.
      *
      * @param list<string>         $names
      * @param array<string, mixed> $attrs
@@ -60,11 +61,21 @@ final class FieldCall
         $written = [];
         foreach ($attrs as $key => $value) {
             if ($value !== false && $value !== null) {
-                $written[strtolower((string) $key)] = true;
+                $written[self::comparable((string) $key)] = true;
             }
         }
 
         return array_values(array_filter($names, static fn (string $name): bool => isset($written[$name])));
+    }
+
+    /**
+     * An attribute name as compared: lower-cased, a leading `data-` dropped.
+     */
+    public static function comparable(string $name): string
+    {
+        $name = strtolower($name);
+
+        return str_starts_with($name, 'data-') ? substr($name, 5) : $name;
     }
 
     private static function describe(mixed $value): string

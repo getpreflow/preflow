@@ -119,6 +119,44 @@ final class FieldCallTest extends TestCase
         }
     }
 
+    public function test_an_uppercase_name_in_the_call_is_a_duplicate_too(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("Field 'email': its call writes hx-trigger, and attrs");
+
+        $this->renderer->renderField('email', [
+            'attrs' => ['hx-trigger' => 'change'],
+            'call'  => new SafeHtml('hx-post="/x" HX-TRIGGER="blur"'),
+        ]);
+    }
+
+    /** htmx reads data-hx-trigger as hx-trigger: either spelling on each side is one attribute. */
+    public function test_data_hx_and_hx_are_the_same_attribute(): void
+    {
+        foreach ([['data-hx-trigger', 'hx-trigger'], ['hx-trigger', 'data-hx-trigger'], ['DATA-HX-TRIGGER', 'data-hx-trigger']] as [$inAttrs, $inCall]) {
+            try {
+                $this->renderer->renderField('email', [
+                    'attrs' => [$inAttrs => 'change'],
+                    'call'  => new SafeHtml('hx-post="/x" ' . $inCall . '="blur"'),
+                ]);
+                $this->fail("refused: {$inAttrs} / {$inCall}");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('its call writes hx-trigger, and attrs', $e->getMessage());
+            }
+        }
+    }
+
+    public function test_bare_and_single_quoted_attributes_in_the_call_are_read(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('its call writes hx-vals, disabled, and attrs');
+
+        $this->renderer->renderField('email', [
+            'attrs' => ['disabled' => true, 'hx-vals' => '{}'],
+            'call'  => new SafeHtml("hx-vals='{\"a\":\"b c\"}' disabled hx-post=\"/x\""),
+        ]);
+    }
+
     public function test_an_attribute_the_field_writes_itself_is_refused_too(): void
     {
         $this->expectException(\InvalidArgumentException::class);
@@ -183,6 +221,18 @@ final class FieldCallTest extends TestCase
                 . 'Pass validate: false on this field to use the call.',
                 $e->getMessage(),
             );
+        }
+
+        // attrs overriding the driver's attributes in another case: the driver's don't count, the
+        // renderer then refuses the user's own duplicate (it names attrs).
+        try {
+            $builder->field('email', [
+                'attrs' => ['HX-Post' => '/mine', 'Data-HX-Trigger' => 'keyup'],
+                'call'  => new SafeHtml('hx-post="/check" hx-trigger="blur"'),
+            ]);
+            $this->fail('refused');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('its call writes hx-post, hx-trigger, and attrs (or the field itself)', $e->getMessage());
         }
 
         $this->assertStringContainsString(
