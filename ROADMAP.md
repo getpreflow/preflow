@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-23 (v0.84.3)
+> Last updated: 2026-11-24 (v0.85.0)
 
 ## Current State
 
-**v0.84.3** — 10293 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.85.0** — 10342 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -525,7 +525,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
-- **Empty start and one-command Folio (v0.85.0):** a new app starts from `preflow/skeleton` and gets an admin with `php preflow folio:install`. Pages that miss the page cache say why. Static analysis runs on PHP 8.4.
+- **Empty start and one-command Folio (v0.85.0, released 2026-11-24):** a new app starts from `preflow/skeleton` and gets an admin with `php preflow folio:install`. Pages that miss the page cache say why. Static analysis runs on PHP 8.4.
   - **Added:** `preflow/skeleton` is the empty starter: one home page in English and German, SQLite, no models, no accounts and no demo data (the old blog demo is gone); it is no longer abandoned. `composer create-project preflow/skeleton mysite` prints no warning.
   - **Added:** `php preflow folio:install [--path=] [--email=] [--name=] [--no-password] [--dry-run]` wires Folio into an app: `config/folio.php`, `auth.php`, `media.php`, `providers.php` and `roles.php`, then `migrate`, `rbac:install`, `folio:extensions:enable rbac`, `folio:extensions:apply`, and the first admin. It adds lines and never rewrites what a developer wrote: a file it cannot edit safely stays byte for byte as it was and the command prints the lines to add (exit 1). Existing values win (a `config/folio.php` that says `/folio` keeps it even with `--path=/admin`). A second run, or one after a crash, only finishes what is missing. A password is only typed (twice, not shown) or piped, never an argument; without a terminal and without `--email` it stops and names `--email` and `--no-password`. With `--email` naming a new address on a site that already has staff, another admin is created.
   - **Added:** `php preflow pages:why <path> [--locale=]` says whether the page cache would store a page and, if not, why: the part of the page that differs per visitor (naming the component or element), or the refusal (cookie, session, signed-in user, status, `Cache-Control`, `Vary`), each with the usual fix. Exit 0 would be cached, 1 would not, 2 usage or no such page. It works with `app.debug` on. The cache's log line now names the differing part too. `WebApplication::assertPageCacheable($app, $path, $locale)` (preflow/testing) asserts it in a test. New in core: `PageCache\Cacheability`.
