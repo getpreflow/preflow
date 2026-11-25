@@ -61,6 +61,10 @@ final class BlockRegistryTest extends TestCase
             'Block "options_from_with_options": field "choice": Select field has both "options" and "options_from"; keep one of them.'];
         yield 'display cards' => [\Preflow\Blocks\Tests\Fixtures\OptionsFromCards::class,
             'Block "options_from_cards": field "choice": Select field option "display": "cards" needs fixed "options" with descriptions; it cannot take "options_from". Use "select" or "radio".'];
+        yield 'a blocks field as the source' => [\Preflow\Blocks\Tests\Fixtures\OptionsFromBlocksSource::class,
+            'Block "options_from_blocks_source": field "choice": Select field option "options_from" names "items", a blocks field; name a field of this block that holds values (such as tags).'];
+        yield 'the select as the only field' => [\Preflow\Blocks\Tests\Fixtures\OptionsFromOnlyField::class,
+            'Block "options_from_only_field": field "choice": Select field option "options_from" names "choices", which is not a field of this block; the block has no other field: add one that holds the values (such as tags) and name it.'];
         yield 'a field that is not a select' => [\Preflow\Blocks\Tests\Fixtures\OptionsFromNotSelect::class,
             'Block "options_from_not_select": field "choice": "options_from" is an option of a select field; make the field type "select" or remove it.'];
     }

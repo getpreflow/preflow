@@ -503,8 +503,9 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         $base = $namePrefix . '[' . $uid . ']';
         $fields = [];
         $summary = '';
-        // Only read when a select takes its options from another field of the block ("options_from", 0.90).
-        $values = $this->hasOptionsFrom($definition) ? $this->blockValues($definition, $block, $locales) : null;
+        // The block's values for every field's editor (FieldContext::$values, 0.90): a select's "options_from"
+        // reads them, and so may any field type. Decoding only, no read.
+        $values = $this->blockValues($definition, $block, $locales);
 
         foreach ($definition->fields as $field => $def) {
             $type = $this->fieldTypes->get($def->type);
@@ -539,7 +540,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
             }
 
             $config = $def->config;
-            if ($def->type === 'select' && ($source = SelectFieldType::sourceField($config)) !== null) {
+            if (($source = SelectFieldType::sourceField($config)) !== null) {
                 // The note while the source has no values names it as the block's editor does.
                 $config['options_from_label'] = self::fieldLabel($definition->fields[$source]->label ?? null, $source);
             }
@@ -594,18 +595,6 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                 'id' => $record['id'] ?? '',
             ], '', '&', PHP_QUERY_RFC3986),
         ]);
-    }
-
-    /** Whether a select of the block takes its options from another field of it ("options_from"). */
-    private function hasOptionsFrom(\Preflow\Blocks\BlockDefinition $definition): bool
-    {
-        foreach ($definition->fields as $field) {
-            if ($field->type === 'select' && SelectFieldType::sourceField($field->config) !== null) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**

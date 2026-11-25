@@ -210,13 +210,18 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
      *
      * @since 0.89
      *
-     * @param array<string, mixed> $config the select's field definition
-     * @param list<string>         $fields the type's field names
+     * @param array<string, mixed>  $config the select's field definition
+     * @param list<string>          $fields the type's field names
+     * @param array<string, string> $types  field => field type key, so a blocks or matrix source is refused (since 0.90)
      * @throws \LogicException otherwise (TypeCatalog reports it at boot)
      */
-    public static function checkOptionsFrom(array $config, string $name, array $fields): void
+    public static function checkOptionsFrom(array $config, string $name, array $fields, array $types = []): void
     {
-        \Preflow\Data\SelectOptionsFrom::check($config, $name, $fields, 'type');
+        $set = [];
+        foreach ($fields as $field) {
+            $set[$field] = $types[$field] ?? '';
+        }
+        \Preflow\Data\SelectOptionsFrom::check($config, $name, $set, 'type');
     }
 
     /**

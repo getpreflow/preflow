@@ -257,6 +257,22 @@ final class SelectFieldTypeTest extends TestCase
         $this->assertSame('', self::bootError(['answers' => ['type' => 'tags'], 'answer' => ['type' => 'select', 'options_from' => 'answers']]));
     }
 
+    public function test_options_from_naming_a_structured_field_or_with_no_other_field_is_a_boot_error(): void
+    {
+        $this->assertSame(
+            'Type "thing": field "answer": Select field option "options_from" names "sections", a blocks field; name a field of this type that holds values (such as tags).',
+            self::bootError(['sections' => ['type' => 'blocks'], 'answer' => ['type' => 'select', 'options_from' => 'sections']]),
+        );
+        $this->assertSame(
+            'Type "thing": field "answer": Select field option "options_from" names "rows", a matrix field; name a field of this type that holds values (such as tags).',
+            self::bootError(['rows' => ['type' => 'matrix'], 'answer' => ['type' => 'select', 'options_from' => 'rows']]),
+        );
+        $this->assertSame(
+            'Type "thing": field "answer": Select field option "options_from" names "answers", which is not a field of this type; the type has no other field: add one that holds the values (such as tags) and name it.',
+            self::bootError(['answer' => ['type' => 'select', 'options_from' => 'answers']]),
+        );
+    }
+
     public function test_options_and_options_from_together_are_a_boot_error(): void
     {
         $this->assertSame(

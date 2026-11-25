@@ -29,6 +29,7 @@ final class BlocksOptionsFromTest extends TestCase
 {
     private const A = 'aaaaaaaaaaaaaaaa';
     private const B = 'bbbbbbbbbbbbbbbb';
+    private const C = 'cccccccccccccccc';
 
     /** @var list<array{0: string, 1: array<string, mixed>}> */
     private array $rendered = [];
@@ -54,7 +55,7 @@ final class BlocksOptionsFromTest extends TestCase
         $fields->register(new StringFieldType());
         $fields->register(new TagsFieldType());
         $fields->register(new SelectFieldType());
-        $blocks = new BlocksFieldType(new BlockRegistry([PollBlock::class]), $fields, 4, new ValidatorFactory(new RuleFactory()), $engine);
+        $blocks = new BlocksFieldType(new BlockRegistry([PollBlock::class, \Preflow\Folio\Tests\Fixtures\Blocks\PollGroupBlock::class]), $fields, 4, new ValidatorFactory(new RuleFactory()), $engine);
         $fields->register($blocks);
 
         return $blocks;
@@ -162,5 +163,37 @@ final class BlocksOptionsFromTest extends TestCase
         ], [], Locales::single('en'));
 
         $this->assertSame(['No choices yet: add values to Possible answers first.'], $errors[self::A . '.answer']);
+    }
+
+    public function test_the_submitted_source_values_replace_the_stored_ones(): void
+    {
+        $type = $this->type();
+        $stored = [['_uid' => self::A, '_block' => 'poll', 'answers' => ['X'], 'answer' => 'X', 'fallback' => 'X']];
+        $built = $type->buildValue([
+            '_order' => [self::A],
+            self::A => ['_block' => 'poll', 'answers' => 'Red, Blue', 'answer' => 'X', 'fallback' => 'Red'],
+        ], $stored, [], new BuildContext(Locales::single('en'), 'en', false));
+
+        $errors = $type->validateBlocks($built, [], Locales::single('en'));
+
+        $this->assertSame([self::A . '.answer' => ['Must be one of: Red, Blue.']], $errors, 'the stored "X" no longer counts');
+    }
+
+    public function test_a_nested_block_uses_its_own_values_in_the_editor_and_on_save(): void
+    {
+        $value = [['_uid' => self::A, '_block' => 'poll_group', 'title' => 'Group', 'polls' => [
+            ['_uid' => self::B, '_block' => 'poll', 'answers' => ['Yes', 'No'], 'answer' => 'No', 'fallback' => 'Yes'],
+            ['_uid' => self::C, '_block' => 'poll', 'answers' => ['Red'], 'answer' => 'Yes', 'fallback' => 'Red'],
+        ]]];
+
+        $cards = $this->cards($value);
+        [, $answerB] = $cards[self::B];
+        $this->assertStringContainsString('<option value="No" selected>No</option>', $answerB);
+        $this->assertStringNotContainsString('Red', $answerB);
+        [, $answerC] = $cards[self::C];
+        $this->assertStringContainsString('<option value="Red">Red</option>', $answerC);
+
+        $errors = $this->type()->validateBlocks($value, [], Locales::single('en'));
+        $this->assertSame([self::A . '.polls.' . self::C . '.answer' => ['Must be one of: Red.']], $errors);
     }
 }

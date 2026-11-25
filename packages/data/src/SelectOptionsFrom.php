@@ -14,13 +14,17 @@ namespace Preflow\Data;
  */
 final class SelectOptionsFrom
 {
+    /** Field types that hold nested entries, not values to choose from: never a source. */
+    public const array STRUCTURED = ['blocks', 'matrix'];
+
     /**
-     * The "options_from" option against the field set's names: it names another field of the set,
-     * the select has no "options" beside it, and it is not shown as "display": "cards".
+     * The "options_from" option against the field set: it names another field of the set that holds
+     * values (not a structured field, STRUCTURED), the select has no "options" beside it, and it is
+     * not shown as "display": "cards".
      *
-     * @param array<string, mixed> $config the select's field definition (or its config)
-     * @param list<string>         $fields the names of the fields beside it (the select's own included)
-     * @param string               $owner  what holds the fields, for the message: "type" or "block"
+     * @param array<string, mixed>  $config the select's field definition (or its config)
+     * @param array<string, string> $fields the fields beside it, name => field type key (the select's own included)
+     * @param string                $owner  what holds the fields, for the message: "type" or "block"
      * @throws \LogicException otherwise, with a message saying what to do instead
      */
     public static function check(array $config, string $name, array $fields, string $owner = 'type'): void
@@ -38,9 +42,15 @@ final class SelectOptionsFrom
         if ($source === $name) {
             throw new \LogicException('Select field option "options_from" must name another field of this ' . $owner . ', not the select itself.');
         }
-        if (!in_array($source, $fields, true)) {
-            $others = array_values(array_filter($fields, static fn (string $field): bool => $field !== $name));
-            throw new \LogicException('Select field option "options_from" names "' . $source . '", which is not a field of this ' . $owner . '; name one of its fields (' . implode(', ', $others) . ').');
+        if (!array_key_exists($source, $fields)) {
+            $others = array_values(array_filter(array_map('strval', array_keys($fields)), static fn (string $field): bool => $field !== $name));
+            throw new \LogicException('Select field option "options_from" names "' . $source . '", which is not a field of this ' . $owner . '; '
+                . ($others === []
+                    ? 'the ' . $owner . ' has no other field: add one that holds the values (such as tags) and name it.'
+                    : 'name one of its fields (' . implode(', ', $others) . ').'));
+        }
+        if (in_array($fields[$source], self::STRUCTURED, true)) {
+            throw new \LogicException('Select field option "options_from" names "' . $source . '", a ' . $fields[$source] . ' field; name a field of this ' . $owner . ' that holds values (such as tags).');
         }
         self::checkDisplay($config);
     }

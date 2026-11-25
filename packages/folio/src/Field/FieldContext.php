@@ -42,9 +42,10 @@ final readonly class FieldContext
         /**
          * The values of the record being edited, field => value: each in the default language, as
          * its own field type reads it (fromStorage(): a tags field's list); the submitted ones when a
-         * failed save shows the form again; null where there is no record (an asset's fields). A
-         * block's fields get the block's own values (since 0.90, when a select of the block has
-         * "options_from"; else null). A select with "options_from" takes its options from here. @since 0.89
+         * failed save shows the form again; null where there is no record (an asset's fields). Every
+         * field of a record gets them, whatever its type; a block's fields get the block's own values
+         * (since 0.90; nested blocks fields left out). A select with "options_from" takes its options
+         * from here. @since 0.89
          *
          * @var array<string, mixed>|null
          */

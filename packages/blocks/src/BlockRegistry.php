@@ -221,7 +221,10 @@ final class BlockRegistry
      */
     private static function checkOptionsFrom(string $key, array $fields): void
     {
-        $names = array_map('strval', array_keys($fields));
+        $types = [];
+        foreach ($fields as $name => $field) {
+            $types[(string) $name] = $field->type;
+        }
         foreach ($fields as $name => $field) {
             if (!array_key_exists('options_from', $field->config)) {
                 continue;
@@ -234,7 +237,7 @@ final class BlockRegistry
                 ));
             }
             try {
-                SelectOptionsFrom::check($field->config, (string) $name, $names, 'block');
+                SelectOptionsFrom::check($field->config, (string) $name, $types, 'block');
             } catch (\LogicException $e) {
                 throw new BlockConfigException(sprintf('Block "%s": field "%s": %s', $key, $name, $e->getMessage()), 0, $e);
             }

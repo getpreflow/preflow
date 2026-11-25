@@ -67,7 +67,8 @@ final class Banner extends BlockComponent
   `#[BlockField(type: 'select', config: ['options_from' => 'answers'])]` beside a `tags` field
   `answers`. Each block uses its own values (two blocks of one type each choose from their own
   list); Folio's editor shows them as the options, and a save accepts only one of the values the
-  same block submits. A name that is not another field of the block, the select itself, both
+  same block submits. A name that is not another field of the block, a `blocks` (or `matrix`)
+  field as the source (it holds blocks, not values), the select itself, both
   `options` and `options_from`, `display: cards`, or `options_from` on a field that is not a
   select fail when the registry is built, naming the block (`Block "poll": field "answer": …`).
 - **`BlockComponent`** fills each `#[BlockField]` property from the block's data before

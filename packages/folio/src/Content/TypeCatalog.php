@@ -272,7 +272,11 @@ final class TypeCatalog
      */
     private static function checkSelect(array $field, string $name, array $fields): void
     {
-        \Preflow\Folio\Field\Types\SelectFieldType::checkOptionsFrom($field, $name, array_map('strval', array_keys($fields)));
+        $types = [];
+        foreach ($fields as $other => $definition) {
+            $types[(string) $other] = is_array($definition) && is_string($definition['type'] ?? null) ? $definition['type'] : 'string';
+        }
+        \Preflow\Folio\Field\Types\SelectFieldType::checkOptionsFrom($field, $name, array_keys($types), $types);
         \Preflow\Folio\Field\Types\SelectFieldType::display($field);
     }
 
