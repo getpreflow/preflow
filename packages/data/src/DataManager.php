@@ -2150,6 +2150,9 @@ final class DataManager
                 // One statement; the record itself is not needed, so it is not read.
                 $row = [$def->idField => $id];
                 $written = $driver->updateWhen($def->table, $id, $condition(), $this->writeValues($def, $set), $def->idField);
+                if (!$written) {
+                    $this->refuseOverflow($def, $set, $condition, $read);
+                }
             } else {
                 $row = $read();
                 $written = $row !== null && $driver->deleteWhen($def->table, $id, $condition(), $def->idField);
@@ -2176,6 +2179,9 @@ final class DataManager
                     // A connection that counts changed rows only (MySQL without FOUND_ROWS): did it match a row it left as it was?
                     [$select, $selectBindings] = $compiler->matches($def->table, $def->idField, $id, Condition::all($when, $unchanged));
                     $written = $driver->rawQuery($select, $selectBindings) !== [];
+                }
+                if (!$written) {
+                    $this->refuseOverflow($def, $set, $condition, $read);
                 }
             } else {
                 $row = $read();
@@ -2208,7 +2214,7 @@ final class DataManager
                 $values = $this->writeValues($def, $set);
                 foreach ($values as $field => $value) {
                     if ($value instanceof Add) {
-                        $values[$field] = $value->applyTo($row[$field] ?? null);
+                        $values[$field] = $value->applyTo($row[$field] ?? null, (string) $field);
                     }
                 }
                 $driver->save($def->table, $id, $this->storageValues($def, array_replace($row, $values)), $def->idField);
@@ -2223,6 +2229,31 @@ final class DataManager
             $driver instanceof ExclusiveWrites => $driver->exclusive($def->table, $step),
             default => $step(),
         };
+    }
+
+    /**
+     * After a compiled conditional update wrote nothing: when the record is there, its condition
+     * holds and an Add would pass the 64-bit whole numbers, the statement refused that sum
+     * (ConditionCompiler), so this throws the OverflowException the PHP path throws. Otherwise
+     * the condition did not hold, and nothing is thrown.
+     *
+     * @param array<string, mixed> $set
+     * @param \Closure(): Condition $condition
+     * @param \Closure(): ?array<string, mixed> $read
+     */
+    private function refuseOverflow(TypeDefinition $def, array $set, \Closure $condition, \Closure $read): void
+    {
+        $adds = array_filter($set, static fn (mixed $value): bool => $value instanceof Add && $value->amount !== 0);
+        if ($adds === []) {
+            return;
+        }
+        $row = $read();
+        if ($row === null || !$condition()->holds($row)) {
+            return;
+        }
+        foreach ($adds as $field => $add) {
+            $add->applyTo($row[$field] ?? null, (string) $field); // throws past the range
+        }
     }
 
     /**

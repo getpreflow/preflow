@@ -58,7 +58,8 @@ final class ConditionalWritesTest extends TestCase
 
         $this->pdo->statements = [];
         $this->assertFalse($this->dm->updateWhen($this->def, 'a', $when, ['uses' => new Add(1)]), 'used up: 2 < 2 does not hold');
-        $this->assertCount(1, $this->pdo->statements, 'an Add always changes its row: no affected row is no match, nothing to confirm');
+        $this->assertCount(2, $this->pdo->statements, 'an Add always changes its row: no affected row is no match; one read tells a refused overflow from it');
+        $this->assertStringStartsWith('SELECT', $this->pdo->statements[1]);
         $this->assertSame(2, (int) $this->dm->findIn($this->def, 'a')?->get('uses'));
 
         $this->pdo->statements = [];
@@ -218,6 +219,17 @@ final class ConditionalWritesTest extends TestCase
         $this->assertSame('5', Condition::text(5));
         $this->assertSame('["a","ü/b"]', Condition::text(['a', 'ü/b']));
         $this->assertSame(1, (new Add(1))->applyTo(null));
+        $this->assertSame(PHP_INT_MAX, (new Add(1))->applyTo(PHP_INT_MAX - 1));
+        $this->assertSame(PHP_INT_MIN, (new Add(-1))->applyTo((string) (PHP_INT_MIN + 1)));
+        foreach ([[PHP_INT_MAX, 1, 'largest'], [(string) PHP_INT_MIN, -1, 'smallest'], [1e20, 1, 'largest']] as [$stored, $amount, $word]) {
+            try {
+                (new Add($amount))->applyTo($stored, 'uses');
+                $this->fail('adding past the 64-bit range was not refused');
+            } catch (\OverflowException $e) {
+                $this->assertStringContainsString('[uses]', $e->getMessage());
+                $this->assertStringContainsString($word . ' whole number the storage keeps', $e->getMessage());
+            }
+        }
         $this->assertSame(2, (new Add(-1))->applyTo('3'));
     }
 }

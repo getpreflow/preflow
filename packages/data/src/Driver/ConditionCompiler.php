@@ -45,6 +45,15 @@ final class ConditionCompiler
         }
         $bindings[] = $id;
         $where = $this->where($when, $bindings);
+        // An Add only while its sum stays a 64-bit whole number (SQLite would store a REAL, MySQL's
+        // strict mode fail): out of range the row is not matched and DataManager says why.
+        foreach ($set as $field => $value) {
+            $bound = $value instanceof Add ? $value->bound() : null;
+            if ($bound !== null) {
+                $where .= ') AND (COALESCE(' . $this->dialect->wholeNumber($this->dialect->quoteIdentifier((string) $field)) . ", 0) {$bound[0]} ?";
+                $bindings[] = $bound[1];
+            }
+        }
 
         return [
             'UPDATE ' . $this->dialect->quoteIdentifier($table) . ' SET ' . implode(', ', $assignments)

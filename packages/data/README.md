@@ -579,7 +579,11 @@ $token = $dm->deleteWhen($tokenType, $hash, Condition::all(
 - `Condition::isEmpty($field)`: null, `''` or no value at all.
 - `Condition::all(...)` and `Condition::any(...)` group them, nested as you like.
 - In the values, `new Add(1)` adds to the stored number (`new Add(-1)` subtracts); no value counts
-  from 0. Everything else is written as `saveType()` writes it. Only the named fields are written.
+  from 0. A sum past the 64-bit whole numbers is refused on every storage (since 0.90):
+  `updateWhen()` throws an `\OverflowException` naming the field and nothing is written (a SQL
+  storage only adds while the sum stays in range, where SQLite would store a REAL and MySQL fail;
+  a refused write costs one read to say why). Everything else is written as `saveType()` writes
+  it. Only the named fields are written.
 - Instead of a `Condition` you may pass a function that returns one: it is built when the check
   runs, so a time it reads is read after a lock was taken, not before waiting for it.
 

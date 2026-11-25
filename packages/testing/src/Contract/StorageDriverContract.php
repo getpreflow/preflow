@@ -117,7 +117,8 @@ use Preflow\Testing\PlainDriver;
  *   check), so both must agree. Text in a field compared as a number reads as
  *   Condition::wholeNumber() reads it (@since 0.90: ' 3', '1e3', '.5', '0x1A' are 0, '-3.7' and
  *   '-3.99999999999999999999' are -3, '' and null none), and a number with decimals or one of 1e15
- *   in a number column reads as its whole part, in comparisons and in an Add.
+ *   in a number column reads as its whole part, in comparisons and in an Add. An Add past the
+ *   64-bit whole numbers throws an OverflowException and writes nothing.
  * - An empty id is '', 0 or '0' (as PdoDriver and DataManager treat it): save() with one inserts
  *   a record whose id the store generates, and lastInsertId() returns it.
  * - Change dates (@since 0.84.0): DataManager writes every record of a type with its change date
@@ -2095,6 +2096,23 @@ abstract class StorageDriverContract extends TestCase
                     $this->assertTrue($dm->updateWhen($def, $id, \Preflow\Data\Condition::all(), [$field => new \Preflow\Data\Add(1)]), "{$what}: Add");
                     $this->assertNumber(($number ?? 0) + 1, ($this->driver->findOne('numtext', $id) ?? [])[$field] ?? null);
                     $this->driver->delete('numtext', $id);
+                }
+                // An Add past the 64-bit whole numbers is refused (since 0.90) and writes nothing.
+                foreach ([[(string) PHP_INT_MAX, 1], [(string) PHP_INT_MIN, -1]] as [$edge, $amount]) {
+                    $this->driver->save('numtext', 'edge', ['uuid' => 'edge', 'n' => $edge, 'v' => null, 'mark' => null]);
+                    try {
+                        $dm->updateWhen($def, 'edge', \Preflow\Data\Condition::all(), ['n' => new \Preflow\Data\Add($amount), 'mark' => 'w']);
+                        $this->fail("{$path}: adding {$amount} to {$edge} was not refused");
+                    } catch (\OverflowException $e) {
+                        $this->assertStringContainsString('[n]', $e->getMessage(), $path);
+                    }
+                    $row = $this->driver->findOne('numtext', 'edge') ?? [];
+                    $this->assertSame($edge, (string) ($row['n'] ?? ''), "{$path}: {$edge} stays");
+                    $this->assertNull($row['mark'] ?? null, "{$path}: nothing written");
+                    $this->assertFalse($dm->updateWhen($def, 'edge', \Preflow\Data\Condition::where('mark', '=', 'x'), ['n' => new \Preflow\Data\Add($amount)]), "{$path}: a condition that does not hold is no overflow");
+                    $this->assertTrue($dm->updateWhen($def, 'edge', \Preflow\Data\Condition::all(), ['n' => new \Preflow\Data\Add(-$amount)]), "{$path}: back towards 0 is fine");
+                    $this->assertSame((string) ((int) $edge - $amount), (string) (($this->driver->findOne('numtext', 'edge') ?? [])['n'] ?? ''), $path);
+                    $this->driver->delete('numtext', 'edge');
                 }
             }
         } finally {
