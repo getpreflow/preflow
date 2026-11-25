@@ -620,7 +620,7 @@ final class AdminControllerTest extends TestCase
         $this->assertSame(302, $res->getStatusCode());
         $this->assertSame('/folio/page', $res->getHeaderLine('Location'));
         $this->assertNull($this->dm->findType('page', 'p1'));
-        $this->assertSame('["p2"]', $this->dm->findType('tag', 't1')?->get('pages'));
+        $this->assertSame(['p2'], $this->dm->findType('tag', 't1')?->get('pages'));
         $this->assertNull($this->dm->findType('tag', 't2')?->get('pages'));
         $this->assertSame([], $session->flashes);
     }
@@ -637,7 +637,7 @@ final class AdminControllerTest extends TestCase
         $this->assertSame('/folio/page', $res->getHeaderLine('Location'));
         $this->assertSame("Can't delete: 1 lock still points here.", $session->flashes['error'] ?? null);
         $this->assertNotNull($this->dm->findType('page', 'p1'));
-        $this->assertSame('["p1","p2"]', $this->dm->findType('tag', 't1')?->get('pages'));
+        $this->assertSame(['p1', 'p2'], $this->dm->findType('tag', 't1')?->get('pages'));
     }
 
     public function test_delete_plan_returns_the_confirmation_as_json(): void

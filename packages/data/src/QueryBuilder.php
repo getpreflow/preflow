@@ -640,7 +640,7 @@ final class QueryBuilder
                 } elseif ($kind === ColumnKind::Boolean) {
                     $boolean[] = $name;
                 }
-                if ($kinds->isRelation($def->type) && ($def->config['multiple'] ?? false)) {
+                if ($kinds->isRelation($def->type) && $kinds->holdsList($def)) { // relation.multiple (0.89: was read from the wrong key)
                     $multiple[] = $name;
                 }
             }

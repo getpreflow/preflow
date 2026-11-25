@@ -356,7 +356,8 @@ final readonly class RenderContext implements \JsonSerializable
     }
 
     /**
-     * A stable string of what changes the data a render reads: locale, reads, viewer, surface and
+     * A stable string of what changes the data a render reads: locale, reads, viewer, surface, the
+     * site's origin ('site=<origin>', since 0.89: two sites never share a memo) and
      * each facet as '{class}={memoKey}' in class order, joined by '|'. Equal contexts give equal
      * keys; the purpose, the policies and the request do not count.
      */
@@ -372,7 +373,7 @@ final readonly class RenderContext implements \JsonSerializable
     /** memoKey() computed afresh. */
     private function computeMemoKey(): string
     {
-        $parts = [$this->locale, $this->reads->key(), $this->viewer->key(), $this->surface->key()];
+        $parts = [$this->locale, $this->reads->key(), $this->viewer->key(), $this->surface->key(), 'site=' . $this->site->origin];
         if ($this->frozen) {
             // A frozen time is a date of its own (0.84): a memo made as of one day never answers another.
             $parts[] = 'at=' . $this->now->getTimestamp() . '.' . $this->now->format('u');

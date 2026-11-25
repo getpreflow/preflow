@@ -1016,6 +1016,32 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   `"options"` is then `{"301": {"label": "Moved for good", "help": "Search engines move the ranking
   over."}}` (each text a string or a map per language; the help translates under
   `{group}.option_helps.{type}.{field}.{value}`). `"display": "select"` keeps a select at any size.
+- `select` with `"options_from": "<field>"` (since 0.89) instead of `"options"`: the options are
+  the values of another field of the same record, usually a `tags` field. Each value is its own
+  label. A new record has no values yet, so the editor shows "Add values to Answers and save"
+  instead of an empty control: fill the source field, save, then choose. A `required` one
+  therefore can only be filled after that first save (make it optional if the record should save
+  in one go).
+
+  ```json
+  "answers": {"type": "tags"},
+  "answer":  {"type": "select", "options_from": "answers", "display": "select"}
+  ```
+
+  On save the chosen value must be one of the source field's values as they are submitted in the
+  same save, so adding "Soup" to `answers` and choosing it works in one go; removing a value that
+  is still chosen shows "Must be one of: …". A source the form does not post (hidden or
+  read-only) counts with its stored values. An empty choice passes unless the field is
+  `required`. A value that is no longer among them stays visible and selected, marked "no longer
+  an option". The source is read by its own field type (a tags field's list, also an old comma
+  text); another field gives a JSON-text list or one text. A translatable source counts with its
+  default-language values only: add choices there. Boot errors: a name that is not another field of the type, both `"options"`
+  and `"options_from"`, `"display": "cards"`, naming the select in `list.filters` or
+  `list.bulk` (its options differ per record), and `options_from` in a block field (not supported
+  in blocks yet). A class-backed type sets it on the class, like `options`. A field type's editor
+  gets the record's values as `FieldContext::$values` (each in the default language, as its field
+  type reads it; null without a record), and a field type whose rules need the record's other
+  fields implements `HasRecordRules`.
 - `relation`: see [Blocks, matrix or relation?](#blocks-matrix-or-relation).
 - `asset`: each chosen file is a card (a 16:10 thumbnail with the focal point, the name, kind and
   size, "No alt text yet" for an image without one); an empty field is a dashed drop zone. A file
@@ -1128,6 +1154,12 @@ A field type says how its value is stored in a SQL column by implementing
 shipped types do (`number` is a number, `boolean` yes/no, `date` an ISO text, `string`, `select`,
 `env` and a single `relation` are short when unique or indexed, otherwise text); a type without it
 is stored as text.
+
+A field type whose value is a list says so: `Preflow\Folio\Field\StoresList` (a marker) when it
+always is (`tags`), `Preflow\Folio\Field\StoresListFor` (`storesList(array $config): bool`, since
+0.89) when only some configs hold one (a multiple `relation` or `asset`). Folio tells the data
+package (`FieldKinds::list()` / `listWhen()`), so a save writes the value as a list in a JSON file
+(`"authors": ["a1", "a2"]`); SQL storage keeps it as JSON text in its column, as before.
 
 A field type's own rules (e.g. `select`'s allowed values) are enforced in addition to
 `validate`. `rules()` returns rule names or `ValidationRule` objects; an object needn't be
@@ -1244,6 +1276,12 @@ The editor saves at most `config/blocks.php` `'max_depth'` levels of blocks in a
   relation posts `name[]` in the rows' order; a single one replaces its record. Without script the
   linked records still post unchanged, but cannot be changed. See
   [`onDelete`](#deleting-ondelete-and-the-summary) for what deleting a target does.
+  A multiple relation (and a multiple `asset` field) stores its ids as a list since 0.89: in a JSON
+  file `["a1", "a2"]`, in SQL the same JSON text as before. A value stored as JSON text before
+  (`"[\"a1\"]"` in a JSON file) is still read, filtered and detached; the file gets the list on
+  its next save, nothing is migrated. A single relation or asset stores one id, as before.
+  Inside a `blocks` field such a value is a list in the block too, so on SQL the blocks' JSON text
+  holds `"photos":["a","b"]` instead of `"photos":"[\"a\",\"b\"]"` after the next save; both read.
 
 ## Singletons
 
@@ -2174,7 +2212,7 @@ final class NoteTweaks
 | `#[TitleBadge]` | `fn(DynamicRecord): list<Badge>\|Badge\|null` | Pills after the record's title in the editor (since 0.84; not on "New"), after a publishing type's Published / Draft pills. Same tones as `#[ListColumn]`'s `Badge`. A method that throws adds nothing. |
 | `#[ListNotice]` | `fn(): ?string` | A notice above the type's list (since 0.53), on the full page only, not on live-search refreshes. The method returns HTML that Folio prints as it is, so it escapes its own content (usually by rendering a Twig template). Use Folio's `.folio-notice` markup, e.g. `<div class="folio-notice" role="status"><p>…</p></div>`, for the spacing (a list of items inside it: `<ul class="folio-notice-list">`, no bullets). Since 0.73 that is the info tone (blue). Add `is-warning` (`<div class="folio-notice is-warning" role="status">`) for the amber warning tone; see [Admin styling](#admin-styling). `null` or `''` shows nothing, and so does a throw. Several add up, grouped by type (in the order the types' customizations were registered), each type's notices in extension name order. |
 | `#[DashboardNotice]` | `fn(): ?string` | A notice above the dashboard's "Needs you" section (since 0.53), the same rules as `#[ListNotice]`. Only called for a user who may view the type (`{type}.view`); the notices are grouped by type (in the order the types' customizations were registered), each type's notices in extension name order. |
-| `#[DashboardItem]` | `fn(): ?Preflow\Folio\Dashboard\NeedsYou` | A card in the dashboard's "Needs you" section (since 0.76): `new NeedsYou($title, text: …, url: …, tone: 'warning', icon: null)`. The title says what waits ("3 orders to ship"), the text how to go about it; the whole card links to `url`, a path relative to the admin prefix (`order?status=open`) or a site path, as `Link` takes it (anything else shows no card). `tone` is `warning`, `info` or `danger` (another tone throws `\InvalidArgumentException` when the `NeedsYou` is built, so the card is not shown); `icon` is an `icons.svg` id (`ui-shield`), `null` the tone's. The method must declare that return type (a boot error otherwise). Only called for a user who may view the type (`{type}.view`); `null` or a throw shows nothing. The cards follow Folio's own (changes not live, not-found addresses, translations to review) in the same order as `#[DashboardNotice]`: by type, in the order the types' customizations were registered, then each type's in extension name order. The section is hidden when there are none, and it loads just after the page (htmx), as does the cache line. Folio's roles extension announces new permissions this way. |
+| `#[DashboardItem]` | `fn(): ?Preflow\Folio\Dashboard\NeedsYou`, or `fn(): array` (a list of them, since 0.89) | A card in the dashboard's "Needs you" section (since 0.76): `new NeedsYou($title, text: …, url: …, tone: 'warning', icon: null)`. The title says what waits ("3 orders to ship"), the text how to go about it; the whole card links to `url`, a path relative to the admin prefix (`order?status=open`) or a site path, as `Link` takes it (anything else shows no card). `tone` is `warning`, `info` or `danger` (another tone throws `\InvalidArgumentException` when the `NeedsYou` is built, so the card is not shown); `icon` is an `icons.svg` id (`ui-shield`), `null` the tone's. The method must declare `?NeedsYou` or `array` (a boot error otherwise). A list shows one card per element, each checked like a single card: an element that is not a `NeedsYou`, or whose `url` is off-site, is dropped and the others stay; `[]` shows nothing. A throw inside the method (a card with an unknown tone, built in the list, included) drops that method's whole list. Only called for a user who may view the type (`{type}.view`); `null` or a throw shows nothing. The cards follow Folio's own (changes not live, not-found addresses, translations to review) in the same order as `#[DashboardNotice]`: by type, in the order the types' customizations were registered, then each type's in extension name order. The section is hidden when there are none, and it loads just after the page (htmx), as does the cache line. Folio's roles extension announces new permissions this way. |
 | `#[FieldPlaceholder(field)]` | `fn(string $locale): ?string` | What the field means while it is empty, as its placeholder in the edit form in the locale being edited (e.g. a standard text from the lang files); it replaces the "falls back to" placeholder of a translatable field. The field must exist on the type (boot error), one per field. |
 | `#[BeforeSave]` | `fn(DynamicRecord): void`, or `fn(DynamicRecord, WriteKind $kind): void` | Before validation; may `set()` fields. Throw `Preflow\Validation\ValidationException` to refuse the save: nothing is stored, the form is shown again with its errors (422). Runs on every save through the `RecordWriter` (see [Saving records in your own code](#drafts-and-publishing)): the form, autosave, each record of the bulk bar's "Set …", both records of a list move, "still correct" of a translation, AI translation (since 0.71), "Add to role" on the new-permissions notice, the detached records of a member's own deletion (a refusal there is logged; the deletion stands), and an app's own writer calls. A method whose second parameter is typed `Preflow\Publishing\WriteKind` gets the kind of write (since 0.71): `Save` (the form, "still correct", "Add to role", an app's own `save()`), `Autosave`, `Bulk`, `Reorder` (a list move), `Translate` (AI translation) or `Detach` (a delete takes the deleted ids out of the record), so a hook can leave some alone, e.g. skip image work on autosave. |
 | `#[SaveRecord]` | `fn(DynamicRecord $record, ?DynamicRecord $previous): void` | Writes the record itself instead of the whole-record save, for types without publishing: after `#[BeforeSave]` and validation, before `#[AfterSave]`, on every save through the `RecordWriter` (the form's create and update, the bulk "Set …", AI translation; a list move's positions too, there without validation). `$previous` is the stored record before the change, `null` for a new one. One per type (a second is a boot error). Throw `ValidationException` to refuse the save (422, the form shown again). Use it when the store has rules a whole-record write would break, e.g. a counter changed at the same time. |

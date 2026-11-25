@@ -31,8 +31,8 @@ final class AggregateQueryTest extends TestCase
     private function aggregate(?\Closure $filter = null): AggregateQuery
     {
         $def = new TypeDefinition('answer', 'answer', 'plain', [
-            'member' => new TypeFieldDefinition('member', 'relation', config: ['target' => 'member']),
-            'tags' => new TypeFieldDefinition('tags', 'relation', config: ['target' => 'tag', 'multiple' => true]),
+            'member' => new TypeFieldDefinition('member', 'relation', config: ['relation' => ['to' => 'member']]),
+            'tags' => new TypeFieldDefinition('tags', 'relation', config: ['relation' => ['to' => 'tag', 'multiple' => true]]),
             'tries' => new TypeFieldDefinition('tries', 'number'),
         ]);
 

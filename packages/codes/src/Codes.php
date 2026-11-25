@@ -6,9 +6,10 @@ namespace Preflow\Codes;
 
 use Preflow\Core\Context\Contexts;
 use Preflow\Core\Throttle\Throttle;
+use Preflow\Data\Add;
+use Preflow\Data\Condition;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
-use Preflow\Data\RunsSql;
 use Preflow\Data\SortDirection;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
@@ -23,7 +24,7 @@ use Preflow\Validation\ValidationException;
  * Codes are the data type "code" (storage alias "codes"); redemptions are the internal table
  * code_redemption on the same storage, never in the TypeCatalog, so neither is exported.
  * redeem() counts a use atomically, so max_uses holds under concurrent redeems
- * (DataManager::updateIf()): on a SQL storage one conditional UPDATE, on another a file lock in
+ * (DataManager::updateWhen()): on a SQL storage one conditional UPDATE, on another a file lock in
  * $lockDir around the read-modify-write. In a preview (writes skipped) a redeem, revoke or
  * update takes the path a visit takes, on every storage, and writes nothing.
  */
@@ -347,24 +348,11 @@ final class Codes
      */
     private function countUse(string $codeId): bool
     {
-        $type = $this->codeType();
-
-        return $this->dm->updateIf(
-            $type,
+        return $this->dm->updateWhen(
+            $this->codeType(),
             $codeId,
-            static function (DynamicRecord $record): ?array {
-                $max = $record->get('max_uses');
-                if ($max !== null && $max !== '' && (int) $record->get('uses') >= (int) $max) {
-                    return null;
-                }
-
-                return ['uses' => (int) $record->get('uses') + 1];
-            },
-            function (RunsSql $driver, TypeDefinition $type) use ($codeId): array {
-                [$table, $id, $uses, $count, $limit] = $this->sql($driver, $type);
-
-                return ["UPDATE {$table} SET {$uses} = {$count} + 1 WHERE {$id} = ? AND ({$limit} IS NULL OR {$count} < {$limit})", [$codeId]];
-            },
+            self::notUsedUp(),
+            ['uses' => new Add(1)],
             fn (\Closure $step): ?DynamicRecord => $this->locked($codeId, $step),
         );
     }
@@ -372,39 +360,27 @@ final class Codes
     /** Gives one counted use back, atomically and never below zero (the undo of countUse()). */
     private function uncountUse(string $codeId): void
     {
-        $this->dm->updateIf(
+        $this->dm->updateWhen(
             $this->codeType(),
             $codeId,
-            static fn (DynamicRecord $record): ?array => (int) $record->get('uses') > 0 ? ['uses' => (int) $record->get('uses') - 1] : null,
-            function (RunsSql $driver, TypeDefinition $type) use ($codeId): array {
-                [$table, $id, $uses, $count] = $this->sql($driver, $type);
-
-                return ["UPDATE {$table} SET {$uses} = {$count} - 1 WHERE {$id} = ? AND {$count} > 0", [$codeId]];
-            },
+            Condition::where('uses', '>', 0),
+            ['uses' => new Add(-1)],
             fn (\Closure $step): ?DynamicRecord => $this->locked($codeId, $step),
         );
     }
 
     /**
-     * Quoted names and the numeric expressions for the use counting UPDATEs, from the driver's
-     * Dialect: TEXT on tables made before typed columns (holding '' or '3.0'), numbers after, so
-     * both are read as whole numbers, never compared as strings or with ''. A max of NULL or ''
-     * is no limit; uses of NULL or '' count as 0.
-     *
-     * @return array{0: string, 1: string, 2: string, 3: string, 4: string} table, id, uses, count, limit (NULL for none)
+     * The code has a use left: no max uses (NULL or ''), or fewer uses than it. Both columns are
+     * read as whole numbers (TEXT on tables made before typed columns, holding '' or '3.0');
+     * uses without a value count as 0.
      */
-    private function sql(RunsSql $driver, TypeDefinition $type): array
+    private static function notUsedUp(): Condition
     {
-        $dialect = $driver->dialect();
-        $uses = $dialect->quoteIdentifier('uses');
-
-        return [
-            $dialect->quoteIdentifier($type->table),
-            $dialect->quoteIdentifier($type->idField),
-            $uses,
-            'COALESCE(' . $dialect->wholeNumber($uses) . ', 0)',
-            $dialect->wholeNumber($dialect->quoteIdentifier('max_uses')),
-        ];
+        return Condition::any(
+            Condition::isEmpty('max_uses'),
+            Condition::whereField('uses', '<', 'max_uses', numbers: true),
+            Condition::all(Condition::isEmpty('uses'), Condition::where('max_uses', '>', 0)),
+        );
     }
 
     /**
@@ -441,7 +417,7 @@ final class Codes
             return;
         }
         $at = ($this->clock)()->format(DATE_ATOM);
-        $changed = $this->writeColumns($codeId, ['revoked_at' => $at], static fn (DynamicRecord $r): bool => (string) ($r->get('revoked_at') ?? '') === '');
+        $changed = $this->writeColumns($codeId, ['revoked_at' => $at], Condition::isEmpty('revoked_at'));
         if ($changed) {
             $this->dispatch(CodeEvents::REVOKED, $codeId, null);
         }
@@ -449,45 +425,19 @@ final class Codes
 
     /**
      * Sets columns of a code without writing the rest of the record back, so a use counted at
-     * the same time is never overwritten: one UPDATE on a SQL storage, the JSON driver's
-     * read-modify-write under the code's lock. $applies decides on the fresh record whether to write.
-     *
-     * On SQL, $extra (given the driver and type) adds conditions to the UPDATE's WHERE, so the
-     * checks made on a read are part of the write.
+     * the same time is never overwritten, and only while $when holds on the stored code: one
+     * UPDATE on a SQL storage, the read, check and write under the code's lock on another.
      *
      * @param array<string, string|int|null> $values column => value
-     * @param \Closure(DynamicRecord): bool $applies
-     * @param (\Closure(RunsSql, TypeDefinition): array{0: string, 1: list<mixed>})|null $extra SQL condition (starting with " AND ") and its parameters
+     * @param Condition|\Closure $when a Condition, or a function that builds it when the write checks it
      */
-    private function writeColumns(string $codeId, array $values, \Closure $applies, ?\Closure $extra = null): bool
+    private function writeColumns(string $codeId, array $values, Condition|\Closure $when): bool
     {
-        return $this->dm->updateIf(
+        return $this->dm->updateWhen(
             $this->codeType(),
             $codeId,
-            static fn (DynamicRecord $record): ?array => $applies($record) ? $values : null,
-            static function (RunsSql $driver, TypeDefinition $type) use ($codeId, $values, $extra): array {
-                $dialect = $driver->dialect();
-                $table = $dialect->quoteIdentifier($type->table);
-                $id = $dialect->quoteIdentifier($type->idField);
-                $set = [];
-                foreach (array_keys($values) as $column) {
-                    $set[] = $dialect->quoteIdentifier($column) . ' = ?';
-                }
-                $guard = '';
-                if (array_key_exists('revoked_at', $values)) {
-                    $col = $dialect->quoteIdentifier('revoked_at');
-                    $guard = " AND ({$col} IS NULL OR {$col} = '')";
-                }
-
-                $params = [...array_values($values), $codeId];
-                if ($extra !== null) {
-                    [$sql, $more] = $extra($driver, $type);
-                    $guard .= $sql;
-                    array_push($params, ...$more);
-                }
-
-                return ['UPDATE ' . $table . ' SET ' . implode(', ', $set) . " WHERE {$id} = ?{$guard}", $params];
-            },
+            $when,
+            $values,
             fn (\Closure $step): ?DynamicRecord => $this->locked($codeId, $step),
         );
     }
@@ -594,33 +544,11 @@ final class Codes
         $written = $this->writeColumns(
             $codeId,
             ['expires_at' => self::storeTime($expiresAt)],
-            static fn (DynamicRecord $fresh): bool => (string) ($fresh->get('revoked_at') ?? '') === ''
-                && ($fresh->get('max_uses') === null || $fresh->get('max_uses') === '' || (int) $fresh->get('uses') < (int) $fresh->get('max_uses')),
             self::liveGuard(null),
         );
         if (!$written) {
             throw new CodeRefused(CodeRefused::CHANGED, 'The code changed meanwhile; reload it and try again.');
         }
-    }
-
-    /**
-     * The conditions of a write to a code that is still live: not revoked, not used up and, with
-     * $maxUses, the uses so far within it (see writeColumns()).
-     *
-     * @return \Closure(RunsSql, TypeDefinition): array{0: string, 1: list<mixed>}
-     */
-    private static function liveGuard(?int $maxUses): \Closure
-    {
-        return static function (RunsSql $driver, TypeDefinition $type) use ($maxUses): array {
-            $dialect = $driver->dialect();
-            $uses = $dialect->quoteIdentifier('uses');
-            $count = 'COALESCE(' . $dialect->wholeNumber($uses) . ', 0)';
-            $limit = $dialect->wholeNumber($dialect->quoteIdentifier('max_uses'));
-            $revoked = $dialect->quoteIdentifier('revoked_at');
-            $sql = " AND ({$revoked} IS NULL OR {$revoked} = '') AND ({$limit} IS NULL OR {$count} < {$limit})";
-
-            return $maxUses === null ? [$sql, []] : [$sql . " AND {$count} <= ?", [$maxUses]];
-        };
     }
 
     /**
@@ -635,8 +563,7 @@ final class Codes
         $written = $this->writeColumns(
             $codeId,
             ['label' => (string) $label, 'expires_at' => $expiresAt === null ? null : self::storeTime($expiresAt), 'max_uses' => $maxUses],
-            fn (DynamicRecord $fresh): bool => $this->updateRefusal($fresh, $expiresAt, $maxUses) === null,
-            self::liveGuard($maxUses),
+            fn (): Condition => $this->updatable($expiresAt, $maxUses),
         );
         if (!$written) {
             throw new CodeRefused(CodeRefused::CHANGED, 'The code changed meanwhile; reload it and try again.');
@@ -679,6 +606,39 @@ final class Codes
         }
 
         return null;
+    }
+
+    /**
+     * The condition of a write to a code that is still live: not revoked, not used up and, with
+     * $maxUses, the uses so far within it (uses without a value are 0).
+     */
+    private static function liveGuard(?int $maxUses): Condition
+    {
+        $conditions = [Condition::isEmpty('revoked_at'), self::notUsedUp()];
+        if ($maxUses !== null) {
+            $within = Condition::where('uses', '<=', $maxUses);
+            $conditions[] = $maxUses >= 0 ? Condition::any(Condition::isEmpty('uses'), $within) : $within;
+        }
+
+        return Condition::all(...$conditions);
+    }
+
+    /**
+     * What updateRefusal() checks, as the condition of the write: the code is live with $maxUses
+     * (liveGuard()), keeps an expiry in the past it already has, and has no recipient unless
+     * $maxUses is 1. Built when the write checks it ("now" read then).
+     */
+    private function updatable(?\DateTimeImmutable $expiresAt, ?int $maxUses): Condition
+    {
+        $conditions = [self::liveGuard($maxUses)];
+        if ($expiresAt !== null && $expiresAt <= ($this->clock)()) {
+            $conditions[] = Condition::where('expires_at', '=', self::storeTime($expiresAt));
+        }
+        if ($maxUses !== 1) {
+            $conditions[] = Condition::isEmpty('recipient');
+        }
+
+        return Condition::all(...$conditions);
     }
 
     /** E-mail addresses match without regard to case and surrounding spaces. */

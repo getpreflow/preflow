@@ -184,6 +184,14 @@ final class BlockRegistry
                     $class,
                 ));
             }
+            // A select's "options_from" (0.89) reads the record being edited; a block has none yet.
+            if (array_key_exists('options_from', $field->config)) {
+                throw new BlockConfigException(sprintf(
+                    'Block field "%s" on %s sets "options_from", which is not supported in blocks yet; list its choices in "options".',
+                    $property->getName(),
+                    $class,
+                ));
+            }
             $fields[$property->getName()] = new TypeFieldDefinition(
                 name: $property->getName(),
                 type: $field->type,

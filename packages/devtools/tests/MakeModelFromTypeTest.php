@@ -123,6 +123,26 @@ final class MakeModelFromTypeTest extends TestCase
         $this->assertStringContainsString("    #[Field(label: 'Category')]\n    #[Relation(to: 'category', labelField: 'title', metaField: 'slug')]\n    public ?string \$category = null;", $php);
     }
 
+    public function test_published_indexes_become_published_index_attributes(): void
+    {
+        file_put_contents($this->base . '/config/models/page.json', json_encode(['key' => 'page', 'table' => 'page', 'indexes' => [['slug']], 'published_indexes' => [['slug', 'state']], 'fields' => [
+            'slug' => ['type' => 'string'],
+            'state' => ['type' => 'string'],
+        ]]));
+
+        [$code] = $this->make('Page', '--from-type=page');
+
+        $this->assertSame(0, $code, $this->errors());
+        $php = file_get_contents($this->base . '/app/Models/Page.php');
+        $this->assertStringContainsString("use Preflow\\Data\\Attributes\\PublishedIndex;\n", $php);
+        $this->assertStringContainsString("#[Index('slug')]\n#[PublishedIndex('slug', 'state')]\n#[Entity(", $php);
+        $admin = json_decode(file_get_contents($this->base . '/config/models/page.json'), true);
+        $this->assertArrayNotHasKey('published_indexes', $admin);
+        require $this->base . '/app/Models/Page.php';
+        $def = (new TypeRegistry($this->base . '/config/models', null, ['page' => 'App\\Models\\Page']))->get('page');
+        $this->assertSame([['slug', 'state']], $def->publishedIndexes);
+    }
+
     public function test_an_empty_object_in_the_admin_file_stays_an_object(): void
     {
         copy($this->fixtureDir . '/article.json', $this->base . '/config/models/article.json');

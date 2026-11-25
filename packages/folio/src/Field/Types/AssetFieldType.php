@@ -21,7 +21,7 @@ use Psr\Http\Message\UploadedFileInterface;
  * {prefix}/_uploads); they keep working. Without a library the field writes
  * such paths itself (extension allowlist, randomized names).
  */
-final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\Field\DisplaysInAdmin
+final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\Field\DisplaysInAdmin, \Preflow\Folio\Field\StoresListFor
 {
     private const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
     private const DEFAULT_ALLOWED = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'pdf', 'txt', 'doc', 'docx', 'csv', 'zip'];
@@ -247,13 +247,20 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
         return $raw;
     }
 
+    /** A multiple field's ids as a list (0.89; SQL storage keeps JSON text), a single field's id as text. */
     public function toStorage(mixed $value): mixed
     {
         if (is_array($value)) {
             // An empty list is no value: stored as null, so "required" refuses it (0.77).
-            return $value === [] ? null : json_encode(array_values($value), JSON_UNESCAPED_SLASHES);
+            return $value === [] ? null : array_values($value);
         }
         return (string) ($value ?? '');
+    }
+
+    /** A multiple field holds a list of ids, a single one one id (0.89). */
+    public function storesList(array $config): bool
+    {
+        return $this->assetConfig($config)['multiple'];
     }
 
     public function fromStorage(mixed $value): mixed
@@ -321,9 +328,9 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
      *                                                    (keeps the stored value)
      * @param list<UploadedFileInterface>   $uploads
      * @param array<string, mixed>          $config
-     * @return string a single value, or a JSON list for "multiple" fields
+     * @return list<string>|string a single value ('' for none), or the list for "multiple" fields ('' when empty; a list since 0.89, JSON text before)
      */
-    public function resolve(?array $submittedIds, mixed $existing, array $uploads, array $config, bool $writeUploads, ?string $by): string
+    public function resolve(?array $submittedIds, mixed $existing, array $uploads, array $config, bool $writeUploads, ?string $by): array|string
     {
         $base = $submittedIds === null
             ? $this->toList($this->fromStorage($existing))
@@ -333,7 +340,7 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
                 $this->assetConfig($config)['private'],
             );
 
-        return (string) $this->toStorage($this->limit($this->addUploads($base, $writeUploads ? $uploads : [], $config, $by), $config));
+        return $this->toStorage($this->limit($this->addUploads($base, $writeUploads ? $uploads : [], $config, $by), $config)) ?? '';
     }
 
     /**

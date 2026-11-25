@@ -253,8 +253,8 @@ final class RecordDeleterTest extends TestCase
         $this->assertNull($this->stored('game', 'g1'));
         $this->assertNull($this->stored('game', 'g2'));
         $this->assertNotNull($this->stored('game', 'g3'));
-        $this->assertSame('["g3"]', $this->stored('page', 'p1')['games']);
-        $this->assertSame('["d2"]', $this->stored('page', 'p2')['designers']);
+        $this->assertSame(['g3'], $this->stored('page', 'p1')['games']);
+        $this->assertSame(['d2'], $this->stored('page', 'p2')['designers']);
 
         // Plan order: pointers of the designer first, then of its games.
         $this->assertSame([
@@ -276,8 +276,8 @@ final class RecordDeleterTest extends TestCase
 
         $this->deleter()->delete('designer', ['d1']);
 
-        $this->assertSame(['["g3"]', '["d2"]'], $seen['p1']);
-        $this->assertSame(['[]', '["d2"]'], $seen['p2']);
+        $this->assertSame([['g3'], ['d2']], $seen['p1']);
+        $this->assertSame([[], ['d2']], $seen['p2']);
     }
 
     public function test_refusal_from_a_cascaded_record_leaves_everything_in_place(): void
@@ -300,8 +300,8 @@ final class RecordDeleterTest extends TestCase
         $this->assertNotNull($this->stored('designer', 'd1'));
         $this->assertNotNull($this->stored('game', 'g1'));
         $this->assertNotNull($this->stored('game', 'g2'));
-        $this->assertSame('["g1","g3"]', $this->stored('page', 'p1')['games']);
-        $this->assertSame('["d1","d2"]', $this->stored('page', 'p2')['designers']);
+        $this->assertSame(['g1', 'g3'], $this->stored('page', 'p1')['games']);
+        $this->assertSame(['d1', 'd2'], $this->stored('page', 'p2')['designers']);
         $this->assertSame([], array_values(array_filter($this->log, static fn (string $l) => str_starts_with($l, 'After'))));
     }
 
@@ -347,8 +347,8 @@ final class RecordDeleterTest extends TestCase
 
         $this->assertNotNull($this->stored('designer', 'd1'));
         $this->assertNotNull($this->stored('game', 'g1'));
-        $this->assertSame('["g1","g3"]', $this->stored('page', 'p1')['games']);
-        $this->assertSame('["d1","d2"]', $this->stored('page', 'p2')['designers']);
+        $this->assertSame(['g1', 'g3'], $this->stored('page', 'p1')['games']);
+        $this->assertSame(['d1', 'd2'], $this->stored('page', 'p2')['designers']);
     }
 
     public function test_restricted_plan_is_refused_before_any_hook(): void
@@ -414,9 +414,9 @@ final class RecordDeleterTest extends TestCase
         $this->deleter()->delete('game', ['g1']);
 
         $working = $this->dm->findType('page', 'p1');
-        $this->assertSame('["g3"]', $working->get('games'));
+        $this->assertSame(['g3'], $working->get('games'));
         $this->assertSame($version + 1, (int) $working->get('_version'));
-        $this->assertSame('["g1","g3"]', $this->publisher->snapshot('page', 'p1')?->get('games'));
+        $this->assertSame(['g1', 'g3'], $this->publisher->snapshot('page', 'p1')?->get('games'));
     }
 
     public function test_deleting_a_publishing_record_forgets_its_snapshot(): void
@@ -564,7 +564,7 @@ final class RecordDeleterTest extends TestCase
 
         $this->deleter()->delete('designer', ['d1']);
 
-        $this->assertSame('["d2"]', $stored['p2']);
+        $this->assertSame(['d2'], $stored['p2']);
     }
 
     public function test_ids_that_are_unknown_or_of_another_type_are_never_planned(): void
@@ -581,7 +581,7 @@ final class RecordDeleterTest extends TestCase
 
         $this->deleter()->delete('designer', ['ghost', 'g1']);
         $this->assertSame([], $this->log);
-        $this->assertSame('["ghost","d2"]', $this->stored('page', 'p3')['designers']);
+        $this->assertSame(['ghost', 'd2'], $this->stored('page', 'p3')['designers']);
         $this->assertNotNull($this->stored('game', 'g1'));
 
         // Known ids among unknown ones are planned (once, however often they are posted).

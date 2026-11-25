@@ -171,13 +171,39 @@ final class CodeRulesTest extends CodesAppTestCase
         $codes->redeem($code, 'q');
         $write = new \ReflectionMethod($codes, 'writeColumns');
         $guard = new \ReflectionMethod($codes, 'liveGuard');
-        $live = fn (?int $max) => $write->invoke($codes, $id, ['label' => 'x'], static fn (): bool => true, $guard->invoke(null, $max));
+        $live = fn (?int $max) => $write->invoke($codes, $id, ['label' => 'x'], $guard->invoke(null, $max));
 
         $this->assertFalse($live(1), 'two uses are already counted: max 1 is refused by the UPDATE itself');
         $this->assertTrue($live(2));
         $codes->revoke($id);
         $this->assertFalse($live(null), 'revoked meanwhile');
         $this->assertSame('x', $codes->get($id)->label);
+    }
+
+    /** update()'s refusals are conditions of the write itself: a code that changed after the check is not written. */
+    public function test_the_update_write_refuses_a_changed_expiry_or_a_recipient(): void
+    {
+        $codes = $this->codes();
+        $write = new \ReflectionMethod($codes, 'writeColumns');
+        $updatable = new \ReflectionMethod($codes, 'updatable');
+        $dm = $this->app()->container()->get(\Preflow\Data\DataManager::class);
+
+        // An expiry in the past is kept only while the code still has exactly that expiry.
+        $code = $codes->issue('q', maxUses: 5);
+        $id = (string) $codes->record($code, 'q')->id;
+        $record = $dm->findType('code', $id);
+        $record->set('expires_at', $this->now->modify('-2 days')->format('Y-m-d\TH:i'));
+        $dm->saveType($record, false);
+        $keep = fn (\DateTimeImmutable $at) => $write->invoke($codes, $id, ['label' => 'x'], $updatable->invoke($codes, $at, 5));
+        $this->assertFalse($keep($this->now->modify('-1 day')), 'another expiry in the past');
+        $this->assertTrue($keep($this->now->modify('-2 days')), 'the stored one');
+
+        // A code bound to a recipient keeps one use.
+        $bound = $codes->issue('q', recipient: 'anna@example.org');
+        $boundId = (string) $codes->record($bound, 'q')->id;
+        $this->assertFalse($write->invoke($codes, $boundId, ['max_uses' => 2], $updatable->invoke($codes, null, 2)), 'bound: max 2 refused by the write');
+        $this->assertTrue($write->invoke($codes, $boundId, ['max_uses' => 1], $updatable->invoke($codes, null, 1)));
+        $this->assertSame(1, $codes->get($boundId)->maxUses);
     }
 
     public function test_codes_has_no_mailer(): void

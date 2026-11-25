@@ -169,8 +169,8 @@ final class Customizations
                             $types[$key]['dashboardNotices'][] = $call;
                         } elseif ($meta instanceof DashboardItem) {
                             $returns = $method->getReturnType();
-                            if (!$returns instanceof \ReflectionNamedType || $returns->getName() !== \Preflow\Folio\Dashboard\NeedsYou::class) {
-                                throw new ExtensionException("#[DashboardItem] on {$where}: the method must declare the return type ?" . \Preflow\Folio\Dashboard\NeedsYou::class . '.');
+                            if (!$returns instanceof \ReflectionNamedType || !in_array($returns->getName(), [\Preflow\Folio\Dashboard\NeedsYou::class, 'array'], true)) {
+                                throw new ExtensionException("#[DashboardItem] on {$where}: the method must declare the return type ?" . \Preflow\Folio\Dashboard\NeedsYou::class . ' (one card) or array (a list of cards).');
                             }
                             $types[$key]['dashboardItems'][] = $call;
                         } else {
@@ -322,9 +322,11 @@ final class Customizations
 
     /**
      * The #[DashboardItem] cards of the types $canView allows, in the order of dashboardNotices().
-     * Methods of other types are not called. A method that throws (a NeedsYou with an unknown tone
-     * among them) or returns null adds nothing, and so does an item whose URL is not an admin or
-     * site path (Link::href()); each card's url is resolved against $adminPrefix.
+     * Methods of other types are not called. A method returns one card or, since 0.89, a list of
+     * cards; each card gets the same checks. A method that throws (a NeedsYou with an unknown tone
+     * among them) or returns null adds nothing; a list loses all its cards then. An element of a
+     * list that is not a NeedsYou is dropped, and so is a card whose URL is not an admin or site
+     * path (Link::href()); each card's url is resolved against $adminPrefix.
      *
      * @param \Closure(string): bool $canView whether the signed-in user may view a type key
      * @return list<\Preflow\Folio\Dashboard\NeedsYou>
@@ -339,16 +341,18 @@ final class Customizations
             }
             foreach ($type['dashboardItems'] as $call) {
                 try {
-                    $item = $call();
+                    $result = $call();
                 } catch (\Throwable) {
                     continue;
                 }
-                if (!$item instanceof \Preflow\Folio\Dashboard\NeedsYou || $item->title === '') {
-                    continue;
-                }
-                $href = (new \Preflow\Folio\Extension\Link($item->title, $item->url))->href($adminPrefix);
-                if ($href !== null) {
-                    $items[] = new \Preflow\Folio\Dashboard\NeedsYou($item->title, $item->text, $href, $item->tone, $item->icon);
+                foreach (is_array($result) ? $result : [$result] as $item) {
+                    if (!$item instanceof \Preflow\Folio\Dashboard\NeedsYou || $item->title === '') {
+                        continue;
+                    }
+                    $href = (new \Preflow\Folio\Extension\Link($item->title, $item->url))->href($adminPrefix);
+                    if ($href !== null) {
+                        $items[] = new \Preflow\Folio\Dashboard\NeedsYou($item->title, $item->text, $href, $item->tone, $item->icon);
+                    }
                 }
             }
         }

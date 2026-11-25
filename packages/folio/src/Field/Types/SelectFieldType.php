@@ -16,8 +16,18 @@ use Preflow\Folio\Field\FieldContext;
  * description each ("options" as {value: {"label": …, "help": …}}); "display": "radio" radio chips;
  * "display": "select" a select (an optional one keeps "—", for no choice). Any other "display"
  * value is a boot error (TypeCatalog, through display()).
+ *
+ * "options_from": "<field>" (0.89) instead of "options": the options are the values of that field of
+ * the record being edited (FieldContext::$values, each read by its own field type: a tags field's
+ * list; else a JSON-text list or one text), each value its own label. While the source has no
+ * values the editor shows a note naming it ("options_from_label", which the admin sets to the
+ * source's label) instead of an empty control. A save accepts only one of the source's values as
+ * submitted in the same save (OptionsFrom, through recordRules()); an empty value passes unless
+ * the field is required.
+ * A name that is not another field of the type, both "options" and "options_from", "display":
+ * "cards" with it, and such a select in "list.filters" or "list.bulk" are boot errors (TypeCatalog).
  */
-final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\Folio\Field\SearchableText, \Preflow\Folio\Field\HasColumnKind
+final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\Folio\Field\SearchableText, \Preflow\Folio\Field\HasColumnKind, \Preflow\Folio\Field\HasRecordRules
 {
     public function key(): string
     {
@@ -36,8 +46,12 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
 
     public function renderEditor(FieldContext $ctx): string
     {
-        $options = self::options($ctx->config);
+        $source = self::sourceField($ctx->config);
+        $options = $source !== null ? self::fromValues($ctx, $source) : self::options($ctx->config);
         $value = (string) ($ctx->value ?? '');
+        if ($source !== null && $options === [] && $value === '') {
+            return $this->noSourceValues($ctx, $source);
+        }
 
         if ($value !== '' && !array_key_exists($value, $options)) {
             $options = [$value => \Preflow\Folio\FolioText::get('folio.fields.no_longer_option', ['value' => $value])] + $options;
@@ -90,8 +104,14 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
         return htmlspecialchars($label, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 
+    /**
+     * Without the record's type (rules()): the source is read as sourceValues() reads it.
+     */
     public function rules(array $config): array
     {
+        if (($source = self::sourceField($config)) !== null) {
+            return [new OptionsFrom($source)];
+        }
         $values = array_keys(self::options($config));
 
         return $values === [] ? [] : ['in:' . implode(',', array_map('strval', $values))];
@@ -118,6 +138,9 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
         if (!in_array($display, ['select', 'radio', 'cards'], true)) {
             throw new \LogicException('Select field option "display" must be "select", "radio" or "cards".');
         }
+        if ($display === 'cards' && array_key_exists('options_from', $config)) {
+            throw new \LogicException('Select field option "display": "cards" needs fixed "options" with descriptions; it cannot take "options_from". Use "select" or "radio".');
+        }
         if ($display === 'cards') {
             $options = $config['options'] ?? null;
             $text = static fn (mixed $t): bool => (is_string($t) && $t !== '') || (is_array($t) && $t !== [] && !array_is_list($t) && array_filter($t, 'is_string') === $t);
@@ -134,6 +157,118 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
         }
 
         return $display;
+    }
+
+    /**
+     * The field "options_from" names, null without one.
+     *
+     * @since 0.89
+     *
+     * @param array<string, mixed> $config
+     */
+    public static function sourceField(array $config): ?string
+    {
+        $source = $config['options_from'] ?? null;
+
+        return is_string($source) && $source !== '' ? $source : null;
+    }
+
+    /**
+     * A source field's value as options: a list (a tags field's), a JSON-text list, or one text;
+     * each entry trimmed, empty ones dropped, each value once.
+     *
+     * @since 0.89
+     *
+     * @return list<string>
+     */
+    public static function sourceValues(mixed $value): array
+    {
+        if (is_string($value)) {
+            $trimmed = trim($value);
+            $decoded = str_starts_with($trimmed, '[') ? json_decode($trimmed, true) : null;
+            $value = is_array($decoded) ? $decoded : ($trimmed === '' ? [] : [$trimmed]);
+        }
+        if (!is_array($value)) {
+            return [];
+        }
+        $out = [];
+        foreach ($value as $entry) {
+            $entry = is_scalar($entry) ? trim((string) $entry) : '';
+            if ($entry !== '' && !in_array($entry, $out, true)) {
+                $out[] = $entry;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * The "options_from" option against the type's fields: it names another field of the type, and
+     * the select has no "options" beside it.
+     *
+     * @since 0.89
+     *
+     * @param array<string, mixed> $config the select's field definition
+     * @param list<string>         $fields the type's field names
+     * @throws \LogicException otherwise (TypeCatalog reports it at boot)
+     */
+    public static function checkOptionsFrom(array $config, string $name, array $fields): void
+    {
+        if (!array_key_exists('options_from', $config)) {
+            return;
+        }
+        $source = self::sourceField($config);
+        if ($source === null) {
+            throw new \LogicException('Select field option "options_from" must be the name of another field of this type.');
+        }
+        if (array_key_exists('options', $config)) {
+            throw new \LogicException('Select field has both "options" and "options_from"; keep one of them.');
+        }
+        if ($source === $name) {
+            throw new \LogicException('Select field option "options_from" must name another field of this type, not the select itself.');
+        }
+        if (!in_array($source, $fields, true)) {
+            $others = array_values(array_filter($fields, static fn (string $field): bool => $field !== $name));
+            throw new \LogicException('Select field option "options_from" names "' . $source . '", which is not a field of this type; name one of its fields (' . implode(', ', $others) . ').');
+        }
+    }
+
+    /**
+     * With the record's type (RecordValidator): the source is read through its own field type, and
+     * a refusal with no source values names it.
+     *
+     * @since 0.89
+     */
+    public function recordRules(array $config, \Preflow\Data\TypeDefinition $type, \Preflow\Folio\Field\FieldTypeRegistry $fieldTypes): array
+    {
+        $source = self::sourceField($config);
+        $sourceDef = $source !== null ? ($type->fields[$source] ?? null) : null;
+        if ($source === null || $sourceDef === null) {
+            return $this->rules($config);
+        }
+        $label = \Preflow\Folio\Content\DisplayLabels::pick($sourceDef->labels ?: $sourceDef->label);
+
+        return [new OptionsFrom($source, $fieldTypes->get($sourceDef->type), $label)];
+    }
+
+    /** @return array<string, string> value => label: the record's values of the "options_from" field (none on a new record) */
+    private static function fromValues(FieldContext $ctx, string $source): array
+    {
+        $values = self::sourceValues($ctx->values[$source] ?? null);
+
+        return array_combine($values, $values);
+    }
+
+    /** The source has no values yet (a new record): a note naming it, instead of a control without choices. */
+    private function noSourceValues(FieldContext $ctx, string $source): string
+    {
+        $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $label = $ctx->config['options_from_label'] ?? null;
+        $label = is_string($label) && $label !== '' ? $label : $this->renderer->humanize($source);
+
+        return '<fieldset class="form-group folio-choice-field folio-options-from-empty' . ($ctx->errors !== [] ? ' has-error' : '') . '">' . $this->legend($ctx)
+            . '<p class="form-help">' . $e(\Preflow\Folio\FolioText::get('folio.fields.options_from_empty', ['field' => $label])) . '</p>'
+            . $this->below($ctx) . '</fieldset>';
     }
 
     /** @return array<string, string> value => label */

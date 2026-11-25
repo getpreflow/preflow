@@ -8,6 +8,7 @@ use Preflow\Data\Attributes\Entity;
 use Preflow\Data\Attributes\Field;
 use Preflow\Data\Attributes\Id;
 use Preflow\Data\Attributes\Index;
+use Preflow\Data\Attributes\PublishedIndex;
 use Preflow\Data\Attributes\Relation;
 use Preflow\Validation\Attributes\Validate;
 
@@ -21,7 +22,7 @@ final class ModelSchema
      * Keys that define a type's data; every other type key is an admin setting (label, list,
      * section, and the matrixable and views that Folio reads from the schema).
      */
-    public const array SCHEMA_TYPE_KEYS = ['key', 'table', 'storage', 'id_field', 'fields', 'indexes'];
+    public const array SCHEMA_TYPE_KEYS = ['key', 'table', 'storage', 'id_field', 'fields', 'indexes', 'published_indexes'];
 
     /**
      * Keys that define a field's data; every other field key is presentation (label, help, readonly, ...).
@@ -29,7 +30,7 @@ final class ModelSchema
      */
     public const array SCHEMA_FIELD_KEYS = [
         'type', 'validate', 'translatable', 'unique', 'index', 'length', 'searchable',
-        'transform', 'default', 'relation', 'options', 'accept', 'time', 'blocks', 'fields', 'multiple', 'exact',
+        'transform', 'default', 'relation', 'options', 'options_from', 'accept', 'time', 'blocks', 'fields', 'multiple', 'exact',
     ];
 
     /**
@@ -74,6 +75,10 @@ final class ModelSchema
         $indexes = array_map(static fn (\ReflectionAttribute $a): array => $a->newInstance()->fields, $ref->getAttributes(Index::class));
         if ($indexes !== []) {
             $schema['indexes'] = $indexes;
+        }
+        $published = array_map(static fn (\ReflectionAttribute $a): array => $a->newInstance()->fields, $ref->getAttributes(PublishedIndex::class));
+        if ($published !== []) {
+            $schema['published_indexes'] = $published;
         }
         if ($entity->titleField !== null) {
             $schema['titleField'] = $entity->titleField;

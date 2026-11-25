@@ -24,6 +24,7 @@ Models are annotated with PHP attributes. `DataManager` is the single entry poin
 | `#[Id]` | Property | Marks the primary key field. Works on any property — use `string $uuid` for UUIDs or `int $id` for auto-increment. |
 | `#[Field(searchable: true)]` | Property | Marks a field; `searchable: true` includes it in full-text search. `unique: true` (or `unique: ['scope', ...]`), `index: true` and `length: n` are described in [Unique fields and indexes](#unique-fields-and-indexes). |
 | `#[Index('state', 'updated_at')]` | Class (repeatable) | A composite index over fields of a type (`#[Entity(type: …)]`), in that order; see [Unique fields and indexes](#unique-fields-and-indexes). |
+| `#[PublishedIndex('slug', 'state')]` | Class (repeatable) | The same, but only the published copy of a type with publishing gets it (0.89). |
 | `#[Seed(debugOnly: true)]` | Class | Marks a seeder in `app/Seeds/` as demo data: `preflow db:seed` skips it while `app.debug` is off (since 0.80.0); see `db:seed` in `preflow/devtools`. |
 | `#[Timestamps]` | Class or property | `save()`, `insert()` and `update()` of a plain model set `createdAt` or `created_at` (the first the model has) when it is empty and `updatedAt` or `updated_at` on every write, matching the migration's `$t->timestamps()`. A `?string` property gets `Y-m-d H:i:s` text, an `?int` one the Unix time; a `?\DateTimeImmutable` one is stored as that text. Other types (a mutable `\DateTime` too) are not stamped. A class-backed type (`#[Entity(type: …)]`) is not stamped: it stores what its type definition says, so it sets these values itself or declares them as type fields. |
 
@@ -199,9 +200,11 @@ Folio, a CLI command or a script) writes a record in one canonical form, so an u
 is written to the same bytes: the type's fields in their order, then the id and the system keys
 (`_version`, …) in their order, then any other key (none is dropped); a list field
 (`fieldKinds()->list('tags')`; Folio registers its field types marked `StoresList`) as a list,
-also when it was given as JSON text or a comma string; a number field's numeric text as a number
-and a yes/no field's `'1'`/`'0'`/`'true'`/`'false'` as `true`/`false`. A value that does not
-convert stays as it is. `JsonFileDriver` encodes with `JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
+also when it was given as JSON text or a comma string, and so a field whose config makes it a list
+(`fieldKinds()->listWhen('asset', fn (array $config): bool => …)`, since 0.89; a multiple relation
+holds a list by default, Folio registers its types implementing `StoresListFor`); a number
+field's numeric text as a number and a yes/no field's `'1'`/`'0'`/`'true'`/`'false'` as
+`true`/`false`. A value that does not convert stays as it is. `JsonFileDriver` encodes with `JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
 | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION` and a trailing newline. A hand-written
 file gets this form on its next save; nothing is migrated. SQL storage keeps lists as JSON text in
 their columns. A direct `driver()->save()` keeps its caller's key order, and the stored keys it does
@@ -332,7 +335,8 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 | `Savepoints::savepoint()` (0.77) | Writes inside a caller's open transaction that commit or roll back with it and whose failure leaves it usable. | DataManager does not use it; its consumer, `StoredActivityLog`, runs its writes and reads as they are (fine for storage without transactions). | Yes with it, within the caller's transaction. |
 | `DescribesColumns::hasColumn()` (0.77), `hasTable()` (0.78) | Says whether a table has a column (`hasColumn()`: publishing works on tables not migrated yet; since 0.84 the change dates, written only where it says the table has the column) and whether a type's table exists (`hasTable()`: the staff accounts, published copies). | takes any column and any table as present (right for schemaless storage; a SQL driver should implement it); its records get no change dates (0.84). | Read only. |
 | `RankedSearch::canScore()`, `score()` (0.78) | Scores the hits loose search found, so ⌘K puts a type's best matches first (`DataManager::canScore()`, `scoreIn()`; only for a type with `"fullText": true`). It orders, it never finds: the hits are the same on every driver. `MysqlDriver` scores with `MATCH … AGAINST` over the FULLTEXT index `migrate` adds. | hits stay in storage order; `scoreIn()` throws `UnsupportedStorage`. | Read only. |
-| `RunsSql::rawQuery()`, `execute()`, `dialect()` (0.78) | Raw SQL through `DataManager::raw()` and `execute()`; the auth tokens, remember-me and codes use it for their conditional single-statement writes. | `raw()` and `execute()` throw `UnsupportedStorage` (a `LogicException`), never a different result; tokens, remember-me and codes read and write under their own lock instead. | As the SQL runs. |
+| `RunsSql::rawQuery()`, `execute()`, `dialect()` (0.78) | Raw SQL through `DataManager::raw()` and `execute()`. | `raw()` and `execute()` throw `UnsupportedStorage` (a `LogicException`), never a different result. | As the SQL runs. |
+| `ConditionalWrites::updateWhen()`, `deleteWhen()` (0.89) | Writes or deletes one record only while a `Condition` holds, in one step of its own (`PdoDriver`: one `UPDATE`/`DELETE … WHERE id = ? AND (…)` through `execute()`, compiled by `Driver\ConditionCompiler`): the auth tokens, remember-me, codes and the change-date backfill. The contract runs every case through the driver and through `PlainDriver`, so both must agree. | `DataManager` reads the record, checks `Condition::holds()` and writes, under the caller's lock or the type's (`ExclusiveWrites`), else plainly. | Yes with it or `ExclusiveWrites`; the plain fallback is not. |
 | `PdoConnection::pdo()` (0.78, extends `RunsSql`) | The PDO connection itself, for `preflow migrate`, `Migration\Schema`, the table sync and the convert tool. | `migrate` runs only the steps registered for any storage; the table sync skips the type. | — |
 | `Maintenance::check()`, `compact()` (0.78) | Checks the whole store (structure, indexes, references) and compacts it, through the driver's own prepared connection (`preflow db:check`, `db:vacuum`). For storage whose database tools can't do it once Preflow owns it (SQLite: the `preflow_text` collation). | the commands refuse the storage and point to the database's own tools. `MysqlDriver` implements it since 0.84 (`CHECK TABLE`, `OPTIMIZE TABLE`). | — |
 | `MaintenanceReport::report()` (0.84, extends `Maintenance`) | Lines for the operator that are no problems: `db:check` prints them after the problems. MySQL: its text columns by collation and `not applicable: …` for what it has no check for (references between records), so a skipped check never reads as a passed one. | `db:check` prints the problems only. | — |
@@ -341,7 +345,7 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 | `WriteTimes::writeTimes()` (0.84) | When each record was last written by the storage's own bookkeeping (the JSON driver: each file's modification time), for the change-date backfill of `preflow migrate`. | the backfill takes the record's creation time, else the time of the migrate. | Read only. |
 | `ChangeTokens::changeToken()` (0.77) | A token that moves with every write of a type, so readers reuse what they computed. | `DataManager::changeToken()` only passes it on (null); its consumer, `StoredActivityLog::people()`, reuses nothing and computes every time. | Read only. |
 
-A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`, `InsertsNew`, `BulkDeletes`,
+A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`, `ConditionalWrites` (0.89), `InsertsNew`, `BulkDeletes`,
 `Savepoints`, `DescribesColumns`, `AtomicCounters`, `AggregatingStorage`, `PdoConnection` (so
 `RunsSql`), `Transactions`, `UniqueIndexes`, `SelectsColumns` and `SelectsSubqueries` from it and implements `exclusive()` itself (as
 `SqliteDriver` and `MysqlDriver` do); its `Dialect` may add `PatternMatching` and `InsertIfNew` (0.80). `MysqlDriver` adds
@@ -544,9 +548,64 @@ $rows = $dm->raw(
 );
 ```
 
+### Conditional writes (0.89)
+
+`updateWhen()` writes some fields of one record only while a check on it still holds;
+`deleteWhen()` deletes it only then. The check is a `Condition`, the same on every storage:
+
+```php
+use Preflow\Data\Add;
+use Preflow\Data\Condition;
+
+// Count one use while the code has one left.
+$counted = $dm->updateWhen($codeType, $id, Condition::any(
+    Condition::isEmpty('max_uses'),
+    Condition::whereField('uses', '<', 'max_uses', numbers: true),
+), ['uses' => new Add(1)]);   // true if counted, false if used up (or no such record)
+
+// Spend a token once: the record as it was, or null.
+$token = $dm->deleteWhen($tokenType, $hash, Condition::all(
+    Condition::where('purpose', '=', 'reset'),
+    Condition::where('expires_at', '>', time()),
+));
+```
+
+- `Condition::where($field, $op, $value)` compares a field with a value: `=`, `!=`, `<`, `>`,
+  `<=`, `>=`, or `IN` with a list. A whole number compares the field as a whole number ('3.0' is
+  3); a text compares it exactly ('ab' is not 'Ab'). A field without a value never matches,
+  `!=` included.
+- `Condition::whereField($field, $op, $other, numbers: true)` compares two fields of the record
+  (as texts without `numbers`).
+- `Condition::isEmpty($field)`: null, `''` or no value at all.
+- `Condition::all(...)` and `Condition::any(...)` group them, nested as you like.
+- In the values, `new Add(1)` adds to the stored number (`new Add(-1)` subtracts); no value counts
+  from 0. Everything else is written as `saveType()` writes it. Only the named fields are written.
+- Instead of a `Condition` you may pass a function that returns one: it is built when the check
+  runs, so a time it reads is read after a lock was taken, not before waiting for it.
+
+On SQL this is one `UPDATE … WHERE id = ? AND (…)` (or `DELETE`), and the affected rows say whether
+it was written, so two requests can never both take the last use. On the JSON files the record is
+read, checked (`Condition::holds()`) and written under the type's lock. A driver of your own gets
+it for free the same way, or compiles the condition itself by implementing `ConditionalWrites`
+(`Driver\ConditionCompiler` turns it into SQL for a `Dialect`). Under a preview (writes skipped)
+the condition is checked as on a visit and nothing is written; when writes are refused, a write
+whose condition holds throws. Neither the version field nor the change date moves unless you name
+them in the values.
+
+Two notes for SQL storages that run through `RunsSql` (a driver without `ConditionalWrites`):
+the read that confirms the write runs outside a transaction, so a commit between the two can make
+it report a different answer (any isolation level; the effect is bounded to that one record). And
+MySQL's `LENGTH()` counts bytes, which is enough to tell texts that differ only in trailing
+spaces; the connection must still be `utf8mb4` (the built-in driver sets it). Only `-?digits` and
+`-?digits.digits` are numbers: `' 3'` and `'1e3'` read as 0 on the JSON files and on MySQL
+(SQLite's `CAST` reads 3 and 1; counters never hold such text).
+
+`updateIf()` and `deleteIf()` (0.81, a closure plus your own SQL) still work but are deprecated
+and go in a later minor: move to `updateWhen()` / `deleteWhen()`.
+
 ### Raw writes
 
-`execute()` runs a write the builder cannot express (a conditional `UPDATE`, a `DELETE`,
+`execute()` runs a write the builder cannot express (a `DELETE` of many rows,
 an upsert) and returns the affected rows. Only SQL (PDO) storages run it; any other driver
 throws a `LogicException`. Ints, bools and nulls are bound with their type, so arithmetic and
 comparisons in SQL work on numbers.
@@ -560,7 +619,7 @@ $taken = $dm->execute(
 ```
 
 One conditional statement decides by its affected rows, so concurrent requests cannot both
-take the last seat. A package writing its own SQL asks the driver for `PdoDriver::dialect()` and
+take the last seat (for one record, `updateWhen()` above does this on every storage). A package writing its own SQL asks the driver for `PdoDriver::dialect()` and
 lets the `Dialect` write what differs between databases, never checking for `MysqlDialect` or
 `SqliteDialect`, so the SQL also runs on a third-party dialect (PostgreSQL, say):
 `quoteIdentifier()`; `insertOrUpdateSql($table, $columns, $idField, $set)` for one statement that
@@ -719,7 +778,7 @@ driver:
   bytes; a versioned save moves it with the version, and `saveTypeIfVersion()` with `$next` equal
   to `$expected` keeps the date the record was loaded with. It is never content: versions,
   publish states and `changes()` ignore it. A read never touches it.
-- **Not moved:** writes that name their fields write only those: `updateIf()`,
+- **Not moved:** writes that name their fields write only those: `updateWhen()`, `updateIf()`,
   `updateFieldsIfVersion()`, `incrementIn()` (counters), raw SQL, a driver called directly. A caller
   that wants the date moved includes it: `[ChangeDates::FIELD => ChangeDates::text($now)]`.
 - **Keeping dates:** `$dm->keepingChangeDates(fn () => …)` writes the change date a record carries
@@ -744,11 +803,11 @@ driver:
   `_published_at`), the storage's own write time (`WriteTimes`: a JSON file's modification time),
   its `createdAt` / `created_at`, else the time of the migrate.
   - It runs while the site serves requests: each date is a conditional write of that key alone
-    (`updateIf()`: `UPDATE … WHERE id = ? AND` the date is empty on SQL, a check and write under the
+    (`updateWhen()`: `UPDATE … WHERE id = ? AND` the date is empty on SQL, a check and write under the
     type's lock elsewhere). A record deleted meanwhile is not written back; a date a save gave
     meanwhile stays; a JSON file is written in the bytes a save writes (the change date closes the
     system keys).
-  - It writes only empty dates, 500 records per transaction: a second run writes nothing, an
+  - It writes only empty dates (null, `''` or `'0'`), 500 records per transaction: a second run writes nothing, an
     interrupted one goes on where it stopped.
   - A table it cannot finish is a `refused:` line and migrate exits 1 (the other tables go on). A
     source that cannot answer (the activity log unreachable) refuses its table rather than letting
@@ -825,6 +884,20 @@ final class Job extends Model { … }
   indexed plain in `__published` tables, so a composite named like one of them is refused; one
   over just a scope field is that field's index there. A class's admin file may not set
   `"indexes"` (it is schema).
+- **An index only the published copy gets (0.89).** A type with publishing reads its public
+  records from `{table}__published`, an index on the working table that only editors use is
+  wasted. `#[PublishedIndex('slug', 'state')]` (repeatable, on the class) or `"published_indexes":
+  [["slug", "state"]]` in a model file lists fields like `Index` does and is checked the same way
+  (unknown or translatable field, a field twice, a name another index has already). The
+  `{table}__published` table gets it in addition to the indexes it copies, named
+  `idx_{table}__published_{field1}_{field2}`; the working table and the revisions do not. A type
+  that does not publish and declares one is refused (naming `PublishedIndex`: use `Index`
+  there) by `preflow migrate` and `preflow optimize` when preflow/publishing is installed;
+  without publishing the declaration has no effect. The check runs when `preflow migrate` syncs the publishing tables and when
+  `preflow optimize` builds the boot manifest, not on every request. A field in a published index
+  is stored short in the published table, so, like an indexed field, it is limited to its
+  column length (191 unless `length` says otherwise) in the working record too: adding the index to
+  a field that already holds longer values means shortening those values first.
 - **What sync does.** `preflow migrate` makes every declared index that is missing, on new and
   existing columns alike: `idx_{table}_{field}` for `index`, the composite ones, and
   `uniq_{table}_{field}` (over the field and its scope) for `unique`. An index is found by its
@@ -1092,7 +1165,7 @@ free-text kinds). The pointer is stored as today: an id string, or a JSON array 
 | Key | Meaning |
 |---|---|
 | `to` | Target type. A field without it is no relation. |
-| `multiple` | Several targets (JSON array) instead of one. Default `false`. |
+| `multiple` | Several targets (a list of ids) instead of one. Default `false`. Since 0.89 a save writes the list as a list in a JSON file (SQL keeps JSON text); JSON text stored before is still read, found by `HAS` and detached. |
 | `onDelete` | What deleting a *target* does to the pointing records (see [Delete plans](#delete-plans)): `detach` (default) removes the id from the pointer, `cascade` deletes the pointing record too, `restrict` refuses the delete. Any other value throws `InvalidArgumentException`. |
 | `onSelfDelete` | The same choices, applied when the owner deletes their own record (`deletePlan(..., DeletedBy::Self)`) instead of staff. Unset follows `onDelete`; any other value throws `InvalidArgumentException`. |
 | `labelField` | The target field shown and searched as its label. |
@@ -1830,8 +1903,9 @@ $dm->executeDeletePlan($plan);
 ```
 
 - `cascade` follows recursively; `detach` loads the pointing record, removes the id and saves
-  it without validation; `restrict` blocks the whole plan. A restricted plan is refused with a
-  `RuntimeException` before anything changes.
+  it without validation (a multiple relation as a list, also one stored as JSON text before 0.89;
+  `DeletePlan::valueWithout()` gives the same value); `restrict` blocks the whole plan. A
+  restricted plan is refused with a `RuntimeException` before anything changes.
 - The optional third argument, `fn (TypeDefinition $t): array`, names extra definitions that
   hold copies of a type's records (for example a published shadow table). They count toward
   restrictions only.
@@ -1941,14 +2015,14 @@ with `type: 'date'`. `#[Field]` takes `type`, `label`, `help` (text or a locale 
 (kind settings written at field level, as in a JSON file: `options`, `accept`, `time`, `blocks`,
 `fields`, `multiple`), `default`, `translatable`, `unique` (or a scope list), `index`, `length`,
 `searchable` and `transform`. `#[Relation(to:, onDelete:, onSelfDelete:, labelField:, metaField:)]` writes the
-relation the JSON file would, and `#[Index('state', 'updated_at')]` on the class its `"indexes"`.
+relation the JSON file would, and `#[Index('state', 'updated_at')]` on the class its `"indexes"`, `#[PublishedIndex]` its `"published_indexes"`.
 `ModelSchema::of(Job::class)` shows the type derived from a class.
 
 **What goes where.** On the class: everything with data meaning, plus labels and help, which forms
 outside Folio use too. In the admin-only file `config/models/job.json`: presentation (the type's
 label, icon, section, list columns, filters, sort, `publishing`; per field `readonly`, `hidden`,
 `placeholder`, …). The file may not set schema: `table`, `storage`, `id_field`, `matrixable`,
-`views`, `indexes`, a field's `type`, `validate`, `translatable`, `unique`, `index`, `length`, `searchable`,
+`views`, `indexes`, `published_indexes`, a field's `type`, `validate`, `translatable`, `unique`, `index`, `length`, `searchable`,
 `transform`, `default`, `relation`, `options`, `accept`, `time`, `blocks`, `fields` or `multiple`
 is refused with a message naming the file. A site without Folio never sees these files.
 Folio's columns (`_version`, `_publish_at`, …) are invisible to the class.

@@ -290,6 +290,18 @@ final class MakeModelCommand implements CommandInterface
             $uses[] = 'Preflow\\Data\\Attributes\\Index';
         }
 
+        $published = $type['published_indexes'] ?? [];
+        if (!is_array($published) || !array_is_list($published)) {
+            throw new \RuntimeException("{$file} has \"published_indexes\" that are not a list of field lists.");
+        }
+        foreach ($published as $columns) {
+            if (!is_array($columns) || $columns === [] || array_filter($columns, static fn (mixed $c): bool => !is_string($c)) !== []) {
+                throw new \RuntimeException("{$file} has an entry in \"published_indexes\" that is not a list of field names.");
+            }
+            $entity .= '#[PublishedIndex(' . implode(', ', array_map(static fn (string $c): string => self::export($c), $columns)) . ")]\n";
+            $uses[] = 'Preflow\\Data\\Attributes\\PublishedIndex';
+        }
+
         $uses = array_unique($uses);
         sort($uses);
         $entity .= self::attribute('Entity', ['table' => $table, 'storage' => $storage, 'type' => $key], '');

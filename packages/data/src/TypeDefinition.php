@@ -27,6 +27,9 @@ final readonly class TypeDefinition
      *        which answers for every type (the storage, then the declared id field). @since 0.82.0
      * @param bool $changeDates its records keep a change date (ChangeDates, `_updated_at`); false for a
      *        type whose rows are never changed after they are written (a log). @since 0.84.0
+     * @param list<list<string>> $publishedIndexes composite indexes only the published copy of a type that
+     *        publishes gets (`#[PublishedIndex]`, "published_indexes"), checked like $indexes and not to repeat
+     *        one of them. @since 0.89.0
      * @throws \InvalidArgumentException an index without fields, over a field the type does not have (or twice
      *         over one), over a translatable field, or named as another index (a field's own, a unique field's,
      *         another composite's); a titleField the type does not have
@@ -47,6 +50,7 @@ final readonly class TypeDefinition
         bool $creatable = true,
         public ?IdKind $idKind = null,
         public bool $changeDates = true,
+        public array $publishedIndexes = [],
     ) {
         $this->creatable = $creatable && !$readonly;
         $this->assertIndexes();
@@ -95,15 +99,16 @@ final readonly class TypeDefinition
         $unique = array_keys($this->uniqueFields());
         $declared = [...$this->indexedFields(), ...$unique];
         $scopes = array_values(array_diff($this->scopeFields(), $declared));
-        foreach ($this->indexes as $columns) {
+        foreach ([...$this->indexes, ...$this->publishedIndexes] as $at => $columns) {
+            $published = $at >= count($this->indexes);
             $over = '(' . implode(', ', $columns) . ')';
             if ($columns === []) {
-                throw new \InvalidArgumentException("Type \"{$this->key}\" has an index without fields.");
+                throw new \InvalidArgumentException("Type \"{$this->key}\" has " . ($published ? 'a published index (PublishedIndex)' : 'an index') . ' without fields.');
             }
             foreach ($columns as $column) {
-                $field = $this->fields[$column] ?? throw new \InvalidArgumentException("Type \"{$this->key}\" has an index over \"{$column}\", which is not one of its fields.");
+                $field = $this->fields[$column] ?? throw new \InvalidArgumentException("Type \"{$this->key}\" has " . ($published ? 'a published index (PublishedIndex)' : 'an index') . " over \"{$column}\", which is not one of its fields.");
                 if ($field->translatable) {
-                    throw new \InvalidArgumentException("Type \"{$this->key}\" has an index over \"{$column}\", which is translatable: free text gets no index.");
+                    throw new \InvalidArgumentException("Type \"{$this->key}\" has " . ($published ? 'a published index (PublishedIndex)' : 'an index') . " over \"{$column}\", which is translatable: free text gets no index.");
                 }
             }
             if (count(array_unique($columns)) !== count($columns)) {
@@ -112,7 +117,7 @@ final readonly class TypeDefinition
             $name = implode('_', $columns);
             if (in_array($name, $unique, true)) {
                 throw new \InvalidArgumentException($columns === [$name]
-                    ? "Type \"{$this->key}\" has the index {$over} over its unique field \"{$name}\", whose unique index serves already: drop the index."
+                    ? "Type \"{$this->key}\" has the index {$over} over its unique field \"{$name}\", " . ($published ? 'whose published copy gets an index over it already (PublishedIndex): drop it.' : 'whose unique index serves already: drop the index.')
                     : "Type \"{$this->key}\" has the index {$over}, named like the index its unique field \"{$name}\" gets in published copies: rename a field.");
             }
             if (in_array($name, $scopes, true) && $columns !== [$name]) {

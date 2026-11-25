@@ -450,9 +450,18 @@ final class Importer
         }
     }
 
+    /**
+     * A row as the preview compares it: object keys sorted, and JSON text of a list or object
+     * read as that value, so a list stored as JSON text (an SQL site, a JSON file from before
+     * 0.78 for tags or 0.89 for multiple relations and assets) equals the same list.
+     */
     private static function canonical(mixed $value): string
     {
         $sort = static function (mixed $v) use (&$sort): mixed {
+            if (is_string($v) && $v !== '' && ($v[0] === '[' || $v[0] === '{')) {
+                $decoded = json_decode($v, true);
+                $v = is_array($decoded) ? $decoded : $v;
+            }
             if (!is_array($v)) {
                 return $v;
             }

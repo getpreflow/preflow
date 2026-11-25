@@ -542,6 +542,8 @@ return [
         'up' => 'Nach oben',
         'down' => 'Nach unten',
         'no_longer_option' => ':value (nicht mehr zur Auswahl)',
+        'options_from_empty' => 'Werte bei :field eintragen und speichern; sie erscheinen dann hier zur Auswahl.',
+        'options_from_none' => 'Noch keine Auswahl: zuerst Werte bei :field eintragen.',
         'rows' => ':count Zeile|:count Zeilen',
         'public_file' => ':label ist eine öffentliche Datei; lade sie hier hoch, um sie privat zu machen.',
         'library_unavailable' => ':label wurde nicht hochgeladen: Die Mediathek hat auf dieser Website keinen Speicher (siehe Medien).',

@@ -14,7 +14,7 @@ use Preflow\Folio\Field\FieldType;
  * Relation field: the linked target id(s), edited as rows with a search (rows()). No data-layer
  * relation model: ids are resolved to records on demand for display.
  */
-final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColumnKind
+final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColumnKind, \Preflow\Folio\Field\StoresListFor
 {
     /** Up to this many target records the picker lists them all; above, it searches. */
     public const INLINE_LIMIT = 200;
@@ -304,13 +304,20 @@ final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColu
         return is_string($raw) ? $raw : '';
     }
 
+    /** A multiple field's ids as a list (0.89; SQL storage keeps JSON text), a single field's id as text. */
     public function toStorage(mixed $value): mixed
     {
         if (is_array($value)) {
             // An empty list is no value: stored as null, so "required" refuses it (0.77).
-            return $value === [] ? null : json_encode(array_values($value), JSON_UNESCAPED_SLASHES);
+            return $value === [] ? null : array_values($value);
         }
         return (string) ($value ?? '');
+    }
+
+    /** A multiple field holds a list of ids, a single one one id (0.89). */
+    public function storesList(array $config): bool
+    {
+        return $this->relationConfig($config)['multiple'];
     }
 
     public function fromStorage(mixed $value): mixed

@@ -127,11 +127,26 @@ final class DeletePlanTest extends TestCase
 
     public function test_value_without_matches_what_the_executor_writes(): void
     {
-        $this->assertSame('["b","c"]', DeletePlan::valueWithout('["a","b","c"]', ['a']));
+        $this->assertSame(['b', 'c'], DeletePlan::valueWithout('["a","b","c"]', ['a']), 'JSON text (before 0.89) comes back as a list');
+        $this->assertSame(['b', 'c'], DeletePlan::valueWithout(['a', 'b', 'c'], ['a']), 'a list stays a list (0.89)');
+        $this->assertSame(['b'], DeletePlan::valueWithout(['b'], ['a']), 'nothing to remove: as it is');
         $this->assertNull(DeletePlan::valueWithout(['a'], ['a']), 'an emptied list is no value');
         $this->assertSame('', DeletePlan::valueWithout('a', ['a']));
         $this->assertSame('b', DeletePlan::valueWithout('b', ['a']));
         $this->assertSame('[ "b" ]', DeletePlan::valueWithout('[ "b" ]', ['a'])); // untouched text
+    }
+
+    /** A multiple relation's ids, asserting the shape its storage holds: a list in a JSON file (0.89), JSON text in SQL. */
+    private function listIn(string $storage, mixed $value): mixed
+    {
+        if ($storage === 'json') {
+            $this->assertIsArray($value, 'a JSON file holds the list');
+
+            return $value;
+        }
+        $this->assertIsString($value, 'SQL holds JSON text');
+
+        return json_decode($value, true);
     }
 
     private function shadow(string $key): TypeDefinition
@@ -179,11 +194,11 @@ final class DeletePlanTest extends TestCase
 
         $this->assertSame(['a2', 'a3'], $this->ids($dm, 'author'));
         $b1 = $dm->findType('book', 'b1');
-        $this->assertSame('["a3","a2"]', $b1->get('authors'));
+        $this->assertSame(['a3', 'a2'], $this->listIn($p, $b1->get('authors')));
         $this->assertSame('', $b1->get('editor'));
         $this->assertSame('One', $b1->get('title'));
         $this->assertNull($dm->findType('book', 'b3')->get('authors'));
-        $this->assertSame('["a2"]', $dm->findType('book', 'b2')->get('authors'));
+        $this->assertSame(['a2'], $this->listIn($p, $dm->findType('book', 'b2')->get('authors')));
         $this->assertSame('a2', $dm->findType('book', 'b2')->get('editor'));
     }
 
@@ -270,7 +285,7 @@ final class DeletePlanTest extends TestCase
         }
 
         $this->assertSame(['a1', 'a2'], $this->ids($dm, 'author'));
-        $this->assertSame('["a1"]', $dm->findType('book', 'b1')->get('authors'));
+        $this->assertSame(['a1'], $this->listIn($p, $dm->findType('book', 'b1')->get('authors')));
         $this->assertSame('a1', $dm->findType('book', 'b1')->get('editor'));
     }
 
@@ -326,7 +341,7 @@ final class DeletePlanTest extends TestCase
 
         $this->assertSame(['r2'], $this->ids($dm, 'review'), 'r1 is gone, not saved back by a detach');
         $this->assertNull($dm->findType('review', 'r1'));
-        $this->assertSame('["c3"]', $dm->findType('review', 'r2')->get('chapters'));
+        $this->assertSame(['c3'], $this->listIn($p, $dm->findType('review', 'r2')->get('chapters')));
     }
 
     public function test_only_a_copy_restricts(): void
@@ -421,7 +436,7 @@ final class DeletePlanTest extends TestCase
         } catch (\PDOException) {
         }
 
-        $this->assertSame('["a1"]', $dm->findType('book', 'b1')->get('authors'));
+        $this->assertSame(['a1'], $this->listIn('sqlite', $dm->findType('book', 'b1')->get('authors')));
         $this->assertSame('a1', $dm->findType('book', 'b1')->get('editor'));
     }
 

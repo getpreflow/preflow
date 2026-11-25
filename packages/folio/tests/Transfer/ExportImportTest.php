@@ -528,6 +528,18 @@ final class ExportImportTest extends TestCase
         $this->assertSame('2026-03-05T08:00:00+00:00', $this->driver()->findOne('site', 'site')['_updated_at'] ?? null, 'the local date stays');
     }
 
+    /** A list stored as JSON text (an SQL site, a file from before 0.89) equals the same list. */
+    public function test_a_list_as_json_text_against_the_same_list_is_no_change(): void
+    {
+        $this->driver()->save('site', 'site', ['uuid' => 'site', 'links' => '["a1","a2"]', 'meta' => '{"b":1,"a":2}']);
+        $archive = $this->export();
+        $this->driver()->save('site', 'site', ['links' => ['a1', 'a2'], 'meta' => ['a' => 2, 'b' => 1]]);
+
+        $summary = $this->import($archive);
+
+        $this->assertSame([], $summary['tables']['site']['changed']);
+    }
+
     private function addMemberType(array $extra = []): void
     {
         $this->writeModel('member', ['users' => 'members', 'fields' => ['email' => ['type' => 'string']]] + $extra);

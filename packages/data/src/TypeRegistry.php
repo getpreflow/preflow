@@ -31,7 +31,7 @@ final class TypeRegistry
             $this->assertActions();
         } else {
             // Checked when the manifest is built (and live while none is loaded); a loaded one skips the scans.
-            $sources = $this->manifest->isRecording() ? $this->checkSources() : [];
+            $sources = $this->manifest->isRecording() ? $this->sources() : [];
             $this->manifest->remember('data.one_definition_per_key', function (): bool {
                 $this->assertOneDefinitionPerKey();
 
@@ -50,8 +50,14 @@ final class TypeRegistry
         }
     }
 
-    /** @return list<string> what the boot checks read: the model files and the model classes' files */
-    private function checkSources(): array
+    /**
+     * The files type definitions are read from: the model files folder and the files of the model
+     * classes. A check over every type that is kept in the boot manifest lists these as its sources
+     * (`BootManifest::remember()`), so `preflow optimize --check` knows when it is out of date.
+     *
+     * @return list<string> absolute paths
+     */
+    public function sources(): array
     {
         $sources = [$this->modelsPath];
         foreach ($this->classes as $class) {
@@ -318,11 +324,12 @@ final class TypeRegistry
     }
 
     /**
-     * The composite indexes of a model file ("indexes": [["state", "updated_at"]]).
+     * The composite indexes of a model file ("indexes": [["state", "updated_at"]]; "published_indexes"
+     * the same, for the published copy only).
      *
      * @return list<list<string>>
      */
-    private static function indexes(mixed $value, string $key): array
+    private static function indexes(mixed $value, string $key, string $name = 'indexes'): array
     {
         if ($value === null) {
             return [];
@@ -330,7 +337,7 @@ final class TypeRegistry
         $indexes = [];
         foreach (is_array($value) && array_is_list($value) ? $value : [null] as $columns) {
             if (!is_array($columns) || !array_is_list($columns) || array_filter($columns, static fn (mixed $c): bool => !is_string($c)) !== []) {
-                throw new \InvalidArgumentException("Type \"{$key}\": \"indexes\" is a list of field lists, such as [[\"state\", \"updated_at\"]].");
+                throw new \InvalidArgumentException("Type \"{$key}\": \"{$name}\" is a list of field lists, such as [[\"state\", \"updated_at\"]].");
             }
             $indexes[] = $columns;
         }
@@ -460,6 +467,7 @@ final class TypeRegistry
             fullText: self::fullText($schema['fullText'] ?? null, (string) $schema['key']),
             readonly: $actions['readonly'],
             creatable: $actions['creatable'],
+            publishedIndexes: self::indexes($schema['published_indexes'] ?? null, (string) $schema['key'], 'published_indexes'),
             idKind: isset($this->classes[$schema['key']]) ? IdKind::ofModel($this->classes[$schema['key']], $schema['id_field'] ?? 'uuid') : null,
         );
     }

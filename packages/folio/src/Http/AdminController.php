@@ -1433,6 +1433,19 @@ final class AdminController
         if ($typeReadonly) {
             $heading = FolioText::get('folio.form.view_record', ['label' => $this->labelFor($type)]); // nothing to edit here
         }
+        // The record's values for the editors (FieldContext::$values): each in the default language,
+        // as its own field type reads it (a tags field's list, also from an old comma text).
+        // Only read when a field takes its options from another ("options_from"): no per-field read otherwise.
+        $read = null;
+        foreach ($typeDef->fields as $fieldDef) {
+            if ($fieldDef->type === 'select' && array_key_exists('options_from', $fieldDef->config)) {
+                $read = [];
+                foreach ($typeDef->fields as $name => $other) {
+                    $read[$name] = $this->fieldTypes->get($other->type)->fromStorage(LocaleValue::default($values[$name] ?? null, $locales));
+                }
+                break;
+            }
+        }
         foreach ($typeDef->fields as $name => $fieldDef) {
             if ($name === $typeDef->idField || ($fieldDef->config['hidden'] ?? false) === true) {
                 continue;
@@ -1510,6 +1523,7 @@ final class AdminController
                 validate: $fieldDef->validate,
                 length: $fieldDef->length,
                 address: isset($addressFields[$name]) ? $this->addressAffix($type, $name, $locale, $locales) : null,
+                values: $read,
             );
             // main: the form column; address / side: the side panel (outside the <form>, so its
             // controls name the record form with form="folio-record").
@@ -2519,6 +2533,9 @@ final class AdminController
     private function fieldConfig(string $type, string $name, \Preflow\Data\TypeFieldDefinition $fieldDef): array
     {
         $config = $fieldDef->config;
+        if ($fieldDef->type === 'select' && ($source = \Preflow\Folio\Field\Types\SelectFieldType::sourceField($config)) !== null) {
+            $config['options_from_label'] = $this->labels->field($type, $source); // the note while the source has no values (0.89)
+        }
         if ($fieldDef->type === 'select' && is_array($config['options'] ?? null)) {
             $labels = $this->labels->options($type, $name);
             if (($config['display'] ?? null) === 'cards') {

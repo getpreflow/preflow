@@ -25,6 +25,9 @@ final class FieldKinds
     /** @var array<string, true> */
     private array $list = [];
 
+    /** @var array<string, \Closure(array<string, mixed>): bool> field type => whether a field of its config holds a list */
+    private array $listWhen;
+
     /** @var array<string, ColumnKind|\Closure(array<string, mixed>): ColumnKind> */
     private array $columns;
 
@@ -36,8 +39,16 @@ final class FieldKinds
             'date' => ColumnKind::Date,
             'string' => ColumnKind::Short,
             // A relation field holds a list of ids when its relation says so (relation.multiple), one id otherwise.
-            'relation' => static fn (array $config): ColumnKind => (is_array($config['relation'] ?? null) && ($config['relation']['multiple'] ?? false)) ? ColumnKind::Text : ColumnKind::Short,
+            'relation' => static fn (array $config): ColumnKind => self::multipleRelation($config) ? ColumnKind::Text : ColumnKind::Short,
         ];
+        // A multiple relation stores its ids as a list (0.89), a single one its id.
+        $this->listWhen = ['relation' => self::multipleRelation(...)];
+    }
+
+    /** @param array<string, mixed> $config */
+    private static function multipleRelation(array $config): bool
+    {
+        return is_array($config['relation'] ?? null) && (bool) ($config['relation']['multiple'] ?? false);
     }
 
     public function text(string ...$types): void
@@ -68,6 +79,20 @@ final class FieldKinds
     }
 
     /**
+     * A field type that holds a list for some configs only (a multiple relation or asset): $when
+     * gets the field's config and says whether that field's value is a list. DataManager then
+     * writes such a field's value as a list, as for list(); SQL storage keeps JSON text. Replaces
+     * an earlier registration for the type.
+     *
+     * @param \Closure(array<string, mixed>): bool $when
+     * @since 0.89
+     */
+    public function listWhen(string $fieldType, \Closure $when): void
+    {
+        $this->listWhen[$fieldType] = $when;
+    }
+
+    /**
      * Register the column kind of a field type: a kind, or a closure from the field's config to one.
      *
      * @param ColumnKind|\Closure(array<string, mixed>): ColumnKind $kind
@@ -91,6 +116,22 @@ final class FieldKinds
     public function isList(string $type): bool
     {
         return isset($this->list[$type]);
+    }
+
+    /**
+     * Whether this field's value is a list: its type always holds one (list()), or holds one with
+     * this field's config (listWhen()).
+     *
+     * @since 0.89
+     */
+    public function holdsList(TypeFieldDefinition $field): bool
+    {
+        if (isset($this->list[$field->type])) {
+            return true;
+        }
+        $when = $this->listWhen[$field->type] ?? null;
+
+        return $when !== null && $when($field->config);
     }
 
     /** Translatable fields are text (a map per locale); Short is text unless the field is unique or indexed. */
@@ -130,7 +171,8 @@ final class FieldKinds
      */
     public function lengths(TypeDefinition $def): array
     {
-        $indexed = $def->indexedByOthers();
+        // A field only a published index covers is a long column in the working table, so its values are limited here too (the published copy's column is short).
+        $indexed = [...$def->indexedByOthers(), ...array_merge([], ...$def->publishedIndexes)];
         $lengths = [];
         foreach ($def->fields as $name => $field) {
             $field = in_array($name, $indexed, true) ? $field->withIndex() : $field;

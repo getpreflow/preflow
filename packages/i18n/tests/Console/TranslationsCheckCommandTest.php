@@ -120,15 +120,15 @@ final class TranslationsCheckCommandTest extends TestCase
         $this->assertStringContainsString('g.nothing_', $out);
     }
 
-    public function test_a_package_group_without_a_delivered_language_exits_1(): void
+    /** A package's groups must all cover the languages that package delivers in any of its groups. */
+    public function test_a_package_group_without_a_language_its_package_delivers_exits_1(): void
     {
         $this->file('vendor/composer/installed.json', (string) json_encode(['packages' => [
-            ['name' => 'acme/g', 'install-path' => '../acme/g', 'extra' => ['preflow' => ['translations' => ['g' => 'lang']]]],
-            ['name' => 'acme/h', 'install-path' => '../acme/h', 'extra' => ['preflow' => ['translations' => ['h' => 'lang']]]],
+            ['name' => 'acme/g', 'install-path' => '../acme/g', 'extra' => ['preflow' => ['translations' => ['g' => 'lang', 'h' => 'lang']]]],
         ]]));
-        // g ships en and de (setUp), h en, de and fr: g lacks fr entirely.
+        // One package, two groups: g ships en and de (setUp), h en, de and fr: g lacks fr.
         foreach (['en', 'de', 'fr'] as $locale) {
-            $this->langFile('vendor/acme/h/lang', $locale, 'h', ['x' => "X {$locale}"]);
+            $this->langFile('vendor/acme/g/lang', $locale, 'h', ['x' => "X {$locale}"]);
         }
         $this->langFile('lang', 'en', 'site', ['only' => 'English site text']);
 
@@ -137,6 +137,41 @@ final class TranslationsCheckCommandTest extends TestCase
         $this->assertSame(1, $code);
         $this->assertMatchesRegularExpression('/\bfr\b.*\(g\b.*g\.a.*g\.nest\.b/s', $out);
         $this->assertStringNotContainsString('site.only', $out, 'a site-only group: only languages it has files for');
+    }
+
+    /** @since 0.89.0 another package's languages are not required: only the package's own. */
+    public function test_a_package_is_not_asked_for_languages_only_another_package_delivers(): void
+    {
+        $this->file('vendor/composer/installed.json', (string) json_encode(['packages' => [
+            ['name' => 'acme/g', 'install-path' => '../acme/g', 'extra' => ['preflow' => ['translations' => ['g' => 'lang']]]],
+            ['name' => 'acme/h', 'install-path' => '../acme/h', 'extra' => ['preflow' => ['translations' => ['h' => 'lang']]]],
+        ]]));
+        // g ships en and de (setUp, complete); h ships 14 languages, complete.
+        foreach (['en', 'de', 'fr', 'es', 'it', 'nl', 'pl', 'pt', 'sv', 'tr', 'ru', 'ja', 'ko', 'zh'] as $locale) {
+            $this->langFile('vendor/acme/h/lang', $locale, 'h', ['x' => "X {$locale}"]);
+        }
+
+        [$code, $out] = $this->check();
+
+        $this->assertSame(0, $code, $out);
+    }
+
+    public function test_a_key_missing_in_one_of_a_packages_own_languages_is_still_reported_beside_a_larger_package(): void
+    {
+        $this->file('vendor/composer/installed.json', (string) json_encode(['packages' => [
+            ['name' => 'acme/g', 'install-path' => '../acme/g', 'extra' => ['preflow' => ['translations' => ['g' => 'lang']]]],
+            ['name' => 'acme/h', 'install-path' => '../acme/h', 'extra' => ['preflow' => ['translations' => ['h' => 'lang']]]],
+        ]]));
+        foreach (['en', 'de', 'fr', 'es'] as $locale) {
+            $this->langFile('vendor/acme/h/lang', $locale, 'h', ['x' => "X {$locale}"]);
+        }
+        $this->langFile('vendor/acme/g/lang', 'de', 'g', ['a' => 'A de']); // nest.b missing in its own de
+
+        [$code, $out] = $this->check();
+
+        $this->assertSame(1, $code);
+        $this->assertMatchesRegularExpression('/Missing in de \(g.*g\.nest\.b/s', $out);
+        $this->assertStringNotContainsString('Missing in es', $out);
     }
 
     public function test_site_files_complete_a_package_group(): void
@@ -193,6 +228,32 @@ final class TranslationsCheckCommandTest extends TestCase
 
         // --group of another group leaves them out.
         $this->assertStringNotContainsString('model labels', $this->check(['--group=site'], ['g.fields.thing.size.label' => 'Size'])[1]);
+    }
+
+    /** @since 0.89.0 model labels are admin text: the admin's languages, not those of every package. */
+    public function test_model_labels_need_the_admins_languages_not_those_of_a_14_language_package(): void
+    {
+        $this->file('vendor/composer/installed.json', (string) json_encode(['packages' => [
+            ['name' => 'acme/g', 'install-path' => '../acme/g', 'extra' => ['preflow' => ['translations' => ['g' => 'lang']]]],
+            ['name' => 'acme/admin', 'install-path' => '../acme/admin', 'extra' => ['preflow' => ['translations' => ['adm' => ['path' => 'lang', 'scope' => 'admin']]]]],
+            ['name' => 'acme/wide', 'install-path' => '../acme/wide', 'extra' => ['preflow' => ['translations' => ['wide' => ['path' => 'lang', 'scope' => 'public']]]]],
+        ]]));
+        foreach (['en', 'de', 'fr'] as $locale) {
+            $this->langFile('vendor/acme/admin/lang', $locale, 'adm', ['x' => "X {$locale}"]);
+        }
+        foreach (['en', 'de', 'fr', 'es', 'it', 'nl', 'pl', 'pt', 'sv', 'tr', 'ru', 'ja', 'ko', 'zh'] as $locale) {
+            $this->langFile('vendor/acme/wide/lang', $locale, 'wide', ['x' => "X {$locale}"]);
+        }
+
+        [$code, $out] = $this->check([], ['g.types.thing.label' => ['en' => 'Things', 'de' => 'Dinge', 'fr' => 'Choses']]);
+
+        $this->assertSame(0, $code, $out);
+        $this->assertStringNotContainsString('model labels', $out);
+
+        [$code, $out] = $this->check([], ['g.types.thing.label' => ['en' => 'Things', 'de' => 'Dinge']]);
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString("Missing in fr (model labels of g, 1):\n  g.types.thing.label\n", $out);
+        $this->assertStringNotContainsString('Missing in es', $out);
     }
 
     public function test_keys_a_site_adds_to_a_package_group_are_checked_only_in_the_sites_languages(): void

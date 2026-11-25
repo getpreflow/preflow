@@ -6,9 +6,9 @@ namespace Preflow\Auth\Remember;
 
 use Preflow\Auth\Support\FileLock;
 use Preflow\Core\Context\Contexts;
+use Preflow\Data\Condition;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
-use Preflow\Data\RunsSql;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 
@@ -23,7 +23,7 @@ use Preflow\Data\TypeFieldDefinition;
  * (parallel requests with one value), without rotating again. Any other wrong
  * validator for a known selector means an old value was replayed after the
  * owner used it: every row of that user for the guard is deleted.
- * The rotation is one conditional write (DataManager::updateIf()): on SQL an
+ * The rotation is one conditional write (DataManager::updateWhen()): on SQL an
  * UPDATE decides by its affected rows, so two uses of one value never both
  * rotate; on another storage an exclusive file lock in $lockDir guards the read
  * and the write. In a preview (writes skipped) the value is accepted and a new
@@ -114,22 +114,16 @@ final class RememberMe
             return $next === null ? null : ['userId' => $userId, 'cookie' => null];
         }
         $hash = hash('sha256', $validator);
-        $rotated = $this->dm->updateIf(
+        $rotated = $this->dm->updateWhen(
             $this->type,
             $selector,
             // Still the value this request holds and not expired: rotate it.
-            static fn (DynamicRecord $fresh): ?array => hash_equals((string) $fresh->get('validator_hash'), $hash) && (int) $fresh->get('expires_at') > $now
-                ? ['validator_hash' => hash('sha256', $next), 'previous_hash' => $hash, 'rotated_at' => $now]
-                : null,
-            static function (RunsSql $driver) use ($next, $hash, $now, $selector): array {
-                $q = $driver->dialect()->quoteIdentifier(...);
-
-                return [
-                    'UPDATE ' . $q(self::TABLE) . ' SET ' . $q('validator_hash') . ' = ?, ' . $q('previous_hash') . ' = ?, ' . $q('rotated_at') . ' = ?'
-                        . ' WHERE ' . $q('id') . ' = ? AND ' . $q('validator_hash') . ' = ? AND ' . $q('expires_at') . ' > ?',
-                    [hash('sha256', $next), $hash, $now, $selector, $hash, $now],
-                ];
-            },
+            Condition::all(
+                Condition::where('id', '=', $selector),
+                Condition::where('validator_hash', '=', $hash),
+                Condition::where('expires_at', '>', $now),
+            ),
+            ['validator_hash' => hash('sha256', $next), 'previous_hash' => $hash, 'rotated_at' => $now],
             fn (\Closure $step): ?DynamicRecord => FileLock::run($this->lockDir, 'remember-' . $selector, static fn (): array => [$step(), false]),
         );
 
@@ -144,31 +138,17 @@ final class RememberMe
             return;
         }
         $selector = $m[1];
-        $driver = $this->dm->driver($this->storage);
+        // One DELETE on SQL; elsewhere under the selector's file lock, taken only for a row that exists.
+        $this->dm->deleteWhen(
+            $this->type,
+            $selector,
+            Condition::all(Condition::where('id', '=', $selector), Condition::where('guard', '=', $guard)),
+            fn (\Closure $step): ?DynamicRecord => FileLock::run($this->lockDir, 'remember-' . $selector, function () use ($step, $selector): array {
+                $record = $step();
 
-        if ($driver instanceof RunsSql) {
-            $dialect = $driver->dialect();
-            $this->dm->execute(
-                'DELETE FROM ' . $dialect->quoteIdentifier(self::TABLE)
-                    . ' WHERE ' . $dialect->quoteIdentifier('id') . ' = ? AND ' . $dialect->quoteIdentifier('guard') . ' = ?',
-                [$selector, $guard],
-                $this->storage,
-            );
-
-            return;
-        }
-
-        if ($this->dm->findIn($this->type, $selector) === null) {
-            return;
-        }
-        FileLock::run($this->lockDir, 'remember-' . $selector, function () use ($selector, $guard): array {
-            $record = $this->dm->findIn($this->type, $selector);
-            if ($record !== null && hash_equals((string) $record->getId(), $selector) && $record->get('guard') === $guard) {
-                $this->dm->deleteIn($this->type, $selector);
-            }
-
-            return [null, $this->dm->findIn($this->type, $selector) === null];
-        });
+                return [$record, $this->dm->findIn($this->type, $selector) === null];
+            }),
+        );
     }
 
     /** Delete every row of $userId on $guard. Returns how many were deleted. */

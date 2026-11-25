@@ -542,6 +542,8 @@ return [
         'up' => 'Monter',
         'down' => 'Descendre',
         'no_longer_option' => ':value (n’est plus proposé)',
+        'options_from_empty' => 'Ajoutez des valeurs à :field et enregistrez ; elles apparaîtront ici comme choix.',
+        'options_from_none' => 'Aucun choix pour l’instant : ajoutez d’abord des valeurs à :field.',
         'rows' => '{0} :count ligne|{1} :count ligne|[2,*] :count lignes',
         'public_file' => ':label est un fichier public ; importez-le ici pour le rendre privé.',
         'library_unavailable' => ':label n’a pas été importé : la médiathèque n’a pas de stockage sur ce site (voir Médias).',

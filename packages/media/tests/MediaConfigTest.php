@@ -207,6 +207,15 @@ final class MediaConfigTest extends TestCase
         MediaConfig::fromApp(Application::create($this->dir));
     }
 
+    public function test_an_extra_select_with_options_from_is_refused(): void
+    {
+        $this->write('media.php', ['fields' => ['usage' => ['type' => 'select', 'options_from' => 'tags']]]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Extra asset field "usage" in config/media.php sets "options_from", which only a field of a record type takes; list its choices in "options".');
+        MediaConfig::fromApp(Application::create($this->dir));
+    }
+
     public function test_private_dir_under_public_is_refused_naming_the_source(): void
     {
         $this->write('media.php', ['private_dir' => $this->dir . '/public/secret']);
