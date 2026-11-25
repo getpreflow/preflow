@@ -10,11 +10,11 @@ return [
     'integer' => 'Deve essere un numero intero.',
     'min' => [
         'number' => 'Deve essere almeno :min.',
-        'string' => 'Deve contenere almeno :min caratteri.',
+        'string' => 'Il numero di caratteri deve essere almeno :min.',
     ],
     'max' => [
         'number' => 'Deve essere al massimo :max.',
-        'string' => 'Deve contenere al massimo :max caratteri.',
+        'string' => 'Il numero di caratteri deve essere al massimo :max.',
     ],
     'between' => 'Deve essere compreso tra :min e :max.',
     'step' => 'Deve essere un multiplo di :step.',

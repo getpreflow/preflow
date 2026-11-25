@@ -22,7 +22,7 @@ return [
     'regex' => 'Biçim geçersiz.',
     'slug' => [
         'segment' => 'Yalnızca küçük harf (a–z), rakam ve bunların arasında tek tire kullanılabilir, ör. “biz-kimiz”.',
-        'path' => 'Yalnızca küçük harf (a–z), rakam ve bunların arasında tek tire ve eğik çizgi kullanılabilir, ör. “docs/biz-kimiz”.',
+        'path' => 'Yalnızca küçük harf (a–z), rakam ile bunların arasında tek tire ve eğik çizgi kullanılabilir, ör. “docs/biz-kimiz”.',
     ],
     'confirmed' => 'Onay eşleşmiyor.',
     'unique' => 'Bu değer zaten kullanılıyor.',

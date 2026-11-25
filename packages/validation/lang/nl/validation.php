@@ -10,19 +10,19 @@ return [
     'integer' => 'Moet een geheel getal zijn.',
     'min' => [
         'number' => 'Moet minimaal :min zijn.',
-        'string' => 'Moet minimaal :min tekens lang zijn.',
+        'string' => 'Het aantal tekens moet minimaal :min zijn.',
     ],
     'max' => [
         'number' => 'Mag maximaal :max zijn.',
-        'string' => 'Mag maximaal :max tekens lang zijn.',
+        'string' => 'Het aantal tekens mag maximaal :max zijn.',
     ],
     'between' => 'Moet tussen :min en :max liggen.',
     'step' => 'Moet een veelvoud van :step zijn.',
     'in' => 'Moet een van de volgende waarden zijn: :values.',
     'regex' => 'Het formaat is ongeldig.',
     'slug' => [
-        'segment' => 'Alleen kleine letters a–z, cijfers en losse koppeltekens daartussen, bijv. ‘over-ons’.',
-        'path' => 'Alleen kleine letters a–z, cijfers, losse koppeltekens en schuine strepen daartussen, bijv. ‘docs/over-ons’.',
+        'segment' => 'Alleen kleine letters a–z, cijfers en koppeltekens daartussen (nooit twee achter elkaar), bijv. ‘over-ons’.',
+        'path' => 'Alleen kleine letters a–z, cijfers, koppeltekens en schuine strepen daartussen (nooit twee achter elkaar), bijv. ‘docs/over-ons’.',
     ],
     'confirmed' => 'De bevestiging komt niet overeen.',
     'unique' => 'Deze waarde is al in gebruik.',
