@@ -7,7 +7,7 @@ namespace Preflow\Data\Driver;
 use Preflow\Data\Text\TextMatch;
 use Preflow\Data\UniqueViolation;
 
-final class SqliteDialect implements Dialect, PatternMatching, TextComparison
+final class SqliteDialect implements Dialect, PatternMatching, TextComparison, FailsOverflow
 {
     /** The Unicode LIKE function prepare() registers on a connection: ulike(pattern, value[, escape]). @since 0.77 */
     public const string LIKE_FUNCTION = 'ulike';
@@ -72,6 +72,18 @@ final class SqliteDialect implements Dialect, PatternMatching, TextComparison
         return $this->insertSql($table, $columns)
             . ' ON CONFLICT(' . $this->quoteIdentifier($idField) . ') '
             . ($updates === [] ? 'DO NOTHING' : 'DO UPDATE SET ' . implode(', ', $updates));
+    }
+
+    /** abs() of the smallest 64-bit integer: "integer overflow". FailsOverflow, @since 0.90.0 */
+    public function overflowFailure(): string
+    {
+        return 'abs(-9223372036854775807 - 1)';
+    }
+
+    /** SQLite's "integer overflow" (SQLITE_ERROR, so the message tells it apart). @since 0.90.0 */
+    public function isOverflowFailure(\PDOException $e): bool
+    {
+        return str_contains((string) ($e->errorInfo[2] ?? $e->getMessage()), 'integer overflow');
     }
 
     public function insertOrUpdateSql(string $table, array $columns, string $idField, array $set): ?string

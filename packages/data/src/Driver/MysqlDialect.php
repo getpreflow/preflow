@@ -6,7 +6,7 @@ namespace Preflow\Data\Driver;
 
 use Preflow\Data\UniqueViolation;
 
-final class MysqlDialect implements Dialect, PatternMatching, TextComparison
+final class MysqlDialect implements Dialect, PatternMatching, TextComparison, FailsOverflow
 {
     /**
      * The text rule's collations (ignore case, respect accents, NO PAD), in order of preference:
@@ -96,6 +96,18 @@ final class MysqlDialect implements Dialect, PatternMatching, TextComparison
     public function upsertSql(string $table, array $columns, string $idField): ?string
     {
         return null;
+    }
+
+    /** An unsigned sum past its range: error 1690 in every sql_mode. FailsOverflow, @since 0.90.0 */
+    public function overflowFailure(): string
+    {
+        return '(~0 + 1)';
+    }
+
+    /** Error 1690 (a value out of range), raised by overflowFailure() or a BIGINT sum. @since 0.90.0 */
+    public function isOverflowFailure(\PDOException $e): bool
+    {
+        return ($e->errorInfo[1] ?? null) === 1690;
     }
 
     /** ON DUPLICATE KEY UPDATE, which also fires on another unique index (see Dialect). */

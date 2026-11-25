@@ -7,7 +7,7 @@ namespace Preflow\Testing\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Since 0.90: data 0.90 (the number rule and the Add overflow refusal that DialectContract and StorageDriverContract check).
+ * Since 0.90: data 0.90 (the number rule and the overflow refusal of Add and of counters, Driver\FailsOverflow, that DialectContract and StorageDriverContract check).
  * Since 0.88: core 0.88 (ActionCall's token:/endpointUrl:, which HypermediaDriverContract passes); htmx 0.88
  * (ComponentEndpoint::TOKEN_FIELD, which WebApplication::componentAction() sends, and the endpoint that reads it).
  * Since 0.87: core 0.87 (ActionCall's carriesState: and 'blur' in ActionOptions::EVENTS, which HypermediaDriverContract

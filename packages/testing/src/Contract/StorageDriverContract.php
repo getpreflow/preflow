@@ -159,8 +159,10 @@ use Preflow\Testing\PlainDriver;
  * - RunsSql (@since 0.78): rawQuery(), execute() and dialect() tests.
  * - Transactions (@since 0.78): transaction() commits, rolls back and rethrows, joins an open one.
  * - AtomicCounters (@since 0.78): increment() inserts a missing row, adds to a stored one,
- *   restarts when the CounterReset field is below its bound (exactly at the boundary too), and
- *   concurrent increments lose no count (with reopenDriver(), pcntl and posix).
+ *   restarts when the CounterReset field is below its bound (exactly at the boundary too),
+ *   concurrent increments lose no count (with reopenDriver(), pcntl and posix), and (@since 0.90)
+ *   a count past the 64-bit whole numbers throws an OverflowException naming the counter and
+ *   writes nothing (a PdoDriver whose dialect is no Driver\FailsOverflow is not held to it).
  * - Maintenance (@since 0.78): check() finds a sound store sound, compact() keeps every record and
  *   the text rule, and refuses inside a transaction.
  * - Dumps (@since 0.78): a dump() restored into emptyDriver() holds the same records, compared by
@@ -874,6 +876,35 @@ abstract class StorageDriverContract extends TestCase
             $this->assertStringContainsString('hits', $e->getMessage());
         }
         $this->assertNumber(5, ($driver->findOne('counters', 'c1', 'id') ?? [])['hits'] ?? null, 'nothing written');
+    }
+
+    /**
+     * A count past the 64-bit whole numbers is refused (since 0.90) and writes nothing, also with a
+     * CounterReset that does not restart. The stored values (2^63 - 1024 and its negative) are exact
+     * in a DOUBLE column too.
+     */
+    public function test_increment_refuses_a_count_past_the_largest_whole_number(): void
+    {
+        $driver = $this->counters();
+        if ($driver instanceof \Preflow\Data\Driver\PdoDriver && !$driver->dialect() instanceof \Preflow\Data\Driver\FailsOverflow) {
+            $this->markTestSkipped('The dialect cannot fail a statement (Driver\\FailsOverflow): increment() adds as before 0.90.');
+        }
+        foreach ([[PHP_INT_MAX - 1023, 2000, 'largest'], [PHP_INT_MIN + 1024, -2000, 'smallest']] as [$stored, $by, $word]) {
+            foreach ([null, new CounterReset('window_start', 100, ['window_start' => 200])] as $reset) {
+                $driver->save('counters', 'c1', ['id' => 'c1', 'purpose' => 'p', 'hits' => $stored, 'window_start' => 150], 'id');
+                $before = $driver->findOne('counters', 'c1', 'id');
+                try {
+                    $driver->increment('counters', 'c1', 'hits', $by, ['purpose' => 'q', 'window_start' => 200], $reset, 'id');
+                    $this->fail("adding {$by} to {$stored} was not refused");
+                } catch (\OverflowException $e) {
+                    $this->assertStringContainsString('[hits]', $e->getMessage());
+                    $this->assertStringContainsString($word . ' whole number', $e->getMessage());
+                }
+                $this->assertSame($before, $driver->findOne('counters', 'c1', 'id'), 'nothing written');
+                $this->assertSame(1, $driver->increment('counters', 'c1', 'hits', 1, [], new CounterReset('window_start', 151, ['window_start' => 300]), 'id'), 'a restart still counts');
+                $driver->delete('counters', 'c1', 'id');
+            }
+        }
     }
 
     /**

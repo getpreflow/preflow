@@ -35,6 +35,7 @@ final class Counters
 
     /**
      * @param array<string, scalar|null> $insert
+     * @throws \OverflowException when the count passes the 64-bit whole numbers (Add::applyTo())
      */
     public static function step(StorageDriver $driver, string $table, string|int $id, string $field, int $by, array $insert, ?CounterReset $reset, string $idField): int
     {
@@ -45,6 +46,8 @@ final class Counters
         } elseif ($reset !== null && self::below($row[$reset->field] ?? null, $reset->below)) {
             $row = array_replace($row, $reset->set, [$field => $by]);
         } else {
+            // Past the 64-bit whole numbers refused as the SQL drivers do (since 0.90): nothing is written.
+            (new Add($by))->applyTo($row[$field] ?? null, $field);
             $row[$field] = self::number($row[$field] ?? null) + $by;
         }
         $driver->save($table, $id, $row, $idField);

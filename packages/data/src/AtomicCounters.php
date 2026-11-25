@@ -27,8 +27,15 @@ interface AtomicCounters extends StorageDriver
      * and $reset->set not $field (InvalidArgumentException). A stored reset field without a
      * value (null) is not below anything; a stored $field without one counts from 0.
      *
+     * A count whose sum passes the 64-bit whole numbers (the stored $field read as
+     * Condition::wholeNumber() reads it) throws the \OverflowException of Add::overflow(), naming
+     * $field, and writes nothing (since 0.90): the JSON driver and DataManager's fallback check it
+     * in PHP, PdoDriver in its statement when the dialect implements Driver\FailsOverflow (SQLite
+     * and MySQL do).
+     *
      * @param array<string, scalar|null> $insert the other columns of a new row
      * @throws \InvalidArgumentException
+     * @throws \OverflowException
      */
     public function increment(string $table, string|int $id, string $field, int $by, array $insert, ?CounterReset $reset = null, string $idField = 'uuid'): int;
 }

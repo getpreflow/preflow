@@ -733,6 +733,13 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
      * finds a bare name ambiguous with EXCLUDED's), and the reset field is assigned last: MySQL
      * reads a column assigned earlier in the statement as its new value. A dialect without such a
      * statement counts with a read and a write under exclusive().
+     *
+     * A count past the 64-bit whole numbers is refused (since 0.90) when the dialect can fail a
+     * statement (FailsOverflow): the statement adds only while the stored counter, read as
+     * wholeNumber() reads it, stays within Add::bound(), and fails otherwise, writing nothing;
+     * this throws Add::overflow()'s \OverflowException naming the field.
+     *
+     * @throws \OverflowException
      */
     public function increment(string $table, string|int $id, string $field, int $by, array $insert, ?\Preflow\Data\CounterReset $reset = null, string $idField = 'uuid'): int
     {
@@ -741,15 +748,28 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
         $column = static fn (string $name): string => $q($table) . '.' . $q($name);
         $counter = $column($field);
 
+        // The addition, failing the statement past the 64-bit whole numbers (FailsOverflow).
+        $add = "COALESCE({$counter}, 0) + ?";
+        $addBindings = [$by];
+        $step = new \Preflow\Data\Add($by);
+        $fails = $this->dialect instanceof FailsOverflow ? $this->dialect : null;
+        $bound = $fails !== null ? $step->bound() : null;
+        if ($fails !== null && $bound !== null) {
+            $beyond = $bound[0] === '<=' ? '>' : '<';
+            $add = 'CASE WHEN COALESCE(' . $this->dialect->wholeNumber($counter) . ", 0) {$beyond} ? THEN "
+                . $fails->overflowFailure() . " ELSE {$add} END";
+            $addBindings = [$bound[1], $by];
+        }
+
         $set = [];
         $bindings = [$id, ...array_values($insert), $by];
         if ($reset === null) {
-            $set[$field] = "COALESCE({$counter}, 0) + ?";
-            $bindings[] = $by;
+            $set[$field] = $add;
+            array_push($bindings, ...$addBindings);
         } else {
             $restart = $column($reset->field) . ' < ?';
-            $set[$field] = "CASE WHEN {$restart} THEN ? ELSE COALESCE({$counter}, 0) + ? END";
-            array_push($bindings, $reset->below, $by, $by);
+            $set[$field] = "CASE WHEN {$restart} THEN ? ELSE {$add} END";
+            array_push($bindings, $reset->below, $by, ...$addBindings);
             $assigned = $reset->set;
             if (array_key_exists($reset->field, $assigned)) {
                 // Last: the CASEs before it must read the stored value.
@@ -767,7 +787,14 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
         if ($sql === null) {
             return $this->exclusive($table, fn (): int => \Preflow\Data\Counters::step($this, $table, $id, $field, $by, $insert, $reset, $idField));
         }
-        $this->execute($sql, $bindings);
+        try {
+            $this->execute($sql, $bindings);
+        } catch (\PDOException $e) {
+            if ($fails !== null && $bound !== null && $fails->isOverflowFailure($e)) {
+                throw $step->overflow($field);
+            }
+            throw $e;
+        }
 
         $read = 'SELECT ' . $q($field) . ' FROM ' . $q($table) . ' WHERE ' . $q($idField) . ' = ? LIMIT 1';
 

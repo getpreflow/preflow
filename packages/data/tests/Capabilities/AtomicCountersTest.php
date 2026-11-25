@@ -136,4 +136,27 @@ final class AtomicCountersTest extends TestCase
             }
         }
     }
+
+    /** Since 0.90: a count past the 64-bit whole numbers is refused alike on every path, writing nothing. */
+    public function test_increment_in_refuses_a_count_past_the_largest_whole_number_on_every_driver(): void
+    {
+        foreach ($this->drivers() as $name => $driver) {
+            $dm = new DataManager([$name => $driver], $name);
+            $def = self::type($name);
+            foreach ([[PHP_INT_MAX - 1, 5, 'largest'], [PHP_INT_MIN + 1, -5, 'smallest']] as [$stored, $by, $word]) {
+                $driver->save('counters', 'c1', ['id' => 'c1', 'purpose' => 'p', 'hits' => $stored, 'window_start' => 100], 'id');
+                try {
+                    $dm->incrementIn($def, 'c1', 'hits', $by, ['purpose' => 'q']);
+                    $this->fail("{$name}: adding {$by} to {$stored} was not refused");
+                } catch (\OverflowException $e) {
+                    $this->assertSame("Adding {$by} to the field [hits] goes past the {$word} whole number the storage keeps ("
+                        . ($by > 0 ? PHP_INT_MAX : PHP_INT_MIN) . '); nothing was written. Add a smaller amount or reset the field.', $e->getMessage(), $name);
+                }
+                $this->assertSame($stored, (int) $driver->findOne('counters', 'c1', 'id')['hits'], "{$name}: nothing written");
+                $this->assertSame($stored + ($by > 0 ? 1 : -1), $dm->incrementIn($def, 'c1', 'hits', $by > 0 ? 1 : -1, []), "{$name}: up to the bound it counts");
+                $this->assertSame(1, $dm->incrementIn($def, 'c1', 'hits', 1, [], new CounterReset('window_start', 101, ['window_start' => 200])), "{$name}: a restart still counts");
+                $driver->delete('counters', 'c1', 'id');
+            }
+        }
+    }
 }

@@ -2027,6 +2027,7 @@ final class DataManager
      *                         for counts of work that really happens in a preview or an audit too
      *                         (the per-person AI limits); otherwise an 'increment' write
      * @throws \InvalidArgumentException when $insert names $field or the id, or $reset->set names $field
+     * @throws \OverflowException when the count passes the 64-bit whole numbers (since 0.90; nothing is written)
      * @since 0.78
      */
     public function incrementIn(TypeDefinition $def, string|int $id, string $field, int $by, array $insert, ?CounterReset $reset = null, bool $accounting = false): int

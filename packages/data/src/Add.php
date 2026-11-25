@@ -32,13 +32,25 @@ final readonly class Add
     {
         $sum = (Condition::wholeNumber($stored) ?? 0) + $this->amount;
         if (!is_int($sum)) {
-            $name = $field === '' ? 'the field' : "the field [{$field}]";
-            throw new \OverflowException("Adding {$this->amount} to {$name} goes past the "
-                . ($this->amount > 0 ? 'largest' : 'smallest') . ' whole number the storage keeps (' . ($this->amount > 0 ? PHP_INT_MAX : PHP_INT_MIN)
-                . '); nothing was written. Add a smaller amount or reset the field.');
+            throw $this->overflow($field);
         }
 
         return $sum;
+    }
+
+    /**
+     * The refusal of a sum past the 64-bit whole numbers, naming $field: what applyTo() throws, and
+     * AtomicCounters::increment() for its counter (since 0.90).
+     *
+     * @since 0.90.0
+     */
+    public function overflow(string $field = ''): \OverflowException
+    {
+        $name = $field === '' ? 'the field' : "the field [{$field}]";
+
+        return new \OverflowException("Adding {$this->amount} to {$name} goes past the "
+            . ($this->amount > 0 ? 'largest' : 'smallest') . ' whole number the storage keeps (' . ($this->amount > 0 ? PHP_INT_MAX : PHP_INT_MIN)
+            . '); nothing was written. Add a smaller amount or reset the field.');
     }
 
     /**
