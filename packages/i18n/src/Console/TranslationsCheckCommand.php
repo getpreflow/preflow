@@ -14,12 +14,14 @@ use Preflow\I18n\Translator;
  * preflow translations:check [--group=<group>]: the release gate for "no raw keys".
  * Lists, per group and language, the keys that exist in English but not in that language
  * (site file and package file together; a package group's package keys are checked in every
- * language any package delivers and the keys only the site adds to it in the languages the
- * site has lang/ files for; a site-only group in the languages it has files for), and the keys used as t('…') in package
+ * language its own package delivers, i.e. has files for in any of its groups (since 0.89; a
+ * package shipping 14 languages does not make another package that ships three incomplete),
+ * and the keys only the site adds to it in the languages the site has lang/ files for; a
+ * site-only group in the languages it has files for), and the keys used as t('…') in package
  * templates and model files (of packages declaring translations) and in the site's
  * (app/, resources/, templates/, config/models/) that exist in no language. Keys derived
  * from other files (DerivedKeys: model files' labels, which Folio registers) are checked
- * for package groups only: each needs a text in every delivered language other than English,
+ * for package groups only: each needs a text in every language its package delivers other than English,
  * from a language file or the file's own map; a site type's plain label is a valid fallback.
  * A key literal followed by ~ (Twig) or . (Blade, PHP), t('group.kind_' ~ value), is a dynamic prefix: fine when any text
  * starts with it (since 0.84.2). Exits 1 when anything is missing. The package lists it in composer.json (extra.preflow.commands).
@@ -59,15 +61,9 @@ final class TranslationsCheckCommand implements CommandInterface
         $problems = 0;
 
         // Package groups (they have a scope: declared, or registered by their provider) must
-        // cover every language any package delivers; a site-only group the languages it has files for.
-        $delivered = [];
-        foreach ($translator->groups() as $group) {
-            if ($translator->scope($group) !== null) {
-                array_push($delivered, ...$translator->locales($group));
-            }
-        }
-        $delivered = array_values(array_unique($delivered));
-        sort($delivered);
+        // cover the languages their own package delivers; a site-only group the languages it has
+        // files for.
+        $delivered = $this->deliveredByGroup($translator, $registry);
 
         $siteLocales = $translator->siteLocales();
         foreach ($groups as $group) {
@@ -77,7 +73,7 @@ final class TranslationsCheckCommand implements CommandInterface
             $english = $package ? $translator->packageEntries($group, 'en') : $translator->entries($group, 'en');
             $siteOnly = $package ? array_diff_key($translator->siteEntries($group, 'en'), $english) : [];
             $expected = $package
-                ? array_unique([...$delivered, ...$translator->locales($group)])
+                ? array_unique([...($delivered[$group] ?? []), ...$translator->locales($group)])
                 : $translator->locales($group);
             foreach ($expected as $locale) {
                 if ($locale === 'en') {
@@ -146,10 +142,40 @@ final class TranslationsCheckCommand implements CommandInterface
     }
 
     /**
+     * For each package group the languages its own package delivers: the languages any group of
+     * that package has files for. A package is the root the registry knows a group by; a group
+     * only a provider registered (no root) is a package of its own.
+     *
+     * @return array<string, list<string>> group => sorted languages
+     */
+    private function deliveredByGroup(Translator $translator, TranslationRegistry $registry): array
+    {
+        $byPackage = [];
+        $packageOf = [];
+        foreach ($translator->groups() as $group) {
+            if ($translator->scope($group) === null) {
+                continue;
+            }
+            $package = $registry->packagePath($group) ?? 'group:' . $group;
+            $packageOf[$group] = $package;
+            $byPackage[$package] ??= [];
+            array_push($byPackage[$package], ...$translator->locales($group));
+        }
+        $delivered = [];
+        foreach ($packageOf as $group => $package) {
+            $languages = array_values(array_unique($byPackage[$package]));
+            sort($languages);
+            $delivered[$group] = $languages;
+        }
+
+        return $delivered;
+    }
+
+    /**
      * Derived keys of package groups missing in a delivered language (no language file text
      * and no entry in the source's map); prints them per locale and group. The number missing.
      *
-     * @param list<string> $delivered
+     * @param array<string, list<string>> $delivered group => languages its package delivers
      */
     private function derived(\Preflow\Core\Container\Container $container, Translator $translator, ?string $only, array $delivered): int
     {
@@ -162,7 +188,7 @@ final class TranslationsCheckCommand implements CommandInterface
             if (($only !== null && $group !== $only) || $translator->scope($group) === null) {
                 continue; // the site's own texts: the model file's plain text is enough
             }
-            foreach (array_unique([...$delivered, ...$translator->locales($group)]) as $locale) {
+            foreach (array_unique([...($delivered[$group] ?? []), ...$translator->locales($group)]) as $locale) {
                 if ($locale === 'en' || $translator->has($key, $locale) || (is_array($value) && is_string($value[$locale] ?? null))) {
                     continue;
                 }

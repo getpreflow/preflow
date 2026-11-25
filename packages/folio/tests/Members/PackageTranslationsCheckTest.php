@@ -57,7 +57,8 @@ final class PackageTranslationsCheckTest extends TestCase
             $out = (string) ob_get_clean();
 
             $this->assertSame(0, $code, "{$group}: {$out}");
-            $this->assertStringContainsString('en, de, fr', $out, $group);
+            // The summary lists every language any installed package delivers (validation: 14 since 0.89).
+            $this->assertStringContainsString('Translations complete: 1 group(s), en, de', $out, $group);
         }
     }
 }
