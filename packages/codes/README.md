@@ -70,9 +70,10 @@ if (!$result->ok) {
   and records a redemption (`redemptions($codeId)`: id, redeemer, time; no IP address or
   user agent).
 - **Uses are counted atomically**, so `max_uses` holds under concurrent redeems: on SQL one
-  conditional `UPDATE` (`DataManager::execute()`; `uses` and `max_uses` are compared as
-  numbers, whichever column type the table has), on the JSON driver a file lock in
-  `storage/locks`. The last use goes to one request; the others get `used_up`.
+  conditional `UPDATE` (`DataManager::updateWhen()`; `uses` and `max_uses` are compared as
+  whole numbers, whichever column type the table has), on the JSON driver a file lock in
+  `storage/locks`. Revoking, renewing and changing a code are conditional writes too: a redeem
+  or revoke landing in between makes them refuse (`CodeRefused::CHANGED`) on every storage. The last use goes to one request; the others get `used_up`.
 - `Result`: `ok`, `reason` (`unknown`, `expired`, `used_up`, `revoked`, `throttled`, `wrong_recipient`),
   `payload` (on success) and `codeId`.
 - With a client (`Throttle::client($request)`), every failed redeem counts against it under

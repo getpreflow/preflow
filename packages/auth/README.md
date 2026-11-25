@@ -229,8 +229,8 @@ $guard->login($user, $request, remember: true);   // also queues the cookie
   `CookieQueue::reachesResponse()`). In a render's frame or a frame that does not deliver
   (a preview, an internal render) it leaves them to the frame, which settles them when it
   closes: captured, dropped or handed to the request around it.
-- On SQL one conditional `UPDATE` decides a rotation, so two uses of one value never both
-  rotate; on the JSON driver a file lock in `storage/locks` does. `RememberMe::revokeAll()`
+- On SQL one conditional `UPDATE` decides a rotation (`DataManager::updateWhen()`), so two uses
+  of one value never both rotate; on the JSON driver a file lock in `storage/locks` does. `RememberMe::revokeAll()`
   (e.g. after a password change) and `prune()` are also available.
 
 ### Ending a user's other sessions
@@ -258,8 +258,8 @@ $tokens->prune();                               // expired ones
 ```
 
 - A token is 32 random bytes, base64url; only its SHA-256 hash is stored, as the row id.
-- `consume()` spends a token at most once: on SQL one `DELETE` decides by its affected rows,
-  on the JSON driver a file lock does. An unknown, expired or wrong-purpose token returns
+- `consume()` spends a token at most once (`DataManager::deleteWhen()`): on SQL one `DELETE`
+  decides by its affected rows, on the JSON driver a file lock does. An unknown, expired or wrong-purpose token returns
   `null` and nothing is deleted.
 - Tokens are never in the TypeCatalog and never exported.
 

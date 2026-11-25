@@ -171,7 +171,7 @@ final class CodeRulesTest extends CodesAppTestCase
         $codes->redeem($code, 'q');
         $write = new \ReflectionMethod($codes, 'writeColumns');
         $guard = new \ReflectionMethod($codes, 'liveGuard');
-        $live = fn (?int $max) => $write->invoke($codes, $id, ['label' => 'x'], static fn (): bool => true, $guard->invoke(null, $max));
+        $live = fn (?int $max) => $write->invoke($codes, $id, ['label' => 'x'], $guard->invoke(null, $max));
 
         $this->assertFalse($live(1), 'two uses are already counted: max 1 is refused by the UPDATE itself');
         $this->assertTrue($live(2));

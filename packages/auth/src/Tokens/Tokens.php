@@ -6,9 +6,9 @@ namespace Preflow\Auth\Tokens;
 
 use Preflow\Auth\Support\FileLock;
 use Preflow\Core\Context\Contexts;
+use Preflow\Data\Condition;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
-use Preflow\Data\RunsSql;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 
@@ -18,7 +18,7 @@ use Preflow\Data\TypeFieldDefinition;
  *
  * A token is 32 random bytes, base64url; only its SHA-256 hash is stored, as
  * the row id, with a purpose, a subject (who it is for) and expires_at.
- * consume() spends a token at most once (DataManager::deleteIf()): on SQL one
+ * consume() spends a token at most once (DataManager::deleteWhen()): on SQL one
  * DELETE decides by its affected rows, on another storage an exclusive file lock
  * in $lockDir guards the read and the delete (only for a token that exists; the
  * file is removed once the row is gone). In a preview (writes skipped) a valid
@@ -76,29 +76,16 @@ final class Tokens
     public function consume(string $token, string $purpose): ?string
     {
         $id = hash('sha256', $token);
-        // "Now" is read when the check runs (under the lock on a storage without SQL).
-        $now = fn (): int => ($this->clock)();
-        $consumed = $this->dm->deleteIf(
+        $consumed = $this->dm->deleteWhen(
             $this->type,
             $id,
-            // The lookup found the hash; hash_equals confirms the stored one exactly.
-            static function (DynamicRecord $record) use ($id, $purpose, $now): bool {
-                $at = $now();
-
-                return hash_equals((string) $record->getId(), $id)
-                    && $record->get('purpose') === $purpose
-                    && (int) $record->get('expires_at') > $at;
-            },
-            static function (RunsSql $driver) use ($id, $purpose, $now): array {
-                $dialect = $driver->dialect();
-
-                return [
-                    'DELETE FROM ' . $dialect->quoteIdentifier(self::TABLE)
-                        . ' WHERE ' . $dialect->quoteIdentifier('id') . ' = ? AND ' . $dialect->quoteIdentifier('purpose') . ' = ?'
-                        . ' AND ' . $dialect->quoteIdentifier('expires_at') . ' > ?',
-                    [$id, $purpose, $now()],
-                ];
-            },
+            // Built when the check runs, so "now" is read then (under the lock on a storage without
+            // SQL). The id comparison confirms the stored hash exactly, whatever the lookup matched.
+            fn (): Condition => Condition::all(
+                Condition::where('id', '=', $id),
+                Condition::where('purpose', '=', $purpose),
+                Condition::where('expires_at', '>', ($this->clock)()),
+            ),
             // The file lock is taken only for a token that exists; its file goes once the row has.
             fn (\Closure $step): ?DynamicRecord => FileLock::run($this->lockDir, 'tokens-' . $id, function () use ($step, $id): array {
                 $record = $step();
