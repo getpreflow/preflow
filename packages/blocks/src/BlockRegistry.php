@@ -6,6 +6,7 @@ namespace Preflow\Blocks;
 
 use Preflow\Components\Component;
 use Preflow\Components\ComponentMap;
+use Preflow\Data\SelectOptionsFrom;
 use Preflow\Data\TypeFamily;
 use Preflow\Data\TypeFieldDefinition;
 
@@ -184,14 +185,6 @@ final class BlockRegistry
                     $class,
                 ));
             }
-            // A select's "options_from" (0.89) reads the record being edited; a block has none yet.
-            if (array_key_exists('options_from', $field->config)) {
-                throw new BlockConfigException(sprintf(
-                    'Block field "%s" on %s sets "options_from", which is not supported in blocks yet; list its choices in "options".',
-                    $property->getName(),
-                    $class,
-                ));
-            }
             $fields[$property->getName()] = new TypeFieldDefinition(
                 name: $property->getName(),
                 type: $field->type,
@@ -202,6 +195,8 @@ final class BlockRegistry
                 translatable: $field->translatable,
             );
         }
+
+        self::checkOptionsFrom($block->key, $fields);
 
         return new BlockDefinition(
             key: $block->key,
@@ -214,6 +209,36 @@ final class BlockRegistry
             fields: $fields,
             family: $block->family,
         );
+    }
+
+    /**
+     * A select's "options_from" (since 0.90 in blocks) names another field of the same block; the
+     * select's options are that block's values of it. Checked like a type's (SelectOptionsFrom), the
+     * error naming the block.
+     *
+     * @param array<string, TypeFieldDefinition> $fields
+     * @throws BlockConfigException
+     */
+    private static function checkOptionsFrom(string $key, array $fields): void
+    {
+        $names = array_map('strval', array_keys($fields));
+        foreach ($fields as $name => $field) {
+            if (!array_key_exists('options_from', $field->config)) {
+                continue;
+            }
+            if ($field->type !== 'select') {
+                throw new BlockConfigException(sprintf(
+                    'Block "%s": field "%s": "options_from" is an option of a select field; make the field type "select" or remove it.',
+                    $key,
+                    $name,
+                ));
+            }
+            try {
+                SelectOptionsFrom::check($field->config, (string) $name, $names, 'block');
+            } catch (\LogicException $e) {
+                throw new BlockConfigException(sprintf('Block "%s": field "%s": %s', $key, $name, $e->getMessage()), 0, $e);
+            }
+        }
     }
 
     /** @return list<class-string> data-only block classes under app/Blocks (App\Blocks\…) */

@@ -62,9 +62,14 @@ final class Banner extends BlockComponent
 - **`#[BlockField]`** takes the options of a type field: `type`, `label`, `help`, `translatable`,
   `validate`, and `config` for anything else (select `options`, …). A `blocks` field nests blocks:
   `allowed` lists the keys it takes, `min` and `max` how many. Field names starting with `_` are
-  refused (`_uid`, `_block` and `_order` are the system's). A select's `options_from` (a record
-  type's select taking its options from another field) is not supported in blocks yet: it is
-  refused when the block is read; list the choices in `options`.
+  refused (`_uid`, `_block` and `_order` are the system's). A select may take its options from
+  another field **of the same block** instead of `options` (since 0.90):
+  `#[BlockField(type: 'select', config: ['options_from' => 'answers'])]` beside a `tags` field
+  `answers`. Each block uses its own values (two blocks of one type each choose from their own
+  list); Folio's editor shows them as the options, and a save accepts only one of the values the
+  same block submits. A name that is not another field of the block, the select itself, both
+  `options` and `options_from`, `display: cards`, or `options_from` on a field that is not a
+  select fail when the registry is built, naming the block (`Block "poll": field "answer": …`).
 - **`BlockComponent`** fills each `#[BlockField]` property from the block's data before
   `resolveState()`, cast to the property's type. The block's id is `$this->_uid`. Everything else
   is an ordinary component: constructor injection, `resolveState()`, actions, CSS next to it.

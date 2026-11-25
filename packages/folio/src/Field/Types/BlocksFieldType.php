@@ -269,6 +269,8 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
             }
             $uid = $block['_uid'];
             $rules = [];
+            // The whole block is the data (in the default language), so a rule may read another field
+            // of it (a select's "options_from", 0.90); only the ruled fields are checked.
             $data = [];
             foreach ($definition->fields as $name => $field) {
                 $type = $this->fieldTypes->get($field->type);
@@ -276,14 +278,18 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                     $errors += $type->validateBlocks($block[$name] ?? [], $field->config, $locales, $prefix . $uid . '.' . $name . '.');
                     continue;
                 }
-                $fieldRules = \Preflow\Folio\Field\FieldRules::merge($field->validate, $type->rules($field->config));
-                if ($fieldRules === []) {
-                    continue;
-                }
-                $rules[$name] = $fieldRules;
                 $data[$name] = $field->translatable
                     ? LocaleValue::pick($block[$name] ?? null, $locales, $locales->default)
                     : LocaleValue::default($block[$name] ?? null, $locales);
+                $fieldRules = \Preflow\Folio\Field\FieldRules::merge(
+                    $field->validate,
+                    $type instanceof \Preflow\Folio\Field\HasBlockRules
+                        ? $type->blockRules($field->config, $definition, $this->fieldTypes)
+                        : $type->rules($field->config),
+                );
+                if ($fieldRules !== []) {
+                    $rules[$name] = $fieldRules;
+                }
             }
 
             if ($rules !== [] && $this->validators !== null) {
@@ -497,6 +503,8 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         $base = $namePrefix . '[' . $uid . ']';
         $fields = [];
         $summary = '';
+        // Only read when a select takes its options from another field of the block ("options_from", 0.90).
+        $values = $this->hasOptionsFrom($definition) ? $this->blockValues($definition, $block, $locales) : null;
 
         foreach ($definition->fields as $field => $def) {
             $type = $this->fieldTypes->get($def->type);
@@ -530,18 +538,25 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                 $summary = mb_substr(trim(strip_tags((string) $value)), 0, 80);
             }
 
+            $config = $def->config;
+            if ($def->type === 'select' && ($source = SelectFieldType::sourceField($config)) !== null) {
+                // The note while the source has no values names it as the block's editor does.
+                $config['options_from_label'] = self::fieldLabel($definition->fields[$source]->label ?? null, $source);
+            }
+
             $fields[] = $type->renderEditor(new FieldContext(
                 name: $base . '[' . $field . ']',
                 label: self::fieldLabel($def->label, $field),
                 help: $def->help !== null ? \Preflow\Folio\FolioText::label($def->help) : null,
                 value: $type->fromStorage($value),
                 errors: $errors[$field] ?? [],
-                config: $def->config,
+                config: $config,
                 required: in_array('required', $def->validate, true) && (!$def->translatable || $locale === $locales->default),
                 placeholder: $placeholder,
                 locale: $locale,
                 locales: $locales,
                 validate: $def->validate,
+                values: $values,
             ));
         }
 
@@ -579,6 +594,42 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                 'id' => $record['id'] ?? '',
             ], '', '&', PHP_QUERY_RFC3986),
         ]);
+    }
+
+    /** Whether a select of the block takes its options from another field of it ("options_from"). */
+    private function hasOptionsFrom(\Preflow\Blocks\BlockDefinition $definition): bool
+    {
+        foreach ($definition->fields as $field) {
+            if ($field->type === 'select' && SelectFieldType::sourceField($field->config) !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The block's values, field => value, as FieldContext::$values holds a record's: each in the
+     * default language, as its own field type reads it; nested blocks fields left out.
+     *
+     * @param array<string, mixed> $block
+     * @return array<string, mixed>
+     */
+    private function blockValues(\Preflow\Blocks\BlockDefinition $definition, array $block, Locales $locales): array
+    {
+        $values = [];
+        foreach ($definition->fields as $name => $field) {
+            $type = $this->fieldTypes->get($field->type);
+            if ($type instanceof self) {
+                continue;
+            }
+            $raw = $field->translatable
+                ? LocaleValue::pick($block[$name] ?? null, $locales, $locales->default)
+                : LocaleValue::default($block[$name] ?? null, $locales);
+            $values[$name] = $type->fromStorage($raw);
+        }
+
+        return $values;
     }
 
     /**

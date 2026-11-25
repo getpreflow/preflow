@@ -42,11 +42,36 @@ final class BlockRegistryTest extends TestCase
         new BlockRegistry([ReservedName::class]);
     }
 
-    public function test_a_select_taking_its_options_from_another_field_is_refused(): void
+    public function test_a_select_takes_its_options_from_another_field_of_the_block(): void
+    {
+        $block = (new BlockRegistry([OptionsFromSelect::class]))->get('options_from_select');
+
+        $this->assertNotNull($block);
+        $this->assertSame('choices', $block->fields['choice']->config['options_from']);
+    }
+
+    /** @return iterable<string, array{class-string, string}> */
+    public static function badOptionsFrom(): iterable
+    {
+        yield 'a name that is not a field of the block' => [\Preflow\Blocks\Tests\Fixtures\OptionsFromUnknown::class,
+            'Block "options_from_unknown": field "choice": Select field option "options_from" names "choice_list", which is not a field of this block; name one of its fields (choices).'];
+        yield 'the select itself' => [\Preflow\Blocks\Tests\Fixtures\OptionsFromItself::class,
+            'Block "options_from_itself": field "choice": Select field option "options_from" must name another field of this block, not the select itself.'];
+        yield 'both options and options_from' => [\Preflow\Blocks\Tests\Fixtures\OptionsFromWithOptions::class,
+            'Block "options_from_with_options": field "choice": Select field has both "options" and "options_from"; keep one of them.'];
+        yield 'display cards' => [\Preflow\Blocks\Tests\Fixtures\OptionsFromCards::class,
+            'Block "options_from_cards": field "choice": Select field option "display": "cards" needs fixed "options" with descriptions; it cannot take "options_from". Use "select" or "radio".'];
+        yield 'a field that is not a select' => [\Preflow\Blocks\Tests\Fixtures\OptionsFromNotSelect::class,
+            'Block "options_from_not_select": field "choice": "options_from" is an option of a select field; make the field type "select" or remove it.'];
+    }
+
+    /** @param class-string $class */
+    #[\PHPUnit\Framework\Attributes\DataProvider('badOptionsFrom')]
+    public function test_a_wrong_options_from_fails_when_the_blocks_load_naming_the_block(string $class, string $message): void
     {
         $this->expectException(BlockConfigException::class);
-        $this->expectExceptionMessage('Block field "choice" on ' . OptionsFromSelect::class . ' sets "options_from", which is not supported in blocks yet; list its choices in "options".');
-        new BlockRegistry([OptionsFromSelect::class]);
+        $this->expectExceptionMessage($message);
+        new BlockRegistry([$class]);
     }
 
     public function test_discover_scans_app_blocks_and_round_trips_through_plain_data(): void

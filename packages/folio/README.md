@@ -1037,11 +1037,20 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   text); another field gives a JSON-text list or one text. A translatable source counts with its
   default-language values only: add choices there. Boot errors: a name that is not another field of the type, both `"options"`
   and `"options_from"`, `"display": "cards"`, naming the select in `list.filters` or
-  `list.bulk` (its options differ per record), and `options_from` in a block field (not supported
-  in blocks yet). A class-backed type sets it on the class, like `options`. A field type's editor
+  `list.bulk` (its options differ per record). A class-backed type sets it on the class, like `options`. A field type's editor
   gets the record's values as `FieldContext::$values` (each in the default language, as its field
   type reads it; null without a record), and a field type whose rules need the record's other
   fields implements `HasRecordRules`.
+
+  In a block (since 0.90) the source is another field of **the same block**, never the record's
+  or another block's: `#[BlockField(type: 'select', config: ['options_from' => 'answers'])]`.
+  Each block instance uses its own values: the block editor shows that block's values (as
+  `FieldContext::$values`, read like a record's) and, while it has none, the same note naming the
+  source; a save checks the value against the values that block submits in the same save (the
+  whole block is the validation data), with the same messages. The same mistakes are errors when
+  the blocks load, naming the block (`Block "poll": field "answer": Select field option
+  "options_from" names "answer_list", which is not a field of this block; …`). A field type whose
+  rules need the other fields of its block implements `HasBlockRules`.
 - `relation`: see [Blocks, matrix or relation?](#blocks-matrix-or-relation).
 - `asset`: each chosen file is a card (a 16:10 thumbnail with the focal point, the name, kind and
   size, "No alt text yet" for an image without one); an empty field is a dashed drop zone. A file

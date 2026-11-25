@@ -26,8 +26,11 @@ use Preflow\Folio\Field\FieldContext;
  * the field is required.
  * A name that is not another field of the type, both "options" and "options_from", "display":
  * "cards" with it, and such a select in "list.filters" or "list.bulk" are boot errors (TypeCatalog).
+ * In a block (since 0.90) the source is another field of the same block: the editor gets that
+ * block's values, a save checks the block's submitted ones (blockRules()), and the same mistakes
+ * are errors when the blocks load (BlockRegistry).
  */
-final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\Folio\Field\SearchableText, \Preflow\Folio\Field\HasColumnKind, \Preflow\Folio\Field\HasRecordRules
+final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\Folio\Field\SearchableText, \Preflow\Folio\Field\HasColumnKind, \Preflow\Folio\Field\HasRecordRules, \Preflow\Folio\Field\HasBlockRules
 {
     public function key(): string
     {
@@ -138,9 +141,7 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
         if (!in_array($display, ['select', 'radio', 'cards'], true)) {
             throw new \LogicException('Select field option "display" must be "select", "radio" or "cards".');
         }
-        if ($display === 'cards' && array_key_exists('options_from', $config)) {
-            throw new \LogicException('Select field option "display": "cards" needs fixed "options" with descriptions; it cannot take "options_from". Use "select" or "radio".');
-        }
+        \Preflow\Data\SelectOptionsFrom::checkDisplay($config);
         if ($display === 'cards') {
             $options = $config['options'] ?? null;
             $text = static fn (mixed $t): bool => (is_string($t) && $t !== '') || (is_array($t) && $t !== [] && !array_is_list($t) && array_filter($t, 'is_string') === $t);
@@ -204,7 +205,8 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
 
     /**
      * The "options_from" option against the type's fields: it names another field of the type, and
-     * the select has no "options" beside it.
+     * the select has no "options" beside it (\Preflow\Data\SelectOptionsFrom::check(), which a
+     * block's select goes through too, since 0.90).
      *
      * @since 0.89
      *
@@ -214,23 +216,7 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
      */
     public static function checkOptionsFrom(array $config, string $name, array $fields): void
     {
-        if (!array_key_exists('options_from', $config)) {
-            return;
-        }
-        $source = self::sourceField($config);
-        if ($source === null) {
-            throw new \LogicException('Select field option "options_from" must be the name of another field of this type.');
-        }
-        if (array_key_exists('options', $config)) {
-            throw new \LogicException('Select field has both "options" and "options_from"; keep one of them.');
-        }
-        if ($source === $name) {
-            throw new \LogicException('Select field option "options_from" must name another field of this type, not the select itself.');
-        }
-        if (!in_array($source, $fields, true)) {
-            $others = array_values(array_filter($fields, static fn (string $field): bool => $field !== $name));
-            throw new \LogicException('Select field option "options_from" names "' . $source . '", which is not a field of this type; name one of its fields (' . implode(', ', $others) . ').');
-        }
+        \Preflow\Data\SelectOptionsFrom::check($config, $name, $fields, 'type');
     }
 
     /**
@@ -247,6 +233,24 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
             return $this->rules($config);
         }
         $label = \Preflow\Folio\Content\DisplayLabels::pick($sourceDef->labels ?: $sourceDef->label);
+
+        return [new OptionsFrom($source, $fieldTypes->get($sourceDef->type), $label)];
+    }
+
+    /**
+     * Inside a block (BlocksFieldType::validateBlocks(), the block as the data): the source is a field
+     * of the same block, read through its own field type; a refusal with no source values names it.
+     *
+     * @since 0.90.0
+     */
+    public function blockRules(array $config, \Preflow\Blocks\BlockDefinition $block, \Preflow\Folio\Field\FieldTypeRegistry $fieldTypes): array
+    {
+        $source = self::sourceField($config);
+        $sourceDef = $source !== null ? ($block->fields[$source] ?? null) : null;
+        if ($source === null || $sourceDef === null) {
+            return $this->rules($config);
+        }
+        $label = $sourceDef->label !== null ? \Preflow\Folio\FolioText::label($sourceDef->label) : null;
 
         return [new OptionsFrom($source, $fieldTypes->get($sourceDef->type), $label)];
     }
