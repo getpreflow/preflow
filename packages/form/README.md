@@ -89,7 +89,7 @@ input, textarea, select and checkbox.
 
 When the visitor leaves the email field, the component's `check` action runs with `field: 'email'`.
 
-In Blade it is the same call: `$form->field('email', ['call' => $hd->post('check', ['field' => 'email'], ['on' => 'blur', 'target' => 'email'])])`.
+In Blade, take the builder as a value first (`@php($form = $fn->form_begin([...]))`, then `{!! $form->begin() !!}`; `@form_begin(...)` can't print a builder and throws). Then it is the same call: `$form->field('email', ['call' => $hd->post('check', ['field' => 'email'], ['on' => 'blur', 'target' => 'email'])])`.
 
 Some rules:
 

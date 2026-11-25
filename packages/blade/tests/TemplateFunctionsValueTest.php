@@ -1,0 +1,272 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\Blade\Tests;
+
+use PHPUnit\Framework\TestCase;
+use Preflow\Blade\BladeEngine;
+use Preflow\View\AssetCollector;
+use Preflow\View\NonceGenerator;
+use Preflow\View\TemplateFunctionDefinition;
+
+final class TemplateFunctionsValueTest extends TestCase
+{
+    private BladeEngine $engine;
+    private string $dir;
+
+    protected function setUp(): void
+    {
+        $this->dir = sys_get_temp_dir() . '/preflow_blade_fn_' . uniqid();
+        mkdir($this->dir . '/cache', 0755, true);
+        $this->engine = new BladeEngine(
+            templateDirs: [$this->dir],
+            assetCollector: new AssetCollector(new NonceGenerator()),
+            cachePath: $this->dir . '/cache',
+        );
+    }
+
+    protected function tearDown(): void
+    {
+        $files = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($this->dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($files as $file) {
+            $file->isDir() ? rmdir($file->getPathname()) : unlink($file->getPathname());
+        }
+        rmdir($this->dir);
+    }
+
+    private function template(string $name, string $source): void
+    {
+        file_put_contents($this->dir . "/{$name}.blade.php", $source);
+    }
+
+    /** Illuminate wraps what a template throws in a ViewException; the LogicException is its cause. */
+    private function expectRenderRefusal(string $template, string $messagePart): void
+    {
+        try {
+            $this->engine->render($template);
+            $this->fail('Expected the render to be refused.');
+        } catch (\Illuminate\View\ViewException $e) {
+            $this->assertInstanceOf(\LogicException::class, $e->getPrevious());
+            $this->assertStringContainsString($messagePart, $e->getPrevious()->getMessage());
+        }
+    }
+
+    private function register(string $name, callable $fn, bool $safe = false): void
+    {
+        $this->engine->addFunction(new TemplateFunctionDefinition($name, $fn, $safe));
+    }
+
+    public function test_fn_returns_the_value_as_it_is(): void
+    {
+        $this->register('make_box', fn (string $label): object => new class ($label) {
+            public function __construct(public string $label) {}
+            public function open(): string
+            {
+                return '<div title="' . $this->label . '">';
+            }
+        });
+        $this->template('v', '@php($box = $fn->make_box("x")){!! $box->open() !!}');
+
+        $this->assertSame('<div title="x">', $this->engine->render('v'));
+    }
+
+    public function test_directive_of_an_object_function_throws_naming_the_value_form(): void
+    {
+        $this->register('make_box', fn (): object => new \ArrayObject());
+        $this->template('d', '@make_box()');
+
+        $this->expectRenderRefusal('d', 'make_box returns an object of class ArrayObject, not text: @make_box can\'t print it. Take it as a value: @php($x = $fn->make_box(...))');
+    }
+
+    public function test_directive_of_an_array_function_throws(): void
+    {
+        $this->register('list_it', fn (): array => [1]);
+        $this->template('a', '@list_it()');
+
+        $this->expectRenderRefusal('a', '$fn->list_it(...)');
+    }
+
+    public function test_text_functions_echo_as_before(): void
+    {
+        $this->register('raw_fn', fn (): string => '<b>x</b>', true);
+        $this->register('esc_fn', fn (): string => '<b>x</b>');
+        $this->register('num_fn', fn (): int => 7);
+        $this->register('null_fn', fn (): ?string => null);
+        $this->register('str_fn', fn (): \Stringable => new class implements \Stringable {
+            public function __toString(): string
+            {
+                return '<i>';
+            }
+        });
+        $this->template('t', '@raw_fn()|@esc_fn()|@num_fn()|@null_fn()|@str_fn()');
+
+        $this->assertSame('<b>x</b>|&lt;b&gt;x&lt;/b&gt;|7||&lt;i&gt;', $this->engine->render('t'));
+    }
+
+    public function test_fn_with_text_result_returns_it_unescaped(): void
+    {
+        $this->register('esc_fn', fn (): string => '<b>');
+        $this->template('s', '{!! $fn->esc_fn() !!}');
+
+        $this->assertSame('<b>', $this->engine->render('s'));
+    }
+
+    public function test_unknown_function_through_fn_throws_naming_it(): void
+    {
+        $this->register('known_one', fn (): string => '');
+        $this->template('u', '{!! $fn->nope() !!}');
+
+        $this->expectRenderRefusal('u', 'nope');
+    }
+
+    public function test_unknown_function_message_lists_known_functions(): void
+    {
+        $this->register('known_one', fn (): string => '');
+        $this->template('u2', '{!! $fn->nope() !!}');
+
+        $this->expectRenderRefusal('u2', 'known_one');
+        $this->expectRenderRefusal('u2', 'addFunction');
+    }
+
+    public function test_dollar_fn_prefixed_variables_keep_working(): void
+    {
+        $this->register('hi', fn (): string => 'hi');
+        $this->template('p', '{{ $__fn_hi() }}');
+
+        $this->assertSame('hi', $this->engine->render('p'));
+    }
+
+    public function test_form_begin_builder_renders_its_form_tag_through_fn(): void
+    {
+        if (!class_exists(\Preflow\Form\FormExtensionProvider::class)) {
+            $this->markTestSkipped('preflow/form is not installed.');
+        }
+        $provider = new \Preflow\Form\FormExtensionProvider(
+            new \Preflow\Form\FieldRenderer(),
+            new \Preflow\Form\GroupRenderer(),
+            new \Preflow\Form\ModelIntrospector(),
+        );
+        foreach ($provider->getTemplateFunctions() as $def) {
+            $this->engine->addFunction($def);
+        }
+        $this->template('f', '@php($form = $fn->form_begin(["action" => "/go"])){!! $form->begin() !!}{!! $form->end() !!}');
+
+        $html = $this->engine->render('f');
+        $this->assertStringContainsString('<form', $html);
+        $this->assertStringContainsString('action="/go"', $html);
+        $this->assertStringContainsString('</form>', $html);
+    }
+
+    public function test_form_begin_directive_throws_naming_the_fn_form(): void
+    {
+        if (!class_exists(\Preflow\Form\FormExtensionProvider::class)) {
+            $this->markTestSkipped('preflow/form is not installed.');
+        }
+        $provider = new \Preflow\Form\FormExtensionProvider(
+            new \Preflow\Form\FieldRenderer(),
+            new \Preflow\Form\GroupRenderer(),
+            new \Preflow\Form\ModelIntrospector(),
+        );
+        foreach ($provider->getTemplateFunctions() as $def) {
+            $this->engine->addFunction($def);
+        }
+        $this->template('g', '@form_begin()');
+
+        $this->expectRenderRefusal('g', '$fn->form_begin(...)');
+    }
+
+    public function test_htmlable_and_backed_enum_results_print_as_e_did(): void
+    {
+        $this->register('html_fn', fn () => new \Illuminate\Support\HtmlString('<b>'));
+        $this->register('enum_fn', fn () => TemplateFnSuit::Hearts);
+        $this->template('h', '@html_fn()|@enum_fn()');
+
+        $this->assertSame('<b>|hearts', $this->engine->render('h'));
+    }
+
+    /** What text() lets through prints on both paths: escaped (e()) and safe (an isSafe function). */
+    public function test_htmlable_deferred_and_enum_results_print_on_both_paths(): void
+    {
+        $htmlable = static fn () => new TemplateFnMarkup('<b>');
+        $deferred = static fn () => new TemplateFnDeferred(new TemplateFnMarkup('<i>'));
+        $intEnum = static fn () => TemplateFnRank::Ace;
+        foreach (['esc' => false, 'safe' => true] as $path => $safe) {
+            $this->register("{$path}_markup", $htmlable, $safe);
+            $this->register("{$path}_deferred", $deferred, $safe);
+            $this->register("{$path}_enum", fn () => TemplateFnSuit::Hearts, $safe);
+            $this->register("{$path}_int_enum", $intEnum, $safe);
+            $this->register("{$path}_true", fn (): bool => true, $safe);
+            $this->template($path, "@{$path}_markup()|@{$path}_deferred()|@{$path}_enum()|@{$path}_int_enum()|@{$path}_true()");
+
+            $this->assertSame('<b>|<i>|hearts|1|1', $this->engine->render($path), "{$path}: as e() prints them");
+        }
+    }
+
+    public function test_an_enum_on_the_safe_path_prints_escaped_as_e_does(): void
+    {
+        $this->register('suit_fn', fn () => TemplateFnSuit::Quote, true);
+        $this->template('q', '@suit_fn()');
+
+        $this->assertSame('&lt;q&gt;', $this->engine->render('q'));
+    }
+
+    public function test_fn_without_any_function_says_none_are_registered(): void
+    {
+        $this->template('none', '{!! $fn->nope() !!}');
+
+        $this->expectRenderRefusal('none', 'none registered yet');
+    }
+
+    public function test_directive_without_parentheses_still_echoes(): void
+    {
+        $this->register('form_end', fn (): string => '</form>', true);
+        $this->template('n', 'a @form_end b');
+
+        $this->assertSame('a </form> b', $this->engine->render('n'));
+    }
+
+    public function test_fn_works_in_a_region_render(): void
+    {
+        $this->register('shout', fn (string $s): string => strtoupper($s));
+        $this->template('r', "@region('x'){!! \$fn->shout('hi') !!}@endregion");
+
+        $this->assertSame('HI', $this->engine->renderRegion('r', 'x', ['componentId' => 'c']));
+        $this->assertSame('<div id="c-x">HI</div>', $this->engine->render('r', ['componentId' => 'c']));
+    }
+}
+
+enum TemplateFnSuit: string
+{
+    case Hearts = 'hearts';
+    case Quote = '<q>';
+}
+
+enum TemplateFnRank: int
+{
+    case Ace = 1;
+}
+
+/** Htmlable, not Stringable: only toHtml() prints it. */
+final class TemplateFnMarkup implements \Illuminate\Contracts\Support\Htmlable
+{
+    public function __construct(private string $html) {}
+
+    public function toHtml(): string
+    {
+        return $this->html;
+    }
+}
+
+final class TemplateFnDeferred implements \Illuminate\Contracts\Support\DeferringDisplayableValue
+{
+    public function __construct(private TemplateFnMarkup $value) {}
+
+    public function resolveDisplayableValue(): TemplateFnMarkup
+    {
+        return $this->value;
+    }
+}

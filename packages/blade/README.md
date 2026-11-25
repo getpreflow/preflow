@@ -117,6 +117,21 @@ $engine->addFunction(new TemplateFunctionDefinition(
 @component('Counter', ['count' => 0])
 ```
 
+A directive can only print text. A function that returns an object (`form_begin` returns a
+`FormBuilder`) is taken as a value through `$fn`, which holds every registered function:
+
+```blade
+@php($form = $fn->form_begin(['action' => '/contact']))
+{!! $form->begin() !!}
+{!! $form->field('email', ['type' => 'email']) !!}
+{!! $form->end() !!}
+```
+
+The rule: `$fn->name(...)` returns the result as it is. `@name(...)` prints it, and only when it is a
+string, a `Stringable`, a scalar or null. For anything else it throws a `LogicException` that
+names the function and the `$fn->name(...)` form. (Text includes `Htmlable` and backed enums, what `{{ }}` prints.) An unknown `$fn->nope()` throws and lists the
+registered functions. `fn` is a reserved view variable: a context key or an `addGlobal('fn', ...)` of that name would shadow it.
+
 ## Global variables
 
 ```php

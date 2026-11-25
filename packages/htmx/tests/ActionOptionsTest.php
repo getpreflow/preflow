@@ -186,4 +186,22 @@ final class ActionOptionsTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         new ActionCall('delete', '/x', 'c', 'c', ActionOptions::from([], true));
     }
+
+    public function test_an_action_calls_token_and_endpoint_url_go_together(): void
+    {
+        $call = new ActionCall('post', '/x?token=t', 'c', 'c', ActionOptions::from([], true), token: 't', endpointUrl: '/x');
+        $this->assertSame('t', $call->token);
+        $this->assertSame('/x', $call->endpointUrl);
+        $this->assertNull((new ActionCall('post', '/x?token=t', 'c', 'c', ActionOptions::from([], true)))->token, 'a call built before 0.88: only the URL has the token');
+
+        foreach (['token' => ['t', null], 'endpointUrl' => [null, '/x']] as $given => [$token, $endpointUrl]) {
+            try {
+                new ActionCall('post', '/x?token=t', 'c', 'c', ActionOptions::from([], true), token: $token, endpointUrl: $endpointUrl);
+                $this->fail("{$given} alone is refused");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString("{$given} is given without", $e->getMessage());
+                $this->assertStringContainsString('Give both', $e->getMessage());
+            }
+        }
+    }
 }

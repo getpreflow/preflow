@@ -10,6 +10,8 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\PageCache\PageCacheConfig;
 use Preflow\Core\PageCache\PageCacheMiddleware;
 use Preflow\Testing\Tests\Fixtures\State\Greeter;
+use Preflow\Testing\Tests\Fixtures\State\Note;
+use Preflow\Testing\Tests\Fixtures\State\SiteForm;
 use Preflow\Testing\Tests\Fixtures\State\Tally;
 use Preflow\Testing\Tests\Fixtures\State\Visitor;
 use Preflow\Testing\WebApplication;
@@ -17,6 +19,8 @@ use Preflow\Testing\ChecksFrameBalance;
 
 require_once __DIR__ . '/Fixtures/State/Tally.php';
 require_once __DIR__ . '/Fixtures/State/Greeter.php';
+require_once __DIR__ . '/Fixtures/State/Note.php';
+require_once __DIR__ . '/Fixtures/State/SiteForm.php';
 require_once __DIR__ . '/Fixtures/State/Visitor.php';
 
 final class WebApplicationTest extends TestCase
@@ -204,5 +208,95 @@ final class WebApplicationTest extends TestCase
         } catch (\PHPUnit\Framework\AssertionFailedError $e) {
             $this->assertStringContainsString('has state', $e->getMessage());
         }
+    }
+
+    /**
+     * A short post call on a component without state sends its token in the body (0.88): its
+     * 6000-character prop never reaches the URL, and the action runs as htmx sends it.
+     */
+    #[RunInSeparateProcess]
+    public function test_a_post_call_with_large_props_sends_its_token_in_the_body(): void
+    {
+        file_put_contents($this->dir . '/config/page_cache.php', "<?php\nreturn ['enabled' => false];\n");
+        file_put_contents($this->dir . '/app/pages/note.twig', '<html><head></head><body>'
+            . '{{ component(' . json_encode(Note::class) . ', {text: "' . str_repeat('x', 6000) . '"}) }}</body></html>');
+        $page = (string) WebApplication::boot($this->dir)->handle(new ServerRequest('GET', 'https://example.com/note'))->getBody();
+
+        $this->assertSame(1, preg_match('/<button ([^>]*)>Save/', $page, $button), $page);
+        preg_match_all('/([a-z-]+)="([^"]*)"/', $button[1], $found, PREG_SET_ORDER);
+        $attributes = [];
+        foreach ($found as [, $name, $value]) {
+            $attributes[$name] = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        }
+        $this->assertSame('/--component/action', $attributes['hx-post'], 'no token in the URL');
+        $body = json_decode($attributes['hx-vals'], true);
+        $this->assertIsArray($body);
+        $this->assertGreaterThan(6000, strlen($body['_component_token']), 'the token carries the props');
+
+        // As htmx sends it: the hx-vals as the form body, to the URL of hx-post.
+        $answer = WebApplication::boot($this->dir)->handle(
+            (new ServerRequest('POST', 'https://example.com' . $attributes['hx-post'], ['HX-Request' => 'true']))->withParsedBody($body),
+        );
+        $this->assertSame(200, $answer->getStatusCode(), (string) $answer->getBody());
+        $this->assertStringContainsString('Saved 6000 characters, params: tag', (string) $answer->getBody(), 'the action ran with its props; _component_token is no param');
+    }
+
+    /** A page rendered before 0.88 has the token in the URL: its calls still run. */
+    #[RunInSeparateProcess]
+    public function test_a_call_with_the_token_in_the_url_still_runs(): void
+    {
+        $app = WebApplication::boot($this->dir);
+        $note = new Note();
+        $note->setProps(['text' => 'short']);
+        $token = $app->container()->get(\Preflow\Htmx\ComponentToken::class)->encodeFor($note, 'save');
+
+        $answer = $app->handle((new ServerRequest('POST', 'http://localhost/--component/action?token=' . urlencode($token), ['HX-Request' => 'true']))
+            ->withParsedBody(['tag' => 'y']));
+
+        $this->assertSame(200, $answer->getStatusCode(), (string) $answer->getBody());
+        $this->assertStringContainsString('Saved 5 characters, params: tag', (string) $answer->getBody());
+    }
+
+    /** componentAction() sends the token in the body, as the page's post call does. */
+    #[RunInSeparateProcess]
+    public function test_component_action_sends_the_token_in_the_body(): void
+    {
+        $answer = WebApplication::componentAction(WebApplication::boot($this->dir), '', Note::class, 'save', ['tag' => 'y'], props: ['text' => str_repeat('x', 6000)]);
+
+        $this->assertSame(200, $answer->getStatusCode(), (string) $answer->getBody());
+        $this->assertStringContainsString('Saved 6000 characters, params: tag', (string) $answer->getBody(), '_component_token is no param');
+    }
+
+    /**
+     * A site's own form token named `_token` in a form that is a call element reaches the action:
+     * the call's token travels as `_component_token`, so htmx (whose hx-vals replace form fields of
+     * the same name) leaves the site's field alone, and the endpoint passes it on.
+     */
+    #[RunInSeparateProcess]
+    public function test_a_sites_own_token_field_reaches_the_action(): void
+    {
+        file_put_contents($this->dir . '/config/page_cache.php', "<?php\nreturn ['enabled' => false];\n");
+        file_put_contents($this->dir . '/app/pages/send.twig', '<html><head></head><body>'
+            . '{{ component(' . json_encode(SiteForm::class) . ') }}</body></html>');
+        $page = (string) WebApplication::boot($this->dir)->handle(new ServerRequest('GET', 'https://example.com/send'))->getBody();
+
+        $this->assertSame(1, preg_match('/<form ([^>]*)>(.*?)<\/form>/s', $page, $form), $page);
+        preg_match_all('/([a-z-]+)="([^"]*)"/', $form[1], $found, PREG_SET_ORDER);
+        $attributes = [];
+        foreach ($found as [, $name, $value]) {
+            $attributes[$name] = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        }
+        $vals = json_decode($attributes['hx-vals'], true);
+        $this->assertIsArray($vals);
+        $this->assertArrayHasKey(\Preflow\Core\Http\Hypermedia\ActionCall::TOKEN_FIELD, $vals);
+        $this->assertArrayNotHasKey('_token', $vals, "the call's token never takes the site's field name");
+
+        // As htmx sends it: the form's fields, then the hx-vals over them.
+        $answer = WebApplication::boot($this->dir)->handle(
+            (new ServerRequest('POST', 'https://example.com' . $attributes['hx-post'], ['HX-Request' => 'true']))
+                ->withParsedBody(array_replace(['_token' => 'site-form-token'], $vals)),
+        );
+        $this->assertSame(200, $answer->getStatusCode(), (string) $answer->getBody());
+        $this->assertStringContainsString('Sent with form token site-form-token', (string) $answer->getBody());
     }
 }

@@ -239,7 +239,8 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
     {
         $what = sprintf("hd.%s('%s')", $method, $action);
         [$component, $options, $driver] = $this->resolve($what, $options);
-        $call = new ActionCall($method, $this->url('action', $component, $action), $component->getComponentId(), $this->targetId($component, $options), $options, $values, $component->hasState());
+        [$url, $token, $endpointUrl] = $this->endpointCall('action', $component, $action);
+        $call = new ActionCall($method, $url, $component->getComponentId(), $this->targetId($component, $options), $options, $values, $component->hasState(), token: $token, endpointUrl: $endpointUrl);
 
         return $this->attributes($driver->callAttributes($call));
     }
@@ -254,7 +255,8 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
         $what = sprintf("hd.on('%s')", $event);
         [$component, $options, $driver] = $this->resolve($what, $options);
         // A POST: a component's state goes in the body, whatever its size.
-        $call = new ActionCall('post', $this->url('render', $component, 'render'), $component->getComponentId(), $this->targetId($component, $options), $options, carriesState: $component->hasState());
+        [$url, $token, $endpointUrl] = $this->endpointCall('render', $component, 'render');
+        $call = new ActionCall('post', $url, $component->getComponentId(), $this->targetId($component, $options), $options, carriesState: $component->hasState(), token: $token, endpointUrl: $endpointUrl);
 
         return $this->attributes($driver->listenAttributes($call, $event));
     }
@@ -328,15 +330,19 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
     }
 
     /**
-     * The endpoint URL of $action on $component: one token per action and component, whatever the
-     * values. The token names $component's parent, so a call to the parent still works when the
-     * endpoint renders $component alone.
+     * The endpoint URL of $action on $component with its token, the token, and the URL without it
+     * (ActionCall's url, token and endpointUrl); a preview's parameter is on both URLs. One token
+     * per action and component, whatever the values. The token names $component's parent, so a
+     * call to the parent still works when the endpoint renders $component alone.
+     *
+     * @return array{string, string, string}
      */
-    private function url(string $path, Component $component, string $action): string
+    private function endpointCall(string $path, Component $component, string $action): array
     {
         $token = $this->token->encodeFor($component, $action, $this->renderer?->parentRefOf($component));
+        $endpoint = $this->endpoint() . '/' . $path;
 
-        return PreviewUrls::carry($this->endpoint() . '/' . $path . '?token=' . urlencode($token));
+        return [PreviewUrls::carry($endpoint . '?token=' . urlencode($token)), $token, PreviewUrls::carry($endpoint)];
     }
 
     /** @param array<string, string> $attributes */

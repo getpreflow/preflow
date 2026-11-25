@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Htmx\Tests;
 
+use Preflow\Core\Http\Hypermedia\ActionCall;
 use PHPUnit\Framework\TestCase;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Response;
@@ -101,6 +102,24 @@ class MissingRecordComponent extends Component
     public function fallback(\Throwable $e): ?string
     {
         return '<div class="fallback">Something went wrong</div>';
+    }
+}
+
+/** Keeps the params its action was given. */
+class ParamsEndpointComponent extends Component
+{
+    /** @var array<array-key, mixed>|null */
+    public static ?array $params = null;
+
+    public function actions(): array
+    {
+        return ['keep'];
+    }
+
+    /** @param array<array-key, mixed> $params */
+    public function actionKeep(array $params = []): void
+    {
+        self::$params = $params;
     }
 }
 
@@ -522,6 +541,72 @@ final class ComponentEndpointTest extends TestCase
         $whole = $endpoint->handle($this->createRequest('GET', '/--component/render', ['token' => $token], headers: ['HX-Target' => 'elsewhere']));
         $this->assertStringContainsString('id="EndpointTestComponent-', (string) $whole->getBody());
         $this->assertSame('', $whole->getHeaderLine('HX-Nonce'));
+    }
+
+    public function test_a_missing_token_says_where_it_is_expected(): void
+    {
+        try {
+            $this->endpoint->handle($this->createRequest('POST', '/--component/action', body: ['_values' => '{}']));
+            $this->fail('a request without a token is refused');
+        } catch (SecurityException $e) {
+            $this->assertStringContainsString('Missing component token', $e->getMessage());
+            $this->assertStringContainsString("'token' in the URL", $e->getMessage());
+            $this->assertStringContainsString("'_component_token' in the body", $e->getMessage());
+            $this->assertStringContainsString('hx-params', $e->getMessage(), 'what may have removed it');
+        }
+    }
+
+    public function test_the_token_may_come_in_the_body_as_token_field(): void
+    {
+        $token = $this->tokenService->encode(EndpointTestComponent::class, ['title' => 'Before'], 'refresh');
+
+        foreach (['_component_token (0.88)' => ActionCall::TOKEN_FIELD, 'token (before 0.88)' => 'token'] as $what => $field) {
+            $response = $this->endpoint->handle($this->createRequest('POST', '/--component/action', body: [$field => $token]));
+            $this->assertSame(200, $response->getStatusCode(), $what);
+            $this->assertStringContainsString('Refreshed', (string) $response->getBody(), $what);
+        }
+    }
+
+    /**
+     * htmx passes a call element's hx-vals (with its _component_token) to every element inside it, and
+     * appends them to a get request's query: the URL's own token is the one that counts.
+     */
+    public function test_the_urls_token_wins_over_an_inherited_body_token(): void
+    {
+        $own = $this->tokenService->encode(EndpointTestComponent::class, ['title' => 'Own'], 'render');
+        $outer = $this->tokenService->encode(GuardedComponent::class, [], 'admin');
+
+        $get = $this->endpoint->handle($this->createRequest('GET', '/--component/render', ['token' => $own, ActionCall::TOKEN_FIELD => $outer]));
+        $this->assertSame(200, $get->getStatusCode());
+        $this->assertStringContainsString('Own', (string) $get->getBody(), 'a get inside a post call element');
+
+        $post = $this->endpoint->handle($this->createRequest('POST', '/--component/render', ['token' => $own], [ActionCall::TOKEN_FIELD => $outer]));
+        $this->assertStringContainsString('Own', (string) $post->getBody(), 'an old-form post inside a post call element');
+    }
+
+    public function test_the_body_token_is_no_action_param(): void
+    {
+        // An old-style token (all props): the body as in 0.85, without the fields a call around the element gave it.
+        $old = $this->tokenService->encode(ParamsEndpointComponent::class, [], 'keep');
+        ParamsEndpointComponent::$params = null;
+        $this->endpoint->handle($this->createRequest('POST', '/--component/action', ['token' => $old], ['name' => 'Ada', ActionCall::TOKEN_FIELD => 'from-an-outer-call', '_values' => '{}', '_region' => '']));
+        $this->assertSame(['name' => 'Ada'], ParamsEndpointComponent::$params);
+
+        // A 0.86 token (encodeFor()), its token in the body.
+        $component = $this->makeComponent(ParamsEndpointComponent::class, []);
+        $neutral = $this->tokenService->encodeFor($component, 'keep');
+        ParamsEndpointComponent::$params = null;
+        $response = $this->endpoint->handle($this->createRequest('POST', '/--component/action', body: [ActionCall::TOKEN_FIELD => $neutral, '_values' => '{"page":2}', '_region' => '', 'name' => 'Bo']));
+        $this->assertSame(200, $response->getStatusCode(), (string) $response->getBody());
+        $this->assertSame(['page' => 2, 'name' => 'Bo'], ParamsEndpointComponent::$params);
+
+        // A site's own form token named `_token` is a param like any form field.
+        ParamsEndpointComponent::$params = null;
+        $this->endpoint->handle($this->createRequest('POST', '/--component/action', body: [ActionCall::TOKEN_FIELD => $neutral, '_values' => '{}', '_region' => '', '_token' => 'site-form-token']));
+        $this->assertSame(['_token' => 'site-form-token'], ParamsEndpointComponent::$params);
+        ParamsEndpointComponent::$params = null;
+        $this->endpoint->handle($this->createRequest('POST', '/--component/action', ['token' => $old], ['_token' => 'site-form-token']));
+        $this->assertSame(['_token' => 'site-form-token'], ParamsEndpointComponent::$params, 'old-style too');
     }
 }
 

@@ -115,7 +115,9 @@ the driver, so state is never lost silently.
 token), `componentId` (whose state goes along), `targetId` (the element the answer goes into: the
 component or one of its regions), `options` (`ActionOptions`, the checked neutral options),
 `values` and `carriesState` (0.87, default true: the component has a state carrier on the page; a
-component without `#[State]` has none, so its calls send no state). `ActionOptions::driverOptions($name)` gives what a template put under the driver's own
+component without `#[State]` has none, so its calls send no state). Since 0.88 it also has the
+token apart: `token` and `endpointUrl` (`url` without the token), both set by every short call, or
+both null. `url` still holds the token, so a driver written before 0.88 works unchanged. `ActionOptions::driverOptions($name)` gives what a template put under the driver's own
 key (the escape hatch, below); `drivers()` names every key given, so a driver can warn about keys
 not its own.
 
@@ -127,6 +129,29 @@ without knowing the client:
 | `_state[<componentId>]` (`STATE_FIELD`) | the state string the page carries for that component |
 | `_values` (`VALUES_FIELD`) | the values the call sends: one JSON object as a string, or fields `_values[<name>]`. Unsigned input; the fields of the form the element sits in win over them |
 | `_region` (`REGION_FIELD`) | the region the answer renders; empty or missing for the whole component |
+| `_component_token` (`ActionCall::TOKEN_FIELD`, 0.88) | the call's token (`ActionCall::$token`) when it travels in the body; a token in the URL (`token`) is read first |
+
+**Where the token travels (0.88).** A POST call (`hd.post`, `hd.on`) sends its token in the body,
+as `_component_token` in `hx-vals`, and its `hx-post` is the endpoint URL without it. Large props (a long
+text, an old form submission) never make the URL too long. A GET call (`hd.get`) has no body: its
+token stays in `hx-get` as `token`. The limit is on that token: over 2048 bytes
+(`HtmxDriver::GET_TOKEN_LIMIT`) it fails in debug, and otherwise each component is logged once per
+request. The endpoint reads `token` from the URL first, then `_component_token` from the body, then a body
+`token` (forms written before 0.88), so a page rendered before 0.88 keeps working. `_component_token` and
+`token` never reach an action's params.
+
+htmx passes an element's `hx-vals` to every element inside it. So that a call's token stays with
+that call, a page with such a call gets a few lines of script (`HtmxAssets`, on
+`htmx:configRequest`): a request drops `_component_token` when it only inherited it from a call
+around it (its own element's `hx-vals` doesn't hold it, and its value is the ancestor's). A
+`hd.get`, an old-form call, a site's own `hx-get` or a boosted link inside a call's element keeps
+its URL short. A site's own fields (a form token named `_token`, say) are never touched and reach
+the action's params. `hx-params` under the `htmx` key keeps the token: a list gets `_component_token` added, a
+`not` list never names it, and `none` fails in debug (otherwise the token goes in the URL). An
+`hx-params` the call inherits from a site's element is not changed: if it drops `_component_token`, the
+endpoint answers "Missing component token", naming where the token is expected. Another driver
+sends `ActionCall::$token` in the URL as `token` or in the body as `_component_token`; those are the two
+places the endpoint reads.
 
 **The busy class.** While a request runs, the element that sent it carries the class
 `preflow-busy` (`BUSY_CLASS`), so CSS for "loading" names no client library. A driver adds and
@@ -209,7 +234,7 @@ Inside a component's template, call an action by its name, with only the values 
 | Helper | What it prints |
 |---|---|
 | `hd.post(action, values = {}, options = {})` | an element that runs `action` with a POST |
-| `hd.get(action, values = {}, options = {})` | the same with a GET. On a component with state the state then travels in the address, which has a length limit: prefer `post` |
+| `hd.get(action, values = {}, options = {})` | the same with a GET. Everything then travels in the address, which has a length limit: the state of a component with state, and the token (which holds all the props of a component without state). A token over 2048 bytes fails in debug and is logged once otherwise: use `#[State]` (its token then holds only its key), smaller props, or `post` |
 | `hd.on(event, options = {})` | an element that renders the component again when an action's answer fires `event` |
 | `hd.region(name)` | `id="{componentId}-{name}"`, for an element made by hand that a call targets |
 | `hd.hasParent()` | not markup: `true` when the component has a parent on the page (see "Calling the parent") |

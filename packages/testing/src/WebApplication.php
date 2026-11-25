@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Testing;
 
+use Preflow\Core\Http\Hypermedia\ActionCall;
 use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\Assert;
 use Preflow\Core\Application;
@@ -12,6 +13,7 @@ use Preflow\Core\Context\RenderContext;
 use Preflow\Core\PageCache\PageCacheConfig;
 use Preflow\Components\Component;
 use Preflow\Core\Http\Hypermedia\DrivesComponentActions;
+use Preflow\Htmx\ComponentEndpoint;
 use Preflow\Htmx\ComponentToken;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -106,8 +108,9 @@ final class WebApplication
      * attribute out of the HTML. The action token is made as a short call makes it (signed with
      * the app's key; a component with state carries its key only), the state is taken from the
      * page's state carrier of that component, and the request goes to the component endpoint of
-     * $app with the neutral fields: $params as the form fields, the state, and `_values` or
-     * `_region` when $params has them under those names. The component is the one of $componentClass
+     * $app with the neutral fields: $params as the form fields, the state, the token (`_component_token`,
+     * in the body since 0.88, as the page's post call sends it), and `_values` or `_region` when
+     * $params has them under those names. The component is the one of $componentClass
      * with $key (as `key` in its props); a component without state needs no carrier.
      *
      *     $page = (string) $app->handle($request)->getBody();
@@ -160,8 +163,9 @@ final class WebApplication
             $body[DrivesComponentActions::STATE_FIELD] = [$id => $state];
         }
 
-        $token = $container->get(ComponentToken::class)->encodeFor($component, $action);
-        $request = (new ServerRequest('POST', 'http://localhost' . $localePrefix . '/--component/action?token=' . urlencode($token)))
+        // In the body, as the page's post call sends it (0.88).
+        $body[ActionCall::TOKEN_FIELD] = $container->get(ComponentToken::class)->encodeFor($component, $action);
+        $request = (new ServerRequest('POST', 'http://localhost' . $localePrefix . '/--component/action'))
             ->withParsedBody($body);
         if ($cookies !== []) {
             $request = $request
