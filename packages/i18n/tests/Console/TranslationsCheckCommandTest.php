@@ -235,11 +235,11 @@ final class TranslationsCheckCommandTest extends TestCase
     {
         $this->file('vendor/composer/installed.json', (string) json_encode(['packages' => [
             ['name' => 'acme/g', 'install-path' => '../acme/g', 'extra' => ['preflow' => ['translations' => ['g' => 'lang']]]],
-            ['name' => 'acme/admin', 'install-path' => '../acme/admin', 'extra' => ['preflow' => ['translations' => ['folio' => 'lang']]]],
-            ['name' => 'acme/wide', 'install-path' => '../acme/wide', 'extra' => ['preflow' => ['translations' => ['wide' => 'lang']]]],
+            ['name' => 'acme/admin', 'install-path' => '../acme/admin', 'extra' => ['preflow' => ['translations' => ['adm' => ['path' => 'lang', 'scope' => 'admin']]]]],
+            ['name' => 'acme/wide', 'install-path' => '../acme/wide', 'extra' => ['preflow' => ['translations' => ['wide' => ['path' => 'lang', 'scope' => 'public']]]]],
         ]]));
         foreach (['en', 'de', 'fr'] as $locale) {
-            $this->langFile('vendor/acme/admin/lang', $locale, 'folio', ['x' => "X {$locale}"]);
+            $this->langFile('vendor/acme/admin/lang', $locale, 'adm', ['x' => "X {$locale}"]);
         }
         foreach (['en', 'de', 'fr', 'es', 'it', 'nl', 'pl', 'pt', 'sv', 'tr', 'ru', 'ja', 'ko', 'zh'] as $locale) {
             $this->langFile('vendor/acme/wide/lang', $locale, 'wide', ['x' => "X {$locale}"]);

@@ -29,9 +29,6 @@ use Preflow\I18n\Translator;
 final class TranslationsCheckCommand implements CommandInterface
 {
     /** Folders not scanned for used keys. */
-    /** The group of the admin package: its languages are the ones model labels must cover. */
-    private const string ADMIN_GROUP = 'folio';
-
     private const array SKIP = ['vendor', 'node_modules', 'tests', '.git'];
 
     /** @param (\Closure(): Application)|null $appFactory returns a booted application (tests) */
@@ -177,9 +174,9 @@ final class TranslationsCheckCommand implements CommandInterface
     /**
      * Derived keys of package groups missing in a delivered language (no language file text
      * and no entry in the source's map); prints them per locale and group. The number missing.
-     * Model labels are admin text: a group's labels must cover the languages the admin (the
-     * package delivering the "folio" group) delivers plus the languages the group's own package
-     * delivers; without that package installed, the group's own package's languages (since 0.89).
+     * Model labels are admin text: a group's labels must cover the languages the admin delivers
+     * (what the packages of the admin-scoped groups deliver) plus the languages the group's own
+     * package delivers; with no admin-scoped group, the group's own package's languages (since 0.89).
      *
      * @param array<string, list<string>> $delivered group => languages its package delivers
      */
@@ -189,7 +186,12 @@ final class TranslationsCheckCommand implements CommandInterface
             return 0;
         }
         $missing = [];
-        $admin = $delivered[self::ADMIN_GROUP] ?? [];
+        $admin = [];
+        foreach ($translator->groups() as $adminGroup) {
+            if ($translator->scope($adminGroup) === 'admin') {
+                array_push($admin, ...($delivered[$adminGroup] ?? []));
+            }
+        }
         foreach ($container->get(DerivedKeys::class)->all() as $key => ['value' => $value]) {
             $group = strstr($key, '.', true) ?: $key;
             if (($only !== null && $group !== $only) || $translator->scope($group) === null) {
