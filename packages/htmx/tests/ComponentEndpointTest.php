@@ -104,6 +104,24 @@ class MissingRecordComponent extends Component
     }
 }
 
+/** Keeps the params its action was given. */
+class ParamsEndpointComponent extends Component
+{
+    /** @var array<array-key, mixed>|null */
+    public static ?array $params = null;
+
+    public function actions(): array
+    {
+        return ['keep'];
+    }
+
+    /** @param array<array-key, mixed> $params */
+    public function actionKeep(array $params = []): void
+    {
+        self::$params = $params;
+    }
+}
+
 class EndpointFakeEngine implements TemplateEngineInterface
 {
     public function render(string $template, array $context = []): string
@@ -522,6 +540,51 @@ final class ComponentEndpointTest extends TestCase
         $whole = $endpoint->handle($this->createRequest('GET', '/--component/render', ['token' => $token], headers: ['HX-Target' => 'elsewhere']));
         $this->assertStringContainsString('id="EndpointTestComponent-', (string) $whole->getBody());
         $this->assertSame('', $whole->getHeaderLine('HX-Nonce'));
+    }
+
+    public function test_the_token_may_come_in_the_body_as_token_field(): void
+    {
+        $token = $this->tokenService->encode(EndpointTestComponent::class, ['title' => 'Before'], 'refresh');
+
+        foreach (['_token (0.88)' => HtmxDriver::TOKEN_FIELD, 'token (before 0.88)' => 'token'] as $what => $field) {
+            $response = $this->endpoint->handle($this->createRequest('POST', '/--component/action', body: [$field => $token]));
+            $this->assertSame(200, $response->getStatusCode(), $what);
+            $this->assertStringContainsString('Refreshed', (string) $response->getBody(), $what);
+        }
+    }
+
+    /**
+     * htmx passes a call element's hx-vals (with its _token) to every element inside it, and
+     * appends them to a get request's query: the URL's own token is the one that counts.
+     */
+    public function test_the_urls_token_wins_over_an_inherited_body_token(): void
+    {
+        $own = $this->tokenService->encode(EndpointTestComponent::class, ['title' => 'Own'], 'render');
+        $outer = $this->tokenService->encode(GuardedComponent::class, [], 'admin');
+
+        $get = $this->endpoint->handle($this->createRequest('GET', '/--component/render', ['token' => $own, HtmxDriver::TOKEN_FIELD => $outer]));
+        $this->assertSame(200, $get->getStatusCode());
+        $this->assertStringContainsString('Own', (string) $get->getBody(), 'a get inside a post call element');
+
+        $post = $this->endpoint->handle($this->createRequest('POST', '/--component/render', ['token' => $own], [HtmxDriver::TOKEN_FIELD => $outer]));
+        $this->assertStringContainsString('Own', (string) $post->getBody(), 'an old-form post inside a post call element');
+    }
+
+    public function test_the_body_token_is_no_action_param(): void
+    {
+        // An old-style token (all props): the body as in 0.85, without the fields a call around the element gave it.
+        $old = $this->tokenService->encode(ParamsEndpointComponent::class, [], 'keep');
+        ParamsEndpointComponent::$params = null;
+        $this->endpoint->handle($this->createRequest('POST', '/--component/action', ['token' => $old], ['name' => 'Ada', HtmxDriver::TOKEN_FIELD => 'from-an-outer-call', '_values' => '{}', '_region' => '']));
+        $this->assertSame(['name' => 'Ada'], ParamsEndpointComponent::$params);
+
+        // A 0.86 token (encodeFor()), its token in the body.
+        $component = $this->makeComponent(ParamsEndpointComponent::class, []);
+        $neutral = $this->tokenService->encodeFor($component, 'keep');
+        ParamsEndpointComponent::$params = null;
+        $response = $this->endpoint->handle($this->createRequest('POST', '/--component/action', body: [HtmxDriver::TOKEN_FIELD => $neutral, '_values' => '{"page":2}', '_region' => '', 'name' => 'Bo']));
+        $this->assertSame(200, $response->getStatusCode(), (string) $response->getBody());
+        $this->assertSame(['page' => 2, 'name' => 'Bo'], ParamsEndpointComponent::$params);
     }
 }
 

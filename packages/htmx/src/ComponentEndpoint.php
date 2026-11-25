@@ -19,15 +19,21 @@ use Preflow\View\AssetCollector;
 
 final class ComponentEndpoint
 {
-    /** The fields of a 0.86 call: read only for a token from ComponentToken::encodeFor(). */
+    /**
+     * The fields of a 0.86 call: read only for a token from ComponentToken::encodeFor(); never an
+     * old-style action's params (a call around its element may have given them: htmx merges the
+     * hx-vals of every ancestor).
+     */
     private const array NEUTRAL_FIELDS = [
         DrivesComponentActions::VALUES_FIELD => true,
         DrivesComponentActions::REGION_FIELD => true,
+        HtmxDriver::TOKEN_FIELD => true,
     ];
 
     /** The request fields the framework reads itself; never part of an action's params. */
     private const array OWN_FIELDS = [
         'token' => true,
+        HtmxDriver::TOKEN_FIELD => true,
         DrivesComponentActions::STATE_FIELD => true,
         DrivesComponentActions::VALUES_FIELD => true,
         DrivesComponentActions::REGION_FIELD => true,
@@ -52,10 +58,13 @@ final class ComponentEndpoint
 
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
-        // Extract token from query or body
+        // The token: the URL's first (a get call's, an old page's; an element inside a post call
+        // gets that call's body token too, from htmx's inherited hx-vals), then a post call's body
+        // field (0.88), then the body `token` of a form written before 0.88.
         $queryParams = $request->getQueryParams();
         $bodyParams = $request->getParsedBody() ?? [];
-        $tokenString = $queryParams['token'] ?? $bodyParams['token'] ?? null;
+        $body = is_array($bodyParams) ? $bodyParams : [];
+        $tokenString = $queryParams['token'] ?? $body[HtmxDriver::TOKEN_FIELD] ?? $body['token'] ?? null;
 
         if ($tokenString === null) {
             throw new SecurityException('Missing component token.');

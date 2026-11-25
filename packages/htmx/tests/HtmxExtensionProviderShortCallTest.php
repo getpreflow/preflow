@@ -365,13 +365,14 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
 
         $this->assertInstanceOf(SafeHtml::class, $seen);
         $attributes = self::attributes((string) $seen);
-        $payload = $this->payload($attributes['hx-post']);
+        $payload = $this->payload($attributes);
         $this->assertSame(ShortBox::class, $payload->componentClass);
         $this->assertSame('add', $payload->action);
         $this->assertSame(['key' => 'a', 'title' => 'Hello'], $payload->props, 'a component without state: all its props');
         $this->assertTrue($payload->neutralCall, 'a 0.86 token (encodeFor())');
         $this->assertSame('#' . $box->getComponentId(), $attributes['hx-target']);
-        $this->assertSame(['_values' => '{"row":3}', '_region' => ''], json_decode($attributes['hx-vals'], true));
+        $this->assertSame(['_values' => '{"row":3}', '_region' => '', '_token' => $this->token($attributes)], json_decode($attributes['hx-vals'], true), 'the token in the body, beside the values and region');
+        $this->assertSame('/--component/action', $attributes['hx-post']);
         $this->assertSame('unset', $attributes['hx-include'], 'a component without state renders no carrier, so the call names none (htmx would log "returned no matches")');
         $this->assertStringNotContainsString('preflow-state--', (string) $seen);
 
@@ -384,7 +385,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         $counter = $this->component(ShortCounter::class, ['key' => 'c', 'start' => 5]);
         $this->renderer->render($counter);
         $attributes = self::attributes((string) $seen);
-        $payload = $this->payload($attributes['hx-get']);
+        $payload = $this->payload($attributes);
         $this->assertSame(['key' => 'c'], $payload->props);
         $this->assertTrue($payload->stateCarried);
         $this->assertStringContainsString('#preflow-state--' . $counter->getComponentId(), $attributes['hx-include']);
@@ -408,7 +409,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
 
         $this->assertSame([], $this->errors);
         $attributes = self::attributes((string) $seen);
-        $payload = $this->payload($attributes['hx-post']);
+        $payload = $this->payload($attributes);
         $parentId = $search->getComponentId();
         $this->assertSame(ShortSearch::class, $payload->componentClass, "the parent's action");
         $this->assertSame('search', $payload->action);
@@ -438,26 +439,26 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         $this->assertSame([], $this->errors);
 
         // The row's own tokens name its parent, for when the endpoint renders the row alone.
-        $own = $this->payload(self::attributes($calls['own'])['hx-post']);
+        $own = $this->payload(self::attributes($calls['own']));
         $this->assertSame(ShortRow::class, $own->componentClass);
         $this->assertSame(ShortSearch::class, $own->parentClass);
         $this->assertSame('s', $own->parentKey);
-        $this->assertSame(ShortSearch::class, $this->payload(self::attributes($calls['refresh'])['hx-post'])->parentClass);
+        $this->assertSame(ShortSearch::class, $this->payload(self::attributes($calls['refresh']))->parentClass);
 
         // The row's action and its refresh, each in a new request: the endpoint renders the row alone.
-        $urls = ['own' => self::attributes($calls['own'])['hx-post'], 'refresh' => self::attributes($calls['refresh'])['hx-post']];
-        foreach ($urls as $which => $url) {
+        foreach (['own' => self::attributes($calls['own']), 'refresh' => self::attributes($calls['refresh'])] as $which => $call) {
+            $url = $call['hx-post'];
             $calls['parent'] = '';
             $this->freshRequest();
             $response = $this->endpoint()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
                 ->createServerRequest('POST', (string) parse_url($url, PHP_URL_PATH))
                 ->withHeader('HX-Request', 'true')
-                ->withParsedBody(['token' => $this->token($url)]));
+                ->withParsedBody([HtmxDriver::TOKEN_FIELD => $this->token($call)]));
             $this->assertSame(200, $response->getStatusCode());
             $this->assertSame([], $this->errors, "{$which}: the parent call in the row's answer works");
 
             $attributes = self::attributes($calls['parent']);
-            $payload = $this->payload($attributes['hx-post']);
+            $payload = $this->payload($attributes);
             $this->assertSame(ShortSearch::class, $payload->componentClass, "{$which}: the parent's action");
             $this->assertSame('search', $payload->action);
             $this->assertSame(['key' => 's'], $payload->props, "{$which}: the parent's key");
@@ -484,7 +485,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         $this->endpoint()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
             ->createServerRequest('POST', '/--component/action')
             ->withHeader('HX-Request', 'true')
-            ->withParsedBody(['token' => $this->token(self::attributes($own)['hx-post'])]));
+            ->withParsedBody([HtmxDriver::TOKEN_FIELD => $this->token(self::attributes($own))]));
 
         $this->assertCount(1, $this->errors);
         $this->assertInstanceOf(\LogicException::class, $this->errors[0]);
@@ -539,7 +540,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         $this->endpoint()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
             ->createServerRequest('POST', '/--component/action')
             ->withHeader('HX-Request', 'true')
-            ->withParsedBody(['token' => $this->token(self::attributes($own)['hx-post'])]));
+            ->withParsedBody([HtmxDriver::TOKEN_FIELD => $this->token(self::attributes($own))]));
         $this->assertSame([], $this->errors);
         $this->assertSame([true, true], $seen);
 
@@ -577,14 +578,14 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         })->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
             ->createServerRequest('POST', '/--component/action')
             ->withHeader('HX-Request', 'true')
-            ->withParsedBody(['token' => $this->token(self::attributes($own)['hx-post'])]));
+            ->withParsedBody([HtmxDriver::TOKEN_FIELD => $this->token(self::attributes($own))]));
 
         $this->assertSame(200, $response->getStatusCode());
         $this->assertSame([], $this->errors, 'nothing asked for the parent itself');
         $this->assertSame([ShortRow::class], $built, 'only the child was built');
         $this->assertSame([true], $seen, 'hd.hasParent() answers without the parent');
         // The answer's own call still names the parent on the page, for the next action.
-        $payload = $this->payload(self::attributes($own)['hx-post']);
+        $payload = $this->payload(self::attributes($own));
         $this->assertSame(ShortSearch::class, $payload->parentClass);
         $this->assertSame('s', $payload->parentKey);
     }
@@ -614,7 +615,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         })->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
             ->createServerRequest('POST', '/--component/action')
             ->withHeader('HX-Request', 'true')
-            ->withParsedBody(['token' => $this->token(self::attributes($own)['hx-post'])]));
+            ->withParsedBody([HtmxDriver::TOKEN_FIELD => $this->token(self::attributes($own))]));
 
         $this->assertSame([], $this->errors);
         $this->assertSame([ShortRow::class, ShortSearch::class], $built, 'the parent built once, for the first call that needs it');
@@ -670,7 +671,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         foreach ($html as $name => $rendered) {
             $this->assertStringContainsString('alone', $rendered['alone'], $name);
             $this->assertStringNotContainsString('hx-post', $rendered['alone'], $name);
-            $this->assertStringContainsString('<a hx-post="/--component/action?token=', $rendered['placed'], $name);
+            $this->assertStringContainsString('<a hx-post="/--component/action" ', $rendered['placed'], $name);
         }
     }
 
@@ -705,7 +706,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         $this->assertStringContainsString("component: 'parent'", $logged[0]);
         $attributes = self::attributes((string) $seen);
         $this->assertSame('#' . $pager->getComponentId(), $attributes['hx-target']);
-        $this->assertSame(ShortPager::class, $this->payload($attributes['hx-post'])->componentClass);
+        $this->assertSame(ShortPager::class, $this->payload($attributes)->componentClass);
     }
 
     public function test_short_call_needs_no_escaping_in_blade(): void
@@ -729,7 +730,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         }
 
         $this->assertSame([], $this->errors);
-        $this->assertStringContainsString('<button hx-post="/--component/action?token=', $html, 'printed as markup by {{ }}');
+        $this->assertStringContainsString('<button hx-post="/--component/action" ', $html, 'printed as markup by {{ }}');
         $this->assertStringContainsString('hx-vals="{&quot;_values&quot;:&quot;{\\&quot;row\\&quot;:1}&quot;', $html, 'escaped once, by the helper');
         $this->assertStringContainsString('<ul id="' . $box->getComponentId() . '-rows"></ul>', $html);
         $this->assertStringContainsString('<i hx-post=&quot;', $html, 'the old form still returns text, escaped by {{ }}');
@@ -757,7 +758,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         }
 
         $this->assertSame([], $this->errors);
-        $this->assertStringContainsString('<button hx-post="/--component/action?token=', $html, 'printed as markup, without | raw');
+        $this->assertStringContainsString('<button hx-post="/--component/action" ', $html, 'printed as markup, without | raw');
         $this->assertStringContainsString('hx-vals="{&quot;_values&quot;:&quot;{\&quot;row\&quot;:1}&quot;', $html, 'escaped once, by the helper');
         $this->assertStringContainsString('<ul id="' . $box->getComponentId() . '-rows"></ul>', $html);
         $this->assertStringContainsString('<i hx-post=&quot;', $html, 'the old form still returns text, escaped without | raw');
@@ -776,8 +777,8 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         };
         $this->renderer->render($this->component(ShortCounter::class, ['key' => 'c']));
 
-        $this->assertSame($buttons[0]['hx-post'], $buttons[1]['hx-post'], 'one token for the action, whatever the values');
-        $this->assertNotSame($buttons[0]['hx-vals'], $buttons[1]['hx-vals'], 'the values differ, unsigned beside it');
+        $this->assertSame($this->token($buttons[0]), $this->token($buttons[1]), 'one token for the action, whatever the values');
+        $this->assertNotSame(json_decode($buttons[0]['hx-vals'], true)['_values'], json_decode($buttons[1]['hx-vals'], true)['_values'], 'the values differ, unsigned beside it');
     }
 
     public function test_old_form_is_unchanged(): void
@@ -838,6 +839,34 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         }
     }
 
+    /** hd.get keeps its token in the URL: props too large for it fail in debug, else are logged once and the page renders. */
+    public function test_a_short_get_with_props_too_large_for_a_url(): void
+    {
+        CallbackEngine::$templates['ShortBox'] = fn (): string => (string) $this->hd->get('add');
+        $this->renderer->render($this->component(ShortBox::class, ['text' => str_repeat('x', 3000)]));
+        $this->assertCount(1, $this->errors);
+        $this->assertInstanceOf(\LogicException::class, $this->errors[0]);
+        $this->assertStringContainsString('#[State]', $this->errors[0]->getMessage());
+
+        $lines = [];
+        $driver = new HtmxDriver(new ResponseHeaders(), false, static function (string $line) use (&$lines): void {
+            $lines[] = $line;
+        });
+        $this->errors = [];
+        $hd = new HtmxExtensionProvider($driver, $this->tokens, renderer: $this->renderer);
+        $seen = [];
+        CallbackEngine::$templates['ShortBox'] = function () use ($hd, &$seen): string {
+            $seen[] = $hd->get('add') . ' ' . $hd->get('remove');
+
+            return $seen[0];
+        };
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), fn (): string => $this->renderer->render($this->component(ShortBox::class, ['text' => str_repeat('x', 3000)])));
+        $this->assertSame([], $this->errors);
+        $this->assertStringContainsString('hx-get="/--component/action?token=', $seen[0], 'still written');
+        $this->assertCount(1, $lines, 'logged once per request');
+        $this->assertStringContainsString('#[State]', $lines[0]);
+    }
+
     public function test_short_call_outside_a_component_fails(): void
     {
         foreach ([fn () => $this->hd->post('add'), fn () => $this->hd->get('add', ['a' => 1]), fn () => $this->hd->on('saved'), fn () => $this->hd->region('rows'), fn () => $this->hd->hasParent()] as $i => $call) {
@@ -885,8 +914,8 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         $attributes = self::attributes((string) $seen);
         $this->assertSame('cartUpdated from:body', $attributes['hx-trigger']);
         $this->assertArrayHasKey('hx-post', $attributes, 'the state goes in the body');
-        $this->assertStringContainsString('/--component/render?token=', $attributes['hx-post']);
-        $payload = $this->payload($attributes['hx-post']);
+        $this->assertSame('/--component/render', $attributes['hx-post'], 'the token goes in the body');
+        $payload = $this->payload($attributes);
         $this->assertSame('render', $payload->action);
         $this->assertTrue($payload->neutralCall);
         $this->assertTrue($payload->stateCarried);
@@ -961,16 +990,31 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         return $attributes;
     }
 
-    private function payload(string $url): \Preflow\Htmx\TokenPayload
+    /** @param array<string, string> $attributes */
+    private function payload(array $attributes): \Preflow\Htmx\TokenPayload
     {
-        return $this->tokens->decode($this->token($url));
+        return $this->tokens->decode($this->token($attributes));
     }
 
-    private function token(string $url): string
+    /**
+     * The token a call's attributes send: a post's in its body (hx-vals), a get's in its URL.
+     *
+     * @param array<string, string> $attributes
+     */
+    private function token(array $attributes): string
     {
-        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+        if (isset($attributes['hx-post'])) {
+            $this->assertStringNotContainsString('token=', $attributes['hx-post'], 'a post sends its token in the body');
+            $vals = json_decode($attributes['hx-vals'], true);
+            $this->assertIsArray($vals);
+            $this->assertIsString($vals[HtmxDriver::TOKEN_FIELD] ?? null);
 
-        return (string) $query['token'];
+            return $vals[HtmxDriver::TOKEN_FIELD];
+        }
+        parse_str((string) parse_url($attributes['hx-get'], PHP_URL_QUERY), $query);
+        $this->assertIsString($query['token'] ?? null, 'a get keeps its token in the URL');
+
+        return $query['token'];
     }
 
     /** A new request: a new renderer and hd, as the endpoint has them. */

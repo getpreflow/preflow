@@ -39,6 +39,24 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
     /** The attributes a call sets for its state and target: not to be given under the `htmx` key. */
     private const array OWN_ATTRIBUTES = ['hx-include', 'hx-vals', 'hx-sync', 'hx-target'];
 
+    /**
+     * The body field a post call sends its token in (ActionCall::$token), beside VALUES_FIELD and
+     * REGION_FIELD. Not `token`: htmx passes an element's hx-vals to every element inside it and
+     * appends them to a get request's query, where the URL's own `token` (which ComponentEndpoint
+     * reads first) must stay the one that counts.
+     *
+     * @since 0.88.0
+     */
+    public const string TOKEN_FIELD = '_token';
+
+    /**
+     * The longest token a get call carries in its URL without a warning, in bytes: the smallest URL
+     * limit common among servers and proxies (2048).
+     *
+     * @since 0.88.0
+     */
+    public const int GET_TOKEN_LIMIT = 2048;
+
     private const int JSON = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR;
 
     private ?HtmxAssets $assets = null;
@@ -72,6 +90,11 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
      * request replaces the one running on it), hx-disabled-elt with HtmxAssets::DISABLE_MARKER
      * (what preflow's disabler script disables), and hx-vals with the values (VALUES_FIELD, one
      * JSON object) and the region (REGION_FIELD, empty for the whole component).
+     *
+     * A call with its token apart (ActionCall::$token, 0.88): a post writes the endpoint URL
+     * without it and sends the token in hx-vals (TOKEN_FIELD), so its props never make the URL
+     * long; a get keeps it in its URL (it has no body). A get token over GET_TOKEN_LIMIT bytes fails
+     * in debug (the fix: #[State], smaller props, or a post) and is logged once per request otherwise.
      *
      * Both fields are always written, so a call inside another call's element (a button in a form
      * that calls an action) never sends the outer call's values or region: htmx merges hx-vals of
@@ -128,8 +151,23 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
             $include[] = '#' . self::selector($call->componentId . '-' . $name); // a region: its fields
             $include[] = $component . ' [name="' . $name . '"]'; // a field of the component
         }
+        // The token apart (0.88): a post sends it in its body, so large props never make a long
+        // URL; a get has no body and keeps it in its URL.
+        $tokenInBody = $call->method === 'post' && $call->token !== null && $call->endpointUrl !== null;
+        if ($call->method === 'get' && $call->token !== null && strlen($call->token) > self::GET_TOKEN_LIMIT) {
+            $message = sprintf(
+                "The get call of %s carries a %d-byte token in its URL, over %d bytes: servers and proxies may refuse the URL. The component's props are too large for a get call: keep its data in #[State] (its token then holds only its key), give it smaller props, or make the call a post (its token goes in the body).",
+                $call->componentId,
+                strlen($call->token),
+                self::GET_TOKEN_LIMIT,
+            );
+            if ($this->debug) {
+                throw new \LogicException($message);
+            }
+            $this->warnOnce('get-token-limit', $message . ' Written anyway.');
+        }
         $attributes = [
-            "hx-{$call->method}" => $call->url,
+            "hx-{$call->method}" => $tokenInBody ? $call->endpointUrl : $call->url,
             'hx-target' => '#' . self::selector($call->targetId),
             'hx-swap' => $swap,
         ];
@@ -140,7 +178,7 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
             'hx-vals' => json_encode([
                 self::VALUES_FIELD => $call->values === [] ? '{}' : json_encode(self::plain(self::VALUES_FIELD, $call->values), self::JSON),
                 self::REGION_FIELD => $options->region() ?? '',
-            ], self::JSON),
+            ] + ($tokenInBody ? [self::TOKEN_FIELD => $call->token] : []), self::JSON),
         ];
         if ($listen !== null) {
             $attributes['hx-trigger'] = $listen . ' from:body';

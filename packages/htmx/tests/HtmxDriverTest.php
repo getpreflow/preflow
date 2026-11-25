@@ -385,4 +385,87 @@ final class HtmxDriverTest extends TestCase
         $this->assertSame('<input type="hidden" id="preflow-state--Box-1" name="_state[Box-1]" form="preflow-no-form" value="a&quot;b&lt;c">', $carrier);
         $this->assertSame('<input type="hidden" id="preflow-state--Box-1" name="_state[Box-1]" form="preflow-no-form" value="a&quot;b&lt;c" hx-swap-oob="true">', $this->driver->stateUpdate('Box-1', 'a"b<c'));
     }
+
+    /** A short call with its token apart (ActionCall::$token, 0.88). */
+    private static function tokenCall(string $method, string $token, string $endpointUrl = '/--component/action'): ActionCall
+    {
+        return new ActionCall(
+            $method,
+            $endpointUrl . (str_contains($endpointUrl, '?') ? '&' : '?') . 'token=' . urlencode($token),
+            'Box-1',
+            'Box-1',
+            ActionOptions::from([], true),
+            token: $token,
+            endpointUrl: $endpointUrl,
+        );
+    }
+
+    public function test_a_post_call_sends_its_token_in_the_body(): void
+    {
+        $token = str_repeat('a', 6000) . '.sig';
+        $attributes = $this->driver->callAttributes(self::tokenCall('post', $token, '/de/--component/action?_preview=v1.p.x.y'));
+
+        $this->assertSame('/de/--component/action?_preview=v1.p.x.y', $attributes['hx-post'], 'the endpoint URL without the token, a preview\'s parameter kept');
+        $this->assertStringNotContainsString('token=', $attributes['hx-post']);
+        $this->assertSame(['_values' => '{}', '_region' => '', HtmxDriver::TOKEN_FIELD => $token], json_decode($attributes['hx-vals'], true));
+        $this->assertSame('_token', HtmxDriver::TOKEN_FIELD);
+        $this->assertStringNotContainsString('hx-vals', $attributes['hx-disinherit'], 'hx-vals is no attribute hx-disinherit stops');
+
+        $listen = $this->driver->listenAttributes(self::tokenCall('post', $token, '/--component/render'), 'saved');
+        $this->assertSame('/--component/render', $listen['hx-post']);
+        $this->assertSame($token, json_decode($listen['hx-vals'], true)[HtmxDriver::TOKEN_FIELD], 'a refresh is a POST too');
+    }
+
+    public function test_a_call_inside_a_post_calls_element_keeps_its_own_token(): void
+    {
+        // htmx merges the hx-vals of every ancestor, the element's own keys first.
+        $outer = json_decode($this->driver->callAttributes(self::tokenCall('post', 'outer.sig'))['hx-vals'], true);
+        $inner = $this->driver->callAttributes(self::tokenCall('post', 'inner.sig'));
+        $this->assertSame('inner.sig', (json_decode($inner['hx-vals'], true) + $outer)[HtmxDriver::TOKEN_FIELD]);
+
+        // A get call keeps its token in the URL as `token` (which the endpoint reads first); the outer
+        // call's _token reaches its query under another name.
+        $get = $this->driver->callAttributes(self::tokenCall('get', 'inner.sig'));
+        $this->assertSame('/--component/action?token=inner.sig', $get['hx-get']);
+        $this->assertArrayNotHasKey(HtmxDriver::TOKEN_FIELD, json_decode($get['hx-vals'], true), 'a get has no body: its token stays in the URL');
+    }
+
+    public function test_a_call_without_its_token_apart_is_unchanged(): void
+    {
+        $this->assertSame('/--component/action?token=t', $this->call([])['hx-post']);
+        $this->assertSame(['_values' => '{}', '_region' => ''], json_decode($this->call([])['hx-vals'], true), 'a call built before 0.88: no body token');
+    }
+
+    public function test_a_get_token_over_the_limit_fails_in_debug(): void
+    {
+        $limit = HtmxDriver::GET_TOKEN_LIMIT;
+        $this->assertSame(2048, $limit);
+        $debug = new HtmxDriver(new ResponseHeaders(), true);
+        $this->assertStringContainsString('token=', $debug->callAttributes(self::tokenCall('get', str_repeat('a', $limit)))['hx-get'], 'at the limit: fine');
+
+        try {
+            $debug->callAttributes(self::tokenCall('get', str_repeat('a', $limit + 1)));
+            $this->fail('a get token over the limit is refused in debug');
+        } catch (\LogicException $e) {
+            $this->assertStringContainsString('#[State]', $e->getMessage());
+            $this->assertStringContainsString('2049', $e->getMessage());
+            $this->assertStringContainsString('2048', $e->getMessage());
+            $this->assertStringContainsString('post', $e->getMessage());
+        }
+    }
+
+    public function test_a_get_token_over_the_limit_is_logged_once_outside_debug(): void
+    {
+        $lines = [];
+        $driver = new HtmxDriver(new ResponseHeaders(), false, static function (string $line) use (&$lines): void {
+            $lines[] = $line;
+        });
+        $token = str_repeat('a', HtmxDriver::GET_TOKEN_LIMIT + 1);
+        $first = $driver->callAttributes(self::tokenCall('get', $token));
+        $driver->callAttributes(self::tokenCall('get', $token . 'b'));
+
+        $this->assertSame('/--component/action?token=' . $token, $first['hx-get'], 'still written: the call works where the URL fits');
+        $this->assertCount(1, $lines, 'one line per request');
+        $this->assertStringContainsString('#[State]', $lines[0]);
+    }
 }
