@@ -83,7 +83,8 @@ final readonly class DeletePlan
 
     /**
      * A stored relation value with $remove taken out, as a detach writes it: a
-     * multiple relation stays a JSON array string in its order, a single id becomes ''.
+     * multiple relation becomes a list in its order (0.89; JSON text before, and a stored
+     * JSON text is still read), an emptied one null, a single id ''.
      * For executors that save detached records themselves.
      *
      * @param list<string> $remove

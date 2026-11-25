@@ -92,6 +92,8 @@ use Preflow\Testing\PlainDriver;
  *   without columns (JSON) compares by them, an SQL store by its columns' collation.
  * - search() and the `CONTAINS` of whereAny() find a term in a text, and in a list (a `json`
  *   field saved as a list) when one of its values holds it, slashes and umlauts as they are.
+ * - `HAS` (whereAny) matches a field holding one of the given ids: a single id, a list of ids,
+ *   or JSON text of a list (a multiple relation or asset stored before 0.89), mixed in one table.
  * - A null field matches only `where(field, null)` (IS NULL); `=`, `!=`, `<>`, `<`, `>`, `<=`,
  *   `>=`, `LIKE`, `NOT LIKE`, `IN` and `NOT IN` never match it. `!= null` / `<> null` is IS NOT
  *   NULL. An empty `IN` list matches nothing, an empty `NOT IN` list everything (nulls too).
@@ -398,6 +400,31 @@ abstract class StorageDriverContract extends TestCase
         $stored = $this->record('r1')['meta'] ?? null;
         $decoded = is_string($stored) ? json_decode($stored, true) : $stored;
         $this->assertSame(self::keysSorted($meta), is_array($decoded) ? self::keysSorted($decoded) : $decoded, 'a json field reads back as the saved array, or as JSON text of it (object key order may differ)');
+    }
+
+    /**
+     * A list of ids (a multiple relation or asset since 0.89), the same list as JSON text (stored
+     * before 0.89) and a single id live side by side in one field: each reads back as saved (a list
+     * as that list or as JSON text of it), and HAS finds every shape.
+     */
+    public function test_has_finds_ids_in_a_list_in_old_json_text_and_in_a_single_id(): void
+    {
+        $this->createRecords();
+        $this->driver->save('records', 'new', ['uuid' => 'new', 'meta' => ['a1', 'a2']]);
+        $this->driver->save('records', 'old', ['uuid' => 'old', 'meta' => '["a1","a3"]']);
+        $this->driver->save('records', 'one', ['uuid' => 'one', 'meta' => 'a3']);
+
+        $list = static fn (mixed $v): mixed => is_string($v) && str_starts_with($v, '[') ? json_decode($v, true) : $v;
+        $this->assertSame(['a1', 'a2'], $list($this->record('new')['meta'] ?? null));
+        $this->assertSame(['a1', 'a3'], $list($this->record('old')['meta'] ?? null));
+        $this->assertSame('a3', $this->record('one')['meta'] ?? null);
+
+        $has = fn (array $ids): array => $this->sortedIds($this->driver->findMany('records', (new Query())->whereAny([['field' => 'meta', 'operator' => 'HAS', 'value' => $ids]])));
+        $this->assertSame(['new', 'old'], $has(['a1']));
+        $this->assertSame(['old', 'one'], $has(['a3']));
+        $this->assertSame(['new'], $has(['a2']));
+        $this->assertSame(['new', 'old', 'one'], $has(['a2', 'a3']));
+        $this->assertSame([], $has(['a4']));
     }
 
     public function test_null_round_trips_in_every_kind(): void

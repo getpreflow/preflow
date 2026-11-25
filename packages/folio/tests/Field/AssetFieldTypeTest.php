@@ -119,9 +119,19 @@ final class AssetFieldTypeTest extends TestCase
         $t = $this->type();
         $this->assertSame('a/b.png', $t->toStorage('a/b.png'));
         $this->assertSame('a/b.png', $t->fromStorage('a/b.png'));
-        $json = $t->toStorage(['x.png', 'y.png']);
-        $this->assertSame(['x.png', 'y.png'], $t->fromStorage($json));
+        $this->assertSame(['x.png', 'y.png'], $t->toStorage(['x.png', 'y.png']), 'a multiple asset field stores a list (0.89)');
+        $this->assertSame(['x.png', 'y.png'], $t->fromStorage($t->toStorage(['x.png', 'y.png'])));
+        $this->assertSame(['x.png', 'y.png'], $t->fromStorage('["x.png","y.png"]'), 'JSON text as stored before 0.89 still reads');
         $this->assertNull($t->toStorage([]), 'an empty list is no value, so "required" refuses it (0.77)');
+    }
+
+    public function test_it_says_per_config_whether_it_stores_a_list(): void
+    {
+        $t = $this->type();
+        $this->assertInstanceOf(\Preflow\Folio\Field\StoresListFor::class, $t);
+        $this->assertTrue($t->storesList(['asset' => ['multiple' => true]]));
+        $this->assertFalse($t->storesList(['asset' => ['multiple' => false]]));
+        $this->assertFalse($t->storesList([]));
     }
 
     public function test_render_editor_emits_file_input_and_existing_remove(): void

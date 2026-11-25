@@ -200,9 +200,11 @@ Folio, a CLI command or a script) writes a record in one canonical form, so an u
 is written to the same bytes: the type's fields in their order, then the id and the system keys
 (`_version`, …) in their order, then any other key (none is dropped); a list field
 (`fieldKinds()->list('tags')`; Folio registers its field types marked `StoresList`) as a list,
-also when it was given as JSON text or a comma string; a number field's numeric text as a number
-and a yes/no field's `'1'`/`'0'`/`'true'`/`'false'` as `true`/`false`. A value that does not
-convert stays as it is. `JsonFileDriver` encodes with `JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
+also when it was given as JSON text or a comma string, and so a field whose config makes it a list
+(`fieldKinds()->listWhen('asset', fn (array $config): bool => …)`, since 0.89; a multiple relation
+holds a list by default, Folio registers its types implementing `StoresListFor`); a number
+field's numeric text as a number and a yes/no field's `'1'`/`'0'`/`'true'`/`'false'` as
+`true`/`false`. A value that does not convert stays as it is. `JsonFileDriver` encodes with `JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
 | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION` and a trailing newline. A hand-written
 file gets this form on its next save; nothing is migrated. SQL storage keeps lists as JSON text in
 their columns. A direct `driver()->save()` keeps its caller's key order, and the stored keys it does
@@ -1154,7 +1156,7 @@ free-text kinds). The pointer is stored as today: an id string, or a JSON array 
 | Key | Meaning |
 |---|---|
 | `to` | Target type. A field without it is no relation. |
-| `multiple` | Several targets (JSON array) instead of one. Default `false`. |
+| `multiple` | Several targets (a list of ids) instead of one. Default `false`. Since 0.89 a save writes the list as a list in a JSON file (SQL keeps JSON text); JSON text stored before is still read, found by `HAS` and detached. |
 | `onDelete` | What deleting a *target* does to the pointing records (see [Delete plans](#delete-plans)): `detach` (default) removes the id from the pointer, `cascade` deletes the pointing record too, `restrict` refuses the delete. Any other value throws `InvalidArgumentException`. |
 | `onSelfDelete` | The same choices, applied when the owner deletes their own record (`deletePlan(..., DeletedBy::Self)`) instead of staff. Unset follows `onDelete`; any other value throws `InvalidArgumentException`. |
 | `labelField` | The target field shown and searched as its label. |
@@ -1892,8 +1894,9 @@ $dm->executeDeletePlan($plan);
 ```
 
 - `cascade` follows recursively; `detach` loads the pointing record, removes the id and saves
-  it without validation; `restrict` blocks the whole plan. A restricted plan is refused with a
-  `RuntimeException` before anything changes.
+  it without validation (a multiple relation as a list, also one stored as JSON text before 0.89;
+  `DeletePlan::valueWithout()` gives the same value); `restrict` blocks the whole plan. A
+  restricted plan is refused with a `RuntimeException` before anything changes.
 - The optional third argument, `fn (TypeDefinition $t): array`, names extra definitions that
   hold copies of a type's records (for example a published shadow table). They count toward
   restrictions only.

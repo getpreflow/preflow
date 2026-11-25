@@ -1837,8 +1837,9 @@ final class DataManager
      *   field, then the keys starting with "_", in their given order but the change date last,
      *   ChangeDates::FIELD, since 0.84), then any other key in its
      *   given order; no key is dropped;
-     * - a list field (FieldKinds::list()) holds a list, also when given as JSON text or a comma
-     *   string; a number field's numeric text is a number (int when whole); a yes/no field's
+     * - a list field (FieldKinds::list(), or listWhen() for its config: a multiple relation or
+     *   asset, since 0.89) holds a list, also when given as JSON text or a comma string; a number
+     *   field's numeric text is a number (int when whole); a yes/no field's
      *   '1'/'0'/1/0/'true'/'false' is a bool. A value that does not convert stays as it is, and so
      *   does a translatable field (a map per locale) and one the type transforms itself;
      * - an empty string in a number, yes/no or date field is NULL (those columns hold no empty
@@ -1868,7 +1869,7 @@ final class DataManager
                 continue;
             }
             $data[$name] = match (true) {
-                $kinds->isList($field->type) => self::asList($data[$name]),
+                $kinds->holdsList($field) => self::asList($data[$name]),
                 $kind === ColumnKind::Number => self::asNumber($data[$name]),
                 $kind === ColumnKind::Boolean => self::asBool($data[$name]),
                 default => $data[$name],

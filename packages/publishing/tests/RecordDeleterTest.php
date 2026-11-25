@@ -83,7 +83,7 @@ final class RecordDeleterTest extends PublishingAppTestCase
         $this->assertNull($this->dm()->findType('book', 'b1'));
         $this->assertNull($this->publisher()->snapshot('book', 'b1'), 'the snapshot is forgotten');
         $this->assertSame([], $this->publisher()->revisions('book', 'b1'), 'and its revisions');
-        $this->assertSame('["b2"]', $this->stored('shelf', 's1')->get('books'), 'detached (a relation list is stored as JSON)');
+        $this->assertSame(['b2'], $this->stored('shelf', 's1')->get('books'), 'detached (a multiple relation is stored as a list, 0.89)');
         $this->assertNotNull($this->dm()->findType('author', 'a2'));
     }
 
@@ -193,6 +193,6 @@ final class RecordDeleterTest extends PublishingAppTestCase
 
         $this->assertNull($this->dm()->findType('author', 'a2'));
         $this->assertNull($this->dm()->findType('book', 'b2'));
-        $this->assertSame('["b1"]', $this->stored('shelf', 's1')->get('books'));
+        $this->assertSame(['b1'], $this->stored('shelf', 's1')->get('books'));
     }
 }

@@ -316,7 +316,7 @@ final class PrivateAssetsTest extends TestCase
         $this->assertInstanceOf(\Preflow\Folio\Field\Types\AssetFieldType::class, $field);
         $value = $field->resolve(['', ...$ids], null, [], ['asset' => ['multiple' => true, 'private' => $private]], true, null);
 
-        return [json_decode($value, true), $field->drainErrors()];
+        return [$value, $field->drainErrors()]; // a multiple field resolves to a list (0.89)
     }
 
     #[RunInSeparateProcess]

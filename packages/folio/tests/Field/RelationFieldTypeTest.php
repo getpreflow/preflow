@@ -188,7 +188,7 @@ final class RelationFieldTypeTest extends TestCase
         $t = $this->type();
         $posted = ['a2', 'a1'];
         $this->assertSame(['a2', 'a1'], $t->normalizeInput($posted, ['relation' => ['to' => 'author', 'multiple' => true]]));
-        $this->assertSame('["a2","a1"]', $t->toStorage($t->normalizeInput($posted, ['relation' => ['to' => 'author', 'multiple' => true]])));
+        $this->assertSame(['a2', 'a1'], $t->toStorage($t->normalizeInput($posted, ['relation' => ['to' => 'author', 'multiple' => true]])), 'a list since 0.89');
     }
 
     public function test_normalize_single_and_multiple(): void
@@ -204,9 +204,19 @@ final class RelationFieldTypeTest extends TestCase
         $t = $this->type();
         $this->assertSame('a1', $t->toStorage('a1'));
         $this->assertSame('a1', $t->fromStorage('a1'));
-        $json = $t->toStorage(['a1', 'a2']);
-        $this->assertSame(['a1', 'a2'], $t->fromStorage($json));
+        $this->assertSame(['a1', 'a2'], $t->toStorage(['a1', 'a2']), 'a multiple relation stores a list (0.89)');
+        $this->assertSame(['a1', 'a2'], $t->fromStorage($t->toStorage(['a1', 'a2'])));
+        $this->assertSame(['a1', 'a2'], $t->fromStorage('["a1","a2"]'), 'JSON text as stored before 0.89 still reads');
         $this->assertNull($t->toStorage([]), 'an empty list is no value, so "required" refuses it (0.77)');
+    }
+
+    public function test_it_says_per_config_whether_it_stores_a_list(): void
+    {
+        $t = $this->type();
+        $this->assertInstanceOf(\Preflow\Folio\Field\StoresListFor::class, $t);
+        $this->assertTrue($t->storesList(['relation' => ['to' => 'author', 'multiple' => true]]));
+        $this->assertFalse($t->storesList($this->singleConfig()));
+        $this->assertFalse($t->storesList([]));
     }
 
     public function test_render_frontend_resolves_labels(): void

@@ -51,7 +51,9 @@ final class AssetFieldLibraryTest extends TestCase
 
         $value = $this->field()->resolve(['', $b, $a], null, [], self::MULTIPLE, true, null);
 
-        $this->assertSame([$b, $a], $this->field()->fromStorage($value));
+        $this->assertSame([$b, $a], $value, 'a multiple field resolves to a list (0.89)');
+        $this->assertSame('', $this->field()->resolve([''], null, [], self::MULTIPLE, true, null), 'none selected is no value');
+        $this->assertSame([$b, $a], $this->field()->resolve(null, json_encode([$b, $a]), [], self::MULTIPLE, true, null), 'a stored JSON text (before 0.89) is kept as a list');
     }
 
     public function test_missing_selection_keeps_stored_value(): void
