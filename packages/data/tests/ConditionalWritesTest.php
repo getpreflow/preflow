@@ -228,6 +228,7 @@ final class ConditionalWritesTest extends TestCase
             } catch (\OverflowException $e) {
                 $this->assertStringContainsString('[uses]', $e->getMessage());
                 $this->assertStringContainsString($word . ' whole number the storage keeps', $e->getMessage());
+                $this->assertStringEndsWith('nothing was written. Add a smaller amount or reset the field.', $e->getMessage());
             }
         }
         $this->assertSame(2, (new Add(-1))->applyTo('3'));

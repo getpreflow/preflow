@@ -7,10 +7,10 @@ namespace Preflow\Blocks\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Since 0.81.0: core 0.81.0 (Context\Contexts, RenderContext and Deprecations: blocks render in the render
- * context's locale through ContextBlockLocale, and a BlockLocale without it is reported).
  * Since 0.90.0: data 0.90.0 (SelectOptionsFrom, which checks a block select's "options_from" when the
  * registry is built).
+ * Since 0.81.0: core 0.81.0 (Context\Contexts, RenderContext and Deprecations: blocks render in the render
+ * context's locale through ContextBlockLocale, and a BlockLocale without it is reported).
  * Since 0.75: data 0.75 (TypeFamily, which #[Block(family: …)] and BlockDefinition::$family carry).
  *
  * "^0.70 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps

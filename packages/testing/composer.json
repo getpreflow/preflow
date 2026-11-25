@@ -10,7 +10,7 @@
         "preflow/routing": "^0.1 || @dev",
         "preflow/view": "^0.86.0 || @dev",
         "preflow/components": "^0.86.0 || @dev",
-        "preflow/data": "^0.89.0 || @dev",
+        "preflow/data": "^0.90.0 || @dev",
         "preflow/htmx": "^0.88.0 || @dev",
         "preflow/auth": "^0.1 || @dev",
         "preflow/i18n": "^0.1 || @dev",
@@ -19,7 +19,7 @@
     "conflict": {
         "preflow/auth": "<0.81.0",
         "preflow/core": "<0.88.0",
-        "preflow/data": "<0.89.0",
+        "preflow/data": "<0.90.0",
         "preflow/htmx": "<0.88.0",
         "preflow/view": "<0.86.0",
         "preflow/components": "<0.86.0"

@@ -27,7 +27,10 @@ interface FieldType
     /** Domain value -> storage-ready value (JSON string for structured types). */
     public function toStorage(mixed $value): mixed;
 
-    /** Storage value -> domain value. */
+    /**
+     * Storage value -> domain value. Also builds FieldContext::$values for every field (since
+     * 0.90): decode only, no reads.
+     */
     public function fromStorage(mixed $value): mixed;
 
     /**

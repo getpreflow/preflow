@@ -45,12 +45,12 @@ final class MysqlTestDatabaseTest extends TestCase
         MysqlTestDatabase::dropAllTables($pdo);
     }
 
-    /** "^0.79.0 || @dev" matches any version (@dev is anything): only "conflict" keeps out a data release without what the testing package relies on (MysqlTestDatabase's API since 0.25; since 0.77 the storage driver contract's conditional updates and Unicode matching; since 0.78 its capability interfaces; since 0.79 InsertsNew, SelectsColumns and SelectsSubqueries; since 0.84 ChangeDates, ChangeDateBackfill and WriteTimes; since 0.89 the conditional writes updateWhen() and deleteWhen() and Condition, which the storage driver contract runs). */
+    /** "^0.90.0 || @dev" matches any version (@dev is anything): only "conflict" keeps out a data release without what the testing package relies on (MysqlTestDatabase's API since 0.25; since 0.77 the storage driver contract's conditional updates and Unicode matching; since 0.78 its capability interfaces; since 0.79 InsertsNew, SelectsColumns and SelectsSubqueries; since 0.84 ChangeDates, ChangeDateBackfill and WriteTimes; since 0.89 the conditional writes updateWhen() and deleteWhen() and Condition, which the storage driver contract runs; since 0.90 the number rule and the Add overflow refusal, which it checks). */
     public function test_composer_conflicts_with_data_before_its_api(): void
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         // The full conflict list is pinned in ComposerConstraintsTest.
-        $this->assertSame('<0.89.0', $composer['conflict']['preflow/data'] ?? null);
+        $this->assertSame('<0.90.0', $composer['conflict']['preflow/data'] ?? null);
     }
 }

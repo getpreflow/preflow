@@ -7,6 +7,7 @@ namespace Preflow\Testing\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.90: data 0.90 (the number rule and the Add overflow refusal that DialectContract and StorageDriverContract check).
  * Since 0.88: core 0.88 (ActionCall's token:/endpointUrl:, which HypermediaDriverContract passes); htmx 0.88
  * (ComponentEndpoint::TOKEN_FIELD, which WebApplication::componentAction() sends, and the endpoint that reads it).
  * Since 0.87: core 0.87 (ActionCall's carriesState: and 'blur' in ActionOptions::EVENTS, which HypermediaDriverContract
@@ -40,9 +41,10 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(['preflow/auth' => '<0.81.0', 'preflow/core' => '<0.88.0', 'preflow/data' => '<0.89.0', 'preflow/htmx' => '<0.88.0', 'preflow/view' => '<0.86.0', 'preflow/components' => '<0.86.0'], $composer['conflict'] ?? null);
+        $this->assertSame(['preflow/auth' => '<0.81.0', 'preflow/core' => '<0.88.0', 'preflow/data' => '<0.90.0', 'preflow/htmx' => '<0.88.0', 'preflow/view' => '<0.86.0', 'preflow/components' => '<0.86.0'], $composer['conflict'] ?? null);
         $this->assertSame('^0.88.0 || @dev', $composer['require']['preflow/core'] ?? null);
         $this->assertSame('^0.88.0 || @dev', $composer['require']['preflow/htmx'] ?? null);
+        $this->assertSame('^0.90.0 || @dev', $composer['require']['preflow/data'] ?? null);
         foreach (['view', 'components'] as $package) {
             $this->assertSame('^0.86.0 || @dev', $composer['require']['preflow/' . $package] ?? null, $package);
         }

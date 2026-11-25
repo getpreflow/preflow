@@ -198,7 +198,7 @@ final readonly class MediaConfig
                 throw new \RuntimeException("Extra asset field \"{$name}\" in {$source} is the name of an asset key; choose another name.");
             }
             if (is_array($definition) && array_key_exists('options_from', $definition)) {
-                throw new \RuntimeException("Extra asset field \"{$name}\" in {$source} sets \"options_from\", which only a field of a record type takes; list its choices in \"options\".");
+                throw new \RuntimeException("Extra asset field \"{$name}\" in {$source} sets \"options_from\", which only a field of a record type or a block takes; list its choices in \"options\".");
             }
             $out[$name] = is_array($definition) ? $definition : ['type' => is_string($definition) ? $definition : 'string'];
         }

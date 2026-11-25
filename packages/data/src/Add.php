@@ -35,7 +35,7 @@ final readonly class Add
             $name = $field === '' ? 'the field' : "the field [{$field}]";
             throw new \OverflowException("Adding {$this->amount} to {$name} goes past the "
                 . ($this->amount > 0 ? 'largest' : 'smallest') . ' whole number the storage keeps (' . ($this->amount > 0 ? PHP_INT_MAX : PHP_INT_MIN)
-                . '); nothing was written.');
+                . '); nothing was written. Add a smaller amount or reset the field.');
         }
 
         return $sum;

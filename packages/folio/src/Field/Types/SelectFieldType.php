@@ -28,7 +28,8 @@ use Preflow\Folio\Field\FieldContext;
  * "cards" with it, and such a select in "list.filters" or "list.bulk" are boot errors (TypeCatalog).
  * In a block (since 0.90) the source is another field of the same block: the editor gets that
  * block's values, a save checks the block's submitted ones (blockRules()), and the same mistakes
- * are errors when the blocks load (BlockRegistry).
+ * are errors when the blocks load (BlockRegistry). A "blocks" or "matrix" field as the source is
+ * refused (since 0.90), in a type and in a block: it holds entries, not values.
  */
 final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\Folio\Field\SearchableText, \Preflow\Folio\Field\HasColumnKind, \Preflow\Folio\Field\HasRecordRules, \Preflow\Folio\Field\HasBlockRules
 {

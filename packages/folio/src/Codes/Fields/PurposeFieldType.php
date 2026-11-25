@@ -49,6 +49,7 @@ final class PurposeFieldType implements FieldType, \Preflow\Folio\Field\HasColum
             locale: $ctx->locale,
             locales: $ctx->locales,
             record: $ctx->record,
+            values: $ctx->values,
         ));
     }
 

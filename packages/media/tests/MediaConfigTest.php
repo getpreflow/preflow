@@ -212,7 +212,7 @@ final class MediaConfigTest extends TestCase
         $this->write('media.php', ['fields' => ['usage' => ['type' => 'select', 'options_from' => 'tags']]]);
 
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Extra asset field "usage" in config/media.php sets "options_from", which only a field of a record type takes; list its choices in "options".');
+        $this->expectExceptionMessage('Extra asset field "usage" in config/media.php sets "options_from", which only a field of a record type or a block takes; list its choices in "options".');
         MediaConfig::fromApp(Application::create($this->dir));
     }
 

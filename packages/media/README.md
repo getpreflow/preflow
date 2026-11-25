@@ -403,8 +403,8 @@ Add fields of your own to every asset (a licence, a photographer, a category) in
 - A name must be letters, digits and underscores, starting with a letter, and must not be one
   of the asset's own keys (`path`, `alt`, `title`, `color`, `palette`, `version`, `private`, …):
   that is a boot error naming the field.
-- A select lists its choices in `options`; `options_from` (a record type's select taking its
-  options from another field) is a boot error on an asset field.
+- A select lists its choices in `options`; `options_from` (a select of a record type or a block taking
+  its options from another field) is a boot error on an asset field.
 - `$library->update($id, ['credit' => '…'])` sets them. A value that does not fit its field
   (an option that does not exist) is cleared; other unknown keys are ignored.
 - `filters` entries that are not a declared select, relation or boolean field are ignored and
