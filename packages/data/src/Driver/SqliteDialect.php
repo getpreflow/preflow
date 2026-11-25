@@ -137,10 +137,23 @@ final class SqliteDialect implements Dialect, PatternMatching, TextComparison
         return "CAST(NULLIF({$expression}, '') AS REAL)";
     }
 
-    /** CAST takes the leading number of any text (0 when there is none) and never fails. */
+    /**
+     * The rule of Condition::wholeNumber(), in SQLite's core functions only (one statement, no PHP
+     * function): a stored number is cut to its whole part; text is a number only when it is
+     * `-?digits` or `-?digits.digits` (GLOB, which ignores the column's collation), else 0. CAST
+     * alone reads the leading number of any text (' 3' as 3, '1e3' as 1), which this did before
+     * 0.90.
+     */
     public function wholeNumber(string $expression): string
     {
-        return "CAST(NULLIF({$expression}, '') AS INTEGER)";
+        $x = $expression;
+        $unsigned = "substr({$x}, 1 + ({$x} GLOB '-*'))";
+
+        return "(CASE WHEN {$x} IS NULL THEN NULL"
+            . " WHEN typeof({$x}) IN ('integer', 'real') THEN CAST({$x} AS INTEGER)"
+            . " WHEN length({$x}) = 0 THEN NULL"
+            . " WHEN {$unsigned} GLOB '[0-9]*' AND {$unsigned} NOT GLOB '*[^0-9.]*' AND {$x} NOT GLOB '*.*.*'"
+            . " THEN CAST({$x} AS INTEGER) ELSE 0 END)";
     }
 
     /** By bytes, whatever the column's collation (the columns of text fields compare by the rule). */

@@ -118,7 +118,7 @@ final class ConditionalWritesTest extends TestCase
         ), $bindings);
 
         $this->assertSame(
-            '((`note` IS NULL OR LENGTH((`note` COLLATE BINARY)) = 0)) AND ((CAST(NULLIF(`uses`, \'\') AS INTEGER) >= ?)'
+            '((`note` IS NULL OR LENGTH((`note` COLLATE BINARY)) = 0)) AND ((' . (new SqliteDialect())->wholeNumber('`uses`') . ' >= ?)'
                 . ' OR (((`label` COLLATE BINARY) = ? AND LENGTH((`label` COLLATE BINARY)) = LENGTH(?)) OR ((`label` COLLATE BINARY) = ? AND LENGTH((`label` COLLATE BINARY)) = LENGTH(?))))'
                 . ' AND (((`label` COLLATE BINARY) <> ? OR LENGTH((`label` COLLATE BINARY)) <> LENGTH(?)))',
             $sql,
@@ -192,6 +192,11 @@ final class ConditionalWritesTest extends TestCase
         $this->assertSame(0, Condition::wholeNumber('3 '));
         $this->assertSame(0, Condition::wholeNumber('1e3'));
         $this->assertSame(0, Condition::wholeNumber("3\n"));
+        foreach (['.5', '0x1A', '+3', '-', '1.2.3', '-0.5'] as $text) {
+            $this->assertSame(0, Condition::wholeNumber($text), $text);
+        }
+        $this->assertSame(-3, Condition::wholeNumber('-3.7'));
+        $this->assertSame(3, Condition::wholeNumber('3.'));
         $this->assertSame(9007199254740993, Condition::wholeNumber('9007199254740993'));
         $this->assertSame(1, Condition::wholeNumber(true));
         $this->assertNull(Condition::text(null));

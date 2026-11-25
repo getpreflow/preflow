@@ -199,9 +199,10 @@ final class Condition
     /**
      * A stored value as a whole number, as Driver\Dialect::wholeNumber() reads it: null for null
      * and '' (no number), the whole part, towards zero, of a number or of text that is one
-     * ('3.0' is 3, '-2.5' is -2), else 0. Only `-?digits` and `-?digits.digits` are numbers, as on
-     * MySQL: ' 3', '3 ' and '1e3' are text, so 0. (SQLite's CAST reads ' 3' as 3 and '1e3' as 1;
-     * counters never hold such text, so the storages only differ for values nobody writes.)
+     * ('3.0' is 3, '-2.5' is -2, '3.' is 3), else 0. Only `-?digits` and `-?digits.digits` (the
+     * decimals may be none) are numbers: ' 3', '3 ', '1e3', '.5', '0x1A', '+3', '-' and '1.2.3' are
+     * text, so 0. The JSON files, SQLite and MySQL all read stored text this way (since 0.90;
+     * StorageDriverContract checks it).
      */
     public static function wholeNumber(mixed $stored): ?int
     {

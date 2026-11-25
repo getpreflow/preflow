@@ -349,7 +349,8 @@ a boolean as 1/0, a JSON field as text), is in each suite's class docblock:
   `Preflow\Testing\PlainDriver` (0.78) wraps any driver and hides its capabilities, to test what
   a caller does on a storage with the bare minimum.
 - **DialectContract** runs a `Dialect`'s SQL on its real database: `wholeNumber()` inside an `UPDATE` on a number
-  column and on a text column holding numbers, `''` and other text, and `insertOrUpdateSql()` inserting a row and then
+  column and on a text column holding numbers, `''` and other text (since 0.90 only `-?digits` and `-?digits.digits` are
+  numbers there: `' 3'`, `'1e3'`, `'0x1A'` are 0, as `Condition::wholeNumber()` reads them), and `insertOrUpdateSql()` inserting a row and then
   updating it by its id with expressions that read the existing row through table-qualified columns (as preflow/core's
   throttle does; PostgreSQL rejects bare names there). A dialect whose `insertOrUpdateSql()` returns null skips that
   test. The rest of `Dialect` is covered through StorageDriverContract.

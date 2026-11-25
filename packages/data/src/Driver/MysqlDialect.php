@@ -167,13 +167,15 @@ final class MysqlDialect implements Dialect, PatternMatching, TextComparison
     /**
      * Strict mode makes CAST('' AS SIGNED) and CAST('3.0' AS SIGNED) errors inside an UPDATE, and
      * a number column compared with '' too: only text that is a number is cast (through DECIMAL),
-     * and '' is checked on the text form.
+     * and '' is checked on the text form. The rule is Condition::wholeNumber()'s: `$` also matches
+     * before a final line break (ICU and PCRE), so the second check refuses any other character
+     * ('3' and a line break is 0, since 0.90).
      */
     public function wholeNumber(string $expression): string
     {
         $text = "CAST({$expression} AS CHAR)";
 
-        return "(CASE WHEN {$expression} IS NULL OR {$text} = '' THEN NULL WHEN {$text} REGEXP '^-?[0-9]+([.][0-9]*)?$' "
+        return "(CASE WHEN {$expression} IS NULL OR {$text} = '' THEN NULL WHEN {$text} REGEXP '^-?[0-9]+([.][0-9]*)?$' AND {$text} NOT REGEXP '[^-.0-9]' "
             . "THEN CAST(TRUNCATE(CAST({$text} AS DECIMAL(65,10)), 0) AS SIGNED) ELSE 0 END)";
     }
 

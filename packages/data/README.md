@@ -596,9 +596,14 @@ Two notes for SQL storages that run through `RunsSql` (a driver without `Conditi
 the read that confirms the write runs outside a transaction, so a commit between the two can make
 it report a different answer (any isolation level; the effect is bounded to that one record). And
 MySQL's `LENGTH()` counts bytes, which is enough to tell texts that differ only in trailing
-spaces; the connection must still be `utf8mb4` (the built-in driver sets it). Only `-?digits` and
-`-?digits.digits` are numbers: `' 3'` and `'1e3'` read as 0 on the JSON files and on MySQL
-(SQLite's `CAST` reads 3 and 1; counters never hold such text).
+spaces; the connection must still be `utf8mb4` (the built-in driver sets it).
+
+A field compared as a number (and one an `Add` adds to) is read the same on every storage, as
+`Condition::wholeNumber()` reads it: only `-?digits` and `-?digits.digits` are numbers, cut to
+the whole part (`'-3.7'` is -3, `'3.'` is 3); any other text is 0 (`' 3'`, `'3 '`, `'1e3'`,
+`'.5'`, `'0x1A'`, `'-'`, `'1.2.3'`); null and `''` are no number. Since 0.90 SQLite reads this
+way too (before, its `CAST` read the leading number: `' 3'` as 3, `'1e3'` as 1).
+StorageDriverContract checks it on every driver, DialectContract on every dialect.
 
 `updateIf()` and `deleteIf()` (0.81, a closure plus your own SQL) still work but are deprecated
 and go in a later minor: move to `updateWhen()` / `deleteWhen()`.

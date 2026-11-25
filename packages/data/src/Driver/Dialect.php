@@ -75,11 +75,12 @@ interface Dialect
      * SQL expression for a value as a whole number, also where the column stores text, that is
      * safe inside an UPDATE (MySQL's strict mode makes a failed conversion an error there):
      * NULL for NULL and '', the whole part, towards zero, of a number or of text that is one
-     * ('3.0' is 3, '2.5' is 2, '-2.5' is -2), 0 for text with no number in it ('abc'). Text that
-     * only starts with a number or has spaces around it ('3abc', ' 3') is up to the dialect
-     * (SQLite reads its leading number, MySQL 0), as are numbers beyond a 64-bit integer. Never
-     * compares a number with '' (PostgreSQL refuses that). Codes' use counting and PdoDriver's
-     * version check are ones (since 0.66.1). DialectContract (preflow/testing) checks it.
+     * ('3.0' is 3, '2.5' is 2, '-2.5' is -2), 0 for any other text: as Condition::wholeNumber(),
+     * only `-?digits` and `-?digits.digits` are numbers, so ' 3', '3abc', '1e3', '.5' and '0x1A'
+     * are 0 (since 0.90; before, SQLite read a leading number). Numbers beyond a 64-bit integer
+     * are up to the dialect. Never compares a number with '' (PostgreSQL refuses that). Codes' use
+     * counting and PdoDriver's version check are ones (since 0.66.1). DialectContract
+     * (preflow/testing) checks it.
      */
     public function wholeNumber(string $expression): string;
 

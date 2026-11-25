@@ -32,7 +32,8 @@ use Preflow\Data\Driver\Dialect;
  * - numberColumnType() (default DOUBLE PRECISION) is the type of a `number` field's column.
  *
  * Checked: Dialect::wholeNumber() inside an UPDATE, on a number column and on a text column that
- * holds numbers, '' and other text (tables made before typed columns); and
+ * holds numbers, '' and other text (tables made before typed columns; text other than
+ * `-?digits` or `-?digits.digits` is 0, as Condition::wholeNumber() reads it, since 0.90); and
  * Dialect::insertOrUpdateSql() inserting a row, then updating it by its id with expressions that
  * read the existing row through table-qualified columns, as preflow/core's Throttle does. A
  * dialect whose insertOrUpdateSql() returns null (no such statement) skips that test.
@@ -72,7 +73,7 @@ abstract class DialectContract extends TestCase
         [$id, $num, $txt, $rn, $rt] = array_map($this->q(...), ['id', 'num', 'txt', 'rn', 'rt']);
         $this->pdo->exec("CREATE TABLE {$table} ({$id} VARCHAR(10) PRIMARY KEY, {$num} {$this->numberColumnType()}, {$txt} TEXT, {$rn} INTEGER, {$rt} INTEGER)");
         $insert = $this->pdo->prepare("INSERT INTO {$table} ({$id}, {$num}, {$txt}) VALUES (?, ?, ?)");
-        foreach ([['a', null, null], ['b', '3', '3'], ['c', '2.5', '3.0'], ['d', '-2.5', '2.5'], ['e', '12', '-2.5'], ['f', '0', ''], ['g', null, 'abc']] as $row) {
+        foreach ([['a', null, null], ['b', '3', '3'], ['c', '2.5', '3.0'], ['d', '-2.5', '2.5'], ['e', '12', '-2.5'], ['f', '0', ''], ['g', null, 'abc'], ['h', '0', ' 3'], ['i', '0', '1e3'], ['j', '0', '-3.7'], ['k', '0', '0x1A'], ['l', '0', '1.2.3'], ['m', '0', '3.']] as $row) {
             $insert->execute($row);
         }
 
@@ -89,6 +90,12 @@ abstract class DialectContract extends TestCase
             ['e', 12, -2],
             ['f', 0, -99],   // 0 stays a number, '' is none
             ['g', -99, 0],   // text with no number is 0
+            ['h', 0, 0],     // only -?digits(.digits) is a number (Condition::wholeNumber(), since 0.90)
+            ['i', 0, 0],
+            ['j', 0, -3],
+            ['k', 0, 0],
+            ['l', 0, 0],
+            ['m', 0, 3],
         ], array_map(static fn (array $r): array => [(string) $r[0], (int) $r[1], (int) $r[2]], $rows));
     }
 
