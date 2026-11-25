@@ -24,9 +24,9 @@ final readonly class ActionCall
      *        stateCarrier() is in its wrapper and goes with the request). False: there is no
      *        carrier to send, so the driver names none (@since 0.87.0)
      * @param string|null $token the action's signed token, the one $url carries: a driver may send
-     *        it in the request body instead of the URL (field `token`, which the endpoint reads from
-     *        the query or the body), so large props never make a URL too long. Null: only $url has
-     *        it (@since 0.88.0)
+     *        it in the request body instead of the URL (field `_token`, the component endpoint's
+     *        Preflow\Htmx\ComponentEndpoint::TOKEN_FIELD; the URL's `token` is read first), so large
+     *        props never make a URL too long. Null: only $url has it (@since 0.88.0)
      * @param string|null $endpointUrl $url without the token (with every other parameter it has,
      *        e.g. a preview's): the URL a driver writes when it sends $token in the body. Given
      *        together with $token (@since 0.88.0)

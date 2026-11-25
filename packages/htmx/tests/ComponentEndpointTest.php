@@ -542,11 +542,24 @@ final class ComponentEndpointTest extends TestCase
         $this->assertSame('', $whole->getHeaderLine('HX-Nonce'));
     }
 
+    public function test_a_missing_token_says_where_it_is_expected(): void
+    {
+        try {
+            $this->endpoint->handle($this->createRequest('POST', '/--component/action', body: ['_values' => '{}']));
+            $this->fail('a request without a token is refused');
+        } catch (SecurityException $e) {
+            $this->assertStringContainsString('Missing component token', $e->getMessage());
+            $this->assertStringContainsString("'token' in the URL", $e->getMessage());
+            $this->assertStringContainsString("'_token' in the body", $e->getMessage());
+            $this->assertStringContainsString('hx-params', $e->getMessage(), 'what may have removed it');
+        }
+    }
+
     public function test_the_token_may_come_in_the_body_as_token_field(): void
     {
         $token = $this->tokenService->encode(EndpointTestComponent::class, ['title' => 'Before'], 'refresh');
 
-        foreach (['_token (0.88)' => HtmxDriver::TOKEN_FIELD, 'token (before 0.88)' => 'token'] as $what => $field) {
+        foreach (['_token (0.88)' => ComponentEndpoint::TOKEN_FIELD, 'token (before 0.88)' => 'token'] as $what => $field) {
             $response = $this->endpoint->handle($this->createRequest('POST', '/--component/action', body: [$field => $token]));
             $this->assertSame(200, $response->getStatusCode(), $what);
             $this->assertStringContainsString('Refreshed', (string) $response->getBody(), $what);
@@ -562,11 +575,11 @@ final class ComponentEndpointTest extends TestCase
         $own = $this->tokenService->encode(EndpointTestComponent::class, ['title' => 'Own'], 'render');
         $outer = $this->tokenService->encode(GuardedComponent::class, [], 'admin');
 
-        $get = $this->endpoint->handle($this->createRequest('GET', '/--component/render', ['token' => $own, HtmxDriver::TOKEN_FIELD => $outer]));
+        $get = $this->endpoint->handle($this->createRequest('GET', '/--component/render', ['token' => $own, ComponentEndpoint::TOKEN_FIELD => $outer]));
         $this->assertSame(200, $get->getStatusCode());
         $this->assertStringContainsString('Own', (string) $get->getBody(), 'a get inside a post call element');
 
-        $post = $this->endpoint->handle($this->createRequest('POST', '/--component/render', ['token' => $own], [HtmxDriver::TOKEN_FIELD => $outer]));
+        $post = $this->endpoint->handle($this->createRequest('POST', '/--component/render', ['token' => $own], [ComponentEndpoint::TOKEN_FIELD => $outer]));
         $this->assertStringContainsString('Own', (string) $post->getBody(), 'an old-form post inside a post call element');
     }
 
@@ -575,14 +588,14 @@ final class ComponentEndpointTest extends TestCase
         // An old-style token (all props): the body as in 0.85, without the fields a call around the element gave it.
         $old = $this->tokenService->encode(ParamsEndpointComponent::class, [], 'keep');
         ParamsEndpointComponent::$params = null;
-        $this->endpoint->handle($this->createRequest('POST', '/--component/action', ['token' => $old], ['name' => 'Ada', HtmxDriver::TOKEN_FIELD => 'from-an-outer-call', '_values' => '{}', '_region' => '']));
+        $this->endpoint->handle($this->createRequest('POST', '/--component/action', ['token' => $old], ['name' => 'Ada', ComponentEndpoint::TOKEN_FIELD => 'from-an-outer-call', '_values' => '{}', '_region' => '']));
         $this->assertSame(['name' => 'Ada'], ParamsEndpointComponent::$params);
 
         // A 0.86 token (encodeFor()), its token in the body.
         $component = $this->makeComponent(ParamsEndpointComponent::class, []);
         $neutral = $this->tokenService->encodeFor($component, 'keep');
         ParamsEndpointComponent::$params = null;
-        $response = $this->endpoint->handle($this->createRequest('POST', '/--component/action', body: [HtmxDriver::TOKEN_FIELD => $neutral, '_values' => '{"page":2}', '_region' => '', 'name' => 'Bo']));
+        $response = $this->endpoint->handle($this->createRequest('POST', '/--component/action', body: [ComponentEndpoint::TOKEN_FIELD => $neutral, '_values' => '{"page":2}', '_region' => '', 'name' => 'Bo']));
         $this->assertSame(200, $response->getStatusCode(), (string) $response->getBody());
         $this->assertSame(['page' => 2, 'name' => 'Bo'], ParamsEndpointComponent::$params);
     }

@@ -462,7 +462,7 @@ component's state with each action. What a driver implements, and the request fi
 shares (`_state[<componentId>]`, `_values`, `_region`), are in preflow/htmx's README.
 Since 0.88 an `ActionCall` also has its token apart: `token` (the signed token its `url` carries)
 and `endpointUrl` (the `url` without it, any other parameter kept), both set or both null. A driver
-can send the token in the request body instead of the URL; `url` still has it, so a driver written
+can send the token in the request body (as `_token`, which the component endpoint reads after the URL's `token`) instead of the URL; `url` still has it, so a driver written
 before 0.88 works unchanged.
 
 Every HTML answer says `Vary` for the client's request headers (`varyHeaders()`; added by `SecurityHeadersMiddleware`). `Preflow\Core\Http\Vary::add($response, ...$names)` (0.84) is the one `Vary` merge: names already there stay, each is listed once (case-insensitive), several lines become one, and `Vary: *` is left alone. Use it when your own middleware varies a response.

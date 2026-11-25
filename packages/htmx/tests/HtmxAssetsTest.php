@@ -98,6 +98,32 @@ final class HtmxAssetsTest extends TestCase
         $this->assertStringNotContainsString('preflowDisabler', $never->renderHead() . $never->renderJsBody());
     }
 
+    public function test_body_token_scope_is_added_once_after_htmx(): void
+    {
+        $collector = new AssetCollector(new NonceGenerator());
+        $assets = new HtmxAssets($collector, 'on-demand');
+        $assets->requireBodyTokenScope();
+        $assets->requireBodyTokenScope();
+        $this->assertTrue($assets->isRequired(), 'it needs htmx');
+        $this->assertStringNotContainsString('preflowBodyToken', $collector->renderHead(), 'not in the head');
+        $body = $collector->renderJsBody();
+        $this->assertSame(1, substr_count($body, "preflowBodyToken('" . \Preflow\Htmx\ComponentEndpoint::TOKEN_FIELD . "');"));
+        $this->assertStringContainsString('function preflowBodyToken(', $body, 'a named function, not an IIFE (inline scripts are joined)');
+        $this->assertStringContainsString('window.preflowBodyTokenOn', $body, 'set up once per page');
+        $this->assertMatchesRegularExpression('#<script nonce="[^"]+">(?:(?!</script>).)*preflowBodyToken#s', $body, 'under the page nonce like the busy marker');
+        // htmx 2's htmx:configRequest: detail.elt sent the request, detail.parameters (a proxy over the
+        // FormData htmx sends; delete removes a field) is read again after the event.
+        $this->assertStringContainsString("document.addEventListener('htmx:configRequest'", $body);
+        $this->assertStringContainsString('d.parameters[field] === undefined', $body, 'nothing to do without the field');
+        $this->assertStringContainsString("el.getAttribute('hx-vals') || el.getAttribute('data-hx-vals')", $body, "only the element's own hx-vals count, not an ancestor's");
+        $this->assertStringContainsString('Object.prototype.hasOwnProperty.call(vals, field)', $body);
+        $this->assertStringContainsString('delete d.parameters[field];', $body, 'an inherited token is dropped: a get inside a call element keeps its URL short');
+
+        $never = new AssetCollector(new NonceGenerator());
+        (new HtmxAssets($never, 'never'))->requireBodyTokenScope();
+        $this->assertStringNotContainsString('preflowBodyToken', $never->renderHead() . $never->renderJsBody());
+    }
+
     /** $render in a render frame of its own, as every page render runs (0.81). */
     private static function frame(\Closure $render): mixed
     {

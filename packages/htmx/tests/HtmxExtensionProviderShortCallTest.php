@@ -14,6 +14,7 @@ use Preflow\Components\StateStore;
 use Preflow\Core\DebugLevel;
 use Preflow\Htmx\ComponentToken;
 use Preflow\Htmx\HtmlAttributes;
+use Preflow\Htmx\ComponentEndpoint;
 use Preflow\Htmx\HtmxDriver;
 use Preflow\Htmx\HtmxExtensionProvider;
 use Preflow\Htmx\HypermediaDriver;
@@ -453,7 +454,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
             $response = $this->endpoint()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
                 ->createServerRequest('POST', (string) parse_url($url, PHP_URL_PATH))
                 ->withHeader('HX-Request', 'true')
-                ->withParsedBody([HtmxDriver::TOKEN_FIELD => $this->token($call)]));
+                ->withParsedBody([ComponentEndpoint::TOKEN_FIELD => $this->token($call)]));
             $this->assertSame(200, $response->getStatusCode());
             $this->assertSame([], $this->errors, "{$which}: the parent call in the row's answer works");
 
@@ -485,7 +486,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         $this->endpoint()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
             ->createServerRequest('POST', '/--component/action')
             ->withHeader('HX-Request', 'true')
-            ->withParsedBody([HtmxDriver::TOKEN_FIELD => $this->token(self::attributes($own))]));
+            ->withParsedBody([ComponentEndpoint::TOKEN_FIELD => $this->token(self::attributes($own))]));
 
         $this->assertCount(1, $this->errors);
         $this->assertInstanceOf(\LogicException::class, $this->errors[0]);
@@ -540,7 +541,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         $this->endpoint()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
             ->createServerRequest('POST', '/--component/action')
             ->withHeader('HX-Request', 'true')
-            ->withParsedBody([HtmxDriver::TOKEN_FIELD => $this->token(self::attributes($own))]));
+            ->withParsedBody([ComponentEndpoint::TOKEN_FIELD => $this->token(self::attributes($own))]));
         $this->assertSame([], $this->errors);
         $this->assertSame([true, true], $seen);
 
@@ -578,7 +579,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         })->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
             ->createServerRequest('POST', '/--component/action')
             ->withHeader('HX-Request', 'true')
-            ->withParsedBody([HtmxDriver::TOKEN_FIELD => $this->token(self::attributes($own))]));
+            ->withParsedBody([ComponentEndpoint::TOKEN_FIELD => $this->token(self::attributes($own))]));
 
         $this->assertSame(200, $response->getStatusCode());
         $this->assertSame([], $this->errors, 'nothing asked for the parent itself');
@@ -615,7 +616,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         })->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
             ->createServerRequest('POST', '/--component/action')
             ->withHeader('HX-Request', 'true')
-            ->withParsedBody([HtmxDriver::TOKEN_FIELD => $this->token(self::attributes($own))]));
+            ->withParsedBody([ComponentEndpoint::TOKEN_FIELD => $this->token(self::attributes($own))]));
 
         $this->assertSame([], $this->errors);
         $this->assertSame([ShortRow::class, ShortSearch::class], $built, 'the parent built once, for the first call that needs it');
@@ -1007,9 +1008,9 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
             $this->assertStringNotContainsString('token=', $attributes['hx-post'], 'a post sends its token in the body');
             $vals = json_decode($attributes['hx-vals'], true);
             $this->assertIsArray($vals);
-            $this->assertIsString($vals[HtmxDriver::TOKEN_FIELD] ?? null);
+            $this->assertIsString($vals[ComponentEndpoint::TOKEN_FIELD] ?? null);
 
-            return $vals[HtmxDriver::TOKEN_FIELD];
+            return $vals[ComponentEndpoint::TOKEN_FIELD];
         }
         parse_str((string) parse_url($attributes['hx-get'], PHP_URL_QUERY), $query);
         $this->assertIsString($query['token'] ?? null, 'a get keeps its token in the URL');

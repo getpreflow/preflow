@@ -243,9 +243,25 @@ final class WebApplicationTest extends TestCase
     #[RunInSeparateProcess]
     public function test_a_call_with_the_token_in_the_url_still_runs(): void
     {
-        $answer = WebApplication::componentAction(WebApplication::boot($this->dir), '', Note::class, 'save', ['tag' => 'y'], props: ['text' => 'short']);
+        $app = WebApplication::boot($this->dir);
+        $note = new Note();
+        $note->setProps(['text' => 'short']);
+        $token = $app->container()->get(\Preflow\Htmx\ComponentToken::class)->encodeFor($note, 'save');
+
+        $answer = $app->handle((new ServerRequest('POST', 'http://localhost/--component/action?token=' . urlencode($token), ['HX-Request' => 'true']))
+            ->withParsedBody(['tag' => 'y']));
 
         $this->assertSame(200, $answer->getStatusCode(), (string) $answer->getBody());
         $this->assertStringContainsString('Saved 5 characters, params: tag', (string) $answer->getBody());
+    }
+
+    /** componentAction() sends the token in the body, as the page's post call does. */
+    #[RunInSeparateProcess]
+    public function test_component_action_sends_the_token_in_the_body(): void
+    {
+        $answer = WebApplication::componentAction(WebApplication::boot($this->dir), '', Note::class, 'save', ['tag' => 'y'], props: ['text' => str_repeat('x', 6000)]);
+
+        $this->assertSame(200, $answer->getStatusCode(), (string) $answer->getBody());
+        $this->assertStringContainsString('Saved 6000 characters, params: tag', (string) $answer->getBody(), '_token is no param');
     }
 }

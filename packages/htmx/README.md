@@ -129,17 +129,27 @@ without knowing the client:
 | `_state[<componentId>]` (`STATE_FIELD`) | the state string the page carries for that component |
 | `_values` (`VALUES_FIELD`) | the values the call sends: one JSON object as a string, or fields `_values[<name>]`. Unsigned input; the fields of the form the element sits in win over them |
 | `_region` (`REGION_FIELD`) | the region the answer renders; empty or missing for the whole component |
+| `_token` (`ComponentEndpoint::TOKEN_FIELD`, 0.88) | the call's token (`ActionCall::$token`) when it travels in the body; a token in the URL (`token`) is read first |
 
 **Where the token travels (0.88).** A POST call (`hd.post`, `hd.on`) sends its token in the body,
 as `_token` in `hx-vals`, and its `hx-post` is the endpoint URL without it. Large props (a long
 text, an old form submission) never make the URL too long. A GET call (`hd.get`) has no body: its
-token stays in `hx-get` as `token`, and over 2048 bytes (`HtmxDriver::GET_TOKEN_LIMIT`) it fails
-in debug, or is logged once per request otherwise. The endpoint reads `token` from the URL first,
-then `_token` from the body, then a body `token` (forms written before 0.88). The URL's token
-always wins: htmx passes an element's `hx-vals` (with its `_token`) to every element inside it,
-and a GET adds them to its query. A page rendered before 0.88 (token in the URL) keeps working.
-`_token` and `token` never reach an action's params. The field belongs to the htmx driver
-(`HtmxDriver::TOKEN_FIELD`); another driver sends `ActionCall::$token` the way its client can.
+token stays in `hx-get` as `token`. The limit is on that token: over 2048 bytes
+(`HtmxDriver::GET_TOKEN_LIMIT`) it fails in debug, and otherwise each component is logged once per
+request. The endpoint reads `token` from the URL first, then `_token` from the body, then a body
+`token` (forms written before 0.88), so a page rendered before 0.88 keeps working. `_token` and
+`token` never reach an action's params.
+
+htmx passes an element's `hx-vals` to every element inside it. So that a call's token stays with
+that call, a page with such a call gets a few lines of script (`HtmxAssets`, on
+`htmx:configRequest`): a request drops `_token` unless its own element's `hx-vals` holds it. A
+`hd.get`, an old-form call, a site's own `hx-get` or a boosted link inside a call's element keeps
+its URL short. `hx-params` under the `htmx` key keeps the token: a list gets `_token` added, a
+`not` list never names it, and `none` fails in debug (otherwise the token goes in the URL). An
+`hx-params` the call inherits from a site's element is not changed: if it drops `_token`, the
+endpoint answers "Missing component token", naming where the token is expected. Another driver
+sends `ActionCall::$token` in the URL as `token` or in the body as `_token`; those are the two
+places the endpoint reads.
 
 **The busy class.** While a request runs, the element that sent it carries the class
 `preflow-busy` (`BUSY_CLASS`), so CSS for "loading" names no client library. A driver adds and

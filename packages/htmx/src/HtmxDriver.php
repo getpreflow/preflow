@@ -6,6 +6,7 @@ namespace Preflow\Htmx;
 
 use Preflow\Core\Context\Contexts;
 use Preflow\Core\Http\Hypermedia\ActionCall;
+use Preflow\Core\Http\Hypermedia\ActionOptions;
 use Preflow\Core\Http\Hypermedia\CarriesRequestHeaders;
 use Preflow\Core\Http\Hypermedia\DrivesComponentActions;
 use Preflow\Core\Http\Hypermedia\OwnsResponseHeaders;
@@ -38,16 +39,6 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
 
     /** The attributes a call sets for its state and target: not to be given under the `htmx` key. */
     private const array OWN_ATTRIBUTES = ['hx-include', 'hx-vals', 'hx-sync', 'hx-target'];
-
-    /**
-     * The body field a post call sends its token in (ActionCall::$token), beside VALUES_FIELD and
-     * REGION_FIELD. Not `token`: htmx passes an element's hx-vals to every element inside it and
-     * appends them to a get request's query, where the URL's own `token` (which ComponentEndpoint
-     * reads first) must stay the one that counts.
-     *
-     * @since 0.88.0
-     */
-    public const string TOKEN_FIELD = '_token';
 
     /**
      * The longest token a get call carries in its URL without a warning, in bytes: the smallest URL
@@ -92,9 +83,13 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
      * JSON object) and the region (REGION_FIELD, empty for the whole component).
      *
      * A call with its token apart (ActionCall::$token, 0.88): a post writes the endpoint URL
-     * without it and sends the token in hx-vals (TOKEN_FIELD), so its props never make the URL
+     * without it and sends the token in hx-vals (ComponentEndpoint::TOKEN_FIELD), so its props never make the URL
      * long; a get keeps it in its URL (it has no body). A get token over GET_TOKEN_LIMIT bytes fails
-     * in debug (the fix: #[State], smaller props, or a post) and is logged once per request otherwise.
+     * in debug (the fix: #[State], smaller props, or a post) and is logged once per component and
+     * request otherwise. A body token asks for HtmxAssets::requireBodyTokenScope() (requests from
+     * elements inside the call's element don't send it) and survives hx-params under the `htmx`
+     * key: a list gets it added, a `not` list never names it; `none` fails in debug and otherwise
+     * sends the token in the URL instead.
      *
      * Both fields are always written, so a call inside another call's element (a button in a form
      * that calls an action) never sends the outer call's values or region: htmx merges hx-vals of
@@ -154,6 +149,21 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
         // The token apart (0.88): a post sends it in its body, so large props never make a long
         // URL; a get has no body and keeps it in its URL.
         $tokenInBody = $call->method === 'post' && $call->token !== null && $call->endpointUrl !== null;
+        if ($tokenInBody && in_array('none', self::paramsOptions($options), true)) {
+            $message = sprintf(
+                "The htmx attribute hx-params 'none' under the action option htmx would drop the call's token, which a post call sends in its body (%s): the endpoint could not tell which component to run. Name the parameters to send instead (e.g. 'q, page'; the call adds %s) or the ones to leave out ('not q').",
+                ComponentEndpoint::TOKEN_FIELD,
+                ComponentEndpoint::TOKEN_FIELD,
+            );
+            if ($this->debug) {
+                throw new \InvalidArgumentException($message);
+            }
+            $this->log($message . ' The token goes in the URL instead.');
+            $tokenInBody = false;
+        }
+        if ($tokenInBody) {
+            $this->assets?->requireBodyTokenScope();
+        }
         if ($call->method === 'get' && $call->token !== null && strlen($call->token) > self::GET_TOKEN_LIMIT) {
             $message = sprintf(
                 "The get call of %s carries a %d-byte token in its URL, over %d bytes: servers and proxies may refuse the URL. The component's props are too large for a get call: keep its data in #[State] (its token then holds only its key), give it smaller props, or make the call a post (its token goes in the body).",
@@ -164,7 +174,7 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
             if ($this->debug) {
                 throw new \LogicException($message);
             }
-            $this->warnOnce('get-token-limit', $message . ' Written anyway.');
+            $this->warnOnce('get-token-limit:' . $call->componentId, $message . ' Written anyway.');
         }
         $attributes = [
             "hx-{$call->method}" => $tokenInBody ? $call->endpointUrl : $call->url,
@@ -178,7 +188,7 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
             'hx-vals' => json_encode([
                 self::VALUES_FIELD => $call->values === [] ? '{}' : json_encode(self::plain(self::VALUES_FIELD, $call->values), self::JSON),
                 self::REGION_FIELD => $options->region() ?? '',
-            ] + ($tokenInBody ? [self::TOKEN_FIELD => $call->token] : []), self::JSON),
+            ] + ($tokenInBody ? [ComponentEndpoint::TOKEN_FIELD => $call->token] : []), self::JSON),
         ];
         if ($listen !== null) {
             $attributes['hx-trigger'] = $listen . ' from:body';
@@ -211,9 +221,10 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
                 $this->log($message . ' Left out.');
                 continue;
             }
-            $attributes[$name] = is_scalar($value) || $value instanceof \Stringable
-                ? (is_bool($value) ? ($value ? 'true' : 'false') : (string) $value)
-                : json_encode($value, self::JSON);
+            $attributes[$name] = self::attributeValue($value);
+            if ($tokenInBody && self::isParams($name)) {
+                $attributes[$name] = self::keepToken($attributes[$name]);
+            }
         }
         // Only what the call set stays on its element: calls (and old-style elements) inside it keep their own.
         $set = [];
@@ -226,6 +237,59 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
         $attributes['hx-disinherit'] = implode(' ', array_keys($set));
 
         return $attributes;
+    }
+
+    /** An escape-hatch value as attribute text: true/false as words, a list or map as JSON. */
+    private static function attributeValue(mixed $value): string
+    {
+        return is_scalar($value) || $value instanceof \Stringable
+            ? (is_bool($value) ? ($value ? 'true' : 'false') : (string) $value)
+            : (string) json_encode($value, self::JSON);
+    }
+
+    private static function isParams(string $name): bool
+    {
+        return strtolower((string) preg_replace('/^data-/i', '', $name)) === 'hx-params';
+    }
+
+    /**
+     * The hx-params values given under the htmx key.
+     *
+     * @return list<string>
+     */
+    private static function paramsOptions(ActionOptions $options): array
+    {
+        $values = [];
+        foreach ($options->driverOptions(self::OPTIONS_KEY) as $name => $value) {
+            if (self::isParams((string) $name)) {
+                $values[] = self::attributeValue($value);
+            }
+        }
+
+        return $values;
+    }
+
+    /**
+     * $params (an hx-params value, read as htmx 2 does) so that it keeps the body token: a list
+     * gets it added, a `not` list never names it (`*` when nothing else is left out). `*` stays;
+     * `none` is refused before this.
+     */
+    private static function keepToken(string $params): string
+    {
+        $field = ComponentEndpoint::TOKEN_FIELD;
+        if ($params === '*' || $params === 'none') {
+            return $params;
+        }
+        if (str_starts_with($params, 'not ')) {
+            $left = array_values(array_filter(
+                array_map('trim', explode(',', substr($params, 4))),
+                static fn (string $name): bool => $name !== $field && $name !== '',
+            ));
+
+            return $left === [] ? '*' : 'not ' . implode(', ', $left);
+        }
+
+        return in_array($field, array_map('trim', explode(',', $params)), true) ? $params : $params . ',' . $field;
     }
 
     /**
