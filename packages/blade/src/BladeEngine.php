@@ -490,6 +490,8 @@ final class BladeEngine implements TemplateEngineInterface, RendersRegions
         return null;
     }
 
+    private ?TemplateFunctions $functions = null;
+
     public function addFunction(TemplateFunctionDefinition $function): void
     {
         $name = $function->name;
@@ -500,12 +502,20 @@ final class BladeEngine implements TemplateEngineInterface, RendersRegions
         $this->viewFactory->share("__fn_{$name}", $callable);
         $this->globals["__fn_{$name}"] = $callable;
 
+        // The same function as a value: $fn->name(...) returns the result as it is
+        if ($this->functions === null) {
+            $this->functions = new TemplateFunctions();
+            $this->viewFactory->share('fn', $this->functions);
+            $this->globals['fn'] = $this->functions;
+        }
+        $this->functions->add($name, $callable);
+
         // Register Blade directive that invokes the stored callable
         $this->compiler->directive($name, function (string $expression) use ($name, $isSafe) {
             if ($isSafe) {
-                return "<?php echo \$__fn_{$name}({$expression}); ?>";
+                return "<?php echo \\Preflow\\Blade\\TemplateFunctions::text('{$name}', \$__fn_{$name}({$expression})); ?>";
             }
-            return "<?php echo e(\$__fn_{$name}({$expression})); ?>";
+            return "<?php echo e(\\Preflow\\Blade\\TemplateFunctions::text('{$name}', \$__fn_{$name}({$expression}))); ?>";
         });
     }
 
