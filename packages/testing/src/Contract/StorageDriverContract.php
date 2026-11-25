@@ -2114,6 +2114,18 @@ abstract class StorageDriverContract extends TestCase
                     $this->assertSame((string) ((int) $edge - $amount), (string) (($this->driver->findOne('numtext', 'edge') ?? [])['n'] ?? ''), $path);
                     $this->driver->delete('numtext', 'edge');
                 }
+                // Several Adds in one write: the one out of range refuses the whole write.
+                $this->driver->save('numtext', 'edge', ['uuid' => 'edge', 'n' => (string) (PHP_INT_MAX - 5), 'v' => 1, 'mark' => null]);
+                try {
+                    $dm->updateWhen($def, 'edge', \Preflow\Data\Condition::all(), ['n' => new \Preflow\Data\Add(10), 'v' => new \Preflow\Data\Add(1)]);
+                    $this->fail("{$path}: adding 10 to MAX - 5 was not refused");
+                } catch (\OverflowException $e) {
+                    $this->assertStringContainsString('[n]', $e->getMessage(), $path);
+                }
+                $row = $this->driver->findOne('numtext', 'edge') ?? [];
+                $this->assertSame((string) (PHP_INT_MAX - 5), (string) ($row['n'] ?? ''), "{$path}: the field out of range stays");
+                $this->assertNumber(1, $row['v'] ?? null);
+                $this->driver->delete('numtext', 'edge');
             }
         } finally {
             @rmdir($models);

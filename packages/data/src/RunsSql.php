@@ -12,12 +12,18 @@ namespace Preflow\Data;
  * implement this interface. A storage that does not run SQL (the JSON file driver, a document
  * store) simply does not implement it.
  *
+ * Bindings: an int must be bound as an integer (PDO::PARAM_INT), a bool as one too and null as
+ * null, never as text. DataManager's conditional writes (Driver\ConditionCompiler) rely on it:
+ * on SQLite an int bound as text compares as text with a number (so `wholeNumber(col) >= ?`
+ * never holds) and the bound that refuses an Add past the 64-bit range stops working.
+ *
  * @since 0.78
  */
 interface RunsSql extends StorageDriver
 {
     /**
-     * Run a SELECT-like statement and return its rows.
+     * Run a SELECT-like statement and return its rows. Ints in $bindings are bound as integers
+     * (see the interface docblock).
      *
      * @param array<int|string, mixed> $bindings
      * @return array<int, array<string, mixed>>
@@ -25,7 +31,8 @@ interface RunsSql extends StorageDriver
     public function rawQuery(string $sql, array $bindings = []): array;
 
     /**
-     * Run a write (UPDATE, DELETE, an upsert) and return the affected rows.
+     * Run a write (UPDATE, DELETE, an upsert) and return the affected rows. Ints in $bindings
+     * are bound as integers (see the interface docblock).
      *
      * @param array<int|string, mixed> $bindings
      */

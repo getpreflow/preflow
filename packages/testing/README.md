@@ -315,7 +315,9 @@ a boolean as 1/0, a JSON field as text), is in each suite's class docblock:
   updates, `exists`, `delete`, a custom id field, generated ids, and `findMany()` with every
   `where` operator, `IN` / `NOT IN` (empty lists too), `where(field, null)`, `orWhere`, ordering,
   limit, offset and `total()`. A capability's tests run when the driver implements its interface
-  and are skipped otherwise: `RunsSql` (`rawQuery()`, `execute()`, `dialect()`), `Transactions`
+  and are skipped otherwise: `RunsSql` (`rawQuery()`, `execute()`, `dialect()`; ints must be bound
+  as integers, `PDO::PARAM_INT`, or number comparisons and the bound that refuses an `Add` past
+  the 64-bit range break on SQLite), `Transactions`
   (commit, rollback, joining an open one), `DescribesColumns::hasTable()`, `ConditionalUpdates`,
   `AtomicCounters` (also from four processes at once), `RankedSearch`, `Maintenance` (`check()`,
   `compact()`) and `Dumps` (`dump()` restored by `restore()`). Optional hooks serve them:
