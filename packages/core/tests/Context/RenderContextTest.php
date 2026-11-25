@@ -288,6 +288,18 @@ final class RenderContextTest extends TestCase
         $this->assertSame($base->memoKey(), $base->withClock(new SystemClock())->memoKey(), 'a running clock adds nothing');
     }
 
+    /** @since 0.89.0 the site's origin is part of the key: two sites never share a memo. */
+    public function test_memo_key_includes_the_site_origin(): void
+    {
+        $a = RenderContext::internal(Purpose::Visit, new Site('https://a.test', ['en'], 'en'), new SystemClock(), '/a');
+        $b = RenderContext::internal(Purpose::Visit, new Site('https://b.test', ['en'], 'en'), new SystemClock(), '/a');
+        $a2 = RenderContext::internal(Purpose::Visit, new Site('https://a.test', ['en'], 'en'), new SystemClock(), '/a');
+
+        $this->assertNotSame($a->memoKey(), $b->memoKey());
+        $this->assertSame($a->memoKey(), $a2->memoKey());
+        $this->assertStringContainsString('site=https://a.test', $a->memoKey());
+    }
+
     /** memoKey() is computed once per context and stays what a fresh, equal context gives. */
     public function test_memo_key_is_kept_per_context_and_equals_a_fresh_computation(): void
     {
