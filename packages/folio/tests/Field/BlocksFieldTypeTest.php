@@ -57,7 +57,7 @@ final class BlocksFieldTypeTest extends TestCase
         $fields->register(new TextFieldType());
         $fields->register(new AssetFieldType($this->uploads, '/folio/_uploads'));
         $blocks = new BlocksFieldType(
-            new BlockRegistry([HeroBlock::class, LinkBlock::class, TradeoffNoteBlock::class]),
+            new BlockRegistry([HeroBlock::class, LinkBlock::class, TradeoffNoteBlock::class, \Preflow\Folio\Tests\Fixtures\Blocks\GalleryBlock::class]),
             $fields,
             $maxDepth,
             new ValidatorFactory(new RuleFactory()),
@@ -290,6 +290,32 @@ final class BlocksFieldTypeTest extends TestCase
             '_order' => [self::C], self::C => ['_block' => 'tradeoff_note', 'chose' => 'x', 'cover_ids' => ['']],
         ]]], $stored, [], $this->ctx(Locales::single('en')));
         $this->assertSame('', $cleared[0]['tradeoff'][0]['cover']);
+    }
+
+    /**
+     * A multiple asset field in a block stores a list (0.89; JSON text before). A block stored
+     * with the old JSON text keeps its files as a list on the next save, and the asset walker
+     * finds them in both shapes.
+     */
+    public function test_a_multiple_asset_in_a_block_stores_a_list_and_reads_old_json_text(): void
+    {
+        [$a, $b] = ['2026/10/' . str_repeat('a', 32) . '.png', '2026/10/' . str_repeat('b', 32) . '.png'];
+        @mkdir($this->uploads . '/2026/10', 0777, true);
+        touch($this->uploads . '/' . $a);
+        touch($this->uploads . '/' . $b);
+        $post = static fn (array $block): array => ['_order' => [self::A], self::A => ['_block' => 'gallery'] + $block];
+
+        $chosen = $this->type()->buildValue($post(['photos_ids' => ['', $b, $a]]), null, [], $this->ctx(Locales::single('en')));
+        $this->assertSame([$b, $a], $chosen[0]['photos']);
+
+        $old = [['_uid' => self::A, '_block' => 'gallery', 'photos' => json_encode([$a, $b])]];
+        $kept = $this->type()->buildValue($post([]), $old, [], $this->ctx(Locales::single('en')));
+        $this->assertSame([$a, $b], $kept[0]['photos'], 'old JSON text, no selection posted: kept, as a list');
+
+        $references = new \Preflow\Folio\Assets\AssetReferences(new BlockRegistry([\Preflow\Folio\Tests\Fixtures\Blocks\GalleryBlock::class]));
+        $def = new \Preflow\Data\TypeDefinition('page', 'page', 'default', ['body' => new \Preflow\Data\TypeFieldDefinition('body', 'blocks')]);
+        $this->assertSame([$a, $b], $references->collect($def, ['body' => $old]), 'old JSON text in a block is found');
+        $this->assertSame([$b, $a], $references->collect($def, ['body' => json_encode($chosen)]), 'a list in a block (as SQL returns the blocks) is found');
     }
 
     public function test_new_block_keeps_valid_posted_upload_paths_only(): void

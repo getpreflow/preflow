@@ -1280,6 +1280,8 @@ The editor saves at most `config/blocks.php` `'max_depth'` levels of blocks in a
   file `["a1", "a2"]`, in SQL the same JSON text as before. A value stored as JSON text before
   (`"[\"a1\"]"` in a JSON file) is still read, filtered and detached; the file gets the list on
   its next save, nothing is migrated. A single relation or asset stores one id, as before.
+  Inside a `blocks` field such a value is a list in the block too, so on SQL the blocks' JSON text
+  holds `"photos":["a","b"]` instead of `"photos":"[\"a\",\"b\"]"` after the next save; both read.
 
 ## Singletons
 
