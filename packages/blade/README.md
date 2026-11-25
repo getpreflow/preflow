@@ -129,8 +129,8 @@ A directive can only print text. A function that returns an object (`form_begin`
 
 The rule: `$fn->name(...)` returns the result as it is. `@name(...)` prints it, and only when it is a
 string, a `Stringable`, a scalar or null. For anything else it throws a `LogicException` that
-names the function and the `$fn->name(...)` form. An unknown `$fn->nope()` throws and lists the
-registered functions.
+names the function and the `$fn->name(...)` form. (Text includes `Htmlable` and backed enums, what `{{ }}` prints.) An unknown `$fn->nope()` throws and lists the
+registered functions. `fn` is a reserved view variable: a context key or an `addGlobal('fn', ...)` of that name would shadow it.
 
 ## Global variables
 

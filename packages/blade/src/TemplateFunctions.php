@@ -36,18 +36,25 @@ final class TemplateFunctions
 
     /**
      * What a `@name(...)` directive prints: the value when it is text (string, Stringable,
-     * scalar or null), otherwise a refusal that names the `$fn->name(...)` form.
+     * scalar, null, Htmlable, BackedEnum: what e() prints), otherwise a refusal that names the `$fn->name(...)` form.
      */
-    public static function text(string $name, mixed $value): string|\Stringable|int|float|bool|null
+    public static function text(string $name, mixed $value): mixed
     {
-        if ($value === null || is_scalar($value) || $value instanceof \Stringable) {
+        if (
+            $value === null
+            || is_scalar($value)
+            || $value instanceof \Stringable
+            || $value instanceof \Illuminate\Contracts\Support\Htmlable
+            || $value instanceof \Illuminate\Contracts\Support\DeferringDisplayableValue
+            || $value instanceof \BackedEnum
+        ) {
             return $value;
         }
 
-        $type = get_debug_type($value);
+        $type = is_object($value) ? 'an object of class ' . $value::class : 'a value of type ' . get_debug_type($value);
 
         throw new \LogicException(
-            "{$name} returns a {$type}, not text: @{$name} can't print it. "
+            "{$name} returns {$type}, not text: @{$name} can't print it. "
             . "Take it as a value: @php(\$x = \$fn->{$name}(...))"
         );
     }

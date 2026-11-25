@@ -28,13 +28,13 @@ final class TemplateFunctionsValueTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach (glob($this->dir . '/cache/*') ?: [] as $f) {
-            unlink($f);
+        $files = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($this->dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($files as $file) {
+            $file->isDir() ? rmdir($file->getPathname()) : unlink($file->getPathname());
         }
-        foreach (glob($this->dir . '/*.php') ?: [] as $f) {
-            unlink($f);
-        }
-        rmdir($this->dir . '/cache');
         rmdir($this->dir);
     }
 
@@ -79,7 +79,7 @@ final class TemplateFunctionsValueTest extends TestCase
         $this->register('make_box', fn (): object => new \ArrayObject());
         $this->template('d', '@make_box()');
 
-        $this->expectRenderRefusal('d', 'make_box returns a ArrayObject, not text: @make_box can\'t print it. Take it as a value: @php($x = $fn->make_box(...))');
+        $this->expectRenderRefusal('d', 'make_box returns an object of class ArrayObject, not text: @make_box can\'t print it. Take it as a value: @php($x = $fn->make_box(...))');
     }
 
     public function test_directive_of_an_array_function_throws(): void
@@ -178,4 +178,35 @@ final class TemplateFunctionsValueTest extends TestCase
 
         $this->expectRenderRefusal('g', '$fn->form_begin(...)');
     }
+
+    public function test_htmlable_and_backed_enum_results_print_as_e_did(): void
+    {
+        $this->register('html_fn', fn () => new \Illuminate\Support\HtmlString('<b>'));
+        $this->register('enum_fn', fn () => TemplateFnSuit::Hearts);
+        $this->template('h', '@html_fn()|@enum_fn()');
+
+        $this->assertSame('<b>|hearts', $this->engine->render('h'));
+    }
+
+    public function test_directive_without_parentheses_still_echoes(): void
+    {
+        $this->register('form_end', fn (): string => '</form>', true);
+        $this->template('n', 'a @form_end b');
+
+        $this->assertSame('a </form> b', $this->engine->render('n'));
+    }
+
+    public function test_fn_works_in_a_region_render(): void
+    {
+        $this->register('shout', fn (string $s): string => strtoupper($s));
+        $this->template('r', "@region('x'){!! \$fn->shout('hi') !!}@endregion");
+
+        $this->assertSame('HI', $this->engine->renderRegion('r', 'x', ['componentId' => 'c']));
+        $this->assertSame('<div id="c-x">HI</div>', $this->engine->render('r', ['componentId' => 'c']));
+    }
+}
+
+enum TemplateFnSuit: string
+{
+    case Hearts = 'hearts';
 }
