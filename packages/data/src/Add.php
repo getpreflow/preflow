@@ -30,12 +30,13 @@ final readonly class Add
      */
     public function applyTo(mixed $stored, string $field = ''): int
     {
-        $sum = (Condition::wholeNumber($stored) ?? 0) + $this->amount;
-        if (!is_int($sum)) {
+        $base = Condition::wholeNumber($stored) ?? 0;
+        $bound = $this->bound();
+        if ($bound !== null && ($bound[0] === '<=' ? $base > $bound[1] : $base < $bound[1])) {
             throw $this->overflow($field);
         }
 
-        return $sum;
+        return $base + $this->amount;
     }
 
     /**

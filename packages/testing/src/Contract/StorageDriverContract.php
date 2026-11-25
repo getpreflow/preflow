@@ -2103,7 +2103,7 @@ abstract class StorageDriverContract extends TestCase
             foreach ($paths as $path => $driver) {
                 $dm = new \Preflow\Data\DataManager(['default' => $driver], 'default', $registry);
                 foreach ($records as $id => [$field, $stored, $number]) {
-                    $this->driver->save('numtext', $id, ['uuid' => $id, 'n' => null, 'v' => null, 'mark' => null, $field => $stored]);
+                    $this->driver->save('numtext', $id, array_replace(['uuid' => $id, 'n' => null, 'v' => null, 'mark' => null], [$field => $stored]));
                     $what = "{$path}: {$field} " . var_export($stored, true) . ' reads as ' . json_encode($number);
                     $writes = function (\Preflow\Data\Condition $when, string $how) use ($dm, $def, $id, $what): bool {
                         $wrote = $dm->updateWhen($def, $id, $when, ['mark' => 'w']);
