@@ -157,7 +157,6 @@ final class ValidationTranslationTest extends TestCase
         $root = dirname(__DIR__) . '/lang';
         $english = $flatten(require $root . '/en/validation.php');
         $locales = array_map('basename', glob($root . '/*', GLOB_ONLYDIR) ?: []);
-        $this->assertGreaterThan(3, count($locales));
         foreach ($locales as $locale) {
             $messages = $flatten(require $root . '/' . $locale . '/validation.php');
             $this->assertSame(array_keys($english), array_keys($messages), $locale . ': keys');

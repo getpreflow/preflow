@@ -21,8 +21,8 @@ return [
     'in' => 'Şunlardan biri olmalıdır: :values.',
     'regex' => 'Biçim geçersiz.',
     'slug' => [
-        'segment' => 'Yalnızca a-z küçük harfler, rakamlar ve aralarında tek tire, ör. "hakkimizda".',
-        'path' => 'Yalnızca a-z küçük harfler, rakamlar, aralarında tek tire ve eğik çizgi, ör. "docs/hakkimizda".',
+        'segment' => 'Yalnızca a-z küçük harfler, rakamlar ve aralarında tek tireler kullanılabilir, ör. "hakkimizda".',
+        'path' => 'Yalnızca a-z küçük harfler, rakamlar, aralarında tek tireler ve eğik çizgiler kullanılabilir, ör. "docs/hakkimizda".',
     ],
     'confirmed' => 'Onay eşleşmiyor.',
     'unique' => 'Bu değer zaten kullanılıyor.',
