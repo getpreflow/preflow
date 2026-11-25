@@ -558,6 +558,8 @@ return [
         'up' => 'Up',
         'down' => 'Down',
         'no_longer_option' => ':value (no longer an option)',
+        'options_from_empty' => 'Add values to :field and save; they show up here as choices.',
+        'options_from_none' => 'No choices yet: add values to :field first.',
         'rows' => ':count row|:count rows',
         'public_file' => ':label is a public file; upload it here to make it private.',
         'library_unavailable' => ':label was not uploaded: the media library has no storage on this site (see Assets).',

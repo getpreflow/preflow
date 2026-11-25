@@ -62,7 +62,9 @@ final class Banner extends BlockComponent
 - **`#[BlockField]`** takes the options of a type field: `type`, `label`, `help`, `translatable`,
   `validate`, and `config` for anything else (select `options`, …). A `blocks` field nests blocks:
   `allowed` lists the keys it takes, `min` and `max` how many. Field names starting with `_` are
-  refused (`_uid`, `_block` and `_order` are the system's).
+  refused (`_uid`, `_block` and `_order` are the system's). A select's `options_from` (a record
+  type's select taking its options from another field) is not supported in blocks yet: it is
+  refused when the block is read; list the choices in `options`.
 - **`BlockComponent`** fills each `#[BlockField]` property from the block's data before
   `resolveState()`, cast to the property's type. The block's id is `$this->_uid`. Everything else
   is an ordinary component: constructor injection, `resolveState()`, actions, CSS next to it.

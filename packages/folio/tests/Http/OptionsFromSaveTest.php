@@ -52,6 +52,10 @@ final class OptionsFromSaveTest extends TestCase
                 'answers' => ['type' => 'tags'],
                 'answer' => ['type' => 'select', 'options_from' => 'answers'],
                 'fallback' => ['type' => 'select', 'options_from' => 'answers', 'display' => 'radio', 'validate' => ['required']],
+                'sizes' => ['type' => 'tags', 'hidden' => true],
+                'size' => ['type' => 'select', 'options_from' => 'sizes'],
+                'colours' => ['type' => 'tags', 'readonly' => true],
+                'colour' => ['type' => 'select', 'options_from' => 'colours'],
             ],
         ]));
         $this->registry = new TypeRegistry($this->base . '/m');
@@ -138,13 +142,36 @@ final class OptionsFromSaveTest extends TestCase
         $this->assertStringContainsString('<input type="radio" name="fallback" value="Salad" required>', $radio);
     }
 
-    public function test_a_new_record_shows_no_options(): void
+    public function test_a_new_record_shows_a_note_naming_the_source_instead_of_options(): void
     {
         $req = (new Psr17Factory())->createServerRequest('GET', '/folio/question/new')->withAttribute('type', 'question');
         $this->controller()->createForm($req);
 
-        $this->assertSame(1, substr_count($this->fieldHtml('answer'), '<option'), 'only "none"');
-        $this->assertStringNotContainsString('type="radio"', $this->fieldHtml('fallback'));
+        foreach (['answer', 'fallback'] as $name) {
+            $html = $this->fieldHtml($name);
+            $this->assertStringContainsString('Add values to Answers and save; they show up here as choices.', $html, $name);
+            $this->assertStringNotContainsString('<option', $html, $name);
+            $this->assertStringNotContainsString('type="radio"', $html, $name);
+        }
+    }
+
+    public function test_a_source_the_form_does_not_post_counts_with_its_stored_values(): void
+    {
+        // A hidden and a read-only source are not in the form: the save keeps their stored values, and those are the options.
+        $this->store(['title' => 'Shirt', 'answers' => ['Pizza'], 'fallback' => 'Pizza', 'sizes' => ['S', 'M'], 'colours' => ['Red']]);
+        $req = (new Psr17Factory())->createServerRequest('GET', '/folio/question/q1/edit')
+            ->withAttribute('type', 'question')->withAttribute('id', 'q1');
+        $this->controller()->editForm($req);
+        $this->assertStringContainsString('<option value="M">M</option>', $this->fieldHtml('size'));
+        $this->assertStringContainsString('<option value="Red">Red</option>', $this->fieldHtml('colour'));
+
+        $ok = $this->update(['title' => 'Shirt', 'answers' => '["Pizza"]', 'fallback' => 'Pizza', 'size' => 'M', 'colour' => 'Red', 'sizes' => '["XL"]', 'colours' => '["Blue"]']);
+        $this->assertSame(302, $ok->getStatusCode());
+        $this->assertSame('M', $this->stored('size'));
+        $this->assertSame(['S', 'M'], $this->stored('sizes'), 'not taken from the post');
+
+        $this->assertSame(422, $this->update(['title' => 'Shirt', 'answers' => '["Pizza"]', 'fallback' => 'Pizza', 'size' => 'XL', 'sizes' => '["XL"]'])->getStatusCode());
+        $this->assertSame(422, $this->update(['title' => 'Shirt', 'answers' => '["Pizza"]', 'fallback' => 'Pizza', 'colour' => 'Blue', 'colours' => '["Blue"]'])->getStatusCode());
     }
 
     public function test_a_value_among_the_submitted_source_values_saves(): void

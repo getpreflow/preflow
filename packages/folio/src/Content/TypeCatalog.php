@@ -244,16 +244,16 @@ final class TypeCatalog
                     throw new FrontendConfigException("Type \"{$key}\": field \"{$name}\": \"{$option}\" must be \"" . implode('" or "', $allowed) . '"');
                 }
             }
+            if (array_key_exists('options_from', $field) && ($field['type'] ?? 'string') !== 'select') {
+                throw new FrontendConfigException("Type \"{$key}\": field \"{$name}\": \"options_from\" is an option of a select field; make the field \"type\": \"select\" or remove it");
+            }
             // The built-in field types' editor options (0.75): "unit" of a number, "display" of a
             // boolean or a select (with the "cards" options shape). Reported here, at boot.
             try {
                 match ($field['type'] ?? 'string') {
                     'number', 'int', 'integer', 'float' => \Preflow\Folio\Field\Types\NumberFieldType::unit($field),
                     'boolean' => \Preflow\Folio\Field\Types\BooleanFieldType::display($field),
-                    'select' => [
-                        \Preflow\Folio\Field\Types\SelectFieldType::checkOptionsFrom($field, (string) $name, array_map('strval', array_keys($fields))),
-                        \Preflow\Folio\Field\Types\SelectFieldType::display($field),
-                    ],
+                    'select' => self::checkSelect($field, (string) $name, $fields),
                     'tags' => \Preflow\Folio\Field\Types\TagsFieldType::checkConfig($field),
                     default => null,
                 };
@@ -261,6 +261,19 @@ final class TypeCatalog
                 throw new FrontendConfigException("Type \"{$key}\": field \"{$name}\": " . $e->getMessage(), 0, $e);
             }
         }
+    }
+
+    /**
+     * A select's "options_from" against the type's fields (0.89), then its "display".
+     *
+     * @param array<string, mixed> $field
+     * @param array<mixed>         $fields
+     * @throws \LogicException
+     */
+    private static function checkSelect(array $field, string $name, array $fields): void
+    {
+        \Preflow\Folio\Field\Types\SelectFieldType::checkOptionsFrom($field, $name, array_map('strval', array_keys($fields)));
+        \Preflow\Folio\Field\Types\SelectFieldType::display($field);
     }
 
     /**

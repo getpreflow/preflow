@@ -1018,22 +1018,30 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   `{group}.option_helps.{type}.{field}.{value}`). `"display": "select"` keeps a select at any size.
 - `select` with `"options_from": "<field>"` (since 0.89) instead of `"options"`: the options are
   the values of another field of the same record, usually a `tags` field. Each value is its own
-  label. A new record has no options yet: fill the source field and save first.
+  label. A new record has no values yet, so the editor shows "Add values to Answers and save"
+  instead of an empty control: fill the source field, save, then choose. A `required` one
+  therefore can only be filled after that first save (make it optional if the record should save
+  in one go).
 
   ```json
   "answers": {"type": "tags"},
-  "answer":  {"type": "select", "options_from": "answers"}
+  "answer":  {"type": "select", "options_from": "answers", "display": "select"}
   ```
 
   On save the chosen value must be one of the source field's values as they are submitted in the
   same save, so adding "Soup" to `answers` and choosing it works in one go; removing a value that
-  is still chosen shows "Must be one of: …". An empty choice passes unless the field is
+  is still chosen shows "Must be one of: …". A source the form does not post (hidden or
+  read-only) counts with its stored values. An empty choice passes unless the field is
   `required`. A value that is no longer among them stays visible and selected, marked "no longer
-  an option". The source may hold a list (a tags field), a JSON-text list, or one text. Boot errors:
-  a name that is not another field of the type, both `"options"` and `"options_from"`,
-  `"display": "cards"`, and naming the select in `list.filters` or `list.bulk` (its options differ
-  per record). A field type's editor gets the record's values as `FieldContext::$values` (null
-  without a record).
+  an option". The source is read by its own field type (a tags field's list, also an old comma
+  text); another field gives a JSON-text list or one text. A translatable source counts with its
+  default-language values only: add choices there. Boot errors: a name that is not another field of the type, both `"options"`
+  and `"options_from"`, `"display": "cards"`, naming the select in `list.filters` or
+  `list.bulk` (its options differ per record), and `options_from` in a block field (not supported
+  in blocks yet). A class-backed type sets it on the class, like `options`. A field type's editor
+  gets the record's values as `FieldContext::$values` (each in the default language, as its field
+  type reads it; null without a record), and a field type whose rules need the record's other
+  fields implements `HasRecordRules`.
 - `relation`: see [Blocks, matrix or relation?](#blocks-matrix-or-relation).
 - `asset`: each chosen file is a card (a 16:10 thumbnail with the focal point, the name, kind and
   size, "No alt text yet" for an image without one); an empty field is a dashed drop zone. A file
@@ -1146,6 +1154,12 @@ A field type says how its value is stored in a SQL column by implementing
 shipped types do (`number` is a number, `boolean` yes/no, `date` an ISO text, `string`, `select`,
 `env` and a single `relation` are short when unique or indexed, otherwise text); a type without it
 is stored as text.
+
+A field type whose value is a list says so: `Preflow\Folio\Field\StoresList` (a marker) when it
+always is (`tags`), `Preflow\Folio\Field\StoresListFor` (`storesList(array $config): bool`, since
+0.89) when only some configs hold one (a multiple `relation` or `asset`). Folio tells the data
+package (`FieldKinds::list()` / `listWhen()`), so a save writes the value as a list in a JSON file
+(`"authors": ["a1", "a2"]`); SQL storage keeps it as JSON text in its column, as before.
 
 A field type's own rules (e.g. `select`'s allowed values) are enforced in addition to
 `validate`. `rules()` returns rule names or `ValidationRule` objects; an object needn't be
@@ -1262,6 +1276,10 @@ The editor saves at most `config/blocks.php` `'max_depth'` levels of blocks in a
   relation posts `name[]` in the rows' order; a single one replaces its record. Without script the
   linked records still post unchanged, but cannot be changed. See
   [`onDelete`](#deleting-ondelete-and-the-summary) for what deleting a target does.
+  A multiple relation (and a multiple `asset` field) stores its ids as a list since 0.89: in a JSON
+  file `["a1", "a2"]`, in SQL the same JSON text as before. A value stored as JSON text before
+  (`"[\"a1\"]"` in a JSON file) is still read, filtered and detached; the file gets the list on
+  its next save, nothing is migrated. A single relation or asset stores one id, as before.
 
 ## Singletons
 

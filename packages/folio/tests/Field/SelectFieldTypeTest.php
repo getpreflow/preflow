@@ -157,13 +157,18 @@ final class SelectFieldTypeTest extends TestCase
         $this->assertSame(['A'], SelectFieldType::sourceValues(['A', 'A', '']), 'each value once');
     }
 
-    public function test_options_from_on_a_new_record_shows_no_options(): void
+    public function test_options_from_without_source_values_shows_a_note_naming_the_source(): void
     {
-        $html = (new SelectFieldType())->renderEditor(new FieldContext(name: 'answer', config: self::FROM));
+        $html = (new SelectFieldType())->renderEditor(new FieldContext(name: 'answer', label: 'Answer', config: self::FROM + ['options_from_label' => 'Possible answers'], required: true, errors: ['This field is required.']));
 
-        $this->assertStringContainsString('<select', $html);
-        $this->assertStringContainsString('<option value="" selected>—</option>', $html);
-        $this->assertSame(1, substr_count($html, '<option'), 'only "none"');
+        $this->assertStringContainsString('<fieldset class="form-group folio-choice-field folio-options-from-empty has-error"><legend>Answer <span class="form-required">*</span></legend>', $html);
+        $this->assertStringContainsString('<p class="form-help">Add values to Possible answers and save; they show up here as choices.</p>', $html);
+        $this->assertStringContainsString('<div class="form-error">This field is required.</div>', $html);
+        $this->assertStringNotContainsString('<select', $html);
+        $this->assertStringNotContainsString('type="radio"', $html);
+
+        $plain = (new SelectFieldType())->renderEditor(new FieldContext(name: 'answer', config: self::FROM, values: ['answers' => []]));
+        $this->assertStringContainsString('Add values to Answers and save', $plain, 'without the label: the source name, humanized');
     }
 
     public function test_options_from_keeps_a_value_no_longer_among_the_sources_values(): void
@@ -188,6 +193,32 @@ final class SelectFieldTypeTest extends TestCase
         $this->assertSame([], $check(['answer' => '', 'answers' => []]), 'empty passes');
         $this->assertNotSame([], $check(['answer' => null, 'answers' => ['Yes']], ['required']), 'unless required');
         $this->assertNotSame([], $check(['answer' => 'Yes']), 'no source values: nothing is an option');
+    }
+
+    public function test_record_rules_read_the_source_through_its_field_type_and_name_it(): void
+    {
+        $dir = TempRoots::path('folio_select_rr_');
+        mkdir($dir);
+        file_put_contents($dir . '/poll.json', (string) json_encode(['key' => 'poll', 'table' => 'poll', 'fields' => [
+            'answers' => ['type' => 'tags', 'label' => 'Possible answers'],
+            'answer' => ['type' => 'select', 'options_from' => 'answers'],
+        ]]));
+        try {
+            $def = (new \Preflow\Data\TypeRegistry($dir))->get('poll');
+        } finally {
+            unlink($dir . '/poll.json');
+            rmdir($dir);
+        }
+        $types = new \Preflow\Folio\Field\FieldTypeRegistry();
+        $types->register(new \Preflow\Folio\Field\Types\TagsFieldType());
+        $types->register(new SelectFieldType());
+        $rules = (new SelectFieldType())->recordRules(self::FROM, $def, $types);
+        $validators = new \Preflow\Validation\ValidatorFactory(new \Preflow\Validation\RuleFactory());
+        $check = static fn (array $data): array => $validators->make(['answer' => $rules], $data)->validate()->errors();
+
+        $this->assertSame([], $check(['answer' => 'No', 'answers' => 'Yes, No']), 'an old comma text of a tags field gives its tags');
+        $this->assertSame(['answer' => ['Must be one of: Yes, No.']], $check(['answer' => 'Yes, No', 'answers' => 'Yes, No']));
+        $this->assertSame(['answer' => ['No choices yet: add values to Possible answers first.']], $check(['answer' => 'Yes', 'answers' => null]));
     }
 
     public function test_options_from_shows_the_value_as_its_label(): void
@@ -235,6 +266,14 @@ final class SelectFieldTypeTest extends TestCase
         $this->assertSame(
             'Type "thing": field "answer": Select field option "display": "cards" needs fixed "options" with descriptions; it cannot take "options_from". Use "select" or "radio".',
             self::bootError(['answers' => ['type' => 'tags'], 'answer' => ['type' => 'select', 'options_from' => 'answers', 'display' => 'cards']]),
+        );
+    }
+
+    public function test_options_from_on_another_field_type_is_a_boot_error(): void
+    {
+        $this->assertSame(
+            'Type "thing": field "answer": "options_from" is an option of a select field; make the field "type": "select" or remove it',
+            self::bootError(['answers' => ['type' => 'tags'], 'answer' => ['type' => 'string', 'options_from' => 'answers']]),
         );
     }
 

@@ -30,7 +30,7 @@ final class ModelSchema
      */
     public const array SCHEMA_FIELD_KEYS = [
         'type', 'validate', 'translatable', 'unique', 'index', 'length', 'searchable',
-        'transform', 'default', 'relation', 'options', 'accept', 'time', 'blocks', 'fields', 'multiple', 'exact',
+        'transform', 'default', 'relation', 'options', 'options_from', 'accept', 'time', 'blocks', 'fields', 'multiple', 'exact',
     ];
 
     /**

@@ -18,13 +18,16 @@ use Preflow\Folio\Field\FieldContext;
  * value is a boot error (TypeCatalog, through display()).
  *
  * "options_from": "<field>" (0.89) instead of "options": the options are the values of that field of
- * the record being edited (FieldContext::$values; a list such as a tags field's, a JSON-text list,
- * or one text), each value its own label. A save accepts only one of the source's values as
- * submitted in the same save (OptionsFrom); an empty value passes unless the field is required.
+ * the record being edited (FieldContext::$values, each read by its own field type: a tags field's
+ * list; else a JSON-text list or one text), each value its own label. While the source has no
+ * values the editor shows a note naming it ("options_from_label", which the admin sets to the
+ * source's label) instead of an empty control. A save accepts only one of the source's values as
+ * submitted in the same save (OptionsFrom, through recordRules()); an empty value passes unless
+ * the field is required.
  * A name that is not another field of the type, both "options" and "options_from", "display":
  * "cards" with it, and such a select in "list.filters" or "list.bulk" are boot errors (TypeCatalog).
  */
-final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\Folio\Field\SearchableText, \Preflow\Folio\Field\HasColumnKind
+final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\Folio\Field\SearchableText, \Preflow\Folio\Field\HasColumnKind, \Preflow\Folio\Field\HasRecordRules
 {
     public function key(): string
     {
@@ -43,8 +46,12 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
 
     public function renderEditor(FieldContext $ctx): string
     {
-        $options = self::sourceField($ctx->config) !== null ? self::fromValues($ctx) : self::options($ctx->config);
+        $source = self::sourceField($ctx->config);
+        $options = $source !== null ? self::fromValues($ctx, $source) : self::options($ctx->config);
         $value = (string) ($ctx->value ?? '');
+        if ($source !== null && $options === [] && $value === '') {
+            return $this->noSourceValues($ctx, $source);
+        }
 
         if ($value !== '' && !array_key_exists($value, $options)) {
             $options = [$value => \Preflow\Folio\FolioText::get('folio.fields.no_longer_option', ['value' => $value])] + $options;
@@ -97,6 +104,9 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
         return htmlspecialchars($label, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 
+    /**
+     * Without the record's type (rules()): the source is read as sourceValues() reads it.
+     */
     public function rules(array $config): array
     {
         if (($source = self::sourceField($config)) !== null) {
@@ -223,16 +233,42 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
         }
     }
 
-    /** @return array<string, string> value => label: the record's values of the "options_from" field (none on a new record) */
-    private static function fromValues(FieldContext $ctx): array
+    /**
+     * With the record's type (RecordValidator): the source is read through its own field type, and
+     * a refusal with no source values names it.
+     *
+     * @since 0.89
+     */
+    public function recordRules(array $config, \Preflow\Data\TypeDefinition $type, \Preflow\Folio\Field\FieldTypeRegistry $fieldTypes): array
     {
-        $raw = $ctx->values[(string) self::sourceField($ctx->config)] ?? null;
-        if ($ctx->locales !== null) {
-            $raw = \Preflow\Data\LocaleValue::default($raw, $ctx->locales); // a translatable source: its default language, as validation reads it
+        $source = self::sourceField($config);
+        $sourceDef = $source !== null ? ($type->fields[$source] ?? null) : null;
+        if ($source === null || $sourceDef === null) {
+            return $this->rules($config);
         }
-        $values = self::sourceValues($raw);
+        $label = \Preflow\Folio\Content\DisplayLabels::pick($sourceDef->labels ?: $sourceDef->label);
+
+        return [new OptionsFrom($source, $fieldTypes->get($sourceDef->type), $label)];
+    }
+
+    /** @return array<string, string> value => label: the record's values of the "options_from" field (none on a new record) */
+    private static function fromValues(FieldContext $ctx, string $source): array
+    {
+        $values = self::sourceValues($ctx->values[$source] ?? null);
 
         return array_combine($values, $values);
+    }
+
+    /** The source has no values yet (a new record): a note naming it, instead of a control without choices. */
+    private function noSourceValues(FieldContext $ctx, string $source): string
+    {
+        $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $label = $ctx->config['options_from_label'] ?? null;
+        $label = is_string($label) && $label !== '' ? $label : $this->renderer->humanize($source);
+
+        return '<fieldset class="form-group folio-choice-field folio-options-from-empty' . ($ctx->errors !== [] ? ' has-error' : '') . '">' . $this->legend($ctx)
+            . '<p class="form-help">' . $e(\Preflow\Folio\FolioText::get('folio.fields.options_from_empty', ['field' => $label])) . '</p>'
+            . $this->below($ctx) . '</fieldset>';
     }
 
     /** @return array<string, string> value => label */

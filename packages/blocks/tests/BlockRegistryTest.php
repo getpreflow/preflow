@@ -10,6 +10,7 @@ use Preflow\Blocks\BlockRegistry;
 use Preflow\Blocks\Tests\Fixtures\ConfigCard;
 use Preflow\Blocks\Tests\Fixtures\DuplicateQuote;
 use Preflow\Blocks\Tests\Fixtures\LegacyNamed;
+use Preflow\Blocks\Tests\Fixtures\OptionsFromSelect;
 use Preflow\Blocks\Tests\Fixtures\ReservedName;
 
 final class BlockRegistryTest extends TestCase
@@ -39,6 +40,13 @@ final class BlockRegistryTest extends TestCase
         $this->expectException(BlockConfigException::class);
         $this->expectExceptionMessage('reserved name');
         new BlockRegistry([ReservedName::class]);
+    }
+
+    public function test_a_select_taking_its_options_from_another_field_is_refused(): void
+    {
+        $this->expectException(BlockConfigException::class);
+        $this->expectExceptionMessage('Block field "choice" on ' . OptionsFromSelect::class . ' sets "options_from", which is not supported in blocks yet; list its choices in "options".');
+        new BlockRegistry([OptionsFromSelect::class]);
     }
 
     public function test_discover_scans_app_blocks_and_round_trips_through_plain_data(): void

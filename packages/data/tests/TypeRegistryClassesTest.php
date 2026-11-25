@@ -107,6 +107,20 @@ final class TypeRegistryClassesTest extends TestCase
         (new TypeRegistry($dir, null, ['job' => Job::class]))->get('job');
     }
 
+    public function test_a_file_setting_options_or_options_from_is_an_error(): void
+    {
+        // A select's choices decide what it accepts: "options" and (0.89) "options_from" are schema.
+        foreach (['options' => ['a', 'b'], 'options_from' => 'title'] as $key => $value) {
+            $dir = $this->dirWith('job.json', ['key' => 'job', 'fields' => ['company' => [$key => $value]]]);
+            try {
+                new TypeRegistry($dir, null, ['job' => Job::class]);
+                $this->fail("accepted \"{$key}\"");
+            } catch (\RuntimeException $e) {
+                $this->assertSame('Model file job.json sets "' . $key . '" on the field "company", but job is defined by ' . Job::class . '; this file may only hold its admin settings.', $e->getMessage());
+            }
+        }
+    }
+
     public function test_a_file_with_a_table_is_an_error(): void
     {
         $dir = $this->dirWith('job.json', ['key' => 'job', 'table' => 'jobs']);
