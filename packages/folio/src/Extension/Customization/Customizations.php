@@ -322,10 +322,11 @@ final class Customizations
 
     /**
      * The #[DashboardItem] cards of the types $canView allows, in the order of dashboardNotices().
-     * Methods of other types are not called. A method may return one card or a list of cards (since 0.89); each gets the same checks. A method that
-     * throws (a NeedsYou with an unknown tone among them) or returns null adds nothing, an element of a list
-     * that is not a NeedsYou is dropped, and so does an item whose URL is not an admin or
-     * site path (Link::href()); each card's url is resolved against $adminPrefix.
+     * Methods of other types are not called. A method returns one card or, since 0.89, a list of
+     * cards; each card gets the same checks. A method that throws (a NeedsYou with an unknown tone
+     * among them) or returns null adds nothing; a list loses all its cards then. An element of a
+     * list that is not a NeedsYou is dropped, and so is a card whose URL is not an admin or site
+     * path (Link::href()); each card's url is resolved against $adminPrefix.
      *
      * @param \Closure(string): bool $canView whether the signed-in user may view a type key
      * @return list<\Preflow\Folio\Dashboard\NeedsYou>

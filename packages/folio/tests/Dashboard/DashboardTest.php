@@ -178,9 +178,17 @@ final class DashboardTest extends TestCase
         $body = $this->part('needs');
         $this->assertStringContainsString('First card', $body);
         $this->assertStringContainsString('Second card', $body);
-        $this->assertStringNotContainsString('Elsewhere card', $body);
-        $this->assertStringNotContainsString('junk', $body);
-        $this->assertSame(2, substr_count($body, 'class="folio-needs-card"'));
+        $this->assertSame(2, substr_count($body, 'class="folio-needs-card"'), 'the junk element and the off-site card are dropped, the empty list adds none');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_list_with_a_broken_card_shows_nothing_of_it(): void
+    {
+        $n = '\\Preflow\\Folio\\Dashboard\\NeedsYou';
+        $this->item('crm', 'ContactAdmin', 'contact', "return [new {$n}('Good card', url: 'contact'), new {$n}('Loud card', url: 'contact', tone: 'loud')];", 'array');
+        $this->as('admin');
+
+        $this->assertStringNotContainsString('Good card', $this->part('needs'));
     }
 
     #[RunInSeparateProcess]
