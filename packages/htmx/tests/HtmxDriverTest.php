@@ -424,8 +424,9 @@ final class HtmxDriverTest extends TestCase
         $inner = $this->driver->callAttributes(self::tokenCall('post', 'inner.sig'));
         $this->assertSame('inner.sig', (json_decode($inner['hx-vals'], true) + $outer)[ComponentEndpoint::TOKEN_FIELD]);
 
-        // A get call keeps its token in the URL as `token` (which the endpoint reads first); the outer
-        // call's _token reaches its query under another name.
+        // A get call keeps its token in the URL as `token` (which the endpoint reads first) and writes
+        // no _token: the outer call's _token, which htmx would pass down, is dropped by the page's
+        // body-token script (HtmxAssets::requireBodyTokenScope()), so the URL stays short.
         $get = $this->driver->callAttributes(self::tokenCall('get', 'inner.sig'));
         $this->assertSame('/--component/action?token=inner.sig', $get['hx-get']);
         $this->assertArrayNotHasKey(ComponentEndpoint::TOKEN_FIELD, json_decode($get['hx-vals'], true), 'a get has no body: its token stays in the URL');
@@ -495,6 +496,8 @@ final class HtmxDriverTest extends TestCase
         $this->assertSame('not q', $params('not q, _token')['hx-params'], "a 'not' list never drops it");
         $this->assertSame('*', $params('not _token')['hx-params'], 'nothing else to leave out: everything');
         $this->assertSame('*', $params('*')['hx-params']);
+        $this->assertSame('unset', $params('unset')['hx-params'], 'unset: no filter, as given (a list would send only the token)');
+        $this->assertSame('', $params('')['hx-params'], 'empty: no filter, as given');
         $this->assertSame('q,_token', $params('q', 'data-hx-params')['data-hx-params']);
         $this->assertSame('/a', $params('q')['hx-post']);
 

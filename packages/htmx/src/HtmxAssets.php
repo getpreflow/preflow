@@ -373,8 +373,9 @@ JS;
      * every element inside it. Without this, every request from inside a call's element would also
      * send that call's token: a get (`hd.get`, an old-form call, a site's own hx-get, a boosted
      * link) in its URL, which large props would make too long. Before each htmx request
-     * (htmx:configRequest) the field is dropped from the request's parameters unless the element
-     * that sends it has the field in its own hx-vals (a post call's own token).
+     * (htmx:configRequest) the field is dropped from the request's parameters when it holds the
+     * value an ancestor's hx-vals gave it, unless the element that sends it has the field in its
+     * own hx-vals (a post call's own token). A site's own `_token` field stays.
      *
      * Asked for by every call that puts its token in the body, so other pages are unchanged. Like
      * the busy marker it goes with the render's component JS (JsPosition::Body, under the page
@@ -399,28 +400,38 @@ JS;
      * htmx 2 fires htmx:configRequest on the requesting element (detail.elt) with
      * detail.parameters, a proxy over the FormData it sends (after hx-vals are merged and
      * hx-params applied); deleting a key removes the field, and htmx reads the parameters again
-     * after the event, for the URL of a get and the body of a post. The element's own hx-vals
-     * (or data-hx-vals) is JSON as the driver writes it; one that isn't (a site's own js: value)
-     * holds no token of a call.
+     * after the event, for the URL of a get and the body of a post. htmx merges hx-vals (or
+     * data-hx-vals) from the element up, the nearest first. The field stays when the element's own
+     * hx-vals holds it (a post call's own token). Otherwise it is dropped only when its value is
+     * the one the nearest ancestor's hx-vals holds: the inherited token. A site's own `_token`
+     * field (a form input, its own value) stays. hx-vals is read as JSON, as the driver writes it;
+     * one that isn't (a site's own js: value) holds no token of a call.
      */
     private const string BODY_TOKEN = <<<'JS'
 function preflowBodyToken(field) {
     if (window.preflowBodyTokenOn) { return; }
     window.preflowBodyTokenOn = true;
+    function held(el) {
+        var raw = el.getAttribute ? (el.getAttribute('hx-vals') || el.getAttribute('data-hx-vals')) : null;
+        if (!raw) { return null; }
+        try {
+            var vals = JSON.parse(raw);
+            return vals !== null && typeof vals === 'object' && Object.prototype.hasOwnProperty.call(vals, field) ? vals : null;
+        } catch (err) {
+            return null;
+        }
+    }
+    function holds(el) { return held(el) !== null; }
     document.addEventListener('htmx:configRequest', function (e) {
         var d = e.detail, el = d && d.elt;
-        if (!d || !d.parameters || d.parameters[field] === undefined) { return; }
-        var own = el && el.getAttribute ? (el.getAttribute('hx-vals') || el.getAttribute('data-hx-vals')) : null;
-        var mine = false;
-        if (own) {
-            try {
-                var vals = JSON.parse(own);
-                mine = vals !== null && typeof vals === 'object' && Object.prototype.hasOwnProperty.call(vals, field);
-            } catch (err) {
-                mine = false;
-            }
+        if (!d || !el || !d.parameters || d.parameters[field] === undefined) { return; }
+        if (holds(el)) { return; }
+        for (var p = el && el.parentElement; p; p = p.parentElement) {
+            var from = held(p);
+            if (from === null) { continue; }
+            if (String(d.parameters[field]) === String(from[field])) { delete d.parameters[field]; }
+            return;
         }
-        if (!mine) { delete d.parameters[field]; }
     });
 }
 JS;

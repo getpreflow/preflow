@@ -271,13 +271,14 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
 
     /**
      * $params (an hx-params value, read as htmx 2 does) so that it keeps the body token: a list
-     * gets it added, a `not` list never names it (`*` when nothing else is left out). `*` stays;
-     * `none` is refused before this.
+     * gets it added, a `not` list never names it (`*` when nothing else is left out). `*`, `unset`
+     * and an empty value stay (they filter nothing); `none` is refused before this.
      */
     private static function keepToken(string $params): string
     {
         $field = ComponentEndpoint::TOKEN_FIELD;
-        if ($params === '*' || $params === 'none') {
+        // `unset` and an empty value filter nothing (htmx sends every parameter): as given.
+        if ($params === '*' || $params === 'none' || $params === 'unset' || $params === '') {
             return $params;
         }
         if (str_starts_with($params, 'not ')) {

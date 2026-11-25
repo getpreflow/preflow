@@ -115,9 +115,11 @@ final class HtmxAssetsTest extends TestCase
         // FormData htmx sends; delete removes a field) is read again after the event.
         $this->assertStringContainsString("document.addEventListener('htmx:configRequest'", $body);
         $this->assertStringContainsString('d.parameters[field] === undefined', $body, 'nothing to do without the field');
-        $this->assertStringContainsString("el.getAttribute('hx-vals') || el.getAttribute('data-hx-vals')", $body, "only the element's own hx-vals count, not an ancestor's");
+        $this->assertStringContainsString("el.getAttribute('hx-vals') || el.getAttribute('data-hx-vals')", $body, 'hx-vals as htmx reads it, data- second');
         $this->assertStringContainsString('Object.prototype.hasOwnProperty.call(vals, field)', $body);
-        $this->assertStringContainsString('delete d.parameters[field];', $body, 'an inherited token is dropped: a get inside a call element keeps its URL short');
+        $this->assertStringContainsString('if (holds(el)) { return; }', $body, "the element's own token stays");
+        $this->assertStringContainsString('for (var p = el && el.parentElement; p; p = p.parentElement)', $body, 'the nearest ancestor holding the field: the value htmx merged');
+        $this->assertStringContainsString('if (String(d.parameters[field]) === String(from[field])) { delete d.parameters[field]; }', $body, "only the inherited value is dropped: a site's own _token field stays");
 
         $never = new AssetCollector(new NonceGenerator());
         (new HtmxAssets($never, 'never'))->requireBodyTokenScope();
