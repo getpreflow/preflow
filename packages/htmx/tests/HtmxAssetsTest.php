@@ -107,7 +107,7 @@ final class HtmxAssetsTest extends TestCase
         $this->assertTrue($assets->isRequired(), 'it needs htmx');
         $this->assertStringNotContainsString('preflowBodyToken', $collector->renderHead(), 'not in the head');
         $body = $collector->renderJsBody();
-        $this->assertSame(1, substr_count($body, "preflowBodyToken('" . \Preflow\Htmx\ComponentEndpoint::TOKEN_FIELD . "');"));
+        $this->assertSame(1, substr_count($body, "preflowBodyToken('" . \Preflow\Core\Http\Hypermedia\ActionCall::TOKEN_FIELD . "');"));
         $this->assertStringContainsString('function preflowBodyToken(', $body, 'a named function, not an IIFE (inline scripts are joined)');
         $this->assertStringContainsString('window.preflowBodyTokenOn', $body, 'set up once per page');
         $this->assertMatchesRegularExpression('#<script nonce="[^"]+">(?:(?!</script>).)*preflowBodyToken#s', $body, 'under the page nonce like the busy marker');
@@ -119,7 +119,7 @@ final class HtmxAssetsTest extends TestCase
         $this->assertStringContainsString('Object.prototype.hasOwnProperty.call(vals, field)', $body);
         $this->assertStringContainsString('if (holds(el)) { return; }', $body, "the element's own token stays");
         $this->assertStringContainsString('for (var p = el && el.parentElement; p; p = p.parentElement)', $body, 'the nearest ancestor holding the field: the value htmx merged');
-        $this->assertStringContainsString('if (String(d.parameters[field]) === String(from[field])) { delete d.parameters[field]; }', $body, "only the inherited value is dropped: a site's own _token field stays");
+        $this->assertStringContainsString('if (String(d.parameters[field]) === String(from[field])) { delete d.parameters[field]; }', $body, "only the inherited value is dropped");
 
         $never = new AssetCollector(new NonceGenerator());
         (new HtmxAssets($never, 'never'))->requireBodyTokenScope();

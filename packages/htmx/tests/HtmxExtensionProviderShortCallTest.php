@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Htmx\Tests\ShortCall;
 
+use Preflow\Core\Http\Hypermedia\ActionCall;
 use PHPUnit\Framework\TestCase;
 use Preflow\Components\Component;
 use Preflow\Components\ComponentRenderer;
@@ -372,7 +373,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         $this->assertSame(['key' => 'a', 'title' => 'Hello'], $payload->props, 'a component without state: all its props');
         $this->assertTrue($payload->neutralCall, 'a 0.86 token (encodeFor())');
         $this->assertSame('#' . $box->getComponentId(), $attributes['hx-target']);
-        $this->assertSame(['_values' => '{"row":3}', '_region' => '', '_token' => $this->token($attributes)], json_decode($attributes['hx-vals'], true), 'the token in the body, beside the values and region');
+        $this->assertSame(['_values' => '{"row":3}', '_region' => '', '_component_token' => $this->token($attributes)], json_decode($attributes['hx-vals'], true), 'the token in the body, beside the values and region');
         $this->assertSame('/--component/action', $attributes['hx-post']);
         $this->assertSame('unset', $attributes['hx-include'], 'a component without state renders no carrier, so the call names none (htmx would log "returned no matches")');
         $this->assertStringNotContainsString('preflow-state--', (string) $seen);
@@ -454,7 +455,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
             $response = $this->endpoint()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
                 ->createServerRequest('POST', (string) parse_url($url, PHP_URL_PATH))
                 ->withHeader('HX-Request', 'true')
-                ->withParsedBody([ComponentEndpoint::TOKEN_FIELD => $this->token($call)]));
+                ->withParsedBody([ActionCall::TOKEN_FIELD => $this->token($call)]));
             $this->assertSame(200, $response->getStatusCode());
             $this->assertSame([], $this->errors, "{$which}: the parent call in the row's answer works");
 
@@ -486,7 +487,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         $this->endpoint()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
             ->createServerRequest('POST', '/--component/action')
             ->withHeader('HX-Request', 'true')
-            ->withParsedBody([ComponentEndpoint::TOKEN_FIELD => $this->token(self::attributes($own))]));
+            ->withParsedBody([ActionCall::TOKEN_FIELD => $this->token(self::attributes($own))]));
 
         $this->assertCount(1, $this->errors);
         $this->assertInstanceOf(\LogicException::class, $this->errors[0]);
@@ -541,7 +542,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         $this->endpoint()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
             ->createServerRequest('POST', '/--component/action')
             ->withHeader('HX-Request', 'true')
-            ->withParsedBody([ComponentEndpoint::TOKEN_FIELD => $this->token(self::attributes($own))]));
+            ->withParsedBody([ActionCall::TOKEN_FIELD => $this->token(self::attributes($own))]));
         $this->assertSame([], $this->errors);
         $this->assertSame([true, true], $seen);
 
@@ -579,7 +580,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         })->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
             ->createServerRequest('POST', '/--component/action')
             ->withHeader('HX-Request', 'true')
-            ->withParsedBody([ComponentEndpoint::TOKEN_FIELD => $this->token(self::attributes($own))]));
+            ->withParsedBody([ActionCall::TOKEN_FIELD => $this->token(self::attributes($own))]));
 
         $this->assertSame(200, $response->getStatusCode());
         $this->assertSame([], $this->errors, 'nothing asked for the parent itself');
@@ -616,7 +617,7 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
         })->handle((new \Nyholm\Psr7\Factory\Psr17Factory())
             ->createServerRequest('POST', '/--component/action')
             ->withHeader('HX-Request', 'true')
-            ->withParsedBody([ComponentEndpoint::TOKEN_FIELD => $this->token(self::attributes($own))]));
+            ->withParsedBody([ActionCall::TOKEN_FIELD => $this->token(self::attributes($own))]));
 
         $this->assertSame([], $this->errors);
         $this->assertSame([ShortRow::class, ShortSearch::class], $built, 'the parent built once, for the first call that needs it');
@@ -1008,9 +1009,9 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
             $this->assertStringNotContainsString('token=', $attributes['hx-post'], 'a post sends its token in the body');
             $vals = json_decode($attributes['hx-vals'], true);
             $this->assertIsArray($vals);
-            $this->assertIsString($vals[ComponentEndpoint::TOKEN_FIELD] ?? null);
+            $this->assertIsString($vals[ActionCall::TOKEN_FIELD] ?? null);
 
-            return $vals[ComponentEndpoint::TOKEN_FIELD];
+            return $vals[ActionCall::TOKEN_FIELD];
         }
         parse_str((string) parse_url($attributes['hx-get'], PHP_URL_QUERY), $query);
         $this->assertIsString($query['token'] ?? null, 'a get keeps its token in the URL');

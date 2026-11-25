@@ -152,12 +152,12 @@ final class ComponentStateWiringTest extends TestCase
         $this->assertSame(1, preg_match('/name="_state\[' . preg_quote($id, '/') . '\]"[^>]*value="([^"]+)"/', $page, $state), $page);
         $url = html_entity_decode($post[1]);
         $this->assertSame('/--component/action', $url, 'a post sends its token in the body');
-        $token = (string) json_decode(html_entity_decode($post[2]), true)['_token'];
+        $token = (string) json_decode(html_entity_decode($post[2]), true)['_component_token'];
         $payload = (new \Preflow\Htmx\ComponentToken(self::KEY))->decode($token);
         $this->assertSame([ShortTally::class, 'bump', true, true], [$payload->componentClass, $payload->action, $payload->neutralCall, $payload->stateCarried]);
 
         $response = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', 'http://localhost' . $url)
-            ->withParsedBody(['_token' => $token, '_state' => [$id => html_entity_decode($state[1])], '_values' => '{"by":1}', '_region' => ''])
+            ->withParsedBody(['_component_token' => $token, '_state' => [$id => html_entity_decode($state[1])], '_values' => '{"by":1}', '_region' => ''])
             ->withHeader('HX-Request', 'true'));
 
         $this->assertSame(200, $response->getStatusCode(), (string) $response->getBody());
@@ -176,7 +176,7 @@ final class ComponentStateWiringTest extends TestCase
         $this->assertSame(1, preg_match('/<button hx-post="([^"]+)"[^>]*hx-vals="([^"]+)"/', $page, $post), $page);
         $this->assertSame(1, preg_match('/<div hx-post="([^"]+)"[^>]*hx-vals="([^"]+)"[^>]*hx-trigger="tallied from:body"/', $page, $listen), $page);
         $this->assertSame('/--component/render', html_entity_decode($listen[1]), 'the token goes in the body');
-        $token = static fn (array $call): string => (string) json_decode(html_entity_decode($call[2]), true)['_token'];
+        $token = static fn (array $call): string => (string) json_decode(html_entity_decode($call[2]), true)['_component_token'];
         $carried = static function (string $html) use ($id): string {
             preg_match('/name="_state\[' . preg_quote($id, '/') . '\]"[^>]*value="([^"]+)"/', $html, $m);
 
@@ -185,13 +185,13 @@ final class ComponentStateWiringTest extends TestCase
 
         // The action bumps the tally to 5; the answer carries the new state.
         $bumped = (string) $this->app()->handle((new Psr17Factory())->createServerRequest('POST', 'http://localhost' . html_entity_decode($post[1]))
-            ->withParsedBody(['_token' => $token($post), '_state' => [$id => $carried($page)], '_values' => '{}', '_region' => ''])
+            ->withParsedBody(['_component_token' => $token($post), '_state' => [$id => $carried($page)], '_values' => '{}', '_region' => ''])
             ->withHeader('HX-Request', 'true'))->getBody();
         $this->assertStringContainsString('<p>Tally 5</p>', $bumped);
 
         // The event refresh with that state renders 5 again (mounting from the props would give 4).
         $response = $this->app()->handle((new Psr17Factory())->createServerRequest('POST', 'http://localhost' . html_entity_decode($listen[1]))
-            ->withParsedBody(['_token' => $token($listen), '_state' => [$id => $carried($bumped)], '_values' => '{}', '_region' => ''])
+            ->withParsedBody(['_component_token' => $token($listen), '_state' => [$id => $carried($bumped)], '_values' => '{}', '_region' => ''])
             ->withHeader('HX-Request', 'true'));
 
         $this->assertSame(200, $response->getStatusCode(), (string) $response->getBody());

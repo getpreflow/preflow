@@ -83,7 +83,7 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
      * JSON object) and the region (REGION_FIELD, empty for the whole component).
      *
      * A call with its token apart (ActionCall::$token, 0.88): a post writes the endpoint URL
-     * without it and sends the token in hx-vals (ComponentEndpoint::TOKEN_FIELD), so its props never make the URL
+     * without it and sends the token in hx-vals (ActionCall::TOKEN_FIELD), so its props never make the URL
      * long; a get keeps it in its URL (it has no body). A get token over GET_TOKEN_LIMIT bytes fails
      * in debug (the fix: #[State], smaller props, or a post) and is logged once per component and
      * request otherwise. A body token asks for HtmxAssets::requireBodyTokenScope() (requests from
@@ -152,8 +152,8 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
         if ($tokenInBody && in_array('none', self::paramsOptions($options), true)) {
             $message = sprintf(
                 "The htmx attribute hx-params 'none' under the action option htmx would drop the call's token, which a post call sends in its body (%s): the endpoint could not tell which component to run. Name the parameters to send instead (e.g. 'q, page'; the call adds %s) or the ones to leave out ('not q').",
-                ComponentEndpoint::TOKEN_FIELD,
-                ComponentEndpoint::TOKEN_FIELD,
+                ActionCall::TOKEN_FIELD,
+                ActionCall::TOKEN_FIELD,
             );
             if ($this->debug) {
                 throw new \InvalidArgumentException($message);
@@ -188,7 +188,7 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
             'hx-vals' => json_encode([
                 self::VALUES_FIELD => $call->values === [] ? '{}' : json_encode(self::plain(self::VALUES_FIELD, $call->values), self::JSON),
                 self::REGION_FIELD => $options->region() ?? '',
-            ] + ($tokenInBody ? [ComponentEndpoint::TOKEN_FIELD => $call->token] : []), self::JSON),
+            ] + ($tokenInBody ? [ActionCall::TOKEN_FIELD => $call->token] : []), self::JSON),
         ];
         if ($listen !== null) {
             $attributes['hx-trigger'] = $listen . ' from:body';
@@ -276,7 +276,7 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
      */
     private static function keepToken(string $params): string
     {
-        $field = ComponentEndpoint::TOKEN_FIELD;
+        $field = ActionCall::TOKEN_FIELD;
         // `unset` and an empty value filter nothing (htmx sends every parameter): as given.
         if ($params === '*' || $params === 'none' || $params === 'unset' || $params === '') {
             return $params;

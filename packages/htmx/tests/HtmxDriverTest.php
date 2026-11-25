@@ -408,13 +408,13 @@ final class HtmxDriverTest extends TestCase
 
         $this->assertSame('/de/--component/action?_preview=v1.p.x.y', $attributes['hx-post'], 'the endpoint URL without the token, a preview\'s parameter kept');
         $this->assertStringNotContainsString('token=', $attributes['hx-post']);
-        $this->assertSame(['_values' => '{}', '_region' => '', ComponentEndpoint::TOKEN_FIELD => $token], json_decode($attributes['hx-vals'], true));
-        $this->assertSame('_token', ComponentEndpoint::TOKEN_FIELD);
+        $this->assertSame(['_values' => '{}', '_region' => '', ActionCall::TOKEN_FIELD => $token], json_decode($attributes['hx-vals'], true));
+        $this->assertSame('_component_token', ActionCall::TOKEN_FIELD);
         $this->assertStringNotContainsString('hx-vals', $attributes['hx-disinherit'], 'hx-vals is no attribute hx-disinherit stops');
 
         $listen = $this->driver->listenAttributes(self::tokenCall('post', $token, '/--component/render'), 'saved');
         $this->assertSame('/--component/render', $listen['hx-post']);
-        $this->assertSame($token, json_decode($listen['hx-vals'], true)[ComponentEndpoint::TOKEN_FIELD], 'a refresh is a POST too');
+        $this->assertSame($token, json_decode($listen['hx-vals'], true)[ActionCall::TOKEN_FIELD], 'a refresh is a POST too');
     }
 
     public function test_a_call_inside_a_post_calls_element_keeps_its_own_token(): void
@@ -422,14 +422,14 @@ final class HtmxDriverTest extends TestCase
         // htmx merges the hx-vals of every ancestor, the element's own keys first.
         $outer = json_decode($this->driver->callAttributes(self::tokenCall('post', 'outer.sig'))['hx-vals'], true);
         $inner = $this->driver->callAttributes(self::tokenCall('post', 'inner.sig'));
-        $this->assertSame('inner.sig', (json_decode($inner['hx-vals'], true) + $outer)[ComponentEndpoint::TOKEN_FIELD]);
+        $this->assertSame('inner.sig', (json_decode($inner['hx-vals'], true) + $outer)[ActionCall::TOKEN_FIELD]);
 
         // A get call keeps its token in the URL as `token` (which the endpoint reads first) and writes
-        // no _token: the outer call's _token, which htmx would pass down, is dropped by the page's
+        // no _component_token: the outer call's _component_token, which htmx would pass down, is dropped by the page's
         // body-token script (HtmxAssets::requireBodyTokenScope()), so the URL stays short.
         $get = $this->driver->callAttributes(self::tokenCall('get', 'inner.sig'));
         $this->assertSame('/--component/action?token=inner.sig', $get['hx-get']);
-        $this->assertArrayNotHasKey(ComponentEndpoint::TOKEN_FIELD, json_decode($get['hx-vals'], true), 'a get has no body: its token stays in the URL');
+        $this->assertArrayNotHasKey(ActionCall::TOKEN_FIELD, json_decode($get['hx-vals'], true), 'a get has no body: its token stays in the URL');
     }
 
     public function test_a_call_without_its_token_apart_is_unchanged(): void
@@ -480,7 +480,7 @@ final class HtmxDriverTest extends TestCase
         $this->assertStringNotContainsString('preflowBodyToken', $collector->renderJsBody(), 'only when a call puts its token in the body');
 
         $this->driver->callAttributes(self::tokenCall('post', 'p.sig'));
-        $this->assertStringContainsString("preflowBodyToken('_token');", $collector->renderJsBody());
+        $this->assertStringContainsString("preflowBodyToken('_component_token');", $collector->renderJsBody());
     }
 
     /** A post call with its token in the body keeps it through hx-params given under the htmx key. */
@@ -491,14 +491,14 @@ final class HtmxDriverTest extends TestCase
 
             return ($driver ?? $this->driver)->callAttributes($call);
         };
-        $this->assertSame('q, page,_token', $params('q, page')['hx-params'], 'a list: the token joins it');
-        $this->assertSame('q,_token', $params('q,_token')['hx-params'], 'listed already: as given');
-        $this->assertSame('not q', $params('not q, _token')['hx-params'], "a 'not' list never drops it");
-        $this->assertSame('*', $params('not _token')['hx-params'], 'nothing else to leave out: everything');
+        $this->assertSame('q, page,_component_token', $params('q, page')['hx-params'], 'a list: the token joins it');
+        $this->assertSame('q,_component_token', $params('q,_component_token')['hx-params'], 'listed already: as given');
+        $this->assertSame('not q', $params('not q, _component_token')['hx-params'], "a 'not' list never drops it");
+        $this->assertSame('*', $params('not _component_token')['hx-params'], 'nothing else to leave out: everything');
         $this->assertSame('*', $params('*')['hx-params']);
         $this->assertSame('unset', $params('unset')['hx-params'], 'unset: no filter, as given (a list would send only the token)');
         $this->assertSame('', $params('')['hx-params'], 'empty: no filter, as given');
-        $this->assertSame('q,_token', $params('q', 'data-hx-params')['data-hx-params']);
+        $this->assertSame('q,_component_token', $params('q', 'data-hx-params')['data-hx-params']);
         $this->assertSame('/a', $params('q')['hx-post']);
 
         // A get keeps its token in the URL: its hx-params are as given.
@@ -516,7 +516,7 @@ final class HtmxDriverTest extends TestCase
             $this->fail("hx-params 'none' is refused in debug");
         } catch (\InvalidArgumentException $e) {
             $this->assertStringContainsString("hx-params 'none'", $e->getMessage());
-            $this->assertStringContainsString('_token', $e->getMessage(), 'the cause: it drops the body token');
+            $this->assertStringContainsString('_component_token', $e->getMessage(), 'the cause: it drops the body token');
             $this->assertStringContainsString("'not ", $e->getMessage(), 'the fix');
         }
 
@@ -526,7 +526,7 @@ final class HtmxDriverTest extends TestCase
         });
         $attributes = $quiet->callAttributes($call());
         $this->assertSame('/a?token=p.sig', $attributes['hx-post'], 'the token goes in the URL instead');
-        $this->assertArrayNotHasKey(ComponentEndpoint::TOKEN_FIELD, json_decode($attributes['hx-vals'], true));
+        $this->assertArrayNotHasKey(ActionCall::TOKEN_FIELD, json_decode($attributes['hx-vals'], true));
         $this->assertSame('none', $attributes['hx-params'], 'as given: the URL keeps the token');
         $this->assertCount(1, $lines);
         $this->assertStringContainsString('in the URL instead', $lines[0]);

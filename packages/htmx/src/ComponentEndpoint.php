@@ -14,22 +14,12 @@ use Preflow\Components\StateRefused;
 use Preflow\Core\Context\RefusedInPreview;
 use Preflow\Core\Exceptions\HttpException;
 use Preflow\Core\Exceptions\SecurityException;
+use Preflow\Core\Http\Hypermedia\ActionCall;
 use Preflow\Core\Http\Hypermedia\DrivesComponentActions;
 use Preflow\View\AssetCollector;
 
 final class ComponentEndpoint
 {
-    /**
-     * The body field a call may send its token in, instead of the URL's `token` (which is read
-     * first). Every driver shares it: htmx sends a post call's token here (in hx-vals), so large
-     * props never make a long URL. Not `token`: htmx passes an element's hx-vals to every element
-     * inside it and appends them to a get request's query, where the URL's own `token` must stay
-     * the one that counts.
-     *
-     * @since 0.88.0
-     */
-    public const string TOKEN_FIELD = '_token';
-
     /**
      * The fields of a 0.86 call: read only for a token from ComponentToken::encodeFor(); never an
      * old-style action's params (a call around its element may have given them: htmx merges the
@@ -38,13 +28,13 @@ final class ComponentEndpoint
     private const array NEUTRAL_FIELDS = [
         DrivesComponentActions::VALUES_FIELD => true,
         DrivesComponentActions::REGION_FIELD => true,
-        self::TOKEN_FIELD => true,
+        ActionCall::TOKEN_FIELD => true,
     ];
 
     /** The request fields the framework reads itself; never part of an action's params. */
     private const array OWN_FIELDS = [
         'token' => true,
-        self::TOKEN_FIELD => true,
+        ActionCall::TOKEN_FIELD => true,
         DrivesComponentActions::STATE_FIELD => true,
         DrivesComponentActions::VALUES_FIELD => true,
         DrivesComponentActions::REGION_FIELD => true,
@@ -75,12 +65,12 @@ final class ComponentEndpoint
         $queryParams = $request->getQueryParams();
         $bodyParams = $request->getParsedBody() ?? [];
         $body = is_array($bodyParams) ? $bodyParams : [];
-        $tokenString = $queryParams['token'] ?? $body[self::TOKEN_FIELD] ?? $body['token'] ?? null;
+        $tokenString = $queryParams['token'] ?? $body[ActionCall::TOKEN_FIELD] ?? $body['token'] ?? null;
 
         if ($tokenString === null) {
             throw new SecurityException(sprintf(
                 "Missing component token. It is expected as 'token' in the URL or as '%s' in the body; a call that sends it in the body may have lost it to hx-params (on the element or an ancestor) or to a request hook that removed it.",
-                self::TOKEN_FIELD,
+                ActionCall::TOKEN_FIELD,
             ));
         }
 
