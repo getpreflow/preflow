@@ -162,7 +162,7 @@ use Preflow\Testing\PlainDriver;
  *   restarts when the CounterReset field is below its bound (exactly at the boundary too),
  *   concurrent increments lose no count (with reopenDriver(), pcntl and posix), and (@since 0.90)
  *   a count past the 64-bit whole numbers throws an OverflowException naming the counter and
- *   writes nothing (a PdoDriver whose dialect is no Driver\FailsOverflow is not held to it).
+ *   writes nothing (a RunsSql driver whose dialect is no Driver\FailsOverflow is not held to it).
  * - Maintenance (@since 0.78): check() finds a sound store sound, compact() keeps every record and
  *   the text rule, and refuses inside a transaction.
  * - Dumps (@since 0.78): a dump() restored into emptyDriver() holds the same records, compared by
@@ -886,7 +886,7 @@ abstract class StorageDriverContract extends TestCase
     public function test_increment_refuses_a_count_past_the_largest_whole_number(): void
     {
         $driver = $this->counters();
-        if ($driver instanceof \Preflow\Data\Driver\PdoDriver && !$driver->dialect() instanceof \Preflow\Data\Driver\FailsOverflow) {
+        if ($driver instanceof \Preflow\Data\RunsSql && !$driver->dialect() instanceof \Preflow\Data\Driver\FailsOverflow) {
             $this->markTestSkipped('The dialect cannot fail a statement (Driver\\FailsOverflow): increment() adds as before 0.90.');
         }
         foreach ([[PHP_INT_MAX - 1023, 2000, 'largest'], [PHP_INT_MIN + 1024, -2000, 'smallest']] as [$stored, $by, $word]) {
