@@ -202,6 +202,15 @@ final class ConditionalWritesTest extends TestCase
         $this->assertSame(9007199254740993, Condition::wholeNumber('9007199254740993.5'));
         $this->assertSame(0, Condition::wholeNumber("3\0"));
         $this->assertSame(0, Condition::wholeNumber('  '));
+        // Beyond 64 bits a float clamps (as text, SQLite and MySQL do), it does not wrap.
+        $this->assertSame(PHP_INT_MAX, Condition::wholeNumber(1e20));
+        $this->assertSame(PHP_INT_MIN, Condition::wholeNumber(-1e20));
+        $this->assertSame(PHP_INT_MAX, Condition::wholeNumber(9.2233720368547758E18));
+        $this->assertSame(PHP_INT_MAX, Condition::wholeNumber(INF));
+        $this->assertSame(PHP_INT_MIN, Condition::wholeNumber(-INF));
+        $this->assertSame(0, Condition::wholeNumber(NAN));
+        $this->assertSame(-3, Condition::wholeNumber(-3.9));
+        $this->assertSame(1000000000000000, Condition::wholeNumber(1e15));
         $this->assertSame(9007199254740993, Condition::wholeNumber('9007199254740993'));
         $this->assertSame(1, Condition::wholeNumber(true));
         $this->assertNull(Condition::text(null));

@@ -175,8 +175,8 @@ final class MysqlDialect implements Dialect, PatternMatching, TextComparison
      * - Text is a number only as `-?digits` or `-?digits.digits`: `$` also matches before a final
      *   line break (ICU and PCRE), so a second check refuses any other character (since 0.90).
      *   The whole part is the digits before the dot (SUBSTRING_INDEX), not a rounded DECIMAL.
-     * Beyond a 64-bit integer both clamp to its bounds (as SQLite's CAST and PHP's (int) do)
-     * instead of failing the UPDATE.
+     * Beyond a 64-bit integer both clamp to its bounds instead of failing the UPDATE, as SQLite's
+     * CAST and Condition::wholeNumber() do (PHP's own (int) of a float would wrap).
      */
     public function wholeNumber(string $expression): string
     {

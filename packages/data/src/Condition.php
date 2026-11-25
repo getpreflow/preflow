@@ -210,11 +210,26 @@ final class Condition
         return match (true) {
             $stored === null, $stored === '' => null,
             is_int($stored) => $stored,
-            is_float($stored), is_bool($stored) => (int) $stored,
+            is_float($stored) => self::wholeFloat($stored),
+            is_bool($stored) => (int) $stored,
             // The whole part from the text itself (a float would round '3.99999999999999999999' up).
             is_string($stored) && preg_match('/^-?\d+(?:\.\d*)?$/D', $stored) === 1 => (int) explode('.', $stored, 2)[0],
             is_string($stored) => 0,
             default => 0,
+        };
+    }
+
+    /**
+     * A float's whole part, towards zero; beyond a 64-bit integer it clamps to the bounds (INF too),
+     * as SQLite's CAST and MySQL do, instead of wrapping as (int) does. NaN is 0.
+     */
+    private static function wholeFloat(float $stored): int
+    {
+        return match (true) {
+            is_nan($stored) => 0,
+            $stored >= 9.2233720368547758E18 => PHP_INT_MAX,
+            $stored <= -9.2233720368547758E18 => PHP_INT_MIN,
+            default => (int) $stored,
         };
     }
 
