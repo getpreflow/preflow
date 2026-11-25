@@ -331,6 +331,12 @@ a boolean as 1/0, a JSON field as text), is in each suite's class docblock:
   and `search()`. Since 0.78
   there is no `supportsRawQuery()` hook: remove an override of it; the raw SQL tests run for
   `RunsSql` drivers only. `search()` is checked in text and list values.
+- **Conditional writes (0.89):** `DataManager::updateWhen()` and `deleteWhen()` with a
+  `Preflow\Data\Condition` (each operator on whole numbers and texts, two fields, "is empty" on
+  null, `''` and no value, nested `all`/`any`, `Add` up and down, a condition that does not hold,
+  a missing record, a skipping and a refusing render) run on every driver, twice: through the
+  driver (which may compile the condition, `ConditionalWrites`) and through `PlainDriver` on the
+  same store (DataManager's PHP check). A driver passes when both agree; it needs no new hook.
 - **Exact comparisons (0.78):** `=`, `!=`, `IN`, `NOT IN`, ranges and `ORDER BY` on a `text`
   field, and grouping, `COUNT(DISTINCT)`, `MIN` and `MAX` over it (with `whereAny()` groups and
   `AggregatingStorage`), follow the text rule (ignore case, respect accents: "müller" is

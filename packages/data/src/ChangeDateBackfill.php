@@ -21,7 +21,7 @@ use Preflow\Data\Attributes\Timestamps;
  * 6. else the time of the migrate.
  *
  * migrate runs while the site serves requests, so each date is a conditional write of that key
- * alone (DataManager::updateIf(): one `UPDATE … WHERE id = ? AND the date is empty` on SQL, a
+ * alone (DataManager::updateWhen(): one `UPDATE … WHERE id = ? AND the date is empty` on SQL, a
  * check and write under the type's lock elsewhere): a record deleted meanwhile is not written back,
  * a date a save gave meanwhile stays, no version moves, and the record is written as a save writes
  * it (a JSON file in its canonical bytes). Only empty dates (null or '') are written, so a second
@@ -164,21 +164,17 @@ final class ChangeDateBackfill
         return $lines;
     }
 
-    /** Writes $value as the record's change date while the record exists and holds none. */
+    /**
+     * Writes $value as the record's change date while the record exists and holds none (what
+     * ChangeDates::isSet() calls none: null, '', or a 0).
+     */
     private function writeIfEmpty(TypeDefinition $def, string $key, string $id, string $value): bool
     {
-        return $this->dm->updateIf(
+        return $this->dm->updateWhen(
             $def,
             $id,
-            static fn (DynamicRecord $record): ?array => ChangeDates::isSet($record->get($key)) ? null : [$key => $value],
-            static function (RunsSql $driver, TypeDefinition $def) use ($key, $id, $value): array {
-                $q = $driver->dialect()->quoteIdentifier(...);
-
-                return [
-                    'UPDATE ' . $q($def->table) . ' SET ' . $q($key) . ' = ? WHERE ' . $q($def->idField) . ' = ? AND (' . $q($key) . ' IS NULL OR ' . $q($key) . " = '')",
-                    [$value, $id],
-                ];
-            },
+            Condition::any(Condition::isEmpty($key), Condition::where($key, '=', '0')),
+            [$key => $value],
         );
     }
 

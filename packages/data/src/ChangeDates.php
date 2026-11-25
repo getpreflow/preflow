@@ -19,9 +19,10 @@ namespace Preflow\Data;
  * class-backed type), from the render's clock (Contexts::clock()); a save that changes nothing
  * keeps the stored date (a versioned save: the date moves with the version), and it never counts
  * as content. keepingChangeDates() keeps the date a record carries (an import). Writes that name
- * their fields write only those and leave it as stored: updateIf(), updateFieldsIfVersion(),
- * incrementIn(), raw SQL and a driver called directly (a caller that wants it moved includes
- * FIELD => text(now)). A read never changes it. Plain models (no type) keep #[Timestamps].
+ * their fields write only those and leave it as stored: updateWhen() and updateIf(),
+ * updateFieldsIfVersion(), incrementIn(), raw SQL and a driver called directly (a caller that
+ * wants it moved includes FIELD => text(now)). A read never changes it. Plain models (no type)
+ * keep #[Timestamps].
  *
  * Storage: a JSON record holds the key like any other; on SQL, `preflow migrate` gives each table
  * it makes a column for it with an index (RecordTableSync, kind date: text compared exactly), and

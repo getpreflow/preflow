@@ -106,6 +106,13 @@ use Preflow\Testing\PlainDriver;
  * - A driver with ConditionalUpdates (@since 0.77) writes only the named fields, and only while the
  *   version field holds the expected whole number (as text or number; null: none, NULL or '', and
  *   never 0); a match that changes no value is still a match.
+ * - Conditional writes (@since 0.89.0): DataManager::updateWhen() and deleteWhen() write or delete
+ *   one record only while a Preflow\Data\Condition holds on it, as Condition describes (whole
+ *   numbers, exact texts, two fields, "is empty", all/any; an Add adds to a number), and false/null
+ *   when it does not or the record is missing; a skipping render writes nothing, a refusing one
+ *   throws when the condition holds. Each case runs through the driver (ConditionalWrites, when it
+ *   implements it, compiles the condition) and through PlainDriver on the same store (the PHP
+ *   check), so both must agree.
  * - An empty id is '', 0 or '0' (as PdoDriver and DataManager treat it): save() with one inserts
  *   a record whose id the store generates, and lastInsertId() returns it.
  * - Change dates (@since 0.84.0): DataManager writes every record of a type with its change date
@@ -1769,6 +1776,213 @@ abstract class StorageDriverContract extends TestCase
         $this->assertSame('7', (string) ($driver->findOne('versioned', 'none') ?? [])['version']);
     }
 
+    // --- conditional writes (DataManager::updateWhen(), deleteWhen(), @since 0.89.0) -------------
+
+    /**
+     * Runs $case once through a DataManager on this store and once on the same store seen as a
+     * PlainDriver (no capabilities: DataManager reads, checks Condition::holds() and writes), each
+     * time on freshly seeded records: a driver's compiled condition and the PHP check must agree.
+     * $case gets the DataManager, the type and the path's name.
+     *
+     * The records (type "guarded"): c1 label 'Ab', other 'Ab', amount 3, cap 5, note '';
+     * c2 label 'ab', other 'x', amount 5, cap 5, note null; c3 everything null but note '0';
+     * c4 amount 0, no note given.
+     *
+     * @param \Closure(\Preflow\Data\DataManager, TypeDefinition, string): void $case
+     */
+    private function conditionalWrites(\Closure $case): void
+    {
+        $this->createType('guarded', ['uuid' => 'exact', 'label' => 'exact', 'other' => 'exact', 'amount' => 'number', 'cap' => 'number', 'note' => 'exact', 'mark' => 'exact']);
+        $models = sys_get_temp_dir() . '/contract_models_' . bin2hex(random_bytes(4));
+        @mkdir($models, 0777, true);
+        try {
+            $registry = new \Preflow\Data\TypeRegistry($models);
+            $def = $registry->define([
+                'key' => 'guarded', 'table' => 'guarded', 'storage' => 'default', 'id_field' => 'uuid',
+                'fields' => [
+                    'label' => ['type' => 'string'], 'other' => ['type' => 'string'], 'amount' => ['type' => 'integer'],
+                    'cap' => ['type' => 'integer'], 'note' => ['type' => 'string'], 'mark' => ['type' => 'string'],
+                ],
+            ]);
+            foreach (['driver' => $this->driver, 'checked in PHP' => new PlainDriver($this->driver)] as $path => $driver) {
+                foreach (['c1', 'c2', 'c3', 'c4'] as $id) {
+                    $this->driver->delete('guarded', $id);
+                }
+                $this->driver->save('guarded', 'c1', ['uuid' => 'c1', 'label' => 'Ab', 'other' => 'Ab', 'amount' => 3, 'cap' => 5, 'note' => '', 'mark' => null]);
+                $this->driver->save('guarded', 'c2', ['uuid' => 'c2', 'label' => 'ab', 'other' => 'x', 'amount' => 5, 'cap' => 5, 'note' => null, 'mark' => null]);
+                $this->driver->save('guarded', 'c3', ['uuid' => 'c3', 'label' => null, 'other' => null, 'amount' => null, 'cap' => null, 'note' => '0', 'mark' => null]);
+                $this->driver->save('guarded', 'c4', ['uuid' => 'c4', 'amount' => 0]);
+                $case(new \Preflow\Data\DataManager(['default' => $driver], 'default', $registry), $def, $path);
+            }
+        } finally {
+            @rmdir($models);
+        }
+    }
+
+    /**
+     * Whether updateWhen() wrote on record $id under $when, checked against $expected both in what
+     * it returns and in what is stored; the mark it writes is cleared again.
+     */
+    private function assertWritesWhen(bool $expected, \Preflow\Data\DataManager $dm, TypeDefinition $def, string $id, \Preflow\Data\Condition $when, string $what): void
+    {
+        $this->assertSame($expected, $dm->updateWhen($def, $id, $when, ['mark' => 'w']), $what);
+        $this->assertSame($expected ? 'w' : null, ($this->driver->findOne('guarded', $id) ?? [])['mark'] ?? null, "{$what}: stored");
+        $this->driver->save('guarded', $id, ['uuid' => $id, 'mark' => null]);
+    }
+
+    public function test_update_when_compares_a_field_with_a_whole_number_by_each_operator(): void
+    {
+        $this->conditionalWrites(function (\Preflow\Data\DataManager $dm, TypeDefinition $def, string $path): void {
+            $cases = [
+                ['=', 3, true], ['=', 4, false], ['!=', 3, false], ['!=', 4, true], ['<', 4, true], ['<', 3, false],
+                ['>', 2, true], ['>', 3, false], ['<=', 3, true], ['<=', 2, false], ['>=', 3, true], ['>=', 4, false],
+                ['IN', [1, 3], true], ['IN', [1, 2], false], ['IN', [], false],
+            ];
+            foreach ($cases as [$operator, $value, $expected]) {
+                $this->assertWritesWhen($expected, $dm, $def, 'c1', \Preflow\Data\Condition::where('amount', $operator, $value), "{$path}: 3 {$operator} " . json_encode($value));
+            }
+            foreach (['=', '!=', '<', '>', '<=', '>='] as $operator) {
+                $this->assertWritesWhen(false, $dm, $def, 'c3', \Preflow\Data\Condition::where('amount', $operator, 1), "{$path}: no value is never {$operator} a number");
+            }
+            $this->assertWritesWhen(false, $dm, $def, 'c3', \Preflow\Data\Condition::where('amount', 'IN', [0, 1]), "{$path}: no value is in no list");
+            $this->assertWritesWhen(true, $dm, $def, 'c4', \Preflow\Data\Condition::where('amount', '=', 0), "{$path}: 0 is a number");
+        });
+    }
+
+    public function test_update_when_compares_a_field_with_a_text_exactly_by_each_operator(): void
+    {
+        $this->conditionalWrites(function (\Preflow\Data\DataManager $dm, TypeDefinition $def, string $path): void {
+            $cases = [
+                ['=', 'Ab', true], ['=', 'ab', false], ['!=', 'ab', true], ['!=', 'Ab', false], ['<', 'B', true], ['<', 'Aa', false],
+                ['>', 'AB', true], ['>', 'a', false], ['<=', 'Ab', true], ['>=', 'Ab', true], ['>=', 'b', false],
+                ['IN', ['x', 'Ab'], true], ['IN', ['ab', 'AB'], false],
+            ];
+            foreach ($cases as [$operator, $value, $expected]) {
+                $this->assertWritesWhen($expected, $dm, $def, 'c1', \Preflow\Data\Condition::where('label', $operator, $value), "{$path}: 'Ab' {$operator} " . json_encode($value));
+            }
+            $this->assertWritesWhen(false, $dm, $def, 'c3', \Preflow\Data\Condition::where('label', '!=', 'x'), "{$path}: null is not != a text");
+            $this->assertWritesWhen(true, $dm, $def, 'c1', \Preflow\Data\Condition::where('note', '=', ''), "{$path}: '' is a text");
+            $this->assertWritesWhen(true, $dm, $def, 'c3', \Preflow\Data\Condition::where('note', '=', '0'), "{$path}: '0' is a text");
+        });
+    }
+
+    public function test_update_when_compares_two_fields_of_the_record(): void
+    {
+        $this->conditionalWrites(function (\Preflow\Data\DataManager $dm, TypeDefinition $def, string $path): void {
+            $this->assertWritesWhen(true, $dm, $def, 'c1', \Preflow\Data\Condition::whereField('label', '=', 'other'), "{$path}: 'Ab' = 'Ab'");
+            $this->assertWritesWhen(false, $dm, $def, 'c2', \Preflow\Data\Condition::whereField('label', '=', 'other'), "{$path}: 'ab' = 'x'");
+            $this->assertWritesWhen(true, $dm, $def, 'c2', \Preflow\Data\Condition::whereField('label', '<', 'other'), "{$path}: 'ab' < 'x'");
+            $this->assertWritesWhen(true, $dm, $def, 'c1', \Preflow\Data\Condition::whereField('amount', '<', 'cap', numbers: true), "{$path}: 3 < 5");
+            $this->assertWritesWhen(false, $dm, $def, 'c2', \Preflow\Data\Condition::whereField('amount', '<', 'cap', numbers: true), "{$path}: 5 < 5");
+            $this->assertWritesWhen(true, $dm, $def, 'c2', \Preflow\Data\Condition::whereField('amount', '<=', 'cap', numbers: true), "{$path}: 5 <= 5");
+            $this->assertWritesWhen(true, $dm, $def, 'c1', \Preflow\Data\Condition::whereField('amount', '!=', 'cap', numbers: true), "{$path}: 3 != 5");
+            $this->assertWritesWhen(false, $dm, $def, 'c3', \Preflow\Data\Condition::whereField('amount', '=', 'cap', numbers: true), "{$path}: no value equals nothing");
+            $this->assertWritesWhen(false, $dm, $def, 'c3', \Preflow\Data\Condition::whereField('label', '=', 'other'), "{$path}: no text equals nothing");
+        });
+    }
+
+    public function test_update_when_is_empty_holds_for_null_empty_text_and_no_value(): void
+    {
+        $this->conditionalWrites(function (\Preflow\Data\DataManager $dm, TypeDefinition $def, string $path): void {
+            $this->assertWritesWhen(true, $dm, $def, 'c1', \Preflow\Data\Condition::isEmpty('note'), "{$path}: ''");
+            $this->assertWritesWhen(true, $dm, $def, 'c2', \Preflow\Data\Condition::isEmpty('note'), "{$path}: null");
+            $this->assertWritesWhen(true, $dm, $def, 'c4', \Preflow\Data\Condition::isEmpty('note'), "{$path}: never given");
+            $this->assertWritesWhen(false, $dm, $def, 'c3', \Preflow\Data\Condition::isEmpty('note'), "{$path}: '0' is a value");
+            $this->assertWritesWhen(true, $dm, $def, 'c3', \Preflow\Data\Condition::isEmpty('amount'), "{$path}: a number field without one");
+            $this->assertWritesWhen(false, $dm, $def, 'c4', \Preflow\Data\Condition::isEmpty('amount'), "{$path}: 0 is a value");
+        });
+    }
+
+    public function test_update_when_nests_all_and_any(): void
+    {
+        $this->conditionalWrites(function (\Preflow\Data\DataManager $dm, TypeDefinition $def, string $path): void {
+            $nested = \Preflow\Data\Condition::all(
+                \Preflow\Data\Condition::any(\Preflow\Data\Condition::where('amount', '=', 9), \Preflow\Data\Condition::isEmpty('note')),
+                \Preflow\Data\Condition::where('label', '=', 'Ab'),
+            );
+            $this->assertWritesWhen(true, $dm, $def, 'c1', $nested, "{$path}: all(any(no, yes), yes)");
+            $this->assertWritesWhen(false, $dm, $def, 'c2', $nested, "{$path}: all(any(no, yes), no)");
+            $this->assertWritesWhen(false, $dm, $def, 'c1', \Preflow\Data\Condition::any(
+                \Preflow\Data\Condition::all(\Preflow\Data\Condition::isEmpty('note'), \Preflow\Data\Condition::where('amount', '>', 3)),
+                \Preflow\Data\Condition::where('label', '=', 'x'),
+            ), "{$path}: any(all(yes, no), no)");
+            $this->assertWritesWhen(true, $dm, $def, 'c1', \Preflow\Data\Condition::all(), "{$path}: all() of nothing holds");
+            $this->assertWritesWhen(false, $dm, $def, 'c1', \Preflow\Data\Condition::any(), "{$path}: any() of nothing does not");
+        });
+    }
+
+    public function test_update_when_adds_to_a_number_and_writes_only_the_named_fields(): void
+    {
+        $this->conditionalWrites(function (\Preflow\Data\DataManager $dm, TypeDefinition $def, string $path): void {
+            $this->assertTrue($dm->updateWhen($def, 'c1', \Preflow\Data\Condition::where('amount', '<', 5), ['amount' => new \Preflow\Data\Add(1), 'mark' => 'counted']), $path);
+            $row = $this->driver->findOne('guarded', 'c1') ?? [];
+            $this->assertNumber(4, $row['amount'] ?? null);
+            $this->assertSame('counted', $row['mark'] ?? null, $path);
+            $this->assertSame('Ab', $row['label'] ?? null, "{$path}: a field not named stays as stored");
+            $this->assertNumber(5, $row['cap'] ?? null);
+
+            $this->assertTrue($dm->updateWhen($def, 'c1', \Preflow\Data\Condition::where('amount', '>', 0), ['amount' => new \Preflow\Data\Add(-2)]), $path);
+            $this->assertNumber(2, ($this->driver->findOne('guarded', 'c1') ?? [])['amount'] ?? null);
+            $this->assertTrue($dm->updateWhen($def, 'c3', \Preflow\Data\Condition::isEmpty('amount'), ['amount' => new \Preflow\Data\Add(1)]), "{$path}: no value counts from 0");
+            $this->assertNumber(1, ($this->driver->findOne('guarded', 'c3') ?? [])['amount'] ?? null);
+            $this->assertTrue($dm->updateWhen($def, 'c2', \Preflow\Data\Condition::where('label', '=', 'ab'), ['label' => 'ab']), "{$path}: a match that changes nothing is a match");
+        });
+    }
+
+    public function test_a_condition_that_does_not_hold_writes_and_deletes_nothing(): void
+    {
+        $this->conditionalWrites(function (\Preflow\Data\DataManager $dm, TypeDefinition $def, string $path): void {
+            $this->assertFalse($dm->updateWhen($def, 'c2', \Preflow\Data\Condition::whereField('amount', '<', 'cap', numbers: true), ['amount' => new \Preflow\Data\Add(1)]), $path);
+            $this->assertNumber(5, ($this->driver->findOne('guarded', 'c2') ?? [])['amount'] ?? null);
+            $this->assertNull($dm->deleteWhen($def, 'c2', \Preflow\Data\Condition::where('label', '=', 'AB')), $path);
+            $this->assertTrue($this->driver->exists('guarded', 'c2'), "{$path}: still there");
+
+            $this->assertFalse($dm->updateWhen($def, 'missing', \Preflow\Data\Condition::all(), ['mark' => 'w']), "{$path}: no such record");
+            $this->assertNull($dm->deleteWhen($def, 'missing', \Preflow\Data\Condition::all()), "{$path}: no such record");
+            $this->assertNull($this->driver->findOne('guarded', 'missing'), "{$path}: and none is made");
+        });
+    }
+
+    public function test_delete_when_returns_the_record_it_deleted(): void
+    {
+        $this->conditionalWrites(function (\Preflow\Data\DataManager $dm, TypeDefinition $def, string $path): void {
+            $deleted = $dm->deleteWhen($def, 'c1', \Preflow\Data\Condition::all(\Preflow\Data\Condition::where('label', '=', 'Ab'), \Preflow\Data\Condition::isEmpty('note')));
+            $this->assertNotNull($deleted, $path);
+            $this->assertSame('Ab', $deleted->get('label'), $path);
+            $this->assertFalse($this->driver->exists('guarded', 'c1'), "{$path}: gone");
+            $this->assertTrue($this->driver->exists('guarded', 'c2'), "{$path}: the others stay");
+        });
+    }
+
+    /** Under a render that skips writes the condition decides as on a visit and nothing is written; one that refuses them throws only when the condition holds. */
+    public function test_conditional_writes_follow_the_write_policy(): void
+    {
+        $this->conditionalWrites(function (\Preflow\Data\DataManager $dm, TypeDefinition $def, string $path): void {
+            $holds = \Preflow\Data\Condition::where('label', '=', 'Ab');
+            $fails = \Preflow\Data\Condition::where('label', '=', 'x');
+            $skipping = \Preflow\Testing\ContextFactory::forTest()->skippingWrites();
+            $this->assertTrue(\Preflow\Core\Context\Contexts::run($skipping, static fn (): bool => $dm->updateWhen($def, 'c1', $holds, ['mark' => 'w'])), $path);
+            $this->assertFalse(\Preflow\Core\Context\Contexts::run($skipping, static fn (): bool => $dm->updateWhen($def, 'c1', $fails, ['mark' => 'w'])), $path);
+            $this->assertNotNull(\Preflow\Core\Context\Contexts::run($skipping, static fn (): ?\Preflow\Data\DynamicRecord => $dm->deleteWhen($def, 'c1', $holds)), $path);
+            $this->assertNull(\Preflow\Core\Context\Contexts::run($skipping, static fn (): ?\Preflow\Data\DynamicRecord => $dm->deleteWhen($def, 'c1', $fails)), $path);
+            $this->assertNull(($this->driver->findOne('guarded', 'c1') ?? [])['mark'] ?? null, "{$path}: nothing written");
+
+            $refusing = \Preflow\Testing\ContextFactory::forTest()->refusingWrites();
+            $this->assertFalse(\Preflow\Core\Context\Contexts::run($refusing, static fn (): bool => $dm->updateWhen($def, 'c1', $fails, ['mark' => 'w'])), "{$path}: nothing to refuse");
+            $this->assertNull(\Preflow\Core\Context\Contexts::run($refusing, static fn (): ?\Preflow\Data\DynamicRecord => $dm->deleteWhen($def, 'c1', $fails)), "{$path}: nothing to refuse");
+            foreach (['update' => static fn () => $dm->updateWhen($def, 'c1', $holds, ['mark' => 'w']), 'delete' => static fn () => $dm->deleteWhen($def, 'c1', $holds)] as $what => $write) {
+                try {
+                    \Preflow\Core\Context\Contexts::run($refusing, $write);
+                    $this->fail("{$path}: a {$what} whose condition holds was not refused");
+                } catch (\Preflow\Core\Context\WritesRefused) {
+                    $this->addToAssertionCount(1);
+                }
+            }
+            $this->assertTrue($this->driver->exists('guarded', 'c1'), "{$path}: nothing deleted");
+            $this->assertNull(($this->driver->findOne('guarded', 'c1') ?? [])['mark'] ?? null, "{$path}: nothing written");
+        });
+    }
+
     // --- the write policy (since 0.81.0) ---------------------------------------------------------
 
     /**
@@ -1797,6 +2011,8 @@ abstract class StorageDriverContract extends TestCase
             'delete' => static fn () => $dm->deleteType('records', 'r1'),
             'count' => static fn () => $dm->incrementIn($def, 'r1', 'amount', 1, ['label' => 'Kept']),
             'update if' => static fn () => $dm->updateIf($def, 'r1', static fn (): array => ['label' => 'Changed']),
+            'update when' => static fn () => $dm->updateWhen($def, 'r1', \Preflow\Data\Condition::all(), ['label' => 'Changed']),
+            'delete when' => static fn () => $dm->deleteWhen($def, 'r1', \Preflow\Data\Condition::all()),
             'write in a transaction' => static fn () => $dm->transaction(['default'], static fn () => $dm->saveType($record('r3', 'New'), false)),
         ];
 

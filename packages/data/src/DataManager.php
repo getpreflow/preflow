@@ -30,9 +30,10 @@ use Preflow\Validation\ValidatorFactory;
  * write, incrementIn() the value stored now (0 for a row not stored; an accounting count runs
  * under every policy). Validation runs first, as on a visit. A skipped insert of an
  * auto-increment model leaves its id at 0 (no id is made up); a string id gets its UUID as
- * usual. updateIf() and deleteIf() (conditional writes) check the stored record as a visit
- * would and return what it would see. execute() always counts as a write and returns 0, so a
- * conditional write belongs in updateIf()/deleteIf(), not in execute(). Under Refuse the write
+ * usual. updateWhen() and deleteWhen() (conditional writes; updateIf() and deleteIf() before
+ * 0.89) check the stored record as a visit would and return what it would see. execute() always
+ * counts as a write and returns 0, so a conditional write belongs in updateWhen()/deleteWhen(),
+ * not in execute(). Under Refuse the write
  * throws WritesRefused (core). transaction() runs its closure; each write inside follows the
  * policy. Outside every render writes run (WritePolicy::Allow).
  */
@@ -2047,6 +2048,159 @@ final class DataManager
     }
 
     /**
+     * Writes $set to the record $id of $def only while $when holds on it: the conditional write
+     * behind a token, a sign-in rotation or a code's use count, the same on every storage and under
+     * every write policy.
+     *
+     * $set names the fields to write (only those; the other columns stay as stored): a value is
+     * stored as saveType() stores it, an Add adds to the stored whole number (none counts from 0).
+     * $when is a Condition on the stored record (see Condition for what each comparison reads), or
+     * a function that builds it when the check runs: a condition on the time then reads it after
+     * a lock was taken, not before waiting for it.
+     *
+     * Where writes run (WritePolicy::Allow): on a storage with ConditionalWrites (the SQL drivers)
+     * one `UPDATE … WHERE id = ? AND (condition)` decides by its affected rows; on another the
+     * record is read, Condition::holds() checks it and the record is written, under $lock (a
+     * caller's own lock: it runs the step it is given and returns its result) or else under the
+     * type's lock (ExclusiveWrites), else plainly, which is not atomic. Under Skip (a preview, an
+     * audit) the condition is checked on the record as stored and nothing is written: true when it
+     * holds, as if written (ruling R9), and the write is reported; under Refuse a write whose
+     * condition holds throws WritesRefused (core). So a preview takes the path a visit takes.
+     *
+     * It moves neither a version field (_version) nor the change date (ChangeDates): a caller
+     * that wants them moved names them in $set.
+     *
+     * @param Condition|\Closure $when a Condition, or a function without parameters that returns one
+     * @param array<string, mixed> $set field => value or Add, at least one; never the id field
+     * @param (\Closure(\Closure(): ?DynamicRecord): ?DynamicRecord)|null $lock
+     * @return bool whether it was written (false: no such record, or $when did not hold)
+     * @throws \InvalidArgumentException for an empty $set or one naming the id field
+     * @since 0.89.0
+     */
+    public function updateWhen(TypeDefinition $def, string|int $id, Condition|\Closure $when, array $set, ?\Closure $lock = null): bool
+    {
+        if ($set === [] || array_key_exists($def->idField, $set)) {
+            throw new \InvalidArgumentException("updateWhen() on {$def->table} needs the fields to write, without the id field [{$def->idField}]; give at least one other field.");
+        }
+
+        return $this->writeWhen($def, $id, $when, $set, $lock) !== null;
+    }
+
+    /**
+     * Deletes the record $id of $def only while $when holds on it, as updateWhen() writes: one
+     * `DELETE … WHERE id = ? AND (condition)` on a storage with ConditionalWrites, the check and
+     * delete under $lock or the type's lock on another; under Skip the condition decides on the
+     * stored record and nothing is deleted (reported); under Refuse a delete whose condition holds
+     * throws WritesRefused.
+     *
+     * @param Condition|\Closure $when a Condition, or a function without parameters that returns one
+     * @param (\Closure(\Closure(): ?DynamicRecord): ?DynamicRecord)|null $lock
+     * @return DynamicRecord|null the record as read before the delete; null when nothing was deleted
+     * @since 0.89.0
+     */
+    public function deleteWhen(TypeDefinition $def, string|int $id, Condition|\Closure $when, ?\Closure $lock = null): ?DynamicRecord
+    {
+        return $this->writeWhen($def, $id, $when, null, $lock);
+    }
+
+    /**
+     * updateWhen() ($set given) and deleteWhen() ($set null): the record as read before, when
+     * the write was made (or would be); null when it was not.
+     *
+     * @param Condition|\Closure $when a Condition, or a function without parameters that returns one
+     * @param array<string, mixed>|null $set
+     */
+    private function writeWhen(TypeDefinition $def, string|int $id, Condition|\Closure $when, ?array $set, ?\Closure $lock): ?DynamicRecord
+    {
+        $driver = $this->resolveDriver($def->storage);
+        $condition = static function () use ($when, $def): Condition {
+            $built = $when instanceof \Closure ? $when() : $when;
+            if (!$built instanceof Condition) {
+                throw new \InvalidArgumentException("The condition of a write to {$def->table} must build a Preflow\\Data\\Condition, got " . get_debug_type($built) . '; return one from the function.');
+            }
+
+            return $built;
+        };
+        $read = function () use ($driver, $def, $id): ?array {
+            $row = $driver->findOne($def->table, $id, $def->idField);
+            $this->reportRead($def->storage, $def->table, (string) $id);
+
+            return $row;
+        };
+
+        if (Writes::policy() !== WritePolicy::Allow) {
+            $row = $read();
+            if ($row === null || !$condition()->holds($row)) {
+                return null;
+            }
+            Writes::allowed($def->storage, $def->table, (string) $id, $set === null ? 'delete' : 'save'); // throws under Refuse
+
+            return DynamicRecord::fromArray($def, $row);
+        }
+
+        if ($driver instanceof ConditionalWrites) {
+            if ($set !== null) {
+                // One statement; the record itself is not needed, so it is not read.
+                $row = [$def->idField => $id];
+                $written = $driver->updateWhen($def->table, $id, $condition(), $this->writeValues($def, $set), $def->idField);
+            } else {
+                $row = $read();
+                $written = $row !== null && $driver->deleteWhen($def->table, $id, $condition(), $def->idField);
+            }
+            if (!$written) {
+                return null;
+            }
+            $this->reportWrite($def->storage, $def->table, (string) $id);
+
+            return DynamicRecord::fromArray($def, $row);
+        }
+
+        // Read first: an unknown id (anything a client makes up) takes no lock and writes nothing.
+        if ($read() === null) {
+            return null;
+        }
+        $step = function () use ($driver, $def, $id, $set, $condition, $read): ?DynamicRecord {
+            $row = $read();
+            if ($row === null || !$condition()->holds($row)) {
+                return null;
+            }
+            if ($set === null) {
+                $driver->delete($def->table, $id, $def->idField);
+            } else {
+                $values = $this->writeValues($def, $set);
+                foreach ($values as $field => $value) {
+                    if ($value instanceof Add) {
+                        $values[$field] = $value->applyTo($row[$field] ?? null);
+                    }
+                }
+                $driver->save($def->table, $id, $this->storageValues($def, array_replace($row, $values)), $def->idField);
+            }
+            $this->reportWrite($def->storage, $def->table, (string) $id);
+
+            return DynamicRecord::fromArray($def, $row);
+        };
+
+        return match (true) {
+            $lock !== null => $lock($step),
+            $driver instanceof ExclusiveWrites => $driver->exclusive($def->table, $step),
+            default => $step(),
+        };
+    }
+
+    /**
+     * The values of a conditional write as saveType() stores them; an Add stays as it is.
+     *
+     * @param array<string, mixed> $set
+     * @return array<string, mixed>
+     */
+    private function writeValues(TypeDefinition $def, array $set): array
+    {
+        $adds = array_filter($set, static fn (mixed $value): bool => $value instanceof Add);
+
+        return $this->storageValues($def, array_diff_key($set, $adds)) + $adds;
+    }
+
+    /**
      * Writes some fields of the record $id of $def only while a check on it still holds: the
      * conditional write behind a token, a sign-in rotation or a code's use count, the same on
      * every storage and under every write policy.
@@ -2071,6 +2225,8 @@ final class DataManager
      * @param (\Closure(\Closure(): ?DynamicRecord): ?DynamicRecord)|null $lock
      * @return bool whether it was written (false: no such record, or $change did not apply)
      * @since 0.81.0
+     * @deprecated since 0.89.0, removed in a later minor: use updateWhen() with a Condition, which
+     *     every storage checks the same way (no SQL of your own).
      */
     public function updateIf(TypeDefinition $def, string|int $id, \Closure $change, ?\Closure $sql = null, ?\Closure $lock = null): bool
     {
@@ -2089,6 +2245,8 @@ final class DataManager
      * @param (\Closure(\Closure(): ?DynamicRecord): ?DynamicRecord)|null $lock
      * @return DynamicRecord|null the record as read before the delete; null when nothing was deleted
      * @since 0.81.0
+     * @deprecated since 0.89.0, removed in a later minor: use deleteWhen() with a Condition, which
+     *     every storage checks the same way (no SQL of your own).
      */
     public function deleteIf(TypeDefinition $def, string|int $id, \Closure $applies, ?\Closure $sql = null, ?\Closure $lock = null): ?DynamicRecord
     {

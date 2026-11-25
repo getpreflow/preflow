@@ -12,7 +12,7 @@ use Preflow\Data\ResultSet;
 use Preflow\Data\UniqueViolation;
 use Preflow\Data\VersionedStorage;
 
-abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\ConditionalMeasures, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints, \Preflow\Data\ConditionalUpdates, \Preflow\Data\DescribesColumns, \Preflow\Data\PdoConnection, \Preflow\Data\Transactions, \Preflow\Data\AtomicCounters, \Preflow\Data\UniqueIndexes, \Preflow\Data\InsertsNew, \Preflow\Data\SelectsColumns, \Preflow\Data\SelectsSubqueries, \Preflow\Data\StatesIdKinds, \Preflow\Data\RemembersColumns
+abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\ConditionalMeasures, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints, \Preflow\Data\ConditionalUpdates, \Preflow\Data\DescribesColumns, \Preflow\Data\PdoConnection, \Preflow\Data\Transactions, \Preflow\Data\AtomicCounters, \Preflow\Data\UniqueIndexes, \Preflow\Data\InsertsNew, \Preflow\Data\SelectsColumns, \Preflow\Data\SelectsSubqueries, \Preflow\Data\StatesIdKinds, \Preflow\Data\RemembersColumns, \Preflow\Data\ConditionalWrites
 {
     private ?\PDO $connection = null;
 
@@ -291,17 +291,33 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
         $matches = $expected === null ? $this->dialect->wholeNumber($version) . ' IS NULL' : "{$version} = ?";
         $bindings = $expected === null ? [$id] : [$id, (string) $expected];
 
+        return $this->matchedWrite(function () use ($type, $table, $set, $col, $matches, $values, $bindings, $idField): bool {
+            $update = 'UPDATE ' . $table . ' SET ' . implode(', ', $set) . " WHERE {$col} = ? AND {$matches}";
+            if ($this->write($type, $update, [...$values, ...$bindings], $idField)->rowCount() > 0) {
+                return true;
+            }
+            $select = "SELECT 1 FROM {$table} WHERE {$col} = ? AND {$matches} LIMIT 1" . $this->dialect->lockingRead();
+
+            return $this->read($type, $select, $bindings)->fetchColumn() !== false;
+        });
+    }
+
+    /**
+     * Runs a conditional write that tells whether its row matched, in a transaction of its own
+     * unless one is open (a locking read after it then sees the row the write locked). A lost race
+     * the server reports as an error (isLostRace()) is false in its own transaction (rolled back,
+     * nothing written); in a caller's transaction it is rethrown.
+     *
+     * @param \Closure(): bool $write
+     */
+    private function matchedWrite(\Closure $write): bool
+    {
         $own = !$this->inTransaction();
         if ($own) {
             $this->pdo->beginTransaction();
         }
         try {
-            $update = 'UPDATE ' . $table . ' SET ' . implode(', ', $set) . " WHERE {$col} = ? AND {$matches}";
-            $written = $this->write($type, $update, [...$values, ...$bindings], $idField)->rowCount() > 0;
-            if (!$written) {
-                $select = "SELECT 1 FROM {$table} WHERE {$col} = ? AND {$matches} LIMIT 1" . $this->dialect->lockingRead();
-                $written = $this->read($type, $select, $bindings)->fetchColumn() !== false;
-            }
+            $written = $write();
             if ($own) {
                 $this->pdo->commit();
             }
@@ -316,6 +332,44 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
             }
             throw $e;
         }
+    }
+
+    /**
+     * One `UPDATE … WHERE id = ? AND (condition)` (ConditionCompiler), run through execute(); the
+     * affected rows decide. MySQL without FOUND_ROWS counts changed rows only, so a match that
+     * changed nothing is confirmed by a locking read in the same transaction (as updateIfVersion()).
+     *
+     * @since 0.89.0
+     */
+    public function updateWhen(string $type, string|int $id, \Preflow\Data\Condition $when, array $set, string $idField = 'uuid'): bool
+    {
+        if ($set === [] || array_key_exists($idField, $set)) {
+            throw new \InvalidArgumentException('updateWhen() needs the fields to write, without the id field; give at least one other field.');
+        }
+        $compiler = new ConditionCompiler($this->dialect);
+        [$update, $bindings] = $compiler->update($type, $idField, $id, $when, $set);
+
+        return $this->matchedWrite(function () use ($compiler, $update, $bindings, $type, $idField, $id, $when): bool {
+            if ($this->execute($update, $bindings) > 0) {
+                return true;
+            }
+            [$select, $matchBindings] = $compiler->matches($type, $idField, $id, $when);
+
+            return $this->read($type, $select, $matchBindings)->fetchColumn() !== false;
+        });
+    }
+
+    /**
+     * One `DELETE … WHERE id = ? AND (condition)` (ConditionCompiler), run through execute(); the
+     * deleted rows decide.
+     *
+     * @since 0.89.0
+     */
+    public function deleteWhen(string $type, string|int $id, \Preflow\Data\Condition $when, string $idField = 'uuid'): bool
+    {
+        [$delete, $bindings] = (new ConditionCompiler($this->dialect))->delete($type, $idField, $id, $when);
+
+        return $this->execute($delete, $bindings) > 0;
     }
 
     /**

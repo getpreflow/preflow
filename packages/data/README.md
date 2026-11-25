@@ -332,7 +332,8 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 | `Savepoints::savepoint()` (0.77) | Writes inside a caller's open transaction that commit or roll back with it and whose failure leaves it usable. | DataManager does not use it; its consumer, `StoredActivityLog`, runs its writes and reads as they are (fine for storage without transactions). | Yes with it, within the caller's transaction. |
 | `DescribesColumns::hasColumn()` (0.77), `hasTable()` (0.78) | Says whether a table has a column (`hasColumn()`: publishing works on tables not migrated yet; since 0.84 the change dates, written only where it says the table has the column) and whether a type's table exists (`hasTable()`: the staff accounts, published copies). | takes any column and any table as present (right for schemaless storage; a SQL driver should implement it); its records get no change dates (0.84). | Read only. |
 | `RankedSearch::canScore()`, `score()` (0.78) | Scores the hits loose search found, so ⌘K puts a type's best matches first (`DataManager::canScore()`, `scoreIn()`; only for a type with `"fullText": true`). It orders, it never finds: the hits are the same on every driver. `MysqlDriver` scores with `MATCH … AGAINST` over the FULLTEXT index `migrate` adds. | hits stay in storage order; `scoreIn()` throws `UnsupportedStorage`. | Read only. |
-| `RunsSql::rawQuery()`, `execute()`, `dialect()` (0.78) | Raw SQL through `DataManager::raw()` and `execute()`; the auth tokens, remember-me and codes use it for their conditional single-statement writes. | `raw()` and `execute()` throw `UnsupportedStorage` (a `LogicException`), never a different result; tokens, remember-me and codes read and write under their own lock instead. | As the SQL runs. |
+| `RunsSql::rawQuery()`, `execute()`, `dialect()` (0.78) | Raw SQL through `DataManager::raw()` and `execute()`. | `raw()` and `execute()` throw `UnsupportedStorage` (a `LogicException`), never a different result. | As the SQL runs. |
+| `ConditionalWrites::updateWhen()`, `deleteWhen()` (0.89) | Writes or deletes one record only while a `Condition` holds, in one step of its own (`PdoDriver`: one `UPDATE`/`DELETE … WHERE id = ? AND (…)` through `execute()`, compiled by `Driver\ConditionCompiler`): the auth tokens, remember-me, codes and the change-date backfill. The contract runs every case through the driver and through `PlainDriver`, so both must agree. | `DataManager` reads the record, checks `Condition::holds()` and writes, under the caller's lock or the type's (`ExclusiveWrites`), else plainly. | Yes with it or `ExclusiveWrites`; the plain fallback is not. |
 | `PdoConnection::pdo()` (0.78, extends `RunsSql`) | The PDO connection itself, for `preflow migrate`, `Migration\Schema`, the table sync and the convert tool. | `migrate` runs only the steps registered for any storage; the table sync skips the type. | — |
 | `Maintenance::check()`, `compact()` (0.78) | Checks the whole store (structure, indexes, references) and compacts it, through the driver's own prepared connection (`preflow db:check`, `db:vacuum`). For storage whose database tools can't do it once Preflow owns it (SQLite: the `preflow_text` collation). | the commands refuse the storage and point to the database's own tools. `MysqlDriver` implements it since 0.84 (`CHECK TABLE`, `OPTIMIZE TABLE`). | — |
 | `MaintenanceReport::report()` (0.84, extends `Maintenance`) | Lines for the operator that are no problems: `db:check` prints them after the problems. MySQL: its text columns by collation and `not applicable: …` for what it has no check for (references between records), so a skipped check never reads as a passed one. | `db:check` prints the problems only. | — |
@@ -341,7 +342,7 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 | `WriteTimes::writeTimes()` (0.84) | When each record was last written by the storage's own bookkeeping (the JSON driver: each file's modification time), for the change-date backfill of `preflow migrate`. | the backfill takes the record's creation time, else the time of the migrate. | Read only. |
 | `ChangeTokens::changeToken()` (0.77) | A token that moves with every write of a type, so readers reuse what they computed. | `DataManager::changeToken()` only passes it on (null); its consumer, `StoredActivityLog::people()`, reuses nothing and computes every time. | Read only. |
 
-A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`, `InsertsNew`, `BulkDeletes`,
+A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`, `ConditionalWrites` (0.89), `InsertsNew`, `BulkDeletes`,
 `Savepoints`, `DescribesColumns`, `AtomicCounters`, `AggregatingStorage`, `PdoConnection` (so
 `RunsSql`), `Transactions`, `UniqueIndexes`, `SelectsColumns` and `SelectsSubqueries` from it and implements `exclusive()` itself (as
 `SqliteDriver` and `MysqlDriver` do); its `Dialect` may add `PatternMatching` and `InsertIfNew` (0.80). `MysqlDriver` adds
@@ -544,9 +545,56 @@ $rows = $dm->raw(
 );
 ```
 
+### Conditional writes (0.89)
+
+`updateWhen()` writes some fields of one record only while a check on it still holds;
+`deleteWhen()` deletes it only then. The check is a `Condition`, the same on every storage:
+
+```php
+use Preflow\Data\Add;
+use Preflow\Data\Condition;
+
+// Count one use while the code has one left.
+$counted = $dm->updateWhen($codeType, $id, Condition::any(
+    Condition::isEmpty('max_uses'),
+    Condition::whereField('uses', '<', 'max_uses', numbers: true),
+), ['uses' => new Add(1)]);   // true if counted, false if used up (or no such record)
+
+// Spend a token once: the record as it was, or null.
+$token = $dm->deleteWhen($tokenType, $hash, Condition::all(
+    Condition::where('purpose', '=', 'reset'),
+    Condition::where('expires_at', '>', time()),
+));
+```
+
+- `Condition::where($field, $op, $value)` compares a field with a value: `=`, `!=`, `<`, `>`,
+  `<=`, `>=`, or `IN` with a list. A whole number compares the field as a whole number ('3.0' is
+  3); a text compares it exactly ('ab' is not 'Ab'). A field without a value never matches,
+  `!=` included.
+- `Condition::whereField($field, $op, $other, numbers: true)` compares two fields of the record
+  (as texts without `numbers`).
+- `Condition::isEmpty($field)`: null, `''` or no value at all.
+- `Condition::all(...)` and `Condition::any(...)` group them, nested as you like.
+- In the values, `new Add(1)` adds to the stored number (`new Add(-1)` subtracts); no value counts
+  from 0. Everything else is written as `saveType()` writes it. Only the named fields are written.
+- Instead of a `Condition` you may pass a function that returns one: it is built when the check
+  runs, so a time it reads is read after a lock was taken, not before waiting for it.
+
+On SQL this is one `UPDATE … WHERE id = ? AND (…)` (or `DELETE`), and the affected rows say whether
+it was written, so two requests can never both take the last use. On the JSON files the record is
+read, checked (`Condition::holds()`) and written under the type's lock. A driver of your own gets
+it for free the same way, or compiles the condition itself by implementing `ConditionalWrites`
+(`Driver\ConditionCompiler` turns it into SQL for a `Dialect`). Under a preview (writes skipped)
+the condition is checked as on a visit and nothing is written; when writes are refused, a write
+whose condition holds throws. Neither the version field nor the change date moves unless you name
+them in the values.
+
+`updateIf()` and `deleteIf()` (0.81, a closure plus your own SQL) still work but are deprecated
+and go in a later minor: move to `updateWhen()` / `deleteWhen()`.
+
 ### Raw writes
 
-`execute()` runs a write the builder cannot express (a conditional `UPDATE`, a `DELETE`,
+`execute()` runs a write the builder cannot express (a `DELETE` of many rows,
 an upsert) and returns the affected rows. Only SQL (PDO) storages run it; any other driver
 throws a `LogicException`. Ints, bools and nulls are bound with their type, so arithmetic and
 comparisons in SQL work on numbers.
@@ -560,7 +608,7 @@ $taken = $dm->execute(
 ```
 
 One conditional statement decides by its affected rows, so concurrent requests cannot both
-take the last seat. A package writing its own SQL asks the driver for `PdoDriver::dialect()` and
+take the last seat (for one record, `updateWhen()` above does this on every storage). A package writing its own SQL asks the driver for `PdoDriver::dialect()` and
 lets the `Dialect` write what differs between databases, never checking for `MysqlDialect` or
 `SqliteDialect`, so the SQL also runs on a third-party dialect (PostgreSQL, say):
 `quoteIdentifier()`; `insertOrUpdateSql($table, $columns, $idField, $set)` for one statement that
@@ -719,7 +767,7 @@ driver:
   bytes; a versioned save moves it with the version, and `saveTypeIfVersion()` with `$next` equal
   to `$expected` keeps the date the record was loaded with. It is never content: versions,
   publish states and `changes()` ignore it. A read never touches it.
-- **Not moved:** writes that name their fields write only those: `updateIf()`,
+- **Not moved:** writes that name their fields write only those: `updateWhen()`, `updateIf()`,
   `updateFieldsIfVersion()`, `incrementIn()` (counters), raw SQL, a driver called directly. A caller
   that wants the date moved includes it: `[ChangeDates::FIELD => ChangeDates::text($now)]`.
 - **Keeping dates:** `$dm->keepingChangeDates(fn () => …)` writes the change date a record carries
@@ -744,7 +792,7 @@ driver:
   `_published_at`), the storage's own write time (`WriteTimes`: a JSON file's modification time),
   its `createdAt` / `created_at`, else the time of the migrate.
   - It runs while the site serves requests: each date is a conditional write of that key alone
-    (`updateIf()`: `UPDATE … WHERE id = ? AND` the date is empty on SQL, a check and write under the
+    (`updateWhen()`: `UPDATE … WHERE id = ? AND` the date is empty on SQL, a check and write under the
     type's lock elsewhere). A record deleted meanwhile is not written back; a date a save gave
     meanwhile stays; a JSON file is written in the bytes a save writes (the change date closes the
     system keys).
