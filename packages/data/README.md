@@ -592,6 +592,14 @@ the condition is checked as on a visit and nothing is written; when writes are r
 whose condition holds throws. Neither the version field nor the change date moves unless you name
 them in the values.
 
+Two notes for SQL storages that run through `RunsSql` (a driver without `ConditionalWrites`):
+the read that confirms the write runs outside a transaction, so a commit between the two can make
+it report a different answer (any isolation level; the effect is bounded to that one record). And
+MySQL's `LENGTH()` counts bytes, which is enough to tell texts that differ only in trailing
+spaces; the connection must still be `utf8mb4` (the built-in driver sets it). Only `-?digits` and
+`-?digits.digits` are numbers: `' 3'` and `'1e3'` read as 0 on the JSON files and on MySQL
+(SQLite's `CAST` reads 3 and 1; counters never hold such text).
+
 `updateIf()` and `deleteIf()` (0.81, a closure plus your own SQL) still work but are deprecated
 and go in a later minor: move to `updateWhen()` / `deleteWhen()`.
 
@@ -883,8 +891,9 @@ final class Job extends Model { … }
   (unknown or translatable field, a field twice, a name another index has already). The
   `{table}__published` table gets it in addition to the indexes it copies, named
   `idx_{table}__published_{field1}_{field2}`; the working table and the revisions do not. A type
-  that does not publish and declares one is a boot error naming `PublishedIndex`: use `Index`
-  there. The check runs when `preflow migrate` syncs the publishing tables and when
+  that does not publish and declares one is refused (naming `PublishedIndex`: use `Index`
+  there) by `preflow migrate` and `preflow optimize` when preflow/publishing is installed;
+  without publishing the declaration has no effect. The check runs when `preflow migrate` syncs the publishing tables and when
   `preflow optimize` builds the boot manifest, not on every request. A field in a published index
   is stored short in the published table, so, like an indexed field, it is limited to its
   column length (191 unless `length` says otherwise) in the working record too: adding the index to

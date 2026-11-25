@@ -133,6 +133,19 @@ final class PublishingTablesTest extends PublishingAppTestCase
         }
     }
 
+    /** The real provider wiring: building the manifest for the site (`preflow optimize`) refuses it. */
+    public function test_building_the_manifest_through_the_provider_refuses_it(): void
+    {
+        $this->writeNote();
+
+        try {
+            (new \Preflow\Core\Boot\ManifestBuilder($this->dir))->build();
+            $this->fail('the manifest build accepted it');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('declares PublishedIndex', $e->getMessage());
+        }
+    }
+
     private function writeNote(): void
     {
         $this->write('config/models/note.json', (string) json_encode([

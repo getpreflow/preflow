@@ -11,7 +11,8 @@ use Preflow\Data\Condition;
  * A Condition and the values of a conditional write as SQL of a Dialect: one UPDATE or DELETE of
  * one row, WHERE its id matches AND the condition holds. Everything a value says is bound; the
  * dialect reads stored values (Dialect::wholeNumber() for numbers, exactText() for texts, whose
- * LENGTH() also decides, so trailing spaces count where a collation pads), so a number column is
+ * LENGTH() also decides, so trailing spaces count where a collation pads; MySQL's LENGTH() counts
+ * bytes, which serves for that, and the connection must be utf8mb4), so a number column is
  * never compared with '' and a text never by a column's collation.
  * PdoDriver uses it for ConditionalWrites; a SQL driver of another kind may use it too.
  *

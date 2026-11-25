@@ -8,7 +8,9 @@ namespace Preflow\Data\Attributes;
  * A composite index only the published copy of a type gets: `#[PublishedIndex('slug', 'state')]`
  * (as `"published_indexes": [["slug", "state"]]` in a model file). Repeatable. For lookups the
  * public site makes on published records (a type with publishing); the working table, which only
- * editors read, does not carry it. A type that does not publish and declares one is refused at boot.
+ * editors read, does not carry it. A type that does not publish and declares one is refused by
+ * `preflow migrate` and `preflow optimize` when preflow/publishing is installed; without publishing
+ * the declaration has no effect.
  *
  * @since 0.89.0
  */

@@ -2070,6 +2070,10 @@ final class DataManager
      * holds, as if written (ruling R9), and the write is reported; under Refuse a write whose
      * condition holds throws WritesRefused (core). So a preview takes the path a visit takes.
      *
+     * On the RunsSql path the read that confirms the write runs outside a transaction, at any
+     * isolation level (the effect is bounded to that one record). MySQL's LENGTH() counts bytes,
+     * so the connection must be utf8mb4 (the built-in driver sets it).
+     *
      * It moves neither a version field (_version) nor the change date (ChangeDates): a caller
      * that wants them moved names them in $set.
      *

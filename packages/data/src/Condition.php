@@ -199,8 +199,9 @@ final class Condition
     /**
      * A stored value as a whole number, as Driver\Dialect::wholeNumber() reads it: null for null
      * and '' (no number), the whole part, towards zero, of a number or of text that is one
-     * ('3.0' is 3, '-2.5' is -2), else what PHP reads at its start (0 for text with no number in
-     * it; text that only starts with a number is up to each storage).
+     * ('3.0' is 3, '-2.5' is -2), else 0. Only `-?digits` and `-?digits.digits` are numbers, as on
+     * MySQL: ' 3', '3 ' and '1e3' are text, so 0. (SQLite's CAST reads ' 3' as 3 and '1e3' as 1;
+     * counters never hold such text, so the storages only differ for values nobody writes.)
      */
     public static function wholeNumber(mixed $stored): ?int
     {
@@ -208,9 +209,9 @@ final class Condition
             $stored === null, $stored === '' => null,
             is_int($stored) => $stored,
             is_float($stored), is_bool($stored) => (int) $stored,
-            is_string($stored) && preg_match('/^-?\d+$/', $stored) === 1 => (int) $stored,
-            is_string($stored) && is_numeric($stored) => (int) (float) $stored,
-            is_string($stored) => (int) $stored,
+            is_string($stored) && preg_match('/^-?\d+$/D', $stored) === 1 => (int) $stored,
+            is_string($stored) && preg_match('/^-?\d+\.\d*$/D', $stored) === 1 => (int) (float) $stored,
+            is_string($stored) => 0,
             default => 0,
         };
     }

@@ -188,6 +188,10 @@ final class ConditionalWritesTest extends TestCase
         $this->assertSame(3, Condition::wholeNumber('3.0'));
         $this->assertSame(-2, Condition::wholeNumber('-2.5'));
         $this->assertSame(0, Condition::wholeNumber('abc'));
+        $this->assertSame(0, Condition::wholeNumber(' 3'));
+        $this->assertSame(0, Condition::wholeNumber('3 '));
+        $this->assertSame(0, Condition::wholeNumber('1e3'));
+        $this->assertSame(0, Condition::wholeNumber("3\n"));
         $this->assertSame(9007199254740993, Condition::wholeNumber('9007199254740993'));
         $this->assertSame(1, Condition::wholeNumber(true));
         $this->assertNull(Condition::text(null));

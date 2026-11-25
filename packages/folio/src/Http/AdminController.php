@@ -1435,9 +1435,16 @@ final class AdminController
         }
         // The record's values for the editors (FieldContext::$values): each in the default language,
         // as its own field type reads it (a tags field's list, also from an old comma text).
-        $read = [];
-        foreach ($typeDef->fields as $name => $fieldDef) {
-            $read[$name] = $this->fieldTypes->get($fieldDef->type)->fromStorage(LocaleValue::default($values[$name] ?? null, $locales));
+        // Only read when a field takes its options from another ("options_from"): no per-field read otherwise.
+        $read = null;
+        foreach ($typeDef->fields as $fieldDef) {
+            if ($fieldDef->type === 'select' && array_key_exists('options_from', $fieldDef->config)) {
+                $read = [];
+                foreach ($typeDef->fields as $name => $other) {
+                    $read[$name] = $this->fieldTypes->get($other->type)->fromStorage(LocaleValue::default($values[$name] ?? null, $locales));
+                }
+                break;
+            }
         }
         foreach ($typeDef->fields as $name => $fieldDef) {
             if ($name === $typeDef->idField || ($fieldDef->config['hidden'] ?? false) === true) {

@@ -202,6 +202,28 @@ final class OptionsFromSaveTest extends TestCase
         $this->assertStringContainsString('<option value="Pizza">Pizza</option>', $html, 'the submitted source values');
     }
 
+    public function test_a_translatable_source_counts_with_its_default_language_values(): void
+    {
+        file_put_contents($this->base . '/m/poll.json', json_encode([
+            'key' => 'poll', 'table' => 'poll', 'storage' => 'json', 'id_field' => 'uuid',
+            'fields' => [
+                'choices' => ['type' => 'string', 'translatable' => true],
+                'choice' => ['type' => 'select', 'options_from' => 'choices'],
+            ],
+        ]));
+        $this->registry = new TypeRegistry($this->base . '/m', new \Preflow\Data\Locales(['en', 'de'], 'en'));
+        $this->dm = new DataManager(['json' => new JsonFileDriver($this->base . '/s')], 'json', $this->registry, new ValidatorFactory(new RuleFactory()));
+        $this->dm->saveType(DynamicRecord::fromArray($this->registry->get('poll'), ['uuid' => 'p1', 'choices' => ['en' => 'Yes', 'de' => 'Ja']]), false);
+
+        $post = static fn (string $choice): array => ['choices' => 'Yes', 'choice' => $choice];
+        $request = static fn (string $choice) => (new Psr17Factory())->createServerRequest('POST', '/folio/poll/p1')
+            ->withAttribute('type', 'poll')->withAttribute('id', 'p1')->withParsedBody($post($choice));
+
+        $this->assertSame(302, $this->controller()->update($request('Yes'))->getStatusCode(), 'a default-language value');
+        $this->assertSame(422, $this->controller()->update($request('Ja'))->getStatusCode(), 'a German value is not an option');
+        $this->assertSame('Yes', $this->dm->findType('poll', 'p1')?->get('choice'));
+    }
+
     public function test_empty_passes_unless_required(): void
     {
         $this->store(['title' => 'Lunch?', 'answers' => ['Pizza'], 'answer' => 'Pizza', 'fallback' => 'Pizza']);
