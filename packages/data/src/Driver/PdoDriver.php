@@ -336,8 +336,13 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
 
     /**
      * One `UPDATE … WHERE id = ? AND (condition)` (ConditionCompiler), run through execute(); the
-     * affected rows decide. MySQL without FOUND_ROWS counts changed rows only, so a match that
-     * changed nothing is confirmed by a locking read in the same transaction (as updateIfVersion()).
+     * affected rows decide. MySQL without FOUND_ROWS (a connection not made with
+     * MysqlDriver::connectionOptions()) counts changed rows only, so when no row changed and the
+     * write could have left the row as it was (no Add), a locking read in the same transaction
+     * asks whether the row holds the condition and already every value written. Under READ
+     * COMMITTED a commit landing between the two may make that read say yes for a row another
+     * writer brought into exactly that state; the row then is what this write would have made
+     * it. A missing column names the fix (`preflow migrate`), as save() does.
      *
      * @since 0.89.0
      */
@@ -349,14 +354,35 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
         $compiler = new ConditionCompiler($this->dialect);
         [$update, $bindings] = $compiler->update($type, $idField, $id, $when, $set);
 
-        return $this->matchedWrite(function () use ($compiler, $update, $bindings, $type, $idField, $id, $when): bool {
-            if ($this->execute($update, $bindings) > 0) {
+        $unchanged = ConditionCompiler::unchangedBy($set);
+
+        return $this->matchedWrite(function () use ($compiler, $update, $bindings, $type, $idField, $id, $when, $unchanged): bool {
+            if ($this->conditionalWrite($type, $update, $bindings, $idField) > 0) {
                 return true;
             }
-            [$select, $matchBindings] = $compiler->matches($type, $idField, $id, $when);
+            if ($unchanged === null) {
+                return false; // an Add changes the row: no affected row means no match
+            }
+            [$select, $matchBindings] = $compiler->matches($type, $idField, $id, \Preflow\Data\Condition::all($when, $unchanged));
 
             return $this->read($type, $select, $matchBindings)->fetchColumn() !== false;
         });
+    }
+
+    /**
+     * execute() of a conditional UPDATE or DELETE (a subclass may watch execute()), its failures
+     * read as write() reads them: a missing column names `preflow migrate`, a duplicate in a unique
+     * index is a UniqueViolation.
+     *
+     * @param list<mixed> $bindings
+     */
+    private function conditionalWrite(string $table, string $sql, array $bindings, string $idField): int
+    {
+        try {
+            return $this->execute($sql, $bindings);
+        } catch (\PDOException $e) {
+            throw $this->writeFailure($e, $table, $idField);
+        }
     }
 
     /**
@@ -369,7 +395,7 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
     {
         [$delete, $bindings] = (new ConditionCompiler($this->dialect))->delete($type, $idField, $id, $when);
 
-        return $this->execute($delete, $bindings) > 0;
+        return $this->conditionalWrite($type, $delete, $bindings, $idField) > 0;
     }
 
     /**
@@ -595,13 +621,19 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
         } catch (\PDOException $e) {
             // The exception's trace holds the statement; reset it, or SQLite keeps its read open.
             $stmt?->closeCursor();
-            $column = $this->dialect->missingColumn($e);
-            if ($column !== null) {
-                throw new \RuntimeException("Table {$table} has no column {$column}; run `preflow migrate`.", 0, $e);
-            }
-            $unique = $idField === null ? null : $this->dialect->uniqueViolation($e, $table, $idField);
-            throw $unique ?? $e;
+            throw $this->writeFailure($e, $table, $idField);
         }
+    }
+
+    /** A failed write as the caller should see it: a missing column names the fix, a duplicate is a UniqueViolation. */
+    private function writeFailure(\PDOException $e, string $table, ?string $idField): \Throwable
+    {
+        $column = $this->dialect->missingColumn($e);
+        if ($column !== null) {
+            return new \RuntimeException("Table {$table} has no column {$column}; run `preflow migrate`.", 0, $e);
+        }
+
+        return ($idField === null ? null : $this->dialect->uniqueViolation($e, $table, $idField)) ?? $e;
     }
 
     /**

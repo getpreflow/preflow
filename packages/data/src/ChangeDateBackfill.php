@@ -24,8 +24,8 @@ use Preflow\Data\Attributes\Timestamps;
  * alone (DataManager::updateWhen(): one `UPDATE … WHERE id = ? AND the date is empty` on SQL, a
  * check and write under the type's lock elsewhere): a record deleted meanwhile is not written back,
  * a date a save gave meanwhile stays, no version moves, and the record is written as a save writes
- * it (a JSON file in its canonical bytes). Only empty dates (null or '') are written, so a second
- * run changes nothing. Records are read CHUNK at a time, each chunk in one transaction where the
+ * it (a JSON file in its canonical bytes). Only empty dates (null, '' or '0') are written, so a
+ * second run changes nothing. Records are read CHUNK at a time, each chunk in one transaction where the
  * storage has them, in the order of their ids; a run cut short leaves the rest for the next migrate.
  *
  * What it says, one line per table: how many records got a date, from which sources; a warning for
@@ -119,7 +119,7 @@ final class ChangeDateBackfill
         ], 0);
         $lines = [];
         try {
-            foreach ([null, ''] as $empty) {
+            foreach ([null, '', '0'] as $empty) { // no date, as ChangeDates::isSet() reads it
                 // Paged by id: a record whose write does not take (it waits for the next run) is
                 // passed over, never read again in this run, so it cannot hold up the rest.
                 $after = null;

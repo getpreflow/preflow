@@ -21,13 +21,15 @@ namespace Preflow\Data;
  *   no number in it, as Driver\Dialect::wholeNumber() reads it. A field without a value (null, ''
  *   or no key) matches no number comparison, `!=` included.
  * - where() with a text (or a list of texts) compares the field's text exactly, character by
- *   character (byte order for < and >): 'ab' is not 'Ab'. A field holding null or no key
+ *   character (byte order for < and >): 'ab' is not 'Ab', 'Ab ' is not 'Ab' (also where a
+ *   collation pads with spaces; a control character before trailing spaces is up to each storage
+ *   there). A field holding null or no key
  *   matches no text comparison, `!=` included; '' is a text. Compare a number or boolean field
  *   with a whole number: compared with a text, it is up to each storage (SQLite compares it as a
  *   number).
  * - whereField() compares two fields of the same record, as whole numbers (numbers: true) or as
  *   texts; a side without a value matches nothing.
- * - isEmpty() holds for null, '' and a missing key (not for 0, '0' or an empty list).
+ * - isEmpty() holds for null, '' and a missing key (not for 0, '0', spaces or an empty list).
  * - all() holds when each of its conditions holds (and with none), any() when one does (never
  *   with none).
  *

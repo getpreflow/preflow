@@ -58,9 +58,44 @@ final class ConditionalWritesTest extends TestCase
 
         $this->pdo->statements = [];
         $this->assertFalse($this->dm->updateWhen($this->def, 'a', $when, ['uses' => new Add(1)]), 'used up: 2 < 2 does not hold');
-        $writes = array_filter($this->pdo->statements, static fn (string $sql): bool => !str_starts_with($sql, 'SELECT'));
-        $this->assertCount(1, $writes, 'one write; a read confirms a match that changed nothing (MySQL without FOUND_ROWS)');
+        $this->assertCount(1, $this->pdo->statements, 'an Add always changes its row: no affected row is no match, nothing to confirm');
         $this->assertSame(2, (int) $this->dm->findIn($this->def, 'a')?->get('uses'));
+
+        $this->pdo->statements = [];
+        $this->assertFalse($this->dm->updateWhen($this->def, 'a', Condition::where('label', '=', 'B'), ['label' => 'C']));
+        $this->assertCount(2, $this->pdo->statements, 'a write that may leave its row as it was is confirmed (MySQL without FOUND_ROWS)');
+        $this->assertStringStartsWith('SELECT 1 FROM `counters`', $this->pdo->statements[1]);
+        $this->assertStringContainsString('`label`', substr($this->pdo->statements[1], (int) strrpos($this->pdo->statements[1], 'AND')), 'the read also asks for the values written');
+    }
+
+    public function test_a_storage_that_only_runs_sql_writes_in_one_statement_too(): void
+    {
+        $dm = new DataManager(['default' => new SqlOnly(new SqliteDriver($this->pdo))]);
+        $this->pdo->statements = [];
+
+        $this->assertTrue($dm->updateWhen($this->def, 'a', Condition::where('uses', '<', 2), ['uses' => new Add(1)]));
+        $this->assertCount(1, $this->pdo->statements, implode("\n", $this->pdo->statements));
+        $this->assertStringStartsWith('UPDATE `counters`', $this->pdo->statements[0]);
+        $this->assertFalse($dm->updateWhen($this->def, 'a', Condition::where('uses', '<', 2), ['uses' => new Add(1)]));
+
+        $this->pdo->statements = [];
+        $this->assertSame('A', $dm->deleteWhen($this->def, 'a', Condition::where('uses', '=', 2))?->get('label'));
+        $this->assertSame(['DELETE'], array_values(array_map(static fn (string $sql): string => strtok($sql, ' '), array_filter($this->pdo->statements, static fn (string $sql): bool => !str_starts_with($sql, 'SELECT')))));
+    }
+
+    public function test_a_missing_column_names_the_fix(): void
+    {
+        foreach ([
+            fn () => $this->dm->updateWhen($this->def, 'a', Condition::all(), ['gone' => 1]),
+            fn () => $this->dm->deleteWhen($this->def, 'a', Condition::where('gone', '=', 1)),
+        ] as $write) {
+            try {
+                $write();
+                $this->fail('refused');
+            } catch (\RuntimeException $e) {
+                $this->assertSame('Table counters has no column gone; run `preflow migrate`.', $e->getMessage());
+            }
+        }
     }
 
     public function test_a_delete_on_sql_is_one_statement_after_the_read_of_the_record(): void
@@ -83,10 +118,12 @@ final class ConditionalWritesTest extends TestCase
         ), $bindings);
 
         $this->assertSame(
-            '(CAST(NULLIF(`note`, \'\') AS INTEGER) IS NULL) AND ((CAST(NULLIF(`uses`, \'\') AS INTEGER) >= ?) OR ((`label` COLLATE BINARY) IN (?, ?))) AND ((`label` COLLATE BINARY) <> ?)',
+            '((`note` IS NULL OR LENGTH((`note` COLLATE BINARY)) = 0)) AND ((CAST(NULLIF(`uses`, \'\') AS INTEGER) >= ?)'
+                . ' OR (((`label` COLLATE BINARY) = ? AND LENGTH((`label` COLLATE BINARY)) = LENGTH(?)) OR ((`label` COLLATE BINARY) = ? AND LENGTH((`label` COLLATE BINARY)) = LENGTH(?))))'
+                . ' AND (((`label` COLLATE BINARY) <> ? OR LENGTH((`label` COLLATE BINARY)) <> LENGTH(?)))',
             $sql,
         );
-        $this->assertSame([3, 'a', 'b', ''], $bindings);
+        $this->assertSame([3, 'a', 'a', 'b', 'b', '', ''], $bindings);
     }
 
     public function test_an_update_needs_fields_other_than_the_id(): void
@@ -174,5 +211,56 @@ final class CountingPdo extends \Pdo\Sqlite
         $this->statements[] = $query;
 
         return parent::prepare($query, $options);
+    }
+}
+
+/** A storage that runs SQL and nothing else: no ConditionalWrites, not a PdoDriver. */
+final class SqlOnly implements \Preflow\Data\RunsSql
+{
+    public function __construct(private readonly SqliteDriver $inner) {}
+
+    public function findOne(string $type, string|int $id, string $idField = 'uuid'): ?array
+    {
+        return $this->inner->findOne($type, $id, $idField);
+    }
+
+    public function findMany(string $type, \Preflow\Data\Query $query): \Preflow\Data\ResultSet
+    {
+        return $this->inner->findMany($type, $query);
+    }
+
+    public function save(string $type, string|int $id, array $data, string $idField = 'uuid'): void
+    {
+        $this->inner->save($type, $id, $data, $idField);
+    }
+
+    public function delete(string $type, string|int $id, string $idField = 'uuid'): void
+    {
+        $this->inner->delete($type, $id, $idField);
+    }
+
+    public function exists(string $type, string|int $id, string $idField = 'uuid'): bool
+    {
+        return $this->inner->exists($type, $id, $idField);
+    }
+
+    public function lastInsertId(): string|int
+    {
+        return $this->inner->lastInsertId();
+    }
+
+    public function rawQuery(string $sql, array $bindings = []): array
+    {
+        return $this->inner->rawQuery($sql, $bindings);
+    }
+
+    public function execute(string $sql, array $bindings = []): int
+    {
+        return $this->inner->execute($sql, $bindings);
+    }
+
+    public function dialect(): \Preflow\Data\Driver\Dialect
+    {
+        return $this->inner->dialect();
     }
 }

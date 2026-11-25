@@ -238,4 +238,18 @@ final class ChangeDateBackfillTest extends TestCase
         $this->assertSame(['gave 2 records of page a change date (2 from now)'], $lines);
         $this->assertSame(['' => null, 'b' => '2026-11-22T12:00:00+00:00', 'c' => '2026-11-22T12:00:00+00:00'], $pdo->query('SELECT uuid, _updated_at FROM page ORDER BY uuid')->fetchAll(\PDO::FETCH_KEY_PAIR));
     }
+
+    public function test_a_zero_date_on_sql_counts_as_none_and_is_written(): void
+    {
+        $pdo = new \PDO('sqlite:' . $this->dir . '/db.sqlite');
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $pdo->exec('CREATE TABLE page (uuid TEXT PRIMARY KEY, title TEXT, _updated_at TEXT)');
+        $pdo->exec("INSERT INTO page (uuid, title, _updated_at) VALUES ('a', 'A', '0'), ('b', 'B', '2026-01-01T00:00:00+00:00')");
+        $dm = new DataManager(['default' => new SqliteDriver($pdo)], 'default');
+
+        $lines = self::backfill($dm, [new TypeDefinition('page', 'page', 'default', ['title' => new TypeFieldDefinition('title')])]);
+
+        $this->assertSame(['gave 1 record of page a change date (1 from now)'], $lines);
+        $this->assertSame(['a' => '2026-11-22T12:00:00+00:00', 'b' => '2026-01-01T00:00:00+00:00'], $pdo->query('SELECT uuid, _updated_at FROM page ORDER BY uuid')->fetchAll(\PDO::FETCH_KEY_PAIR));
+    }
 }

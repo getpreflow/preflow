@@ -2059,7 +2059,9 @@ final class DataManager
      * a lock was taken, not before waiting for it.
      *
      * Where writes run (WritePolicy::Allow): on a storage with ConditionalWrites (the SQL drivers)
-     * one `UPDATE … WHERE id = ? AND (condition)` decides by its affected rows; on another the
+     * one `UPDATE … WHERE id = ? AND (condition)` decides by its affected rows; on another storage
+     * that runs SQL (RunsSql) DataManager compiles the same statement for its dialect
+     * (Driver\ConditionCompiler) and runs it through execute(); on another the
      * record is read, Condition::holds() checks it and the record is written, under $lock (a
      * caller's own lock: it runs the step it is given and returns its result) or else under the
      * type's lock (ExclusiveWrites), else plainly, which is not atomic. Under Skip (a preview, an
@@ -2146,6 +2148,37 @@ final class DataManager
             } else {
                 $row = $read();
                 $written = $row !== null && $driver->deleteWhen($def->table, $id, $condition(), $def->idField);
+            }
+            if (!$written) {
+                return null;
+            }
+            $this->reportWrite($def->storage, $def->table, (string) $id);
+
+            return DynamicRecord::fromArray($def, $row);
+        }
+
+        if ($driver instanceof RunsSql) {
+            // A SQL storage of another kind: the same one statement, compiled for its dialect.
+            $compiler = new Driver\ConditionCompiler($driver->dialect());
+            $when = $condition();
+            if ($set !== null) {
+                $row = [$def->idField => $id];
+                $values = $this->writeValues($def, $set);
+                [$sql, $bindings] = $compiler->update($def->table, $def->idField, $id, $when, $values);
+                $written = $driver->execute($sql, $bindings) > 0;
+                $unchanged = Driver\ConditionCompiler::unchangedBy($values);
+                if (!$written && $unchanged !== null) {
+                    // A connection that counts changed rows only (MySQL without FOUND_ROWS): did it match a row it left as it was?
+                    [$select, $selectBindings] = $compiler->matches($def->table, $def->idField, $id, Condition::all($when, $unchanged));
+                    $written = $driver->rawQuery($select, $selectBindings) !== [];
+                }
+            } else {
+                $row = $read();
+                $written = false;
+                if ($row !== null) {
+                    [$sql, $bindings] = $compiler->delete($def->table, $def->idField, $id, $when);
+                    $written = $driver->execute($sql, $bindings) > 0;
+                }
             }
             if (!$written) {
                 return null;

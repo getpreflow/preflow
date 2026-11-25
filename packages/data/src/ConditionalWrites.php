@@ -10,10 +10,11 @@ namespace Preflow\Data;
  * `DELETE … WHERE id = ? AND (…)` (Driver\ConditionCompiler) and decides by the affected rows.
  *
  * Call it through DataManager::updateWhen() and deleteWhen(), which apply the write policy and
- * report the write. A storage without this interface needs nothing for them: DataManager reads
- * the record, checks Condition::holds() and writes, under the type's lock (ExclusiveWrites) where
- * the storage has one. The storage driver contract (preflow/testing) runs the same cases through
- * both paths.
+ * report the write. A storage without this interface needs nothing for them: on one that runs SQL
+ * (RunsSql) DataManager compiles the same one statement for its dialect and runs it through
+ * execute(); on any other it reads the record, checks Condition::holds() and writes, under the
+ * type's lock (ExclusiveWrites) where the storage has one. The storage driver contract
+ * (preflow/testing) runs the same cases through every path.
  *
  * @since 0.89.0
  */

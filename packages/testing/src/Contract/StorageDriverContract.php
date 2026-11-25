@@ -1779,14 +1779,15 @@ abstract class StorageDriverContract extends TestCase
     // --- conditional writes (DataManager::updateWhen(), deleteWhen(), @since 0.89.0) -------------
 
     /**
-     * Runs $case once through a DataManager on this store and once on the same store seen as a
-     * PlainDriver (no capabilities: DataManager reads, checks Condition::holds() and writes), each
-     * time on freshly seeded records: a driver's compiled condition and the PHP check must agree.
-     * $case gets the DataManager, the type and the path's name.
+     * Runs $case once through a DataManager on this store, once on the same store seen as a
+     * PlainDriver (no capabilities: DataManager reads, checks Condition::holds() and writes) and,
+     * for a store that runs SQL, once seen as a driver with RunsSql only (DataManager compiles the
+     * statement itself), each time on freshly seeded records: every path must agree. $case gets
+     * the DataManager, the type and the path's name.
      *
      * The records (type "guarded"): c1 label 'Ab', other 'Ab', amount 3, cap 5, note '';
      * c2 label 'ab', other 'x', amount 5, cap 5, note null; c3 everything null but note '0';
-     * c4 amount 0, no note given.
+     * c4 amount 0, no note given; c5 label 'Ab ' (a trailing space), other 'Ab', note '  '.
      *
      * @param \Closure(\Preflow\Data\DataManager, TypeDefinition, string): void $case
      */
@@ -1804,19 +1805,77 @@ abstract class StorageDriverContract extends TestCase
                     'cap' => ['type' => 'integer'], 'note' => ['type' => 'string'], 'mark' => ['type' => 'string'],
                 ],
             ]);
-            foreach (['driver' => $this->driver, 'checked in PHP' => new PlainDriver($this->driver)] as $path => $driver) {
-                foreach (['c1', 'c2', 'c3', 'c4'] as $id) {
+            $paths = ['driver' => $this->driver, 'checked in PHP' => new PlainDriver($this->driver)];
+            if ($this->driver instanceof RunsSql) {
+                $paths['RunsSql only'] = self::sqlOnly($this->driver);
+            }
+            foreach ($paths as $path => $driver) {
+                foreach (['c1', 'c2', 'c3', 'c4', 'c5'] as $id) {
                     $this->driver->delete('guarded', $id);
                 }
                 $this->driver->save('guarded', 'c1', ['uuid' => 'c1', 'label' => 'Ab', 'other' => 'Ab', 'amount' => 3, 'cap' => 5, 'note' => '', 'mark' => null]);
                 $this->driver->save('guarded', 'c2', ['uuid' => 'c2', 'label' => 'ab', 'other' => 'x', 'amount' => 5, 'cap' => 5, 'note' => null, 'mark' => null]);
                 $this->driver->save('guarded', 'c3', ['uuid' => 'c3', 'label' => null, 'other' => null, 'amount' => null, 'cap' => null, 'note' => '0', 'mark' => null]);
                 $this->driver->save('guarded', 'c4', ['uuid' => 'c4', 'amount' => 0]);
+                $this->driver->save('guarded', 'c5', ['uuid' => 'c5', 'label' => 'Ab ', 'other' => 'Ab', 'amount' => 1, 'cap' => 1, 'note' => '  ', 'mark' => null]);
                 $case(new \Preflow\Data\DataManager(['default' => $driver], 'default', $registry), $def, $path);
             }
         } finally {
             @rmdir($models);
         }
+    }
+
+    /** $driver seen as a storage that runs SQL and nothing else (no ConditionalWrites, no PdoDriver). */
+    private static function sqlOnly(RunsSql $driver): RunsSql
+    {
+        return new class ($driver) implements RunsSql {
+            public function __construct(private readonly RunsSql $inner) {}
+
+            public function findOne(string $type, string|int $id, string $idField = 'uuid'): ?array
+            {
+                return $this->inner->findOne($type, $id, $idField);
+            }
+
+            public function findMany(string $type, Query $query): ResultSet
+            {
+                return $this->inner->findMany($type, $query);
+            }
+
+            public function save(string $type, string|int $id, array $data, string $idField = 'uuid'): void
+            {
+                $this->inner->save($type, $id, $data, $idField);
+            }
+
+            public function delete(string $type, string|int $id, string $idField = 'uuid'): void
+            {
+                $this->inner->delete($type, $id, $idField);
+            }
+
+            public function exists(string $type, string|int $id, string $idField = 'uuid'): bool
+            {
+                return $this->inner->exists($type, $id, $idField);
+            }
+
+            public function lastInsertId(): string|int
+            {
+                return $this->inner->lastInsertId();
+            }
+
+            public function rawQuery(string $sql, array $bindings = []): array
+            {
+                return $this->inner->rawQuery($sql, $bindings);
+            }
+
+            public function execute(string $sql, array $bindings = []): int
+            {
+                return $this->inner->execute($sql, $bindings);
+            }
+
+            public function dialect(): \Preflow\Data\Driver\Dialect
+            {
+                return $this->inner->dialect();
+            }
+        };
     }
 
     /**
@@ -1863,6 +1922,15 @@ abstract class StorageDriverContract extends TestCase
             $this->assertWritesWhen(false, $dm, $def, 'c3', \Preflow\Data\Condition::where('label', '!=', 'x'), "{$path}: null is not != a text");
             $this->assertWritesWhen(true, $dm, $def, 'c1', \Preflow\Data\Condition::where('note', '=', ''), "{$path}: '' is a text");
             $this->assertWritesWhen(true, $dm, $def, 'c3', \Preflow\Data\Condition::where('note', '=', '0'), "{$path}: '0' is a text");
+            // Trailing spaces count, also where a collation pads with them (MySQL).
+            $spaces = [
+                ['label', '=', 'Ab', false], ['label', '!=', 'Ab', true], ['label', '>', 'Ab', true], ['label', '<', 'Ab', false],
+                ['label', '>=', 'Ab', true], ['label', '<=', 'Ab', false], ['label', '<=', 'Ab ', true], ['label', 'IN', ['Ab'], false],
+                ['label', 'IN', ['Ab '], true], ['note', '=', '', false], ['note', '=', '  ', true],
+            ];
+            foreach ($spaces as [$field, $operator, $value, $expected]) {
+                $this->assertWritesWhen($expected, $dm, $def, 'c5', \Preflow\Data\Condition::where($field, $operator, $value), "{$path}: '{$field}' of c5 {$operator} " . json_encode($value));
+            }
         });
     }
 
@@ -1878,6 +1946,8 @@ abstract class StorageDriverContract extends TestCase
             $this->assertWritesWhen(true, $dm, $def, 'c1', \Preflow\Data\Condition::whereField('amount', '!=', 'cap', numbers: true), "{$path}: 3 != 5");
             $this->assertWritesWhen(false, $dm, $def, 'c3', \Preflow\Data\Condition::whereField('amount', '=', 'cap', numbers: true), "{$path}: no value equals nothing");
             $this->assertWritesWhen(false, $dm, $def, 'c3', \Preflow\Data\Condition::whereField('label', '=', 'other'), "{$path}: no text equals nothing");
+            $this->assertWritesWhen(false, $dm, $def, 'c5', \Preflow\Data\Condition::whereField('label', '=', 'other'), "{$path}: 'Ab ' is not 'Ab'");
+            $this->assertWritesWhen(true, $dm, $def, 'c5', \Preflow\Data\Condition::whereField('other', '<', 'label'), "{$path}: 'Ab' < 'Ab '");
         });
     }
 
@@ -1890,6 +1960,8 @@ abstract class StorageDriverContract extends TestCase
             $this->assertWritesWhen(false, $dm, $def, 'c3', \Preflow\Data\Condition::isEmpty('note'), "{$path}: '0' is a value");
             $this->assertWritesWhen(true, $dm, $def, 'c3', \Preflow\Data\Condition::isEmpty('amount'), "{$path}: a number field without one");
             $this->assertWritesWhen(false, $dm, $def, 'c4', \Preflow\Data\Condition::isEmpty('amount'), "{$path}: 0 is a value");
+            $this->assertWritesWhen(false, $dm, $def, 'c1', \Preflow\Data\Condition::isEmpty('label'), "{$path}: a text without a number is a value");
+            $this->assertWritesWhen(false, $dm, $def, 'c5', \Preflow\Data\Condition::isEmpty('note'), "{$path}: spaces are a value");
         });
     }
 
