@@ -188,6 +188,39 @@ final class TemplateFunctionsValueTest extends TestCase
         $this->assertSame('<b>|hearts', $this->engine->render('h'));
     }
 
+    /** What text() lets through prints on both paths: escaped (e()) and safe (an isSafe function). */
+    public function test_htmlable_deferred_and_enum_results_print_on_both_paths(): void
+    {
+        $htmlable = static fn () => new TemplateFnMarkup('<b>');
+        $deferred = static fn () => new TemplateFnDeferred(new TemplateFnMarkup('<i>'));
+        $intEnum = static fn () => TemplateFnRank::Ace;
+        foreach (['esc' => false, 'safe' => true] as $path => $safe) {
+            $this->register("{$path}_markup", $htmlable, $safe);
+            $this->register("{$path}_deferred", $deferred, $safe);
+            $this->register("{$path}_enum", fn () => TemplateFnSuit::Hearts, $safe);
+            $this->register("{$path}_int_enum", $intEnum, $safe);
+            $this->register("{$path}_true", fn (): bool => true, $safe);
+            $this->template($path, "@{$path}_markup()|@{$path}_deferred()|@{$path}_enum()|@{$path}_int_enum()|@{$path}_true()");
+
+            $this->assertSame('<b>|<i>|hearts|1|1', $this->engine->render($path), "{$path}: as e() prints them");
+        }
+    }
+
+    public function test_an_enum_on_the_safe_path_prints_escaped_as_e_does(): void
+    {
+        $this->register('suit_fn', fn () => TemplateFnSuit::Quote, true);
+        $this->template('q', '@suit_fn()');
+
+        $this->assertSame('&lt;q&gt;', $this->engine->render('q'));
+    }
+
+    public function test_fn_without_any_function_says_none_are_registered(): void
+    {
+        $this->template('none', '{!! $fn->nope() !!}');
+
+        $this->expectRenderRefusal('none', 'none registered yet');
+    }
+
     public function test_directive_without_parentheses_still_echoes(): void
     {
         $this->register('form_end', fn (): string => '</form>', true);
@@ -209,4 +242,31 @@ final class TemplateFunctionsValueTest extends TestCase
 enum TemplateFnSuit: string
 {
     case Hearts = 'hearts';
+    case Quote = '<q>';
+}
+
+enum TemplateFnRank: int
+{
+    case Ace = 1;
+}
+
+/** Htmlable, not Stringable: only toHtml() prints it. */
+final class TemplateFnMarkup implements \Illuminate\Contracts\Support\Htmlable
+{
+    public function __construct(private string $html) {}
+
+    public function toHtml(): string
+    {
+        return $this->html;
+    }
+}
+
+final class TemplateFnDeferred implements \Illuminate\Contracts\Support\DeferringDisplayableValue
+{
+    public function __construct(private TemplateFnMarkup $value) {}
+
+    public function resolveDisplayableValue(): TemplateFnMarkup
+    {
+        return $this->value;
+    }
 }

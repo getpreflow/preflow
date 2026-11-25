@@ -87,6 +87,11 @@ final class BladeEngine implements TemplateEngineInterface, RendersRegions
         $this->viewFactory->share('__regions', $this);
         // @freshness / @expires; without the page cache, one without a recorder checks the arguments
         $this->viewFactory->share('__pageCache', $pageCache ?? new \Preflow\Core\PageCache\PageCache());
+        // Every template function as a value ($fn->name(...)); defined before any is registered, so
+        // an unknown name gets TemplateFunctions' message, not "Undefined variable $fn".
+        $this->functions = new TemplateFunctions();
+        $this->viewFactory->share('fn', $this->functions);
+        $this->globals['fn'] = $this->functions;
         $liveParts?->register(self::LIVE_KIND, fn (array $recipe): string => $this->renderLiveBlock($recipe));
     }
 
@@ -490,7 +495,7 @@ final class BladeEngine implements TemplateEngineInterface, RendersRegions
         return null;
     }
 
-    private ?TemplateFunctions $functions = null;
+    private TemplateFunctions $functions;
 
     public function addFunction(TemplateFunctionDefinition $function): void
     {
@@ -503,17 +508,12 @@ final class BladeEngine implements TemplateEngineInterface, RendersRegions
         $this->globals["__fn_{$name}"] = $callable;
 
         // The same function as a value: $fn->name(...) returns the result as it is
-        if ($this->functions === null) {
-            $this->functions = new TemplateFunctions();
-            $this->viewFactory->share('fn', $this->functions);
-            $this->globals['fn'] = $this->functions;
-        }
         $this->functions->add($name, $callable);
 
         // Register Blade directive that invokes the stored callable
         $this->compiler->directive($name, function (string $expression) use ($name, $isSafe) {
             if ($isSafe) {
-                return "<?php echo \\Preflow\\Blade\\TemplateFunctions::text('{$name}', \$__fn_{$name}({$expression})); ?>";
+                return "<?php echo \\Preflow\\Blade\\TemplateFunctions::safe('{$name}', \$__fn_{$name}({$expression})); ?>";
             }
             return "<?php echo e(\\Preflow\\Blade\\TemplateFunctions::text('{$name}', \$__fn_{$name}({$expression}))); ?>";
         });
