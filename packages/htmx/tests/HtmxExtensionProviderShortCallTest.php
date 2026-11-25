@@ -214,6 +214,111 @@ final class OldCallsDriver implements HypermediaDriver
     }
 }
 
+/** Drives component actions and keeps the calls it was given (attributes from HtmxDriver). */
+final class RecordingCallsDriver implements HypermediaDriver, \Preflow\Core\Http\Hypermedia\DrivesComponentActions
+{
+    /** @var list<\Preflow\Core\Http\Hypermedia\ActionCall> */
+    public array $calls = [];
+
+    private HtmxDriver $htmx;
+
+    public function __construct()
+    {
+        $this->htmx = new HtmxDriver(new ResponseHeaders(), true);
+    }
+
+    public function callAttributes(\Preflow\Core\Http\Hypermedia\ActionCall $call): array
+    {
+        $this->calls[] = $call;
+
+        return $this->htmx->callAttributes($call);
+    }
+
+    public function listenAttributes(\Preflow\Core\Http\Hypermedia\ActionCall $call, string $event): array
+    {
+        $this->calls[] = $call;
+
+        return $this->htmx->listenAttributes($call, $event);
+    }
+
+    public function stateCarrier(string $componentId, string $carried): string
+    {
+        return $this->htmx->stateCarrier($componentId, $carried);
+    }
+
+    public function stateUpdate(string $componentId, string $carried): string
+    {
+        return $this->htmx->stateUpdate($componentId, $carried);
+    }
+
+    /** @param array<string, string> $extra */
+    public function actionAttrs(string $method, string $url, string $targetId, SwapStrategy $swap, array $extra = []): HtmlAttributes
+    {
+        return $this->htmx->actionAttrs($method, $url, $targetId, $swap, $extra);
+    }
+
+    public function listenAttrs(string $event, string $url, string $targetId): HtmlAttributes
+    {
+        return $this->htmx->listenAttrs($event, $url, $targetId);
+    }
+
+    public function triggerEvent(string $event): void {}
+
+    public function redirect(string $url): void {}
+
+    public function pushUrl(string $url): void {}
+
+    public function isFragmentRequest(ServerRequestInterface $request): bool
+    {
+        return false;
+    }
+
+    public function fragmentTarget(ServerRequestInterface $request): ?string
+    {
+        return null;
+    }
+
+    public function applyEffects(ResponseInterface $response): ResponseInterface
+    {
+        return $response;
+    }
+
+    public function assetTag(): string
+    {
+        return '';
+    }
+
+    public function isHistoryRestore(ServerRequestInterface $request): bool
+    {
+        return false;
+    }
+
+    public function varyHeaders(): array
+    {
+        return [];
+    }
+
+    public function navigate(ResponseInterface $response, ?string $url): ResponseInterface
+    {
+        return $response;
+    }
+
+    public function announceNonce(ResponseInterface $response, string $nonce): ResponseInterface
+    {
+        return $response;
+    }
+
+    public function nonceHeaders(): array
+    {
+        return [];
+    }
+
+    public function pageNonce(ServerRequestInterface $request): ?string
+    {
+        return null;
+    }
+}
+
 /** A token with a fixed issue time, so the old form's output can be compared byte for byte. */
 final class FixedTimeToken extends ComponentToken
 {
@@ -706,6 +811,31 @@ final class HtmxExtensionProviderShortCallTest extends TestCase
 
         // Named arguments, as a Blade template may give them.
         $this->assertSame($expected['post'], $without->post('save', componentClass: $class, componentId: 'Counter-abc123', props: ['id' => 7, 'tag' => 'a&b'], swap: SwapStrategy::InnerHTML, extra: ['hx-confirm' => 'Sure? "yes"']));
+    }
+
+    /**
+     * Every short call carries its token on its own and the endpoint URL without it (@since 0.88.0);
+     * the URL still has the token, for drivers written before 0.88. A preview's parameter is on both.
+     */
+    public function test_short_calls_carry_the_token_and_the_endpoint_url_apart(): void
+    {
+        $driver = new RecordingCallsDriver();
+        $hd = new HtmxExtensionProvider($driver, $this->tokens, renderer: $this->renderer, debug: true, pathPrefix: fn (): string => '/de');
+        CallbackEngine::$templates['ShortBox'] = fn (): string => $hd->post('add', ['row' => 1]) . $hd->get('remove') . $hd->on('saved');
+        $context = \Preflow\Testing\ContextFactory::forTest()->with(new \Preflow\Core\Context\Preview\PreviewGrant('v1.preview.x.y'));
+        \Preflow\Core\Context\Contexts::run($context, fn (): string => $this->renderer->render($this->component(ShortBox::class, ['key' => 'a', 'text' => 'Hello'])));
+
+        $this->assertSame([], $this->errors);
+        $this->assertCount(3, $driver->calls);
+        $expected = [['post', '/de/--component/action', 'add'], ['get', '/de/--component/action', 'remove'], ['on', '/de/--component/render', 'render']];
+        foreach ($expected as $n => [$i, $path, $action]) {
+            $call = $driver->calls[$n] ?? null;
+            $this->assertInstanceOf(\Preflow\Core\Http\Hypermedia\ActionCall::class, $call, $i);
+            $this->assertNotNull($call->token, $i);
+            $this->assertSame($path . '?_preview=v1.preview.x.y', $call->endpointUrl, "{$i}: the endpoint URL without the token, the preview's parameter kept");
+            $this->assertSame($path . '?token=' . urlencode($call->token) . '&_preview=v1.preview.x.y', $call->url, "{$i}: the URL still has the token");
+            $this->assertSame($action, $this->tokens->decode($call->token)->action, $i);
+        }
     }
 
     public function test_short_call_outside_a_component_fails(): void

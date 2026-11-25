@@ -516,6 +516,33 @@ abstract class HypermediaDriverContract extends TestCase
         );
     }
 
+    /**
+     * A call that has its token apart (ActionCall::$token, @since 0.88.0) sends it: in the URL, the
+     * body or anywhere else, the token string is in the call's attributes, for a get and a post call
+     * and for a listening one.
+     */
+    public function test_a_call_with_its_token_apart_does_not_lose_the_token(): void
+    {
+        $driver = $this->driver;
+        if (!$driver instanceof DrivesComponentActions) {
+            $this->markTestSkipped('The driver does not drive component actions (DrivesComponentActions is optional).');
+        }
+        $token = 'eyJjIjoiQm94In0.contract-token-0123456789';
+        $call = static fn (string $method, string $path): ActionCall => new ActionCall(
+            $method,
+            '/--component/' . $path . '?token=' . urlencode($token),
+            'Box-1',
+            'Box-1',
+            ActionOptions::from([], true),
+            token: $token,
+            endpointUrl: '/--component/' . $path,
+        );
+
+        foreach (['post' => $driver->callAttributes($call('post', 'action')), 'get' => $driver->callAttributes($call('get', 'action')), 'listen' => $driver->listenAttributes($call('post', 'render'), 'saved')] as $what => $attributes) {
+            $this->assertStringContainsString($token, implode(' ', $attributes), "the {$what} call sends its token: the token string is in one of its attributes");
+        }
+    }
+
     public function test_listen_attributes_name_the_event(): void
     {
         $driver = $this->driver;
