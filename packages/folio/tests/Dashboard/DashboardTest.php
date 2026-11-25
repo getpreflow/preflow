@@ -168,12 +168,28 @@ final class DashboardTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_an_item_may_return_a_list_of_cards(): void
+    {
+        $n = '\\Preflow\\Folio\\Dashboard\\NeedsYou';
+        $this->item('crm', 'ContactAdmin', 'contact', "return [new {$n}('First card', url: 'contact?a=1'), 'junk', new {$n}('Elsewhere card', url: 'https://other.test/x'), new {$n}('Second card', url: 'contact?a=2', tone: 'info')];", 'array');
+        $this->item('none', 'ContactNone', 'contact', 'return [];', 'array');
+        $this->as('admin');
+
+        $body = $this->part('needs');
+        $this->assertStringContainsString('First card', $body);
+        $this->assertStringContainsString('Second card', $body);
+        $this->assertStringNotContainsString('Elsewhere card', $body);
+        $this->assertStringNotContainsString('junk', $body);
+        $this->assertSame(2, substr_count($body, 'class="folio-needs-card"'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_an_item_without_the_needs_you_return_type_is_a_boot_error(): void
     {
         $this->item('crm', 'ContactAdmin', 'contact', 'return null;', 'string');
 
         $this->expectException(ExtensionException::class);
-        $this->expectExceptionMessage('#[DashboardItem] on App\\Folio\\Crm\\Types\\ContactAdmin::item: the method must declare the return type ?Preflow\\Folio\\Dashboard\\NeedsYou.');
+        $this->expectExceptionMessage('#[DashboardItem] on App\\Folio\\Crm\\Types\\ContactAdmin::item: the method must declare the return type ?Preflow\\Folio\\Dashboard\\NeedsYou (one card) or array (a list of cards).');
         $this->app();
     }
 
