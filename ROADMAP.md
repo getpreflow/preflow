@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-25 (v0.88.0)
+> Last updated: 2026-11-25 (v0.89.0)
 
 ## Current State
 
-**v0.88.0** — 10581 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.89.0** — 10696 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
