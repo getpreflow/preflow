@@ -107,7 +107,7 @@ final class ValidationTranslationTest extends TestCase
         $this->assertSame(['This field is required.'], $factory->make(['f' => ['required']], [])->validate()->fieldErrors('f'));
     }
 
-    public function test_the_package_declares_the_public_group_with_the_same_keys_in_en_de_and_fr(): void
+    public function test_the_package_declares_the_public_group_with_the_same_keys_in_every_shipped_language(): void
     {
         $root = dirname(__DIR__);
         $composer = json_decode((string) file_get_contents($root . '/composer.json'), true);
@@ -125,9 +125,47 @@ final class ValidationTranslationTest extends TestCase
         $keys = array_keys($translator->entries('validation', 'en'));
         $this->assertNotEmpty($keys);
         $shipped = array_map('basename', glob($root . '/lang/*', GLOB_ONLYDIR) ?: []);
-        $this->assertEqualsCanonicalizing(['de', 'en', 'fr'], $shipped, 'the packages ship one language set');
+        $this->assertEqualsCanonicalizing(['de', 'en', 'es', 'fr', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ru', 'sv', 'tr', 'zh'], $shipped, 'the package ships 14 languages');
         foreach ($shipped as $locale) {
             $this->assertEqualsCanonicalizing($keys, array_keys($translator->entries('validation', $locale)), $locale);
+        }
+    }
+
+    /** @since 0.89.0 every shipped language has exactly the keys and the placeholders of English. */
+    public function test_every_shipped_language_has_the_keys_and_placeholders_of_english(): void
+    {
+        $flatten = static function (array $messages) use (&$flatten): array {
+            $flat = [];
+            foreach ($messages as $key => $value) {
+                if (is_array($value)) {
+                    foreach ($flatten($value) as $sub => $text) {
+                        $flat[$key . '.' . $sub] = $text;
+                    }
+                } else {
+                    $flat[$key] = $value;
+                }
+            }
+
+            return $flat;
+        };
+        $placeholders = static function (string $text): array {
+            preg_match_all('/:[a-z]+/', $text, $found);
+            sort($found[0]);
+
+            return $found[0];
+        };
+        $root = dirname(__DIR__) . '/lang';
+        $english = $flatten(require $root . '/en/validation.php');
+        $locales = array_map('basename', glob($root . '/*', GLOB_ONLYDIR) ?: []);
+        $this->assertGreaterThan(3, count($locales));
+        foreach ($locales as $locale) {
+            $messages = $flatten(require $root . '/' . $locale . '/validation.php');
+            $this->assertSame(array_keys($english), array_keys($messages), $locale . ': keys');
+            foreach ($english as $key => $text) {
+                $this->assertIsString($messages[$key], "$locale $key");
+                $this->assertNotSame('', trim($messages[$key]), "$locale $key is empty");
+                $this->assertSame($placeholders($text), $placeholders($messages[$key]), "$locale $key: placeholders");
+            }
         }
     }
 }

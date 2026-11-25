@@ -53,3 +53,7 @@ $result = $container->get(ValidatorFactory::class)->make(['to' => ['required', '
 
 A package registers its own rule names with `RuleFactory::register('name', RuleClass::class)` in
 its provider.
+
+## Languages
+
+The messages come in 14 languages: en, de, fr, es, it, nl, pl, pt, sv, tr, ru, ja, ko and zh (since 0.89; before, en, de and fr). Inside a render they follow the render's language. A site changes a single message in its own `lang/{locale}/validation.php`, or adds a language the package does not ship. A language without a text falls back to the site's fallback language, then English.
