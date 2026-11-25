@@ -39,6 +39,15 @@ final readonly class FieldContext
         public ?int $length = null,
         /** Set when the field is a route parameter of the record's public address (the string field's affix). @since 0.75 */
         public ?AddressAffix $address = null,
+        /**
+         * The values of the record being edited, field => value as stored (a translatable field's
+         * map of languages included), or as submitted when a failed save shows the form again; null
+         * where there is no record (an asset's or a block's fields). A select with "options_from"
+         * takes its options from here. @since 0.89
+         *
+         * @var array<string, mixed>|null
+         */
+        public ?array $values = null,
     ) {}
 
     /**

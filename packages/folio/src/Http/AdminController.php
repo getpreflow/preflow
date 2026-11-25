@@ -1510,6 +1510,7 @@ final class AdminController
                 validate: $fieldDef->validate,
                 length: $fieldDef->length,
                 address: isset($addressFields[$name]) ? $this->addressAffix($type, $name, $locale, $locales) : null,
+                values: $values,
             );
             // main: the form column; address / side: the side panel (outside the <form>, so its
             // controls name the record form with form="folio-record").

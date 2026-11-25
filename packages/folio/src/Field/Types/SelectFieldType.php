@@ -16,6 +16,13 @@ use Preflow\Folio\Field\FieldContext;
  * description each ("options" as {value: {"label": …, "help": …}}); "display": "radio" radio chips;
  * "display": "select" a select (an optional one keeps "—", for no choice). Any other "display"
  * value is a boot error (TypeCatalog, through display()).
+ *
+ * "options_from": "<field>" (0.89) instead of "options": the options are the values of that field of
+ * the record being edited (FieldContext::$values; a list such as a tags field's, a JSON-text list,
+ * or one text), each value its own label. A save accepts only one of the source's values as
+ * submitted in the same save (OptionsFrom); an empty value passes unless the field is required.
+ * A name that is not another field of the type, both "options" and "options_from", "display":
+ * "cards" with it, and such a select in "list.filters" or "list.bulk" are boot errors (TypeCatalog).
  */
 final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\Folio\Field\SearchableText, \Preflow\Folio\Field\HasColumnKind
 {
@@ -36,7 +43,7 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
 
     public function renderEditor(FieldContext $ctx): string
     {
-        $options = self::options($ctx->config);
+        $options = self::sourceField($ctx->config) !== null ? self::fromValues($ctx) : self::options($ctx->config);
         $value = (string) ($ctx->value ?? '');
 
         if ($value !== '' && !array_key_exists($value, $options)) {
@@ -92,6 +99,9 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
 
     public function rules(array $config): array
     {
+        if (($source = self::sourceField($config)) !== null) {
+            return [new OptionsFrom($source)];
+        }
         $values = array_keys(self::options($config));
 
         return $values === [] ? [] : ['in:' . implode(',', array_map('strval', $values))];
@@ -118,6 +128,9 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
         if (!in_array($display, ['select', 'radio', 'cards'], true)) {
             throw new \LogicException('Select field option "display" must be "select", "radio" or "cards".');
         }
+        if ($display === 'cards' && array_key_exists('options_from', $config)) {
+            throw new \LogicException('Select field option "display": "cards" needs fixed "options" with descriptions; it cannot take "options_from". Use "select" or "radio".');
+        }
         if ($display === 'cards') {
             $options = $config['options'] ?? null;
             $text = static fn (mixed $t): bool => (is_string($t) && $t !== '') || (is_array($t) && $t !== [] && !array_is_list($t) && array_filter($t, 'is_string') === $t);
@@ -134,6 +147,92 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
         }
 
         return $display;
+    }
+
+    /**
+     * The field "options_from" names, null without one.
+     *
+     * @since 0.89
+     *
+     * @param array<string, mixed> $config
+     */
+    public static function sourceField(array $config): ?string
+    {
+        $source = $config['options_from'] ?? null;
+
+        return is_string($source) && $source !== '' ? $source : null;
+    }
+
+    /**
+     * A source field's value as options: a list (a tags field's), a JSON-text list, or one text;
+     * each entry trimmed, empty ones dropped, each value once.
+     *
+     * @since 0.89
+     *
+     * @return list<string>
+     */
+    public static function sourceValues(mixed $value): array
+    {
+        if (is_string($value)) {
+            $trimmed = trim($value);
+            $decoded = str_starts_with($trimmed, '[') ? json_decode($trimmed, true) : null;
+            $value = is_array($decoded) ? $decoded : ($trimmed === '' ? [] : [$trimmed]);
+        }
+        if (!is_array($value)) {
+            return [];
+        }
+        $out = [];
+        foreach ($value as $entry) {
+            $entry = is_scalar($entry) ? trim((string) $entry) : '';
+            if ($entry !== '' && !in_array($entry, $out, true)) {
+                $out[] = $entry;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * The "options_from" option against the type's fields: it names another field of the type, and
+     * the select has no "options" beside it.
+     *
+     * @since 0.89
+     *
+     * @param array<string, mixed> $config the select's field definition
+     * @param list<string>         $fields the type's field names
+     * @throws \LogicException otherwise (TypeCatalog reports it at boot)
+     */
+    public static function checkOptionsFrom(array $config, string $name, array $fields): void
+    {
+        if (!array_key_exists('options_from', $config)) {
+            return;
+        }
+        $source = self::sourceField($config);
+        if ($source === null) {
+            throw new \LogicException('Select field option "options_from" must be the name of another field of this type.');
+        }
+        if (array_key_exists('options', $config)) {
+            throw new \LogicException('Select field has both "options" and "options_from"; keep one of them.');
+        }
+        if ($source === $name) {
+            throw new \LogicException('Select field option "options_from" must name another field of this type, not the select itself.');
+        }
+        if (!in_array($source, $fields, true)) {
+            $others = array_values(array_filter($fields, static fn (string $field): bool => $field !== $name));
+            throw new \LogicException('Select field option "options_from" names "' . $source . '", which is not a field of this type; name one of its fields (' . implode(', ', $others) . ').');
+        }
+    }
+
+    /** @return array<string, string> value => label: the record's values of the "options_from" field (none on a new record) */
+    private static function fromValues(FieldContext $ctx): array
+    {
+        $raw = $ctx->values[(string) self::sourceField($ctx->config)] ?? null;
+        if ($ctx->locales !== null) {
+            $raw = \Preflow\Data\LocaleValue::default($raw, $ctx->locales); // a translatable source: its default language, as validation reads it
+        }
+        $values = self::sourceValues($raw);
+
+        return array_combine($values, $values);
     }
 
     /** @return array<string, string> value => label */

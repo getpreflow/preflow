@@ -175,6 +175,15 @@ final class TypeCatalog
                 throw new FrontendConfigException("Type \"{$key}\": list filter \"{$filter}\" names a hidden field; remove it from \"list.filters\" or unhide the field");
             }
         }
+        // A select taking its options from another field (0.89) has no fixed options to filter by or to set in bulk.
+        foreach (['filters' => 'list filter "%s" is a select with "options_from", whose options differ per record; remove it from "list.filters"',
+            'bulk' => '"list.bulk" names "%s", a select with "options_from", whose options differ per record; remove it from "list.bulk"'] as $listKey => $message) {
+            foreach ((array) ($data['list'][$listKey] ?? []) as $name) {
+                if (is_string($name) && is_array($fields[$name] ?? null) && ($fields[$name]['type'] ?? null) === 'select' && array_key_exists('options_from', $fields[$name])) {
+                    throw new FrontendConfigException("Type \"{$key}\": " . sprintf($message, $name));
+                }
+            }
+        }
         self::checkFieldLayout($key, $fields);
         $section = $data['section'] ?? $section;
         if (!is_string($section) || preg_match('/^[a-z][a-z0-9_-]*$/', $section) !== 1) {
@@ -220,7 +229,7 @@ final class TypeCatalog
      * The editor layout keys of the type's fields ("panel", "width"; since 0.75): a value outside
      * FIELD_PANELS / FIELD_WIDTHS is a boot error, so a typo never moves a field silently. So is
      * an invalid editor option of a built-in field type ("unit", "display", a tags field's limits
-     * and options, a translatable tags field).
+     * and options, a translatable tags field, a select's "options_from" since 0.89).
      *
      * @param array<mixed> $fields
      */
@@ -241,7 +250,10 @@ final class TypeCatalog
                 match ($field['type'] ?? 'string') {
                     'number', 'int', 'integer', 'float' => \Preflow\Folio\Field\Types\NumberFieldType::unit($field),
                     'boolean' => \Preflow\Folio\Field\Types\BooleanFieldType::display($field),
-                    'select' => \Preflow\Folio\Field\Types\SelectFieldType::display($field),
+                    'select' => [
+                        \Preflow\Folio\Field\Types\SelectFieldType::checkOptionsFrom($field, (string) $name, array_map('strval', array_keys($fields))),
+                        \Preflow\Folio\Field\Types\SelectFieldType::display($field),
+                    ],
                     'tags' => \Preflow\Folio\Field\Types\TagsFieldType::checkConfig($field),
                     default => null,
                 };

@@ -1016,6 +1016,24 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   `"options"` is then `{"301": {"label": "Moved for good", "help": "Search engines move the ranking
   over."}}` (each text a string or a map per language; the help translates under
   `{group}.option_helps.{type}.{field}.{value}`). `"display": "select"` keeps a select at any size.
+- `select` with `"options_from": "<field>"` (since 0.89) instead of `"options"`: the options are
+  the values of another field of the same record, usually a `tags` field. Each value is its own
+  label. A new record has no options yet: fill the source field and save first.
+
+  ```json
+  "answers": {"type": "tags"},
+  "answer":  {"type": "select", "options_from": "answers"}
+  ```
+
+  On save the chosen value must be one of the source field's values as they are submitted in the
+  same save, so adding "Soup" to `answers` and choosing it works in one go; removing a value that
+  is still chosen shows "Must be one of: …". An empty choice passes unless the field is
+  `required`. A value that is no longer among them stays visible and selected, marked "no longer
+  an option". The source may hold a list (a tags field), a JSON-text list, or one text. Boot errors:
+  a name that is not another field of the type, both `"options"` and `"options_from"`,
+  `"display": "cards"`, and naming the select in `list.filters` or `list.bulk` (its options differ
+  per record). A field type's editor gets the record's values as `FieldContext::$values` (null
+  without a record).
 - `relation`: see [Blocks, matrix or relation?](#blocks-matrix-or-relation).
 - `asset`: each chosen file is a card (a 16:10 thumbnail with the focal point, the name, kind and
   size, "No alt text yet" for an image without one); an empty field is a dashed drop zone. A file

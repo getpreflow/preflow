@@ -122,4 +122,132 @@ final class SelectFieldTypeTest extends TestCase
             rmdir($dir);
         }
     }
+
+    // "options_from" (0.89): the options are the values of another field of the record being edited.
+
+    private const array FROM = ['options_from' => 'answers'];
+
+    public function test_options_from_shows_the_source_fields_values_as_a_select(): void
+    {
+        $html = (new SelectFieldType())->renderEditor(new FieldContext(name: 'answer', value: 'Yes', config: self::FROM, values: ['answers' => ['Yes', 'No', 'Later']]));
+
+        $this->assertStringContainsString('<select', $html);
+        $this->assertStringContainsString('<option value="Yes" selected>Yes</option>', $html);
+        $this->assertStringContainsString('<option value="Later">Later</option>', $html);
+        $this->assertStringNotContainsString('no longer an option', $html);
+    }
+
+    public function test_options_from_as_radio_chips(): void
+    {
+        $html = (new SelectFieldType())->renderEditor(new FieldContext(name: 'answer', config: self::FROM + ['display' => 'radio'], values: ['answers' => ['Yes', 'No']]));
+
+        $this->assertStringContainsString('<input type="radio" name="answer" value="Yes"><span class="folio-chip-label">Yes</span>', $html);
+        $this->assertStringContainsString('<input type="radio" name="answer" value="No"><span class="folio-chip-label">No</span>', $html);
+    }
+
+    public function test_options_from_reads_a_json_text_list_and_a_plain_text(): void
+    {
+        $type = new SelectFieldType();
+        $json = $type->renderEditor(new FieldContext(name: 'answer', config: self::FROM, values: ['answers' => '["Yes"," No ",""]']));
+        $this->assertStringContainsString('<option value="Yes">Yes</option>', $json);
+        $this->assertStringContainsString('<option value="No">No</option>', $json, 'trimmed; empty entries dropped');
+        $this->assertSame(['Yes', 'No'], SelectFieldType::sourceValues('["Yes"," No ",""]'));
+        $this->assertSame(['Only one'], SelectFieldType::sourceValues(' Only one '));
+        $this->assertSame([], SelectFieldType::sourceValues(null));
+        $this->assertSame(['A'], SelectFieldType::sourceValues(['A', 'A', '']), 'each value once');
+    }
+
+    public function test_options_from_on_a_new_record_shows_no_options(): void
+    {
+        $html = (new SelectFieldType())->renderEditor(new FieldContext(name: 'answer', config: self::FROM));
+
+        $this->assertStringContainsString('<select', $html);
+        $this->assertStringContainsString('<option value="" selected>—</option>', $html);
+        $this->assertSame(1, substr_count($html, '<option'), 'only "none"');
+    }
+
+    public function test_options_from_keeps_a_value_no_longer_among_the_sources_values(): void
+    {
+        $html = (new SelectFieldType())->renderEditor(new FieldContext(name: 'answer', value: 'Maybe', config: self::FROM, values: ['answers' => ['Yes', 'No']]));
+
+        $this->assertStringContainsString('<option value="Maybe" selected>Maybe (no longer an option)</option>', $html);
+    }
+
+    public function test_options_from_validates_against_the_sources_values_in_the_same_data(): void
+    {
+        $validators = new \Preflow\Validation\ValidatorFactory(new \Preflow\Validation\RuleFactory());
+        $rules = (new SelectFieldType())->rules(self::FROM);
+        $this->assertCount(1, $rules);
+        $this->assertNotContains('in:', array_filter($rules, 'is_string'));
+        $check = static fn (array $data, array $extra = []): array => $validators->make(['answer' => [...$extra, ...$rules]], $data)->validate()->errors();
+
+        $this->assertSame([], $check(['answer' => 'No', 'answers' => ['Yes', 'No']]));
+        $this->assertSame([], $check(['answer' => 'No', 'answers' => '["Yes","No"]']), 'a JSON-text list');
+        $this->assertSame(['answer' => ['Must be one of: Yes, No.']], $check(['answer' => 'Maybe', 'answers' => ['Yes', 'No']]));
+        $this->assertSame([], $check(['answer' => null, 'answers' => ['Yes']]), 'empty passes');
+        $this->assertSame([], $check(['answer' => '', 'answers' => []]), 'empty passes');
+        $this->assertNotSame([], $check(['answer' => null, 'answers' => ['Yes']], ['required']), 'unless required');
+        $this->assertNotSame([], $check(['answer' => 'Yes']), 'no source values: nothing is an option');
+    }
+
+    public function test_options_from_shows_the_value_as_its_label(): void
+    {
+        $this->assertSame('Yes &amp; no', (new SelectFieldType())->renderFrontend('Yes & no', self::FROM));
+    }
+
+    /** @param array<string, mixed> $fields */
+    private static function bootError(array $fields, array $list = []): string
+    {
+        $dir = TempRoots::path('folio_select_from_');
+        mkdir($dir);
+        file_put_contents($dir . '/thing.json', (string) json_encode(['key' => 'thing', 'fields' => $fields] + ($list !== [] ? ['list' => $list] : [])));
+        try {
+            (new TypeCatalog($dir))->all();
+
+            return '';
+        } catch (FrontendConfigException $e) {
+            return $e->getMessage();
+        } finally {
+            unlink($dir . '/thing.json');
+            rmdir($dir);
+        }
+    }
+
+    public function test_options_from_naming_no_field_of_the_type_is_a_boot_error(): void
+    {
+        $this->assertSame(
+            'Type "thing": field "answer": Select field option "options_from" names "answer_list", which is not a field of this type; name one of its fields (answers).',
+            self::bootError(['answers' => ['type' => 'tags'], 'answer' => ['type' => 'select', 'options_from' => 'answer_list']]),
+        );
+        $this->assertSame(
+            'Type "thing": field "answer": Select field option "options_from" must name another field of this type, not the select itself.',
+            self::bootError(['answers' => ['type' => 'tags'], 'answer' => ['type' => 'select', 'options_from' => 'answer']]),
+        );
+        $this->assertSame('', self::bootError(['answers' => ['type' => 'tags'], 'answer' => ['type' => 'select', 'options_from' => 'answers']]));
+    }
+
+    public function test_options_and_options_from_together_are_a_boot_error(): void
+    {
+        $this->assertSame(
+            'Type "thing": field "answer": Select field has both "options" and "options_from"; keep one of them.',
+            self::bootError(['answers' => ['type' => 'tags'], 'answer' => ['type' => 'select', 'options' => ['a'], 'options_from' => 'answers']]),
+        );
+        $this->assertSame(
+            'Type "thing": field "answer": Select field option "display": "cards" needs fixed "options" with descriptions; it cannot take "options_from". Use "select" or "radio".',
+            self::bootError(['answers' => ['type' => 'tags'], 'answer' => ['type' => 'select', 'options_from' => 'answers', 'display' => 'cards']]),
+        );
+    }
+
+    public function test_an_options_from_select_cannot_be_a_list_filter_or_bulk_field(): void
+    {
+        $fields = ['answers' => ['type' => 'tags'], 'answer' => ['type' => 'select', 'options_from' => 'answers']];
+        $this->assertSame(
+            'Type "thing": list filter "answer" is a select with "options_from", whose options differ per record; remove it from "list.filters"',
+            self::bootError($fields, ['filters' => ['answer']]),
+        );
+        $this->assertSame(
+            'Type "thing": "list.bulk" names "answer", a select with "options_from", whose options differ per record; remove it from "list.bulk"',
+            self::bootError($fields, ['bulk' => ['answer']]),
+        );
+    }
 }
