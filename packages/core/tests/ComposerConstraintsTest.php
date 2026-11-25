@@ -7,6 +7,8 @@ namespace Preflow\Core\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.88: htmx 0.88.0 (core documents the body field `_component_token` (ActionCall::TOKEN_FIELD) that htmx's endpoint reads;
+ * the 0.87 endpoint ignores it, so a driver using ActionCall::$token would get "Missing component token").
  * Since 0.87: htmx 0.87.0 (core accepts on: 'blur' and gives disable: 'self' its meaning; htmx 0.86's driver has no
  * 'blur' in its event map, an undefined key and an empty hx-trigger, and doesn't disable a form's submit controls).
  * Since 0.86: components 0.86.0 (ComponentRenderer::enableState() and carryStateWith(), StateStore and
@@ -72,7 +74,7 @@ final class ComposerConstraintsTest extends TestCase
             'preflow/auth' => '<0.81.0',
             'preflow/components' => '<0.86.0',
             'preflow/data' => '<0.84.0',
-            'preflow/htmx' => '<0.87.0',
+            'preflow/htmx' => '<0.88.0',
             'preflow/i18n' => '<0.83.0',
             'preflow/routing' => '<0.78.2',
             'preflow/view' => '<0.81.0',

@@ -3463,12 +3463,6 @@ parameters:
 			path: packages/form/src/ModelIntrospector.php
 
 		-
-			message: '#^Cannot access offset ''token'' on array\|object\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: packages/htmx/src/ComponentEndpoint.php
-
-		-
 			message: '#^Method Preflow\\Htmx\\ComponentEndpoint\:\:__construct\(\) has parameter \$componentFactory with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1

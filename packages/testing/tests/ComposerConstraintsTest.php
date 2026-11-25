@@ -7,6 +7,8 @@ namespace Preflow\Testing\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.88: core 0.88 (ActionCall's token:/endpointUrl:, which HypermediaDriverContract passes); htmx 0.88
+ * (ComponentEndpoint::TOKEN_FIELD, which WebApplication::componentAction() sends, and the endpoint that reads it).
  * Since 0.87: core 0.87 (ActionCall's carriesState: and 'blur' in ActionOptions::EVENTS, which HypermediaDriverContract
  * passes to a driver; on core 0.86 the named argument is a fatal error).
  * Since 0.86: core 0.86 (Http\Hypermedia\DrivesComponentActions, ActionCall and ActionOptions, which
@@ -38,9 +40,10 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(['preflow/auth' => '<0.81.0', 'preflow/core' => '<0.87.0', 'preflow/data' => '<0.84.0', 'preflow/htmx' => '<0.86.0', 'preflow/view' => '<0.86.0', 'preflow/components' => '<0.86.0'], $composer['conflict'] ?? null);
-        $this->assertSame('^0.87.0 || @dev', $composer['require']['preflow/core'] ?? null);
-        foreach (['view', 'components', 'htmx'] as $package) {
+        $this->assertSame(['preflow/auth' => '<0.81.0', 'preflow/core' => '<0.88.0', 'preflow/data' => '<0.84.0', 'preflow/htmx' => '<0.88.0', 'preflow/view' => '<0.86.0', 'preflow/components' => '<0.86.0'], $composer['conflict'] ?? null);
+        $this->assertSame('^0.88.0 || @dev', $composer['require']['preflow/core'] ?? null);
+        $this->assertSame('^0.88.0 || @dev', $composer['require']['preflow/htmx'] ?? null);
+        foreach (['view', 'components'] as $package) {
             $this->assertSame('^0.86.0 || @dev', $composer['require']['preflow/' . $package] ?? null, $package);
         }
     }

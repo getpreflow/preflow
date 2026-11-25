@@ -6,7 +6,7 @@
     "require": {
         "php": ">=8.4",
         "ext-sodium": "*",
-        "preflow/core": "^0.87.0 || @dev",
+        "preflow/core": "^0.88.0 || @dev",
         "preflow/components": "^0.87.0 || @dev"
     },
     "require-dev": {
@@ -24,7 +24,7 @@
         }
     },
     "conflict": {
-        "preflow/core": "<0.87.0",
+        "preflow/core": "<0.88.0",
         "preflow/view": "<0.86.0",
         "preflow/components": "<0.87.0",
         "preflow/twig": "<0.86.0",
