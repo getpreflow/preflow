@@ -882,8 +882,11 @@ final class Job extends Model { … }
   `{table}__published` table gets it in addition to the indexes it copies, named
   `idx_{table}__published_{field1}_{field2}`; the working table and the revisions do not. A type
   that does not publish and declares one is a boot error naming `PublishedIndex`: use `Index`
-  there. A field only a published index covers is stored short in the published table, so
-  validation limits its length (191 by default) in the working record too.
+  there. The check runs when `preflow migrate` syncs the publishing tables and when
+  `preflow optimize` builds the boot manifest, not on every request. A field in a published index
+  is stored short in the published table, so, like an indexed field, it is limited to its
+  column length (191 unless `length` says otherwise) in the working record too: adding the index to
+  a field that already holds longer values means shortening those values first.
 - **What sync does.** `preflow migrate` makes every declared index that is missing, on new and
   existing columns alike: `idx_{table}_{field}` for `index`, the composite ones, and
   `uniq_{table}_{field}` (over the field and its scope) for `unique`. An index is found by its

@@ -31,7 +31,7 @@ final class TypeRegistry
             $this->assertActions();
         } else {
             // Checked when the manifest is built (and live while none is loaded); a loaded one skips the scans.
-            $sources = $this->manifest->isRecording() ? $this->checkSources() : [];
+            $sources = $this->manifest->isRecording() ? $this->sources() : [];
             $this->manifest->remember('data.one_definition_per_key', function (): bool {
                 $this->assertOneDefinitionPerKey();
 
@@ -50,8 +50,14 @@ final class TypeRegistry
         }
     }
 
-    /** @internal @return list<string> what the boot checks read: the model files and the model classes' files */
-    public function checkSources(): array
+    /**
+     * The files type definitions are read from: the model files folder and the files of the model
+     * classes. A check over every type that is kept in the boot manifest lists these as its sources
+     * (`BootManifest::remember()`), so `preflow optimize --check` knows when it is out of date.
+     *
+     * @return list<string> absolute paths
+     */
+    public function sources(): array
     {
         $sources = [$this->modelsPath];
         foreach ($this->classes as $class) {

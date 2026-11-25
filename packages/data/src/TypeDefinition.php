@@ -117,7 +117,7 @@ final readonly class TypeDefinition
             $name = implode('_', $columns);
             if (in_array($name, $unique, true)) {
                 throw new \InvalidArgumentException($columns === [$name]
-                    ? "Type \"{$this->key}\" has the index {$over} over its unique field \"{$name}\", whose unique index serves already: drop the index."
+                    ? "Type \"{$this->key}\" has the index {$over} over its unique field \"{$name}\", " . ($published ? 'whose published copy gets an index over it already (PublishedIndex): drop it.' : 'whose unique index serves already: drop the index.')
                     : "Type \"{$this->key}\" has the index {$over}, named like the index its unique field \"{$name}\" gets in published copies: rename a field.");
             }
             if (in_array($name, $scopes, true) && $columns !== [$name]) {

@@ -105,7 +105,7 @@ The public site reads `{table}__published`, so a lookup it makes (`slug` and `st
 index there, not on the working table. Declare it on the class with `#[PublishedIndex('slug',
 'state')]` (repeatable) or in the model file with `"published_indexes": [["slug", "state"]]`.
 `preflow migrate` makes `idx_{table}__published_slug_state` on the published table only. A type
-that does not publish and declares one stops the boot with an error naming `PublishedIndex`.
+that does not publish and declares one is refused, naming `PublishedIndex`, by `preflow migrate` and by `preflow optimize` (not on every request).
 See the data README, "Unique fields and indexes".
 
 ## Saving and deleting records

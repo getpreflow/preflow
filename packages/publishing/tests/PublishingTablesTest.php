@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace Preflow\Publishing\Tests;
 
+use Preflow\Core\Boot\BootManifest;
+use Preflow\Data\DataManager;
 use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\Migration\Schema;
 use Preflow\Data\Schema\RecordTables;
 use Preflow\Publishing\NoRecordColumns;
+use Preflow\Publishing\PublishedIndexCheck;
+use Preflow\Publishing\PublishingTypes;
 use Preflow\Publishing\RecordColumns;
 
 /** Without Folio, `preflow migrate` makes the tables of a publishing type on SQL storage. */
@@ -98,19 +102,44 @@ final class PublishingTablesTest extends PublishingAppTestCase
         $this->assertSame([], $this->migrate(), 'a second migrate is a no-op');
     }
 
-    /** A published index on a type that does not publish stops the boot, naming the attribute. */
-    public function test_a_published_index_on_a_type_without_publishing_stops_the_boot(): void
+    /** A published index on a type that does not publish: the boot is untouched, migrate refuses naming the attribute. */
+    public function test_a_published_index_on_a_type_without_publishing_stops_migrate_not_the_boot(): void
+    {
+        $this->writeNote();
+        $this->reboot();
+        $this->app();
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Type "note" declares PublishedIndex ("published_indexes"), but it does not publish');
+        $this->migrate();
+    }
+
+    /** The manifest build refuses it too; a loaded manifest skips the scan. */
+    public function test_the_manifest_build_refuses_it_and_a_loaded_manifest_skips_the_scan(): void
+    {
+        $this->writeNote();
+        $this->reboot();
+        $c = $this->app()->container();
+        $dm = $c->get(DataManager::class);
+        $types = $c->get(PublishingTypes::class);
+
+        (new PublishedIndexCheck($dm, $types, BootManifest::off()))->assertWhenBuilding();
+        (new PublishedIndexCheck($dm, $types, BootManifest::fromData(['catalogs' => []])))->assertWhenBuilding();
+        try {
+            (new PublishedIndexCheck($dm, $types, BootManifest::recording()))->assertWhenBuilding();
+            $this->fail('the build accepted it');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('declares PublishedIndex', $e->getMessage());
+        }
+    }
+
+    private function writeNote(): void
     {
         $this->write('config/models/note.json', (string) json_encode([
             'key' => 'note', 'table' => 'note', 'storage' => 'sqlite',
             'fields' => ['slug' => ['type' => 'string']],
             'published_indexes' => [['slug']],
         ]));
-        $this->reboot();
-
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Type "note" declares PublishedIndex ("published_indexes"), but it does not publish');
-        $this->app();
     }
 
     public function test_publish_and_revisions_work_on_the_tables(): void

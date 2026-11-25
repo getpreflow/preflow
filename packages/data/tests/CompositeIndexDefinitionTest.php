@@ -216,6 +216,24 @@ final class CompositeIndexDefinitionTest extends TestCase
         }
     }
 
+    public function test_a_field_only_a_published_index_covers_is_limited_to_its_column_length(): void
+    {
+        $plain = ['slug' => new TypeFieldDefinition('slug'), 'state' => new TypeFieldDefinition('state')];
+        $kinds = new \Preflow\Data\FieldKinds();
+
+        $without = new TypeDefinition('job', 'jobs', 'sqlite', $plain);
+        $with = new TypeDefinition('job', 'jobs', 'sqlite', $plain, publishedIndexes: [['slug', 'state']]);
+
+        $this->assertSame([], $kinds->lengths($without));
+        $this->assertSame(['slug' => 191, 'state' => 191], $kinds->lengths($with));
+    }
+
+    public function test_a_published_index_over_a_unique_field_says_the_published_copy_has_it(): void
+    {
+        $this->expectExceptionMessage('whose published copy gets an index over it already (PublishedIndex): drop it.');
+        new TypeDefinition('job', 'jobs', 'sqlite', ['slug' => new TypeFieldDefinition('slug', unique: true)], publishedIndexes: [['slug']]);
+    }
+
     public function test_a_published_index_may_not_repeat_an_index(): void
     {
         $fields = ['a' => new TypeFieldDefinition('a'), 'b' => new TypeFieldDefinition('b')];

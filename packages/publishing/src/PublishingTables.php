@@ -36,6 +36,8 @@ final class PublishingTables
         if ($registry === null) {
             return [];
         }
+        // Where every schema is read anyway (migrate, table sync): a PublishedIndex on a type that does not publish stops here.
+        (new PublishedIndexCheck($this->dm, $this->types))->assert();
         $tables = [];
         foreach ($this->types->publishing() as $type) {
             $def = $registry->get($type);
