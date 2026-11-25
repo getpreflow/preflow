@@ -71,9 +71,9 @@ abstract class DialectContract extends TestCase
     {
         $table = $this->q('dialect_contract_numbers');
         [$id, $num, $txt, $rn, $rt] = array_map($this->q(...), ['id', 'num', 'txt', 'rn', 'rt']);
-        $this->pdo->exec("CREATE TABLE {$table} ({$id} VARCHAR(10) PRIMARY KEY, {$num} {$this->numberColumnType()}, {$txt} TEXT, {$rn} INTEGER, {$rt} INTEGER)");
+        $this->pdo->exec("CREATE TABLE {$table} ({$id} VARCHAR(10) PRIMARY KEY, {$num} {$this->numberColumnType()}, {$txt} TEXT, {$rn} BIGINT, {$rt} BIGINT)");
         $insert = $this->pdo->prepare("INSERT INTO {$table} ({$id}, {$num}, {$txt}) VALUES (?, ?, ?)");
-        foreach ([['a', null, null], ['b', '3', '3'], ['c', '2.5', '3.0'], ['d', '-2.5', '2.5'], ['e', '12', '-2.5'], ['f', '0', ''], ['g', null, 'abc'], ['h', '0', ' 3'], ['i', '0', '1e3'], ['j', '0', '-3.7'], ['k', '0', '0x1A'], ['l', '0', '1.2.3'], ['m', '0', '3.']] as $row) {
+        foreach ([['a', null, null], ['b', '3', '3'], ['c', '2.5', '3.0'], ['d', '-2.5', '2.5'], ['e', '12', '-2.5'], ['f', '0', ''], ['g', null, 'abc'], ['h', '0', ' 3'], ['i', '0', '1e3'], ['j', '0', '-3.7'], ['k', '0', '0x1A'], ['l', '0', '1.2.3'], ['m', '0', '3.'], ['n', '0', "3\n"], ['o', '3.9', '3.99999999999999999999'], ['p', '-3.9', '-3.99999999999999999999'], ['q', '1e15', '  ']] as $row) {
             $insert->execute($row);
         }
 
@@ -96,6 +96,10 @@ abstract class DialectContract extends TestCase
             ['k', 0, 0],
             ['l', 0, 0],
             ['m', 0, 3],
+            ['n', 0, 0],     // a final line break is no part of a number
+            ['o', 3, 3],     // the digits before the dot, not a rounded decimal
+            ['p', -3, -3],
+            ['q', 1000000000000000, 0], // a large number in a number column; spaces are text
         ], array_map(static fn (array $r): array => [(string) $r[0], (int) $r[1], (int) $r[2]], $rows));
     }
 

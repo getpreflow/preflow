@@ -115,8 +115,9 @@ use Preflow\Testing\PlainDriver;
  *   throws when the condition holds. Each case runs through the driver (ConditionalWrites, when it
  *   implements it, compiles the condition) and through PlainDriver on the same store (the PHP
  *   check), so both must agree. Text in a field compared as a number reads as
- *   Condition::wholeNumber() reads it (@since 0.90: ' 3', '1e3', '.5', '0x1A' are 0, '-3.7' is -3,
- *   '' and null none), in comparisons and in an Add.
+ *   Condition::wholeNumber() reads it (@since 0.90: ' 3', '1e3', '.5', '0x1A' are 0, '-3.7' and
+ *   '-3.99999999999999999999' are -3, '' and null none), and a number with decimals or one of 1e15
+ *   in a number column reads as its whole part, in comparisons and in an Add.
  * - An empty id is '', 0 or '0' (as PdoDriver and DataManager treat it): save() with one inserts
  *   a record whose id the store generates, and lastInsertId() returns it.
  * - Change dates (@since 0.84.0): DataManager writes every record of a type with its change date
@@ -2031,42 +2032,47 @@ abstract class StorageDriverContract extends TestCase
     }
 
     /**
-     * Text in a field read as a whole number (Condition::wholeNumber(), since 0.90 on every
-     * storage): only `-?digits` and `-?digits.digits` are numbers, any other text is 0, null and
-     * '' are none. The field is a text column, as a table made before typed columns holds it (a
-     * number column would convert some of the text when it is saved). Each value is checked by
-     * comparisons and by an Add, on every path conditionalWrites() runs.
+     * Stored values read as a whole number (Condition::wholeNumber(), since 0.90 on every
+     * storage): text is a number only as `-?digits` or `-?digits.digits`, cut to the digits before
+     * the dot; any other text is 0; null and '' are none. Text sits in a text column (`n`), as a
+     * table made before typed columns holds it (a number column would convert some of it when it
+     * is saved); a number column (`v`) holds numbers with decimals and large ones. Each value is
+     * checked by comparisons and by an Add, on every path conditionalWrites() runs.
      */
     public function test_number_text_reads_the_same_on_every_storage(): void
     {
-        $values = [
-            ' 3' => 0, '3 ' => 0, "3\n" => 0, '1e3' => 0, '.5' => 0, '0x1A' => 0, '+3' => 0, '-' => 0, '1.2.3' => 0, 'abc' => 0,
-            '-3.7' => -3, '-0.5' => 0, '3.' => 3, '3.0' => 3, '007' => 7, '' => null,
+        $texts = [
+            ' 3' => 0, '3 ' => 0, '  ' => 0, "3\n" => 0, "3\0" => 0, '1e3' => 0, '.5' => 0, '0x1A' => 0, '+3' => 0, '-' => 0,
+            '1.2.3' => 0, 'abc' => 0, '-3.7' => -3, '-0.5' => 0, '3.' => 3, '3.0' => 3, '007' => 7,
+            '3.99999999999999999999' => 3, '-3.99999999999999999999' => -3, '9007199254740993.5' => 9007199254740993, '' => null,
         ];
-        $this->createType('numtext', ['uuid' => 'exact', 'n' => 'exact', 'mark' => 'exact']);
+        $records = ['none' => ['n', null, null]];
+        $i = 0;
+        foreach ($texts as $text => $number) {
+            $records['t' . $i++] = ['n', (string) $text, $number];
+        }
+        foreach ([[3.9, 3], [-3.9, -3], [1e15, 1000000000000000], [-2.5e15, -2500000000000000], [7, 7]] as [$stored, $number]) {
+            $records['v' . $i++] = ['v', $stored, $number];
+        }
+
+        $this->createType('numtext', ['uuid' => 'exact', 'n' => 'exact', 'v' => 'number', 'mark' => 'exact']);
         $models = sys_get_temp_dir() . '/contract_models_' . bin2hex(random_bytes(4));
         @mkdir($models, 0777, true);
         try {
             $registry = new \Preflow\Data\TypeRegistry($models);
             $def = $registry->define([
                 'key' => 'numtext', 'table' => 'numtext', 'storage' => 'default', 'id_field' => 'uuid',
-                'fields' => ['n' => ['type' => 'string'], 'mark' => ['type' => 'string']],
+                'fields' => ['n' => ['type' => 'string'], 'v' => ['type' => 'integer'], 'mark' => ['type' => 'string']],
             ]);
             $paths = ['driver' => $this->driver, 'checked in PHP' => new PlainDriver($this->driver)];
             if ($this->driver instanceof RunsSql) {
                 $paths['RunsSql only'] = self::sqlOnly($this->driver);
             }
-            $records = [];
-            $i = 0;
-            foreach ($values as $text => $number) {
-                $records['t' . $i++] = [(string) $text, $number];
-            }
-            $records['none'] = [null, null];
             foreach ($paths as $path => $driver) {
                 $dm = new \Preflow\Data\DataManager(['default' => $driver], 'default', $registry);
-                foreach ($records as $id => [$text, $number]) {
-                    $this->driver->save('numtext', $id, ['uuid' => $id, 'n' => $text, 'mark' => null]);
-                    $what = "{$path}: " . json_encode($text) . ' reads as ' . json_encode($number);
+                foreach ($records as $id => [$field, $stored, $number]) {
+                    $this->driver->save('numtext', $id, ['uuid' => $id, 'n' => null, 'v' => null, 'mark' => null, $field => $stored]);
+                    $what = "{$path}: {$field} " . var_export($stored, true) . ' reads as ' . json_encode($number);
                     $writes = function (\Preflow\Data\Condition $when, string $how) use ($dm, $def, $id, $what): bool {
                         $wrote = $dm->updateWhen($def, $id, $when, ['mark' => 'w']);
                         $this->assertSame($wrote ? 'w' : null, ($this->driver->findOne('numtext', $id) ?? [])['mark'] ?? null, "{$what} ({$how}): stored");
@@ -2076,17 +2082,18 @@ abstract class StorageDriverContract extends TestCase
                     };
                     if ($number === null) {
                         foreach (['=', '!=', '<', '>', '<=', '>='] as $operator) {
-                            $this->assertFalse($writes(\Preflow\Data\Condition::where('n', $operator, 0), $operator), "{$what}: no value is never {$operator} 0");
+                            $this->assertFalse($writes(\Preflow\Data\Condition::where($field, $operator, 0), $operator), "{$what}: no value is never {$operator} 0");
                         }
+                        $this->assertFalse($writes(\Preflow\Data\Condition::where($field, 'IN', [0]), 'IN'), "{$what}: no value is in no list");
                     } else {
-                        $this->assertTrue($writes(\Preflow\Data\Condition::where('n', '=', $number), '='), $what);
-                        $this->assertFalse($writes(\Preflow\Data\Condition::where('n', '!=', $number), '!='), $what);
-                        $this->assertTrue($writes(\Preflow\Data\Condition::where('n', '<', $number + 1), '<'), $what);
-                        $this->assertTrue($writes(\Preflow\Data\Condition::where('n', '>', $number - 1), '>'), $what);
-                        $this->assertTrue($writes(\Preflow\Data\Condition::where('n', 'IN', [$number, 99]), 'IN'), $what);
+                        $this->assertTrue($writes(\Preflow\Data\Condition::where($field, '=', $number), '='), $what);
+                        $this->assertFalse($writes(\Preflow\Data\Condition::where($field, '!=', $number), '!='), $what);
+                        $this->assertTrue($writes(\Preflow\Data\Condition::where($field, '<', $number + 1), '<'), $what);
+                        $this->assertTrue($writes(\Preflow\Data\Condition::where($field, '>', $number - 1), '>'), $what);
+                        $this->assertTrue($writes(\Preflow\Data\Condition::where($field, 'IN', [$number, 99]), 'IN'), $what);
                     }
-                    $this->assertTrue($dm->updateWhen($def, $id, \Preflow\Data\Condition::all(), ['n' => new \Preflow\Data\Add(1)]), "{$what}: Add");
-                    $this->assertNumber(($number ?? 0) + 1, ($this->driver->findOne('numtext', $id) ?? [])['n'] ?? null);
+                    $this->assertTrue($dm->updateWhen($def, $id, \Preflow\Data\Condition::all(), [$field => new \Preflow\Data\Add(1)]), "{$what}: Add");
+                    $this->assertNumber(($number ?? 0) + 1, ($this->driver->findOne('numtext', $id) ?? [])[$field] ?? null);
                     $this->driver->delete('numtext', $id);
                 }
             }

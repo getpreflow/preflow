@@ -200,9 +200,10 @@ final class Condition
      * A stored value as a whole number, as Driver\Dialect::wholeNumber() reads it: null for null
      * and '' (no number), the whole part, towards zero, of a number or of text that is one
      * ('3.0' is 3, '-2.5' is -2, '3.' is 3), else 0. Only `-?digits` and `-?digits.digits` (the
-     * decimals may be none) are numbers: ' 3', '3 ', '1e3', '.5', '0x1A', '+3', '-' and '1.2.3' are
-     * text, so 0. The JSON files, SQLite and MySQL all read stored text this way (since 0.90;
-     * StorageDriverContract checks it).
+     * decimals may be none) are numbers, and their whole part is the digits before the dot, however
+     * many decimals follow ('3.99999999999999999999' is 3): ' 3', '3 ', '1e3', '.5', '0x1A', '+3',
+     * '-', '1.2.3' and text with a NUL byte are text, so 0. The JSON files, SQLite and MySQL all
+     * read stored text this way (since 0.90; StorageDriverContract checks it).
      */
     public static function wholeNumber(mixed $stored): ?int
     {
@@ -210,8 +211,8 @@ final class Condition
             $stored === null, $stored === '' => null,
             is_int($stored) => $stored,
             is_float($stored), is_bool($stored) => (int) $stored,
-            is_string($stored) && preg_match('/^-?\d+$/D', $stored) === 1 => (int) $stored,
-            is_string($stored) && preg_match('/^-?\d+\.\d*$/D', $stored) === 1 => (int) (float) $stored,
+            // The whole part from the text itself (a float would round '3.99999999999999999999' up).
+            is_string($stored) && preg_match('/^-?\d+(?:\.\d*)?$/D', $stored) === 1 => (int) explode('.', $stored, 2)[0],
             is_string($stored) => 0,
             default => 0,
         };

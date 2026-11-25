@@ -166,17 +166,34 @@ final class MysqlDialect implements Dialect, PatternMatching, TextComparison
 
     /**
      * Strict mode makes CAST('' AS SIGNED) and CAST('3.0' AS SIGNED) errors inside an UPDATE, and
-     * a number column compared with '' too: only text that is a number is cast (through DECIMAL),
-     * and '' is checked on the text form. The rule is Condition::wholeNumber()'s: `$` also matches
-     * before a final line break (ICU and PCRE), so the second check refuses any other character
-     * ('3' and a line break is 0, since 0.90).
+     * a number column compared with '' too, so '' is checked by the length of the text form (a
+     * comparison with '' would take spaces for '' under a PAD SPACE collation). The rule is
+     * Condition::wholeNumber()'s:
+     * - A number column (CHARSET() 'binary': DOUBLE, BIGINT, DECIMAL) is cut by TRUNCATE(); its
+     *   text form can be '1e15' (MariaDB writes a DOUBLE from 1e15 so), which the text rule would
+     *   read as 0. A binary string column holding such text reads as a number too.
+     * - Text is a number only as `-?digits` or `-?digits.digits`: `$` also matches before a final
+     *   line break (ICU and PCRE), so a second check refuses any other character (since 0.90).
+     *   The whole part is the digits before the dot (SUBSTRING_INDEX), not a rounded DECIMAL.
+     * Beyond a 64-bit integer both clamp to its bounds (as SQLite's CAST and PHP's (int) do)
+     * instead of failing the UPDATE.
      */
     public function wholeNumber(string $expression): string
     {
-        $text = "CAST({$expression} AS CHAR)";
+        $e = $expression;
+        $text = "CAST({$e} AS CHAR)";
+        $min = '(-9223372036854775807 - 1)';
+        $max = '9223372036854775807';
+        $digits = "TRIM(LEADING '0' FROM SUBSTRING_INDEX(TRIM(LEADING '-' FROM {$text}), '.', 1))";
 
-        return "(CASE WHEN {$expression} IS NULL OR {$text} = '' THEN NULL WHEN {$text} REGEXP '^-?[0-9]+([.][0-9]*)?$' AND {$text} NOT REGEXP '[^-.0-9]' "
-            . "THEN CAST(TRUNCATE(CAST({$text} AS DECIMAL(65,10)), 0) AS SIGNED) ELSE 0 END)";
+        return "(CASE WHEN {$e} IS NULL OR LENGTH({$text}) = 0 THEN NULL"
+            . " WHEN CHARSET({$e}) = 'binary' AND {$text} REGEXP '^-?[0-9]+([.][0-9]+)?(e[-+]?[0-9]+)?$' AND {$text} NOT REGEXP '[^-+.0-9e]' THEN"
+            . " (CASE WHEN {$e} >= {$max} THEN {$max} WHEN {$e} <= {$min} THEN {$min} ELSE CAST(TRUNCATE({$e}, 0) AS SIGNED) END)"
+            . " WHEN {$text} REGEXP '^-?[0-9]+([.][0-9]*)?$' AND {$text} NOT REGEXP '[^-.0-9]' THEN"
+            . " (CASE WHEN LENGTH({$digits}) > 19 OR (LENGTH({$digits}) = 19 AND {$digits} > '{$max}')"
+            . " THEN (CASE WHEN {$text} LIKE '-%' THEN {$min} ELSE {$max} END)"
+            . " ELSE CAST(SUBSTRING_INDEX({$text}, '.', 1) AS SIGNED) END)"
+            . ' ELSE 0 END)';
     }
 
     /**

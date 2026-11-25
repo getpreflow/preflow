@@ -600,8 +600,10 @@ spaces; the connection must still be `utf8mb4` (the built-in driver sets it).
 
 A field compared as a number (and one an `Add` adds to) is read the same on every storage, as
 `Condition::wholeNumber()` reads it: only `-?digits` and `-?digits.digits` are numbers, cut to
-the whole part (`'-3.7'` is -3, `'3.'` is 3); any other text is 0 (`' 3'`, `'3 '`, `'1e3'`,
-`'.5'`, `'0x1A'`, `'-'`, `'1.2.3'`); null and `''` are no number. Since 0.90 SQLite reads this
+the digits before the dot (`'-3.7'` is -3, `'3.'` is 3, `'3.99999999999999999999'` is 3); any
+other text is 0 (`' 3'`, `'3 '`, `'1e3'`, `'.5'`, `'0x1A'`, `'-'`, `'1.2.3'`, spaces); null and
+`''` are no number. A number column is cut to its whole part (-3.9 is -3; MySQL's text form of a
+large DOUBLE, `'1e15'`, does not make it 0). Since 0.90 SQLite reads this
 way too (before, its `CAST` read the leading number: `' 3'` as 3, `'1e3'` as 1).
 StorageDriverContract checks it on every driver, DialectContract on every dialect.
 
