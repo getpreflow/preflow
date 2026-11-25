@@ -230,6 +230,32 @@ final class TranslationsCheckCommandTest extends TestCase
         $this->assertStringNotContainsString('model labels', $this->check(['--group=site'], ['g.fields.thing.size.label' => 'Size'])[1]);
     }
 
+    /** @since 0.89.0 model labels are admin text: the admin's languages, not those of every package. */
+    public function test_model_labels_need_the_admins_languages_not_those_of_a_14_language_package(): void
+    {
+        $this->file('vendor/composer/installed.json', (string) json_encode(['packages' => [
+            ['name' => 'acme/g', 'install-path' => '../acme/g', 'extra' => ['preflow' => ['translations' => ['g' => 'lang']]]],
+            ['name' => 'acme/admin', 'install-path' => '../acme/admin', 'extra' => ['preflow' => ['translations' => ['folio' => 'lang']]]],
+            ['name' => 'acme/wide', 'install-path' => '../acme/wide', 'extra' => ['preflow' => ['translations' => ['wide' => 'lang']]]],
+        ]]));
+        foreach (['en', 'de', 'fr'] as $locale) {
+            $this->langFile('vendor/acme/admin/lang', $locale, 'folio', ['x' => "X {$locale}"]);
+        }
+        foreach (['en', 'de', 'fr', 'es', 'it', 'nl', 'pl', 'pt', 'sv', 'tr', 'ru', 'ja', 'ko', 'zh'] as $locale) {
+            $this->langFile('vendor/acme/wide/lang', $locale, 'wide', ['x' => "X {$locale}"]);
+        }
+
+        [$code, $out] = $this->check([], ['g.types.thing.label' => ['en' => 'Things', 'de' => 'Dinge', 'fr' => 'Choses']]);
+
+        $this->assertSame(0, $code, $out);
+        $this->assertStringNotContainsString('model labels', $out);
+
+        [$code, $out] = $this->check([], ['g.types.thing.label' => ['en' => 'Things', 'de' => 'Dinge']]);
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString("Missing in fr (model labels of g, 1):\n  g.types.thing.label\n", $out);
+        $this->assertStringNotContainsString('Missing in es', $out);
+    }
+
     public function test_keys_a_site_adds_to_a_package_group_are_checked_only_in_the_sites_languages(): void
     {
         // g is delivered in en, de and fr; the site offers en and de and adds a key to g there.
