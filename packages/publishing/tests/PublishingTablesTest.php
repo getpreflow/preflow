@@ -78,6 +78,41 @@ final class PublishingTablesTest extends PublishingAppTestCase
         $this->assertSame([], $this->migrate(), 'a second migrate is a no-op');
     }
 
+    /** A PublishedIndex reaches the published table only, named like every composite; the working table and the revisions do not get it. */
+    public function test_a_published_index_reaches_only_the_published_table(): void
+    {
+        $this->write('config/models/article.json', (string) json_encode([
+            'key' => 'article', 'table' => 'article', 'storage' => 'sqlite', 'publishing' => true,
+            'fields' => ['slug' => ['type' => 'string'], 'state' => ['type' => 'string']],
+            'published_indexes' => [['slug', 'state']],
+        ]));
+        $this->reboot();
+
+        $lines = $this->migrate();
+
+        $this->assertContains('added index idx_article__published_slug_state', $lines);
+        $this->assertNotContains('added index idx_article_slug_state', $lines);
+        $this->assertEqualsCanonicalizing(['idx_article__published_slug_state', 'idx_article__published__updated_at'], self::own($this->schema()->indexes('article__published')));
+        $this->assertSame(['idx_article__updated_at'], self::own($this->schema()->indexes('article')));
+        $this->assertSame([], self::own($this->schema()->indexes('article__revisions')));
+        $this->assertSame([], $this->migrate(), 'a second migrate is a no-op');
+    }
+
+    /** A published index on a type that does not publish stops the boot, naming the attribute. */
+    public function test_a_published_index_on_a_type_without_publishing_stops_the_boot(): void
+    {
+        $this->write('config/models/note.json', (string) json_encode([
+            'key' => 'note', 'table' => 'note', 'storage' => 'sqlite',
+            'fields' => ['slug' => ['type' => 'string']],
+            'published_indexes' => [['slug']],
+        ]));
+        $this->reboot();
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Type "note" declares PublishedIndex ("published_indexes"), but it does not publish');
+        $this->app();
+    }
+
     public function test_publish_and_revisions_work_on_the_tables(): void
     {
         $this->migrate();

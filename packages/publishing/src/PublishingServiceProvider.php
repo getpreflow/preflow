@@ -189,6 +189,14 @@ final class PublishingServiceProvider extends ServiceProvider
         if (!$container->bound(RecordTypes::class)) {
             $container->singleton(RecordTypes::class, static fn (): RecordTypes => new NoRecordTypes());
         }
+        // A PublishedIndex on a type that does not publish is a mistake: stop here, not at the first migrate.
+        if ($container->bound(DataManager::class)) {
+            (new PublishedIndexCheck(
+                $container->get(DataManager::class),
+                $container->get(PublishingTypes::class),
+                $container->bound(\Preflow\Core\Boot\BootManifest::class) ? $container->get(\Preflow\Core\Boot\BootManifest::class) : null,
+            ))->assert();
+        }
         // Every save of a publishing type's working copy bumps _version (the data layer's VersionFields),
         // so the published version tells a change also when an app saves the record itself.
         if ($container->bound(DataManager::class)) {

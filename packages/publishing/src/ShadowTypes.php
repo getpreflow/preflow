@@ -38,7 +38,7 @@ final class ShadowTypes
     }
 
     /**
-     * The snapshots: the record's fields and composite indexes, its unique fields and their scopes
+     * The snapshots: the record's fields and composite indexes (and the ones only they get, PublishedIndex), its unique fields and their scopes
      * plain indexed ones but for translatable ones (stored alike, never checked: a snapshot may hold
      * a value another record has taken since).
      */
@@ -48,6 +48,7 @@ final class ShadowTypes
         foreach ($def->uniqueFields() as $field => $scope) {
             array_push($indexed, $field, ...$scope);
         }
+        $composites = [...$def->indexes, ...$def->publishedIndexes];
         $fields = [];
         foreach ($def->fields as $name => $f) {
             // A translatable unique field has no index on the working table either (checked on save);
@@ -55,7 +56,7 @@ final class ShadowTypes
             $fields[$name] = $f->unique === false && !in_array($name, $indexed, true) ? $f : new TypeFieldDefinition(
                 $f->name, $f->type, $f->searchable, $f->transform, $f->validate, $f->label, $f->help, $f->config,
                 $f->translatable, $f->labels, $f->helps, unique: false,
-                index: $f->index || (!$f->translatable && !in_array([$name], $def->indexes, true)), length: $f->length,
+                index: $f->index || (!$f->translatable && !in_array([$name], $composites, true)), length: $f->length,
                 exact: $f->exact,
             );
         }
@@ -69,7 +70,7 @@ final class ShadowTypes
             searchableFields: $def->searchableFields,
             transformers: $def->transformers,
             locales: $def->locales,
-            indexes: $def->indexes,
+            indexes: $composites,
             titleField: $def->titleField,
             // No id kind: the snapshots' table is the sync's (a text key) and every snapshot takes
             // its working record's id, so the class's kind would contradict that key (DataManager::idKind()).

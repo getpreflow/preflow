@@ -24,6 +24,7 @@ Models are annotated with PHP attributes. `DataManager` is the single entry poin
 | `#[Id]` | Property | Marks the primary key field. Works on any property — use `string $uuid` for UUIDs or `int $id` for auto-increment. |
 | `#[Field(searchable: true)]` | Property | Marks a field; `searchable: true` includes it in full-text search. `unique: true` (or `unique: ['scope', ...]`), `index: true` and `length: n` are described in [Unique fields and indexes](#unique-fields-and-indexes). |
 | `#[Index('state', 'updated_at')]` | Class (repeatable) | A composite index over fields of a type (`#[Entity(type: …)]`), in that order; see [Unique fields and indexes](#unique-fields-and-indexes). |
+| `#[PublishedIndex('slug', 'state')]` | Class (repeatable) | The same, but only the published copy of a type with publishing gets it (0.89). |
 | `#[Seed(debugOnly: true)]` | Class | Marks a seeder in `app/Seeds/` as demo data: `preflow db:seed` skips it while `app.debug` is off (since 0.80.0); see `db:seed` in `preflow/devtools`. |
 | `#[Timestamps]` | Class or property | `save()`, `insert()` and `update()` of a plain model set `createdAt` or `created_at` (the first the model has) when it is empty and `updatedAt` or `updated_at` on every write, matching the migration's `$t->timestamps()`. A `?string` property gets `Y-m-d H:i:s` text, an `?int` one the Unix time; a `?\DateTimeImmutable` one is stored as that text. Other types (a mutable `\DateTime` too) are not stamped. A class-backed type (`#[Entity(type: …)]`) is not stamped: it stores what its type definition says, so it sets these values itself or declares them as type fields. |
 
@@ -796,7 +797,7 @@ driver:
     type's lock elsewhere). A record deleted meanwhile is not written back; a date a save gave
     meanwhile stays; a JSON file is written in the bytes a save writes (the change date closes the
     system keys).
-  - It writes only empty dates, 500 records per transaction: a second run writes nothing, an
+  - It writes only empty dates (null, `''` or `'0'`), 500 records per transaction: a second run writes nothing, an
     interrupted one goes on where it stopped.
   - A table it cannot finish is a `refused:` line and migrate exits 1 (the other tables go on). A
     source that cannot answer (the activity log unreachable) refuses its table rather than letting
@@ -873,6 +874,16 @@ final class Job extends Model { … }
   indexed plain in `__published` tables, so a composite named like one of them is refused; one
   over just a scope field is that field's index there. A class's admin file may not set
   `"indexes"` (it is schema).
+- **An index only the published copy gets (0.89).** A type with publishing reads its public
+  records from `{table}__published`, an index on the working table that only editors use is
+  wasted. `#[PublishedIndex('slug', 'state')]` (repeatable, on the class) or `"published_indexes":
+  [["slug", "state"]]` in a model file lists fields like `Index` does and is checked the same way
+  (unknown or translatable field, a field twice, a name another index has already). The
+  `{table}__published` table gets it in addition to the indexes it copies, named
+  `idx_{table}__published_{field1}_{field2}`; the working table and the revisions do not. A type
+  that does not publish and declares one is a boot error naming `PublishedIndex`: use `Index`
+  there. A field only a published index covers is stored short in the published table, so
+  validation limits its length (191 by default) in the working record too.
 - **What sync does.** `preflow migrate` makes every declared index that is missing, on new and
   existing columns alike: `idx_{table}_{field}` for `index`, the composite ones, and
   `uniq_{table}_{field}` (over the field and its scope) for `unique`. An index is found by its
@@ -1989,14 +2000,14 @@ with `type: 'date'`. `#[Field]` takes `type`, `label`, `help` (text or a locale 
 (kind settings written at field level, as in a JSON file: `options`, `accept`, `time`, `blocks`,
 `fields`, `multiple`), `default`, `translatable`, `unique` (or a scope list), `index`, `length`,
 `searchable` and `transform`. `#[Relation(to:, onDelete:, onSelfDelete:, labelField:, metaField:)]` writes the
-relation the JSON file would, and `#[Index('state', 'updated_at')]` on the class its `"indexes"`.
+relation the JSON file would, and `#[Index('state', 'updated_at')]` on the class its `"indexes"`, `#[PublishedIndex]` its `"published_indexes"`.
 `ModelSchema::of(Job::class)` shows the type derived from a class.
 
 **What goes where.** On the class: everything with data meaning, plus labels and help, which forms
 outside Folio use too. In the admin-only file `config/models/job.json`: presentation (the type's
 label, icon, section, list columns, filters, sort, `publishing`; per field `readonly`, `hidden`,
 `placeholder`, …). The file may not set schema: `table`, `storage`, `id_field`, `matrixable`,
-`views`, `indexes`, a field's `type`, `validate`, `translatable`, `unique`, `index`, `length`, `searchable`,
+`views`, `indexes`, `published_indexes`, a field's `type`, `validate`, `translatable`, `unique`, `index`, `length`, `searchable`,
 `transform`, `default`, `relation`, `options`, `accept`, `time`, `blocks`, `fields` or `multiple`
 is refused with a message naming the file. A site without Folio never sees these files.
 Folio's columns (`_version`, `_publish_at`, …) are invisible to the class.

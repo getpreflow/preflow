@@ -99,6 +99,15 @@ type's table), `{table}__published` and `{table}__revisions`, with the publishin
 columns are added, nothing is dropped or changed, so running it again changes nothing. Run it after
 turning publishing on for a type or adding a field.
 
+### An index only the published copy gets (0.89)
+
+The public site reads `{table}__published`, so a lookup it makes (`slug` and `state`) wants its
+index there, not on the working table. Declare it on the class with `#[PublishedIndex('slug',
+'state')]` (repeatable) or in the model file with `"published_indexes": [["slug", "state"]]`.
+`preflow migrate` makes `idx_{table}__published_slug_state` on the published table only. A type
+that does not publish and declares one stops the boot with an error naming `PublishedIndex`.
+See the data README, "Unique fields and indexes".
+
 ## Saving and deleting records
 
 `RecordWriter` (from the container) is the one write path for records, of every type: an admin, a

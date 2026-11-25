@@ -130,7 +130,8 @@ final class FieldKinds
      */
     public function lengths(TypeDefinition $def): array
     {
-        $indexed = $def->indexedByOthers();
+        // A field only a published index covers is a long column in the working table, so its values are limited here too (the published copy's column is short).
+        $indexed = [...$def->indexedByOthers(), ...array_merge([], ...$def->publishedIndexes)];
         $lengths = [];
         foreach ($def->fields as $name => $field) {
             $field = in_array($name, $indexed, true) ? $field->withIndex() : $field;

@@ -7,15 +7,20 @@ namespace Preflow\Data\Tests\Fixtures\ModelSchema;
 use Preflow\Data\Attributes\Entity;
 use Preflow\Data\Attributes\Field;
 use Preflow\Data\Attributes\Index;
+use Preflow\Data\Attributes\PublishedIndex;
 use Preflow\Data\Model;
 
 #[Index('state', 'updated_at')]
 #[Index('company', 'state')]
+#[PublishedIndex('slug', 'state')]
 #[Entity(table: 'jobs', storage: 'sqlite', type: 'indexed_job')]
 final class IndexedJob extends Model
 {
     #[Field(index: true)]
     public ?string $company = null;
+
+    #[Field]
+    public ?string $slug = null;
 
     #[Field]
     public ?string $state = null;

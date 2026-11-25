@@ -173,6 +173,76 @@ final class CompositeIndexDefinitionTest extends TestCase
         new TypeRegistry($this->dir, null, ['indexed_job' => IndexedJob::class]);
     }
 
+    public function test_a_model_file_declares_published_indexes(): void
+    {
+        file_put_contents($this->dir . '/job.json', (string) json_encode([
+            'key' => 'job', 'table' => 'jobs', 'storage' => 'sqlite', 'publishing' => true,
+            'fields' => ['slug' => ['type' => 'string'], 'state' => ['type' => 'string']],
+            'indexes' => [['state']], 'published_indexes' => [['slug', 'state']],
+        ]));
+
+        $type = (new TypeRegistry($this->dir))->get('job');
+
+        $this->assertSame([['slug', 'state']], $type->publishedIndexes);
+        $this->assertSame([['state']], $type->indexes, 'the working table keeps only its own');
+    }
+
+    public function test_published_indexes_must_be_lists_of_field_names(): void
+    {
+        file_put_contents($this->dir . '/job.json', (string) json_encode([
+            'key' => 'job', 'table' => 'jobs', 'storage' => 'sqlite', 'fields' => ['state' => ['type' => 'string']], 'published_indexes' => ['state'],
+        ]));
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Type "job": "published_indexes" is a list of field lists');
+        (new TypeRegistry($this->dir))->get('job');
+    }
+
+    public function test_a_published_index_is_checked_like_an_index(): void
+    {
+        $fields = ['state' => new TypeFieldDefinition('state', index: true), 'title' => new TypeFieldDefinition('title', translatable: true)];
+        foreach ([
+            [[['nope']], 'Type "job" has a published index (PublishedIndex) over "nope", which is not one of its fields.'],
+            [[['title']], 'Type "job" has a published index (PublishedIndex) over "title", which is translatable: free text gets no index.'],
+            [[[]], 'Type "job" has a published index (PublishedIndex) without fields.'],
+            [[['state']], 'Type "job" has two indexes named idx_jobs_state ((state) and another): drop one, or rename a field.'],
+        ] as [$published, $message]) {
+            try {
+                new TypeDefinition('job', 'jobs', 'sqlite', $fields, publishedIndexes: $published);
+                $this->fail("accepted: {$message}");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertSame($message, $e->getMessage());
+            }
+        }
+    }
+
+    public function test_a_published_index_may_not_repeat_an_index(): void
+    {
+        $fields = ['a' => new TypeFieldDefinition('a'), 'b' => new TypeFieldDefinition('b')];
+
+        $this->expectExceptionMessage('Type "job" has two indexes named idx_jobs_a_b ((a, b) and another)');
+        new TypeDefinition('job', 'jobs', 'sqlite', $fields, indexes: [['a', 'b']], publishedIndexes: [['a', 'b']]);
+    }
+
+    public function test_a_class_declares_published_indexes_with_the_attribute(): void
+    {
+        $this->assertSame([['slug', 'state']], ModelSchema::of(IndexedJob::class)['published_indexes']);
+
+        $type = (new TypeRegistry($this->dir, null, ['indexed_job' => IndexedJob::class]))->get('indexed_job');
+
+        $this->assertSame([['slug', 'state']], $type->publishedIndexes);
+        $this->assertSame([['state', 'updated_at'], ['company', 'state']], $type->indexes);
+    }
+
+    public function test_the_admin_file_of_a_class_may_not_set_published_indexes(): void
+    {
+        file_put_contents($this->dir . '/indexed_job.json', (string) json_encode(['key' => 'indexed_job', 'label' => 'Jobs', 'published_indexes' => [['state']]]));
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Model file indexed_job.json sets "published_indexes"');
+        new TypeRegistry($this->dir, null, ['indexed_job' => IndexedJob::class]);
+    }
+
     /**
      * @param array<string, mixed> $fields
      * @param list<mixed> $indexes
