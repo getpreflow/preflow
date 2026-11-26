@@ -278,12 +278,19 @@ final class TypeCatalog
                     'boolean' => \Preflow\Folio\Field\Types\BooleanFieldType::display($field),
                     'select' => self::checkSelect($field, (string) $name, $fields),
                     'tags' => \Preflow\Folio\Field\Types\TagsFieldType::checkConfig($field),
-                    // The options of the field types of preflow/fields (link, email, phone, color, code, json; 0.91).
-                    default => \Preflow\Fields\FieldOptions::check((string) ($field['type'] ?? 'string'), $field, $embedProviders),
+                    default => null,
                 };
             } catch (\LogicException $e) {
                 throw new FrontendConfigException("Type \"{$key}\": field \"{$name}\": " . $e->getMessage(), 0, $e);
             }
+        }
+        // The options of the field types of preflow/fields (0.91), and a show_when on one of its
+        // structured, datetime or time fields that is not "empty"/"filled": also for an extension
+        // model defined after FieldsServiceProvider's boot check.
+        try {
+            \Preflow\Fields\FieldOptions::checkFields(array_filter($fields, 'is_array'), $embedProviders);
+        } catch (\LogicException $e) {
+            throw new FrontendConfigException("Type \"{$key}\": " . $e->getMessage(), 0, $e);
         }
     }
 
