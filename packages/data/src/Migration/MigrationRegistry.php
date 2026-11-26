@@ -27,6 +27,12 @@ final class MigrationRegistry
     /** @var array<string, true> the checks that run on any storage */
     private array $anyStorageChecks = [];
 
+    /** @var array<string, \Closure> read-only warnings `preflow migrate` and `db:check` print */
+    private array $warnings = [];
+
+    /** @var array<string, true> the warnings that work on any storage */
+    private array $anyStorageWarnings = [];
+
     /** The storage the migrations run on in this run (ranOn()), null before or without one. */
     private ?string $storage = null;
 
@@ -73,6 +79,58 @@ final class MigrationRegistry
     public function checks(?bool $sql = null): array
     {
         return $sql === false ? array_intersect_key($this->checks, $this->anyStorageChecks) : $this->checks;
+    }
+
+    /**
+     * A warning `preflow migrate` (also with --pretend) prints after its steps, as
+     * "[name] warning: line", and `db:check` after its own lines: lines about the site's data that
+     * need a person (a layout whose class is gone, pages still on it). It only reads, and never
+     * changes an exit code. $sqlOnly true: only a site with SQL storage prints it (as check()); the
+     * default, false, is a warning that works through DataManager on any storage.
+     *
+     * @param \Closure(): list<string> $lines
+     * @since 0.92.0
+     */
+    public function warning(string $name, \Closure $lines, bool $sqlOnly = false): void
+    {
+        if (isset($this->warnings[$name])) {
+            throw new \RuntimeException("Migration warning [{$name}] is already registered.");
+        }
+        $this->warnings[$name] = $lines;
+        if (!$sqlOnly) {
+            $this->anyStorageWarnings[$name] = true;
+        }
+    }
+
+    /**
+     * @return array<string, \Closure> the warnings, in the order registered; with $sql false only those that work on any storage
+     * @since 0.92.0
+     */
+    public function warnings(?bool $sql = null): array
+    {
+        return $sql === false ? array_intersect_key($this->warnings, $this->anyStorageWarnings) : $this->warnings;
+    }
+
+    /**
+     * What the warnings say: name => lines. A warning that throws is one line saying so, so a
+     * warning can never stop `migrate` or `db:check`.
+     *
+     * @param array<string, \Closure(): list<string>> $warnings (warnings())
+     * @return array<string, list<string>>
+     * @since 0.92.0
+     */
+    public static function linesOf(array $warnings): array
+    {
+        $lines = [];
+        foreach ($warnings as $name => $warning) {
+            try {
+                $lines[$name] = array_values($warning());
+            } catch (\Throwable $e) {
+                $lines[$name] = ['could not be worked out: ' . $e->getMessage()];
+            }
+        }
+
+        return $lines;
     }
 
     /** Missing directories are ignored. */

@@ -16,6 +16,7 @@ use Preflow\Blocks\Layouts\AreaLayoutSets;
 use Preflow\Blocks\Layouts\Layout;
 use Preflow\Blocks\Layouts\LayoutConfigException;
 use Preflow\Blocks\Layouts\LayoutInput;
+use Preflow\Blocks\Layouts\LayoutReport;
 use Preflow\Blocks\Layouts\LayoutRegistry;
 use Preflow\Blocks\Layouts\LayoutResource;
 use Preflow\Blocks\Layouts\PageLayouts;
@@ -27,6 +28,7 @@ use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\FieldKinds;
 use Preflow\Data\Locales;
+use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeRegistry;
 use Preflow\Validation\RuleFactory;
@@ -228,6 +230,13 @@ final class BlocksServiceProvider extends ServiceProvider
         if ($data === null) {
             return;
         }
+        // `preflow migrate` and `db:check` print what needs a person: layouts without a class, pins without a page, pages on an unavailable layout.
+        $container->get(MigrationRegistry::class)->warning('blocks.layouts', static fn (): array => (new LayoutReport(
+            $container->get(PageLayouts::class),
+            $container->get(LayoutRegistry::class),
+            $types,
+            $data,
+        ))->lines(), sqlOnly: false);
         $data->recordRules()->add(static function (TypeDefinition $def) use ($container, $data): array {
             $layouts = $container->get(PageLayouts::class);
             if ($layouts->forType($def->key) === null) {
