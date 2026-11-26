@@ -22,16 +22,15 @@ use Preflow\Data\TypeFieldDefinition;
  *   recordRules() as rules the core adds for the records' fields (RecordRules::add()), its
  *   blockRules() (or rules()) for a block's field through BlockValueChecks::extraRules().
  *
- * Select options are the core's own (SelectRules). register() may be called again with the same
- * objects (FolioServiceProvider at boot, a RecordValidator built on its own): each is told once.
+ * Select options are the core's own (SelectRules). FolioServiceProvider calls register() once at
+ * boot; code that builds Folio's pieces by hand (a test) calls it itself, once per DataManager. A
+ * kind is told only while no core package registered it (FieldKinds::hasRules()), so calling it
+ * again adds no rule twice; a RecordRules or BlockValueChecks given twice gets its rules twice.
  *
  * @since 0.92.0
  */
 final class CoreFieldRules
 {
-    /** @var \WeakMap<object, true>|null the RecordRules and BlockValueChecks told already */
-    private static ?\WeakMap $told = null;
-
     public static function register(FieldTypeRegistry $types, FieldKinds $kinds, ?RecordRules $records = null, ?BlockValueChecks $blocks = null): void
     {
         foreach ($types->all() as $type) {
@@ -42,7 +41,7 @@ final class CoreFieldRules
                 self::registerKind($alias, $types->get($key), $types, $kinds);
             }
         }
-        if ($records !== null && self::firstTime($records)) {
+        if ($records !== null) {
             $records->add(static function (TypeDefinition $def) use ($types): array {
                 $rules = [];
                 foreach ($def->fields as $name => $field) {
@@ -59,7 +58,7 @@ final class CoreFieldRules
                 return $rules;
             });
         }
-        if ($blocks !== null && self::firstTime($blocks)) {
+        if ($blocks !== null) {
             $blocks->extraRules(static function (TypeFieldDefinition $field, BlockDefinition $block) use ($types): array {
                 $type = $types->get($field->type);
                 if (!self::readsOthers($type)) {
@@ -90,16 +89,5 @@ final class CoreFieldRules
     private static function readsOthers(FieldType $type): bool
     {
         return $type instanceof HasRecordRules || $type instanceof HasBlockRules;
-    }
-
-    private static function firstTime(object $target): bool
-    {
-        self::$told ??= new \WeakMap();
-        if (isset(self::$told[$target])) {
-            return false;
-        }
-        self::$told[$target] = true;
-
-        return true;
     }
 }

@@ -62,6 +62,59 @@ final class SelectRulesTest extends TestCase
         $this->assertSame([], SelectRules::of(new TypeFieldDefinition('title', 'string', config: ['options' => ['a']]), []), 'not a select');
     }
 
+    /** @return iterable<string, array{array<array-key, mixed>, string, string}> options, a value they offer, one they do not */
+    public static function optionShapes(): iterable
+    {
+        yield 'map of text labels' => [['s' => 'Small', 'm' => 'Medium'], 's', 'Small'];
+        yield 'map of labels per language' => [['s' => ['en' => 'Small', 'de' => 'Klein']], 's', 'Klein'];
+        yield 'map of described options' => [['301' => ['label' => 'Moved', 'help' => 'For good.']], '301', 'Moved'];
+        yield 'map with numeric keys' => [[1 => 'One', 5 => 'Five'], '5', 'Five'];
+        yield 'plain list' => [['Red', 'Blue'], 'Blue', 'Green'];
+        yield 'list of described options' => [[['label' => 'Red', 'help' => 'Warm.']], 'Red', 'Warm.'];
+        yield 'list of labels per language' => [[['en' => 'Red', 'de' => 'Rot'], ['en' => 'Blue', 'de' => 'Blau']], 'Blue', 'Rot'];
+        yield 'list of described options with labels per language' => [[['label' => ['en' => 'Red', 'de' => 'Rot'], 'help' => 'Warm.']], 'Red', 'Rot'];
+    }
+
+    /** @param array<array-key, mixed> $options */
+    #[\PHPUnit\Framework\Attributes\DataProvider('optionShapes')]
+    public function test_every_option_shape_folio_takes_gets_a_rule(array $options, string $offered, string $other): void
+    {
+        $rules = SelectRules::of(new TypeFieldDefinition('choice', 'select', config: ['options' => $options]), []);
+        $check = static fn (string $value): array => (new ValidatorFactory(new RuleFactory()))->make(['choice' => $rules], ['choice' => $value])->validate()->errors();
+
+        $this->assertNotSame([], $rules, 'no select is looser than in 0.91');
+        $this->assertSame([], $check($offered));
+        $this->assertCount(1, $check($other)['choice'] ?? []);
+    }
+
+    public function test_a_list_of_labels_per_language_offers_the_renders_language(): void
+    {
+        // Folio's form offers (and 0.91 checked) each label in the admin's language as the value.
+        $field = new TypeFieldDefinition('colour', 'select', config: ['options' => [['en' => 'Red', 'de' => 'Rot'], ['en' => 'Blue', 'de' => 'Blau']]]);
+        $de = \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->admin('de'), static fn (): array => SelectRules::of($field, []));
+
+        $this->assertEquals([new WhenFilled(new InList(['Rot', 'Blau']))], $de);
+        $this->assertEquals([new WhenFilled(new InList(['Red', 'Blue']))], SelectRules::of($field, []), 'outside every render: English');
+    }
+
+    public function test_the_source_is_named_by_the_field_labels_when_given(): void
+    {
+        $labels = new class implements \Preflow\Data\FieldLabels {
+            public function fieldLabel(TypeFieldDefinition $field, string $locale, ?\Preflow\Data\TypeDefinition $type = null): string
+            {
+                return $field->name . '@' . $locale . ($type === null ? ' (block)' : ' (' . $type->key . ')');
+            }
+        };
+        $answers = new TypeFieldDefinition('answers', 'tags', label: 'Possible answers', labels: ['en' => 'Possible answers', 'de' => 'Mögliche Antworten']);
+        $select = new TypeFieldDefinition('answer', 'select', config: ['options_from' => 'answers']);
+        $type = new \Preflow\Data\TypeDefinition('poll', 'poll', 'json', ['answers' => $answers, 'answer' => $select]);
+
+        $this->assertEquals([new OptionsFrom('answers', 'answers@en (poll)')], SelectRules::of($select, $type->fields, null, $labels, $type));
+        $this->assertEquals([new OptionsFrom('answers', 'answers@en (block)')], SelectRules::of($select, $type->fields, null, $labels));
+        $de = \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->admin('de'), static fn (): array => SelectRules::of($select, $type->fields, null, null, $type));
+        $this->assertEquals([new OptionsFrom('answers', 'Mögliche Antworten')], $de, 'without FieldLabels: a record field\'s label in the render\'s language');
+    }
+
     public function test_options_from_reads_the_source_from_the_same_data(): void
     {
         $siblings = ['answers' => new TypeFieldDefinition('answers', 'tags', label: 'Possible answers')];

@@ -55,6 +55,9 @@ final class DataManager
 
     private ?RecordRules $recordRules = null;
 
+    /** @var (\Closure(): ?TypeLabels)|null */
+    private ?\Closure $labels = null;
+
     private ?DataObserver $observer = null;
 
     private ?VersionFields $versionFields = null;
@@ -516,6 +519,32 @@ final class DataManager
     public function recordRules(): RecordRules
     {
         return $this->recordRules ??= new RecordRules();
+    }
+
+    /**
+     * Where the people-facing names of types come from: $labels gives the bound TypeLabels (an
+     * admin package's), or null; asked when a message names a field (fieldLabels()). The
+     * application sets it to its container's binding.
+     *
+     * @param \Closure(): ?TypeLabels $labels
+     * @since 0.92.0
+     */
+    public function labelsFrom(\Closure $labels): void
+    {
+        $this->labels = $labels;
+    }
+
+    /**
+     * The field labels of the bound TypeLabels when it also implements FieldLabels; null otherwise
+     * (the core then names a field by its label or its humanized name).
+     *
+     * @since 0.92.0
+     */
+    public function fieldLabels(): ?FieldLabels
+    {
+        $labels = $this->labels !== null ? ($this->labels)() : null;
+
+        return $labels instanceof FieldLabels ? $labels : null;
     }
 
     /**
@@ -2633,7 +2662,7 @@ final class DataManager
             foreach ($this->fieldKinds()->rulesOf($field) as $rule) {
                 $rules[$name][] = $rule;
             }
-            foreach (Validation\SelectRules::of($field, $typeDef->fields, $this->fieldKinds()) as $rule) {
+            foreach (Validation\SelectRules::of($field, $typeDef->fields, $this->fieldKinds(), $this->fieldLabels(), $typeDef) as $rule) {
                 $rules[$name][] = $rule;
             }
         }

@@ -74,6 +74,7 @@ final class FieldRuleObjectsTest extends TestCase
             );
             $fieldTypes = new FieldTypeRegistry();
             $fieldTypes->register(new LinkFieldType());
+            \Preflow\Folio\Tests\Support\FolioRules::register($fieldTypes, $dm);
             $validator = new RecordValidator($fieldTypes, $dm);
             $def = $registry->get('page');
 

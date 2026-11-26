@@ -16,7 +16,7 @@ use Preflow\Validation\ValidationRule;
  * ("required" judges that). The message is the usual "Must be one of: …", or, with no values in
  * the source yet, one naming the source field ($sourceLabel, else its name).
  *
- * Moved here from Preflow\Folio\Field\Types\OptionsFrom (0.89), so every write path checks it.
+ * In the core since 0.92 (an admin package's select rule since 0.89), so every write path checks it.
  *
  * @since 0.92.0
  */

@@ -1468,6 +1468,11 @@ final class Application
 
         $dataManager = new \Preflow\Data\DataManager($drivers, 'default', $typeRegistry, $validatorFactory);
         $this->container->instance(\Preflow\Data\DataManager::class, $dataManager);
+        // Messages that name a field use the bound type labels (Folio's display labels), resolved on use (0.92).
+        if (method_exists($dataManager, 'labelsFrom')) {
+            $container = $this->container;
+            $dataManager->labelsFrom(static fn (): ?\Preflow\Data\TypeLabels => $container->bound(\Preflow\Data\TypeLabels::class) ? $container->get(\Preflow\Data\TypeLabels::class) : null);
+        }
         // Cross-type record search (the admin's palette, a site's own search box); built on first use.
         $this->container->singleton(
             \Preflow\Data\Search\RecordSearch::class,

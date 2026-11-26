@@ -255,6 +255,7 @@ final class BlocksServiceProvider extends ServiceProvider
             $c->bound(ValidatorFactory::class) ? $c->get(ValidatorFactory::class) : new ValidatorFactory(new RuleFactory()),
             // Bound in boot (with a type registry): resolved when the checks are first built.
             $c->bound(PageLayouts::class) ? $c->get(PageLayouts::class) : null,
+            $data->fieldLabels(...),
         ));
         // Built on the first validated write, not at boot (the registry reflects over every block).
         $data->recordRules()->check(static fn (DynamicRecord $record, array $given): array => $container->get(BlockValueChecks::class)->errors($record->getType(), $record->toArray(), $given));

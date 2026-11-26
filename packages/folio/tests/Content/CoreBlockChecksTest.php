@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Content\RecordValidator;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 use Preflow\Validation\ValidationException;
 
 /**
@@ -20,6 +21,8 @@ use Preflow\Validation\ValidationException;
  */
 final class CoreBlockChecksTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private const string A = 'aaaaaaaaaaaaaaaa';
@@ -29,7 +32,7 @@ final class CoreBlockChecksTest extends TestCase
     {
         $this->scaffoldPublishing();
         $this->write('config/blocks.php', "<?php\nreturn ['classes' => ["
-            . "\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\HeroBlock\\HeroBlock::class, \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\TradeoffNoteBlock::class, \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\CheckedFieldsBlock::class]];\n");
+            . "\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\HeroBlock\\HeroBlock::class, \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\TradeoffNoteBlock::class, \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\CheckedFieldsBlock::class, \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\LabelledPollBlock::class]];\n");
         $this->writeModel('event', ['label' => 'Events', 'publishing' => false, 'fields' => [
             'name' => ['type' => 'string', 'validate' => ['required']],
             'day' => ['type' => 'date'],
@@ -38,7 +41,11 @@ final class CoreBlockChecksTest extends TestCase
             'size' => ['type' => 'select', 'options' => ['s' => 'Small', 'l' => 'Large']],
             'sections' => ['type' => 'blocks', 'max' => 3],
             'archive' => ['type' => 'blocks', 'readonly' => true],
+            'answers' => ['type' => 'tags', 'label' => ['en' => 'Possible answers', 'de' => 'Mögliche Antworten']],
+            'answer' => ['type' => 'select', 'options_from' => 'answers'],
         ]]);
+        $this->write('lang/en/site.php', "<?php return ['blocks' => ['poll' => ['answers' => 'Poll answers']]];");
+        $this->write('lang/de/site.php', "<?php return ['blocks' => ['poll' => ['answers' => 'Umfrage-Antworten']]];");
     }
 
     protected function tearDown(): void
@@ -59,9 +66,9 @@ final class CoreBlockChecksTest extends TestCase
     }
 
     /** @return array<string, list<string>> */
-    private function validatorErrors(array $values): array
+    private function validatorErrors(array $values, ?\Preflow\Core\Application $app = null): array
     {
-        $app = $this->app();
+        $app ??= $this->app();
         $dm = $app->container()->get(\Preflow\Data\DataManager::class);
         try {
             $app->container()->get(RecordValidator::class)->validate(DynamicRecord::fromArray($dm->getTypeRegistry()->get('event'), $values));
@@ -106,6 +113,29 @@ final class CoreBlockChecksTest extends TestCase
         $this->assertSame(['At most 3 blocks allowed.'], $errors['sections'] ?? null, 'the field\'s max, keyed by the field');
         $this->assertSame(['This field is required.'], $errors['sections.' . self::A . '.headline'] ?? null, 'required binds the default language');
         $this->assertSame(['At most 1 block allowed.'], $errors['sections.' . self::A . '.tradeoff'] ?? null, 'a nested field\'s max');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_no_choices_message_names_the_source_as_folio_did(): void
+    {
+        // Record and block apart: 0.91 refused block errors before it checked the fields (the same messages, pinned against 0.91).
+        $record = ['uuid' => 'e1', 'name' => 'Fair', 'answers' => [], 'answer' => 'Yes'];
+        $block = ['uuid' => 'e1', 'name' => 'Fair', 'sections' => [['_uid' => self::A, '_block' => 'labelled_poll', 'answers' => [], 'answer' => 'Yes']]];
+        // As an admin request: its middleware has set up Folio's translator (texts and their groups) before the save.
+        $inAdmin = function (string $locale, array $values): array {
+            $app = $this->app();
+
+            return \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->admin($locale), function () use ($values, $app): array {
+                \Preflow\Folio\FolioText::translator();
+
+                return $this->validatorErrors($values, $app);
+            });
+        };
+
+        $this->assertSame(['Noch keine Auswahl: zuerst Werte bei Mögliche Antworten eintragen.'], $inAdmin('de', $record)['answer'] ?? null, 'a record field: its label in the admin\'s language');
+        $this->assertSame(['Noch keine Auswahl: zuerst Werte bei Umfrage-Antworten eintragen.'], $inAdmin('de', $block)['sections.' . self::A . '.answer'] ?? null, 'a block field: its key-shaped label translated');
+        $this->assertSame(['No choices yet: add values to Possible answers first.'], $inAdmin('en', $record)['answer'] ?? null);
+        $this->assertSame(['No choices yet: add values to Poll answers first.'], $inAdmin('en', $block)['sections.' . self::A . '.answer'] ?? null);
     }
 
     #[RunInSeparateProcess]

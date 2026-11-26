@@ -7,15 +7,15 @@ namespace Preflow\Folio\Content;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeDefinition;
-use Preflow\Folio\Field\CoreFieldRules;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Validation\ValidationException;
 
 /**
  * Full validation of a record: the data layer's (DataManager::validate()), which since 0.92 also
  * checks the values inside block lists and page areas (preflow/blocks' BlockValueChecks) and has
- * Folio's field types' rules (CoreFieldRules), so this walks no blocks and merges no field-type
- * rules itself. It gives each field the core's rules (DataManager::fieldRules()) plus Folio's own:
+ * Folio's field types' rules (CoreFieldRules, registered by FolioServiceProvider at boot; code
+ * that builds a validator by hand registers them itself), so this walks no blocks and merges no
+ * field-type rules itself. It gives each field the core's rules (DataManager::fieldRules()) plus Folio's own:
  * with a frontend resolver, the fields a type's public address is built from also get "slug"
  * ("slug:path" for a catch-all): no umlauts, capitals or spaces. A "readonly" field gets an empty
  * list: it is not validated on save, its blocks included (nor checked for being unique).
@@ -26,10 +26,7 @@ final class RecordValidator
         private readonly FieldTypeRegistry $fieldTypes,
         private readonly DataManager $dm,
         private readonly ?FrontendResolver $frontend = null,
-    ) {
-        // What FolioServiceProvider does at boot, so a validator built on its own checks the same (each told once).
-        CoreFieldRules::register($fieldTypes, $dm->fieldKinds(), $dm->recordRules());
-    }
+    ) {}
 
     /** @throws ValidationException block errors and the fields' errors in one refusal */
     public function validate(DynamicRecord $record): void

@@ -6,6 +6,7 @@ namespace Preflow\Blocks;
 
 use Preflow\Blocks\Layouts\PageLayouts;
 use Preflow\Data\FieldKinds;
+use Preflow\Data\FieldLabels;
 use Preflow\Data\FieldVisibility;
 use Preflow\Data\LocaleValue;
 use Preflow\Data\Locales;
@@ -42,6 +43,8 @@ final class BlockValueChecks
         private readonly FieldKinds $kinds,
         private readonly ValidatorFactory $validators,
         private readonly ?PageLayouts $layouts = null,
+        /** @var (\Closure(): ?FieldLabels)|null names a select's source in its message (DataManager::fieldLabels()) */
+        private readonly ?\Closure $labels = null,
     ) {}
 
     /**
@@ -146,7 +149,7 @@ final class BlockValueChecks
      */
     private function rulesOf(TypeFieldDefinition $field, BlockDefinition $block): array
     {
-        $lists = [$field->validate, SelectRules::of($field, $block->fields, $this->kinds), $this->kinds->rulesOf($field)];
+        $lists = [$field->validate, SelectRules::of($field, $block->fields, $this->kinds, $this->labels !== null ? ($this->labels)() : null), $this->kinds->rulesOf($field)];
         foreach ($this->extraRules as $extra) {
             $lists[] = $extra($field, $block);
         }
