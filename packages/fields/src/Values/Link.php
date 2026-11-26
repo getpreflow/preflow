@@ -156,7 +156,7 @@ final readonly class Link
 
         return match ($this->kind) {
             LinkKind::Url => self::isSiteOrWebAddress($target) ? $target : null,
-            LinkKind::Email => filter_var($target, FILTER_VALIDATE_EMAIL) !== false ? 'mailto:' . $target : null,
+            LinkKind::Email => filter_var($target, FILTER_VALIDATE_EMAIL) !== false ? 'mailto:' . self::mailto($target) : null,
             LinkKind::Phone => ($dialable = Phone::dialable($target)) !== null ? 'tel:' . $dialable : null,
             LinkKind::Asset => $addresses instanceof AssetAddresses ? $addresses->assetAddressOf($target) : null,
             LinkKind::Record => null,
@@ -195,6 +195,17 @@ final readonly class Link
         }
 
         return ['href' => $href] + ($this->newTab ? ['target' => '_blank', 'rel' => 'noopener noreferrer'] : []);
+    }
+
+    /**
+     * The address for a mailto: link: its local part URL-encoded (a "?" or "&" in it never becomes
+     * a header such as bcc), the "@" and the domain as they are.
+     */
+    private static function mailto(string $address): string
+    {
+        $at = (int) strrpos($address, '@');
+
+        return rawurlencode(substr($address, 0, $at)) . substr($address, $at);
     }
 
     /**

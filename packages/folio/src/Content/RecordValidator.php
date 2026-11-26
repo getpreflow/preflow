@@ -15,7 +15,8 @@ use Preflow\Validation\ValidationResult;
 
 /**
  * Full validation of a record: rules inside blocks fields first (keyed
- * "<field>.<uid>.<leaf>"), then the type's rules plus each field type's own.
+ * "<field>.<uid>.<leaf>"), then the type's rules plus each field type's own and, since 0.91, the
+ * core checks its type registered (FieldKinds::rules()), inside blocks too.
  * With a frontend resolver, the fields a type's public address is built from
  * also get "slug" ("slug:path" for a catch-all): no umlauts, capitals or spaces.
  */
@@ -80,6 +81,9 @@ final class RecordValidator
                 $fieldType instanceof \Preflow\Folio\Field\HasRecordRules
                     ? $fieldType->recordRules($fieldDef->config, $typeDef, $this->fieldTypes)
                     : $fieldType->rules($fieldDef->config),
+                // The type's core checks (FieldKinds::rules(), 0.91): these rules replace the data
+                // layer's for the field, so they are added here; a Folio field type never repeats them.
+                $this->dm->fieldKinds()->rulesOf($fieldDef),
             );
             if (isset($lengthRules[$name])) {
                 $merged[] = $lengthRules[$name];

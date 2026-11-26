@@ -17,6 +17,9 @@ composer require preflow/fields
 - Without Folio: add `Preflow\Fields\FieldsServiceProvider` to `config/providers.php`. It tells the
   data package how each type is stored and checked, and adds the template functions to your
   template engine.
+- Upgrading: the field type key `link` now belongs to this package. A site or package that had its
+  own field type `link` (a Folio field type, or `FieldKinds` registrations under that key) gets this
+  package's check and boot check for it; rename yours before upgrading.
 
 ## The link field
 
@@ -133,6 +136,11 @@ such a link: "Linked page no longer available."
 For `asset` links the same object may also implement `Preflow\Fields\AssetAddresses`
 (`assetAddressOf(string $id): ?string`). Folio's does, with the media library's address of the file.
 
+### Search, transfer and export
+
+A link field is not searchable (0.91): its label is short text on a button, and a structured value
+is not indexed, like a blocks field. Transfer and export carry the stored object as it is.
+
 ### Blocks and conditional fields
 
 A link field works in a block like any field:
@@ -161,9 +169,11 @@ Each type of this package is built from the same parts. The link field shows eac
    (`$kinds->rules('link', fn (array $config) => [...])`).
 4. **Its template functions** as `Preflow\View\TemplateFunctionDefinition`s in
    `FieldsExtensionProvider`, never engine-only code.
-5. **Folio's input**: a `Preflow\Folio\Field\Types\…FieldType` in Folio that draws the editor and
-   returns the same rules from `rules()`; its option check in `TypeCatalog::checkFieldLayout()` (and
-   `BlocksFieldType::assertLeaf()` for blocks); its texts in Folio's `lang/{en,de,fr}`.
+5. **Folio's input**: a `Preflow\Folio\Field\Types\…FieldType` in Folio that draws the editor. Its
+   `rules()` does not repeat the core checks: Folio's record and block validation add
+   `FieldKinds::rulesOf()` for every field. Its option check goes in
+   `TypeCatalog::checkFieldLayout()` (and `BlocksFieldType::assertLeaf()` for blocks); its texts in
+   Folio's `lang/{en,de,fr}`.
 6. **A stored-shape case** in preflow/testing's `StorageDriverContract::fieldValueShapes()`, so
    every storage driver proves it gives the shape back, plus a round trip through the type's own
    `fromStored()` on JSON, SQLite and MySQL in this package's tests.

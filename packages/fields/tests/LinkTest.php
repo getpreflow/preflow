@@ -83,6 +83,7 @@ final class LinkTest extends TestCase
         $this->assertSame('https://example.org/a?b=1', Link::toUrl('https://example.org/a?b=1')->href(null, 'en'));
         $this->assertSame('/contact#form', Link::toUrl('/contact#form')->href(null, 'en'), 'a path on the site');
         $this->assertSame('mailto:team@example.org', Link::toEmail('team@example.org')->href(null, 'en'));
+        $this->assertSame('mailto:a%3Fbcc%3Dx@example.org', Link::toEmail('a?bcc=x@example.org')->href(null, 'en'), 'the local part cannot add a header');
         $this->assertSame('tel:+41441234567', Link::toPhone('+41 44 123 45 67')->href(null, 'en'), 'tel: dials the digits');
         $this->assertSame('/uploads/prices.pdf', Link::toAsset('a0f3')->href($addresses, 'en'));
     }

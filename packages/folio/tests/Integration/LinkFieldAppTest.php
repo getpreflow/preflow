@@ -150,6 +150,90 @@ final class LinkFieldAppTest extends TestCase
         $this->assertNull($values['more'] ?? null, 'folio_get reads the hidden link as empty');
     }
 
+    #[RunInSeparateProcess]
+    public function test_a_file_link_picks_a_library_file_and_is_marked_once_it_is_gone(): void
+    {
+        $app = $this->app();
+        $image = imagecreatetruecolor(40, 30);
+        ob_start();
+        imagepng($image);
+        $png = (string) ob_get_clean();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $library = $app->container()->get(\Preflow\Media\MediaLibrary::class);
+        $asset = $library->upload($f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'prices.png'), null);
+
+        // Chosen in the picker: the selection posts {name}[asset_ids][].
+        $res = $this->post('/folio/teaser', ['uuid' => 't1', 'title' => 'T', 'cta' => ['kind' => 'asset', 'asset_ids' => ['', $asset->id], 'label' => 'Prices']]);
+        $this->assertSame(302, $res->getStatusCode(), (string) $res->getBody());
+        $teaser = $this->dm()->queryType('teaser')->get()->items()[0];
+        $this->assertEquals(Link::toAsset($asset->id, ['en' => 'Prices']), Link::fromStored($teaser->get('cta')));
+
+        $html = (string) $this->get('/folio/teaser/' . $teaser->getId() . '/edit')->getBody();
+        $this->assertStringContainsString('data-selection-name="cta[asset_ids][]"', $html);
+        $this->assertStringContainsString('<input type="hidden" name="cta[asset_ids][]" value="' . $asset->id . '">', $html);
+        $this->assertStringContainsString('prices.png', $html, 'the picked file\'s card names it');
+        $this->assertStringContainsString('class="folio-asset-thumb"', $html, 'with its thumbnail');
+        $this->assertStringNotContainsString('folio-link-broken', $html);
+        $this->assertSame($library->url($library->find($asset->id)), $this->page('{{ link_href(cta) }}', ['cta' => $teaser->get('cta')]));
+
+        // An id that is no file is not taken: the check names the missing target.
+        $res = $this->post('/folio/teaser/' . $teaser->getId(), ['title' => 'T', 'cta' => ['kind' => 'asset', 'asset_ids' => ['', 'nope']]]);
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('Choose or enter what the link points to.', (string) $res->getBody());
+
+        $library->delete($asset->id);
+        $html = (string) $this->get('/folio/teaser/' . $teaser->getId() . '/edit')->getBody();
+        $this->assertStringContainsString('<p class="folio-link-broken" role="status">Linked file no longer available.', $html);
+        $this->assertSame('', $this->page('{{ link_href(cta) }}', ['cta' => $teaser->get('cta')]), 'the mark and the page agree: no href');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_core_registered_rule_applies_in_folio_without_the_field_type_returning_it(): void
+    {
+        // A field type's checks registered with the data package alone (FieldKinds::rules()), as
+        // preflow/fields does; the Folio field type (here: string) returns none of them.
+        $this->writeModel('note2', ['label' => 'Notes', 'publishing' => false, 'fields' => ['code' => ['type' => 'string', 'validate' => ['required']], 'sections' => ['type' => 'blocks']]]);
+        $app = $this->app();
+        $app->container()->get(\Preflow\Data\DataManager::class)->fieldKinds()->rules('string', static fn (array $config): array => ['regex:/^[A-Z]*$/']);
+        $this->assertSame([], $app->container()->get(\Preflow\Folio\Field\FieldTypeRegistry::class)->get('string')->rules([]));
+        $handle = static fn (string $uri, array $body) => $app->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', $uri)->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody($body));
+
+        $res = $handle('/folio/note2', ['code' => 'lower']);
+        $this->assertSame(422, $res->getStatusCode(), 'the record\'s field');
+        $this->assertStringContainsString('Format is invalid.', (string) $res->getBody());
+
+        // Inside a block too: the call-to-action block's heading is a string field.
+        $uid = 'bbbbbbbbbbbbbbbb';
+        $res = $handle('/folio/note2', ['code' => 'UP', 'sections' => ['_order' => [$uid], $uid => ['_block' => 'call_to_action', 'heading' => 'lower']]]);
+        $this->assertSame(422, $res->getStatusCode(), 'a block\'s field');
+        $res = $handle('/folio/note2', ['code' => 'UP', 'sections' => ['_order' => [$uid], $uid => ['_block' => 'call_to_action', 'heading' => 'GO']]]);
+        $this->assertSame(302, $res->getStatusCode(), (string) $res->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_transfer_carries_a_stored_link_unchanged(): void
+    {
+        $cta = ['kind' => 'record', 'target' => ['type' => 'post', 'id' => 'p1'], 'label' => ['en' => 'Read', 'de' => 'Lesen'], 'new_tab' => true];
+        $this->working('teaser', 't1', ['title' => 'T', 'cta' => $cta]);
+        $app = $this->app();
+        $dm = $app->container()->get(\Preflow\Data\DataManager::class);
+        $stream = fopen('php://temp', 'w+b');
+        (new \Preflow\Folio\Transfer\Exporter(\Preflow\Folio\Transfer\ContentSet::fromApp($app), $dm))->export($stream);
+        rewind($stream);
+
+        $dm->deleteType('teaser', 't1');
+        $this->assertNull($dm->findType('teaser', 't1'));
+        $importer = new \Preflow\Folio\Transfer\Importer(\Preflow\Folio\Transfer\ContentSet::fromApp($app), $dm);
+        $plan = $importer->read($stream);
+        try {
+            $importer->apply($plan);
+        } finally {
+            $plan->cleanup();
+        }
+
+        $this->assertSame($cta, Link::decode($this->stored('teaser', 't1')->get('cta')));
+    }
+
     /** @param array<string, mixed> $context */
     private function page(string $template, array $context): string
     {

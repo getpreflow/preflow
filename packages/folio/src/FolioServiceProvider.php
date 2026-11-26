@@ -635,6 +635,7 @@ final class FolioServiceProvider extends ServiceProvider
                 self::validatorFactory($c),
                 $c->get(\Preflow\Folio\View\FolioEngine::class),
                 $prefix,
+                $this->dataManager($c, $c->get(Application::class))?->fieldKinds(),
             ));
             // The sanitizer is built on the first sanitize call, not on every request.
             $registry->register(new RichTextFieldType(\Preflow\Folio\Field\LazyHtmlSanitizer::standard()));
@@ -681,12 +682,10 @@ final class FolioServiceProvider extends ServiceProvider
                         static fn (string $type): bool => $frontend->routeFor($type) !== null && $can($type . '.view'),
                     ));
                 },
-                // A record link is marked in the editor when visitors no longer see its record.
-                static function (string $type, string $id) use ($c): bool {
-                    return $c->get(TypeRegistry::class)->has($type) && $c->get(\Preflow\Publishing\Publisher::class)->live($type, $id) !== null;
-                },
                 static fn (string $type): string => $c->get(\Preflow\Folio\Content\DisplayLabels::class)->one($type),
+                // The href on the page and the editor's broken mark (no href for a visitor: marked).
                 static fn (): ?\Preflow\Fields\RecordAddresses => $c->bound(\Preflow\Fields\RecordAddresses::class) ? $c->get(\Preflow\Fields\RecordAddresses::class) : null,
+                static fn (): ?\Preflow\Data\Locales => $c->bound(\Preflow\Data\Locales::class) ? $c->get(\Preflow\Data\Locales::class) : null,
             ));
             $registry->alias('int', 'number');
             $registry->alias('integer', 'number');

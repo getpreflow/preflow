@@ -1058,11 +1058,16 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   relation picker (the record's rows and a search; a type with many records searches
   `GET {prefix}/_relation/{type}`); `"link": {"types": ["page", "post"]}` names the types offered
   (with several, a Type select comes first; without it, the types with a public address the user
-  may see). A web address, email address, phone number or file id is typed in. The parts of the
-  other kinds hide as conditional fields do, without a round trip. Then the link text, in the
-  language being edited, and "Open in a new tab". A record link whose record is deleted or no longer
-  published shows "Linked page no longer available." in the editor and after the list cell; its page
-  renders it without an `href`. Folio binds preflow/fields' `RecordAddresses` (the record's public
+  may see). A file is chosen with the asset field's picker (its card with the name and thumbnail,
+  Choose from the library, Upload). A web address, email address or phone number is typed in. The
+  parts of the other kinds hide as conditional fields do, without a round trip. Then the link text,
+  in the language being edited, and "Open in a new tab". A record or file link that a visitor's page
+  renders without an `href` (the record is deleted, no longer published or not in that language; the
+  file is gone) shows "Linked page no longer available." ("Linked file no longer available.") in the
+  editor: the same href decides, read as a visitor reads. List cells show no mark (it would cost a
+  lookup per row). The link's checks are preflow/fields' (registered with `FieldKinds::rules()`);
+  Folio's record and block validation add every field type's core checks, so a Folio field type's
+  `rules()` never repeats them. Folio binds preflow/fields' `RecordAddresses` (the record's public
   address in the language, the media library's address of a file) unless the site bound its own.
   The link text counts in the translation status and goes to machine translation like a translatable
   field.

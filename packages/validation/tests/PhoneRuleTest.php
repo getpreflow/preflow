@@ -20,7 +20,7 @@ final class PhoneRuleTest extends TestCase
 
     public function test_accepts_numbers_as_people_type_them(): void
     {
-        foreach (['+41 44 123 45 67', '044 123 45 67', '(044) 123-45-67', '+1 (555) 010-9999', '0041.44.123.45.67', '+49 30/1234567', "+41\u{00A0}44 123 45 67", '112'] as $value) {
+        foreach (['+41 44 123 45 67', '044 123 45 67', '(044) 123-45-67', '+1 (555) 010-9999', '0041.44.123.45.67', '+49 30/1234567', "+41\u{00A0}44 123 45 67", "+41\u{202F}44 123 45 67", '12345'] as $value) {
             $this->assertTrue($this->check($value), $value);
         }
     }
@@ -33,7 +33,7 @@ final class PhoneRuleTest extends TestCase
 
     public function test_refuses_what_is_no_phone_number(): void
     {
-        foreach (['call me', '+41 44 abc', '12', '++41 44 123', '41+44', '+', '1234567890123456', str_repeat('1', 40), ['+41'], 4144] as $value) {
+        foreach (['call me', '+41 44 abc', '12', '1234', '112', "+41 44\n123 45 67", "+41\t44 123 45 67", '++41 44 123', '41+44', '+', '1234567890123456', str_repeat('1', 40), ['+41'], 4144] as $value) {
             $message = $this->check($value);
             $this->assertInstanceOf(Message::class, $message, var_export($value, true));
             $this->assertSame('validation.phone', $message->key);

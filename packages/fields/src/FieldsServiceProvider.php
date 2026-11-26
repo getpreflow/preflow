@@ -36,16 +36,10 @@ final class FieldsServiceProvider extends ServiceProvider
 
     public function boot(Container $container): void
     {
-        $app = $container->get(Application::class);
-        if ($app->hasConfigFile('data')) {
-            try {
-                $dm = $container->get(DataManager::class);
-            } catch (\Throwable) {
-                $dm = null; // no usable data config: nothing to register with
-            }
-            if ($dm !== null) {
-                self::registerKinds($dm->fieldKinds());
-            }
+        // Without config/data.php there is no storage to register with. With it, an error building
+        // the DataManager is the site's to see, so it is not caught here.
+        if ($container->get(Application::class)->hasConfigFile('data')) {
+            self::registerKinds($container->get(DataManager::class)->fieldKinds());
         }
 
         if ($container->has(TemplateEngineInterface::class)) {

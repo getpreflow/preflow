@@ -38,6 +38,8 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         private readonly ?ValidatorFactory $validators = null,
         private readonly ?TemplateEngineInterface $engine = null,
         private readonly string $adminPrefix = '/folio',
+        /** The data package's field kinds: a field type's core checks (FieldKinds::rules(), 0.91) apply inside blocks too. */
+        private readonly ?\Preflow\Data\FieldKinds $kinds = null,
     ) {}
 
     public function key(): string
@@ -307,6 +309,8 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                     $type instanceof \Preflow\Folio\Field\HasBlockRules
                         ? $type->blockRules($field->config, $definition, $this->fieldTypes)
                         : $type->rules($field->config),
+                    // The type's core checks (FieldKinds::rules(), 0.91), as a record's save runs them.
+                    $this->kinds?->rulesOf($field) ?? [],
                 );
                 if ($fieldRules !== [] && !isset($hidden[$name])) {
                     $rules[$name] = $fieldRules;
