@@ -72,11 +72,39 @@
     // A date ("2026-11-14", midnight in the browser's zone, counted in calendar days) or a date and
     // time ("2026-11-14T08:00") as the admin language says how far it is from now ("In 2 days",
     // "Tomorrow", "3 hours ago"). '' for anything else.
-    function parseWhen(value) {
+    // With a zone (a time zone name such as "Europe/Zurich"), a date and time is the wall time in that
+    // zone, not the browser's: it is turned into the real instant with Intl, and days are counted in
+    // that zone. Without Intl time zone support the browser's zone is used.
+    function zoneParts(date, zone) {
+        var parts = {};
+        new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' })
+            .formatToParts(date).forEach(function (p) { parts[p.type] = +p.value; });
+        return parts;
+    }
+
+    function zoneInstant(y, mo, d, h, mi, s, zone) {
+        var wall = Date.UTC(y, mo - 1, d, h, mi, s);
+        var guess = wall;
+        for (var i = 0; i < 3; i++) {
+            var p = zoneParts(new Date(guess), zone);
+            var shown = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+            guess += wall - shown;
+        }
+        return new Date(guess);
+    }
+
+    function validZone(zone) {
+        if (!zone) { return null; }
+        try { new Intl.DateTimeFormat('en-US', { timeZone: zone }); return zone; } catch (e) { return null; }
+    }
+
+    function parseWhen(value, zone) {
         var text = String(value || '').trim();
+        zone = validZone(zone);
         var day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
         if (day) { return { date: new Date(+day[1], +day[2] - 1, +day[3]), dateOnly: true }; }
         var at = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(text);
+        if (at && zone) { return { date: zoneInstant(+at[1], +at[2], +at[3], +at[4], +at[5], +(at[6] || 0), zone), dateOnly: false, zone: zone }; }
         if (at) { return { date: new Date(+at[1], +at[2] - 1, +at[3], +at[4], +at[5], +(at[6] || 0)), dateOnly: false }; }
         var other = text ? new Date(text) : null;
         return other && !isNaN(other.getTime()) ? { date: other, dateOnly: false } : null;
@@ -84,12 +112,16 @@
 
     // Under a day: hours, minutes, seconds. From a day on, calendar days (Friday 08:00 seen on
     // Wednesday 23:00 is "In 2 days", not "Tomorrow"), then weeks, months and years.
+    // The calendar day of an instant (as UTC midnight of its y-m-d) in a zone, else in the browser's.
+    function dayNumber(date, zone) {
+        if (zone) { var p = zoneParts(date, zone); return Date.UTC(p.year, p.month - 1, p.day); }
+        return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+    }
+
     function relativeParts(when, now) {
         var seconds = Math.round((when.date.getTime() - now.getTime()) / 1000);
         if (when.dateOnly || Math.abs(seconds) >= 86400) {
-            var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-            var day = new Date(when.date.getFullYear(), when.date.getMonth(), when.date.getDate());
-            var days = Math.round((day.getTime() - today.getTime()) / 86400000);
+            var days = Math.round((dayNumber(when.date, when.zone) - dayNumber(now, when.zone)) / 86400000);
             if (Math.abs(days) >= 365) { return [Math.round(days / 365), 'year']; }
             if (Math.abs(days) >= 30) { return [Math.round(days / 30), 'month']; }
             if (Math.abs(days) >= 7 && days % 7 === 0) { return [days / 7, 'week']; }
@@ -107,8 +139,8 @@
         return text.charAt(0).toLocaleUpperCase(lang) + text.slice(1);
     }
 
-    function relativeTime(value, now) {
-        var when = parseWhen(value);
+    function relativeTime(value, now, zone) {
+        var when = parseWhen(value, zone);
         if (!when) { return ''; }
         var parts = relativeParts(when, now || new Date());
         var lang = adminLanguage();
@@ -139,7 +171,7 @@
         var hint = box.hasAttribute('data-folio-date') ? dateHint(box) : null;
         if (!hint) { return; }
         var zone = hint.getAttribute('data-zone') || '';
-        var when = String(input.value || '') !== '' ? relativeTime(input.value) : '';
+        var when = String(input.value || '') !== '' ? relativeTime(input.value, null, input.type === 'datetime-local' ? zone : null) : '';
         hint.textContent = [when, zone].filter(function (part) { return part !== ''; }).join(' · ');
     }
 

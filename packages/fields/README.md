@@ -241,7 +241,7 @@ An empty value is `null` and passes (`"validate": ["required"]` makes it require
 
 A `datetime` is one instant, stored in **UTC**. People type and read it in the field's **zone**:
 `"zone": "Europe/Zurich"` on the field, else the **site's zone**, which is `timezone` in
-`config/app.php` (the application sets it as PHP's default zone). So an event at a place reads the
+`config/app.php` (the application sets it as PHP's default zone; when `timezone` is missing or not a zone name, PHP's own default applies, `date.timezone` in php.ini, which differs between machines: set it). So an event at a place reads the
 same for every editor, whatever their browser's zone. A site changes the zone in one place; a
 field sets its own for a place elsewhere. A `time` is a wall-clock time and has no zone and no date
 (`"09:05"` is 09:05 wherever it is read). `"zone"` on a `time`, or on a `daterange` without
@@ -250,8 +250,8 @@ field sets its own for a place elsewhere. A `time` is a wall-clock time and has 
 UTC ISO text sorts correctly as text, so a `datetime` column sorts by the instant on every storage:
 its column kind is `date` (the same as a `date` field), and Folio's list lets you sort by it. A
 `time` is a short text column (`HH:MM` sorts as text); a `daterange` is an object and a text column.
-It is not meant to be sorted (the stored text starts with the start, but use a `datetime` or `date`
-field beside it if the list needs an order).
+Folio's list does not offer a sort header for it and ignores `?sort=` for it; use a `datetime` or
+`date` field beside it if the list needs an order.
 
 ### The clock changes: spring forward and fall back
 
@@ -269,8 +269,7 @@ Two clock times do not map to one instant. The rule is the same for every zone:
 `DateTimeValue::fromLocal($text, $zone)` applies the rules (null for a time that does not exist) and
 `DateTimeValue::localProblem()` says why. Without Folio the check wants the stored form
 (`2026-03-29T12:30:00Z`); text typed in the zone is refused (the check reads a time of the skipped
-hour as the "does not exist" message, anything else as "Must be a date and time in UTC, such as
-2026-03-29T12:30:00Z."). `DateTimeValue::fromLocal($text, (new DateOptions())->zone())->toStored()`
+hour as the "does not exist" message, anything else as "Must be a date and time, typed as 2026-03-29 14:30 in the editor (stored in UTC as 2026-03-29T12:30:00Z)."). `DateTimeValue::fromLocal($text, (new DateOptions())->zone())->toStored()`
 builds the stored value from what a person typed (a seed, an import).
 
 ### Date range
@@ -287,7 +286,7 @@ refused ("Must be a date range with a start and an end, such as 2026-03-01 – 2
 format in the site's zone (or the zone named); `time_format(value, format = "H:i")` reformats a time
 (`"g:i a"` gives `9:05 am`); `daterange_start(value, format = null, zone = null)` and
 `daterange_end(...)` write an end (default `Y-m-d`, or `Y-m-d H:i` for a range with a time). All
-give `''` for an empty value. They are `TemplateFunctionDefinition`s, so they work in every
+give `''` for an empty value; a zone name that is no zone (`"Nowhere/Land"`) throws a `LogicException` naming it. They are `TemplateFunctionDefinition`s, so they work in every
 template engine. The value for `<time datetime="…">` is the stored text itself.
 
 ## Adding a field type

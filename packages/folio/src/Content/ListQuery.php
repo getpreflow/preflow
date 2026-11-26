@@ -129,7 +129,7 @@ final readonly class ListQuery
             $field = ltrim($rawSort, '-');
             if (
                 $field === $changedSort
-                || (in_array($field, self::columns($def, $listConfig), true) && !self::isRelation($def->fields[$field]->type))
+                || (in_array($field, self::columns($def, $listConfig), true) && self::sortable($def->fields[$field]->type))
             ) {
                 $sort = $field;
                 $desc = str_starts_with($rawSort, '-');
@@ -327,6 +327,12 @@ final readonly class ListQuery
         }
 
         return $query;
+    }
+
+    /** Whether a list column of this type sorts: not a relation (ids) and not a date range (an object; no header, "sort" is ignored; since 0.91). */
+    public static function sortable(string $type): bool
+    {
+        return !self::isRelation($type) && $type !== 'daterange';
     }
 
     private static function isRelation(string $type): bool

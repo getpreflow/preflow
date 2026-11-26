@@ -1094,7 +1094,7 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   `"with_time": true` date-times in UTC typed in the zone; the end may not be before the start, and
   both are needed. Their checks are the core's (blocks too). List cells show the date and time in
   the interface language in the field's zone, `HH:MM`, and "start – end". `datetime` and `time`
-  columns are part of the default list; a range is not (it does not sort).
+  columns are part of the default list; a range is not, and a range column in `list.columns` has no sort header (it is an object; `sort` for it is ignored). The relative hint under a date-and-time input ("In 3 hours") is computed in the field's zone, whatever the editor's browser zone.
 - `asset`: each chosen file is a card (a 16:10 thumbnail with the focal point, the name, kind and
   size, "No alt text yet" for an image without one); an empty field is a dashed drop zone. A file
   dropped anywhere on the field, or chosen with its Upload button, is uploaded to the media library

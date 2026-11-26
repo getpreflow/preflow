@@ -31,7 +31,7 @@ return [
     'color_palette' => 'Välj en av de färger som erbjuds: :values.',
     'json' => 'Måste vara giltig JSON, t.ex. {"namn": "värde"} eller [1, 2, 3].',
     'phone_region' => 'Det går inte att se vilket land numret hör till: börja med + och landskoden, t.ex. +41 44 123 45 67.',
-    'datetime' => 'Måste vara ett datum med tid i UTC, t.ex. 2026-03-29T12:30:00Z.',
+    'datetime' => 'Måste vara ett datum med tid, i redigeraren t.ex. 2026-03-29 14:30 (sparas i UTC som 2026-03-29T12:30:00Z).',
     'datetime_gap' => ':value finns inte i :zone (klockorna går framåt). Välj en annan tid.',
     'time' => 'Måste vara en tid med timmar och minuter, t.ex. 14:30.',
     'daterange' => 'Måste vara ett datumintervall med start och slut, t.ex. :example.',

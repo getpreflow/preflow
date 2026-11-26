@@ -54,6 +54,14 @@ final class DateTimeFieldTypesTest extends TestCase
         $this->assertContains('time', ListQuery::LIST_TYPES);
     }
 
+    public function test_a_range_column_has_no_sort(): void
+    {
+        $this->assertTrue(ListQuery::sortable('datetime'));
+        $this->assertTrue(ListQuery::sortable('string'));
+        $this->assertFalse(ListQuery::sortable('daterange'));
+        $this->assertFalse(ListQuery::sortable('relation'));
+    }
+
     public function test_datetime_converts_what_was_typed_in_the_zone_to_utc(): void
     {
         $type = new DateTimeFieldType();
@@ -168,9 +176,12 @@ final class DateTimeFieldTypesTest extends TestCase
         );
 
         $html = $type->renderEditor(new FieldContext('slot', value: ['start' => '2026-07-15T07:00:00Z', 'end' => '2026-07-15T15:30:00Z'], config: $config));
-        $this->assertStringContainsString('<input type="datetime-local" id="folio-daterange-slot-start" name="slot[start]" value="2026-07-15T09:00">', $html);
+        $this->assertStringContainsString('<input type="datetime-local" id="folio-daterange-slot-start" name="slot[start]" value="2026-07-15T09:00" aria-describedby="folio-daterange-slot-start-hint">', $html);
         $this->assertStringContainsString('name="slot[end]" value="2026-07-15T17:30"', $html);
-        $this->assertStringContainsString('<p class="folio-date-hint">Europe/Zurich</p>', $html);
+        $this->assertStringContainsString('data-folio-date-hint data-zone="Europe/Zurich">Europe/Zurich</p>', $html, 'each end has the relative hint, in the field\'s zone');
+        $this->assertSame(2, substr_count($html, 'data-folio-date>'));
+        $this->assertStringNotContainsString('data-zone', (new DateRangeFieldType())->renderEditor(new FieldContext('stay', value: null)), 'dates have no zone');
+        $this->assertSame(['fields.js'], $type->assets());
         $this->assertSame(
             '<time datetime="2026-07-15T07:00:00Z">2026-07-15 09:00</time> – <time datetime="2026-07-15T15:30:00Z">2026-07-15 17:30</time>',
             $type->renderFrontend(['start' => '2026-07-15T07:00:00Z', 'end' => '2026-07-15T15:30:00Z'], $config),

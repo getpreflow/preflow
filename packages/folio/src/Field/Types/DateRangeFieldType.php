@@ -14,6 +14,7 @@ use Preflow\Folio\Field\FieldType;
 use Preflow\Folio\Field\HasColumnKind;
 use Preflow\Folio\FolioText;
 use Preflow\Folio\Http\AdminFormat;
+use Preflow\Folio\View\InlineIcon;
 
 /**
  * A range of dates (0.91; the value, check and storage are preflow/fields': Values\DateRange,
@@ -55,13 +56,15 @@ final class DateRangeFieldType implements FieldType, DisplaysInAdmin, HasColumnK
             if ($options->withTime) {
                 $value = DateTimeValue::fromStored($value)?->inputValue($zone) ?? str_replace(' ', 'T', $value);
             }
-            $html .= '<div class="form-group"><label for="' . $e($id . '-' . $end) . '">' . $e(FolioText::get('folio.fields.daterange.' . $text)) . '</label>'
-                . '<input type="' . $type . '" id="' . $e($id . '-' . $end) . '" name="' . $e($ctx->name . '[' . $end . ']') . '" value="' . $e($value) . '"></div>';
+            $input = '<input type="' . $type . '" id="' . $e($id . '-' . $end) . '" name="' . $e($ctx->name . '[' . $end . ']') . '" value="' . $e($value) . '"' . ($options->withTime ? ' aria-describedby="' . $e($id . '-' . $end) . '-hint"' : '') . '>';
+            if ($options->withTime) {
+                // As the datetime field: the date box with the zone and, with script, how far away it is in that zone.
+                $input = '<div class="folio-date-input" data-folio-date>' . InlineIcon::svg('ui-calendar') . $input . '</div>'
+                    . '<p class="folio-date-hint" id="' . $e($id . '-' . $end) . '-hint" data-folio-date-hint data-zone="' . $e($zone->getName()) . '">' . $e($zone->getName()) . '</p>';
+            }
+            $html .= '<div class="form-group' . ($options->withTime ? ' folio-date-field' : '') . '"><label for="' . $e($id . '-' . $end) . '">' . $e(FolioText::get('folio.fields.daterange.' . $text)) . '</label>' . $input . '</div>';
         }
         $html .= "</div>\n";
-        if ($options->withTime) {
-            $html .= '  <p class="folio-date-hint">' . $e($zone->getName()) . '</p>' . "\n";
-        }
         if ($ctx->help !== null && $ctx->help !== '') {
             $html .= '  <small class="form-help">' . $e($ctx->help) . '</small>' . "\n";
         }
@@ -144,6 +147,6 @@ final class DateRangeFieldType implements FieldType, DisplaysInAdmin, HasColumnK
 
     public function assets(): array
     {
-        return [];
+        return ['fields.js'];
     }
 }

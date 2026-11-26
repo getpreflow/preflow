@@ -124,7 +124,7 @@ final class DateTimeFieldsAppTest extends TestCase
     {
         foreach ([
             ['opens', '25:00', 'Must be a time of day as hours and minutes, such as 14:30.'],
-            ['starts_at', 'next week', 'Must be a date and time in UTC, such as 2026-03-29T12:30:00Z.'],
+            ['starts_at', 'next week', 'Must be a date and time, typed as 2026-03-29 14:30 in the editor (stored in UTC as 2026-03-29T12:30:00Z).'],
             ['stay', ['start' => '2026-03-07', 'end' => '2026-03-01'], 'The end (2026-03-01) is before the start (2026-03-07). Choose an end on or after 2026-03-07.'],
             ['stay', ['start' => '2026-03-01', 'end' => ''], 'Must be a date range with a start and an end, such as 2026-03-01 – 2026-03-07.'],
             ['slot', ['start' => '2026-07-15T17:30', 'end' => '2026-07-15T09:00'], 'The end (2026-07-15 09:00) is before the start (2026-07-15 17:30). Choose an end on or after 2026-07-15 17:30.'],
@@ -202,6 +202,8 @@ final class DateTimeFieldsAppTest extends TestCase
         $this->assertSame(['1', '2', '0'], $order((string) $this->get('/folio/event?sort=starts_at')->getBody()));
         $this->assertSame(['0', '2', '1'], $order((string) $this->get('/folio/event?sort=-starts_at')->getBody()));
         $this->assertStringContainsString('sort=starts_at', $html, 'the header sorts');
+        $this->assertStringNotContainsString('sort=stay', $html, 'a range column has no sort header');
+        $this->assertSame($order((string) $this->get('/folio/event')->getBody()), $order((string) $this->get('/folio/event?sort=stay')->getBody()), 'sort=stay is ignored');
     }
 
     #[RunInSeparateProcess]

@@ -63,6 +63,30 @@ const localDateTime = (ms) => {
 
 // ---- Relative time and the date field ----------------------------------------------------------
 
+test('Folio.relativeTime reads a date and time in the field\'s zone, whatever the browser\'s zone', () => {
+    const w = page(() => {}).w;
+    const before = process.env.TZ;
+    const now = new Date('2026-03-10T10:00:00Z');
+    try {
+        for (const browser of ['America/New_York', 'Asia/Tokyo', 'Europe/Zurich']) {
+            process.env.TZ = browser;
+            // 14:00 in Zurich (CET, +01:00 on 10 March) is 13:00Z: three hours from now.
+            assert.equal(w.Folio.relativeTime('2026-03-10T14:00', now, 'Europe/Zurich'), 'In 3 hours', 'browser ' + browser);
+            assert.equal(w.Folio.relativeTime('2026-03-10T08:00', now, 'Europe/Zurich'), '3 hours ago', 'browser ' + browser);
+        }
+        // Calendar days are Zurich's: 23:30Z on the 10th is already the 11th there.
+        process.env.TZ = 'America/New_York';
+        assert.equal(w.Folio.relativeTime('2026-03-12T01:00', new Date('2026-03-10T23:30:00Z'), 'Europe/Zurich'), 'Tomorrow');
+        // After the clocks go forward (Zurich 29 March: +02:00): 12:00 there is 10:00Z.
+        assert.equal(w.Folio.relativeTime('2026-03-29T12:00', new Date('2026-03-29T07:00:00Z'), 'Europe/Zurich'), 'In 3 hours');
+        // An unknown zone reads as the browser's.
+        process.env.TZ = 'UTC';
+        assert.equal(w.Folio.relativeTime('2026-03-10T13:00', now, 'Not/AZone'), 'In 3 hours');
+    } finally {
+        if (before === undefined) { delete process.env.TZ; } else { process.env.TZ = before; }
+    }
+});
+
 test('Folio.relativeTime says how far a date is, in the admin language, capitalised', () => {
     const { w } = page(() => {});
     assert.equal(w.Folio.relativeTime(localDate(2)), 'In 2 days');

@@ -107,7 +107,7 @@ final class DateTimeFieldsTest extends TestCase
         foreach (['2026-07-15 12:30', '2026-07-15T10:30:00+02:00', '2026-07-15T10:30Z', '2026-02-30T10:30:00Z', '2026-07-15T25:30:00Z', 'soon', 5, ['a']] as $bad) {
             $message = $rule->validate($bad, $context);
             $this->assertInstanceOf(Message::class, $message, json_encode($bad) ?: '');
-            $this->assertSame('Must be a date and time in UTC, such as 2026-03-29T12:30:00Z.', $message->english());
+            $this->assertSame('Must be a date and time, typed as 2026-03-29 14:30 in the editor (stored in UTC as 2026-03-29T12:30:00Z).', $message->english());
         }
     }
 

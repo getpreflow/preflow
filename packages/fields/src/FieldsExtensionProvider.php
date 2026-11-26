@@ -32,7 +32,7 @@ use Preflow\View\TemplateFunctionDefinition;
  * - json_data(value): a json field decoded (array, text, number), null when empty or invalid.
  *
  * - datetime_local(value, format = "Y-m-d H:i", zone = null): a datetime field's instant written with a
- *   PHP date() format in the site's zone (app.timezone), or the zone named, or '' for none;
+ *   PHP date() format in the site's zone (app.timezone), or the zone named (a LogicException for a name that is no zone), or '' for none;
  * - time_format(value, format = "H:i"): a time field's "HH:MM" written with a date() format ("g:i a"), or '';
  * - daterange_start(value, format = null, zone = null), daterange_end(...): an end of a daterange
  *   field written with a date() format (default "Y-m-d", or "Y-m-d H:i" for a range with a time, in
@@ -109,13 +109,17 @@ final class FieldsExtensionProvider implements TemplateExtensionProvider
         return [];
     }
 
-    /** The zone named, else the site's (app.timezone); an unknown name is the site's too. */
+    /**
+     * The zone named, else the site's (app.timezone).
+     *
+     * @throws \LogicException for a name that is no time zone
+     */
     private static function zone(?string $name): \DateTimeZone
     {
         try {
             return new \DateTimeZone($name ?? date_default_timezone_get());
         } catch (\Exception) {
-            return new \DateTimeZone(date_default_timezone_get());
+            throw new \LogicException('Unknown time zone "' . $name . '"; use a name such as "Europe/Zurich" or "UTC", or leave it out for the site\'s zone.');
         }
     }
 

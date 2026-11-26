@@ -131,15 +131,23 @@ final class FieldsAppTest extends TestCase
             'slot' => json_encode(['start' => '2026-07-15T07:00:00Z', 'end' => '2026-07-15T15:30:00Z']),
             'none' => null,
         ];
-        $template = '{{ datetime_local(at) }}|{{ datetime_local(winter) }}|{{ datetime_local(at, "j.n.Y, G:i") }}|{{ datetime_local(at, "H:i", "Asia/Tokyo") }}|{{ datetime_local(at, "H:i", "Nowhere/Land") }}'
+        $template = '{{ datetime_local(at) }}|{{ datetime_local(winter) }}|{{ datetime_local(at, "j.n.Y, G:i") }}|{{ datetime_local(at, "H:i", "Asia/Tokyo") }}'
             . '|{{ time_format(opens) }}|{{ time_format(opens, "g:i a") }}'
             . '|{{ daterange_start(stay) }}|{{ daterange_end(stay, "j M") }}|{{ daterange_start(slot) }}|{{ daterange_end(slot, "H:i") }}|{{ daterange_end(slot, "H:i", "UTC") }}'
             . '|[{{ datetime_local(none) }}][{{ time_format(none) }}][{{ daterange_start(none) }}][{{ daterange_end("junk") }}]';
 
         $this->assertSame(
-            '2026-07-15 12:30|2026-01-15 11:30|15.7.2026, 12:30|19:30|12:30|09:05|9:05 am|2026-03-01|7 Mar|2026-07-15 09:00|17:30|15:30|[][][][]',
+            '2026-07-15 12:30|2026-01-15 11:30|15.7.2026, 12:30|19:30|09:05|9:05 am|2026-03-01|7 Mar|2026-07-15 09:00|17:30|15:30|[][][][]',
             $this->render($template, $values),
         );
+    }
+
+    public function test_a_zone_name_that_is_no_zone_in_a_template_is_an_error_naming_it(): void
+    {
+        $this->expectException(\Throwable::class);
+        $this->expectExceptionMessageMatches('/Unknown time zone "Nowhere\/Land"; use a name such as "Europe\/Zurich"/');
+
+        $this->render('{{ datetime_local(at, "H:i", "Nowhere/Land") }}', ['at' => '2026-07-15T10:30:00Z']);
     }
 
     private function write(string $rel, string $content): void

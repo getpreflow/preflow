@@ -31,7 +31,7 @@ return [
     'color_palette' => 'Wybierz jeden z proponowanych kolorów: :values.',
     'json' => 'Musi być poprawnym JSON-em, np. {"nazwa": "wartość"} lub [1, 2, 3].',
     'phone_region' => 'Nie wiadomo, z jakiego kraju jest ten numer: zacznij go od + i numeru kierunkowego kraju, np. +41 44 123 45 67.',
-    'datetime' => 'Musi być datą z godziną w UTC, np. 2026-03-29T12:30:00Z.',
+    'datetime' => 'Musi być datą z godziną, w edytorze np. 2026-03-29 14:30 (zapisaną w UTC jako 2026-03-29T12:30:00Z).',
     'datetime_gap' => ':value nie istnieje w strefie :zone (zegary idą do przodu). Wybierz inną godzinę.',
     'time' => 'Musi być godziną z minutami, np. 14:30.',
     'daterange' => 'Musi być zakresem dat z początkiem i końcem, np. :example.',

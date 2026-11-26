@@ -106,13 +106,13 @@ final class DateTimeStoredTest extends TestCase
         $save = static fn (array $values) => $dm->saveType(DynamicRecord::fromArray($def, ['uuid' => 'bad', 'name' => 'x'] + $values));
 
         foreach ([
-            ['starts_at', '2026-07-15 12:30', 'Must be a date and time in UTC, such as 2026-03-29T12:30:00Z.'],
+            ['starts_at', '2026-07-15 12:30', 'Must be a date and time, typed as 2026-03-29 14:30 in the editor (stored in UTC as 2026-03-29T12:30:00Z).'],
             ['starts_at', '2026-03-29T02:30', '2026-03-29 02:30 does not exist in Europe/Zurich (clocks go forward). Choose another time.'],
             ['opens', '25:00', 'Must be a time of day as hours and minutes, such as 14:30.'],
             ['stay', ['start' => '2026-03-07', 'end' => '2026-03-01'], 'The end (2026-03-01) is before the start (2026-03-07). Choose an end on or after 2026-03-07.'],
             ['stay', ['start' => '2026-03-01', 'end' => null], 'Must be a date range with a start and an end, such as 2026-03-01 – 2026-03-07.'],
             ['slot', ['start' => '2026-07-15T15:00:00Z', 'end' => '2026-07-15T07:00:00Z'], 'The end (2026-07-15 09:00) is before the start (2026-07-15 17:00). Choose an end on or after 2026-07-15 17:00.'],
-            ['tokyo', '2026-03-29T02:30:00', 'Must be a date and time in UTC, such as 2026-03-29T12:30:00Z.'],
+            ['tokyo', '2026-03-29T02:30:00', 'Must be a date and time, typed as 2026-03-29 14:30 in the editor (stored in UTC as 2026-03-29T12:30:00Z).'],
         ] as [$field, $value, $message]) {
             try {
                 $save([$field => $value]);
