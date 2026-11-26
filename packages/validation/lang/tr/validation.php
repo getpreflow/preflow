@@ -26,4 +26,11 @@ return [
     ],
     'confirmed' => 'Onay eşleşmiyor.',
     'unique' => 'Bu değer zaten kullanılıyor.',
+    'phone' => 'Bir telefon numarası olmalıdır: rakamlar, isteğe bağlı olarak başta + ve boşluklar, örn. +41 44 123 45 67.',
+    'link' => [
+        'kind' => 'Bağlantının neyi gösterdiğini seçin: :kinds.',
+        'target' => 'Bağlantının neyi gösterdiğini seçin veya girin.',
+        'type' => 'Bu bağlantı :refused türünde bir kayda işaret edemez; şunlardan birini seçin: :types.',
+        'url' => 'https:// veya http:// ile başlayan bir web adresi ya da bu sitede / ile başlayan bir yol olmalıdır.',
+    ],
 ];

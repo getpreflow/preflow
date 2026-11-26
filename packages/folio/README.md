@@ -994,7 +994,8 @@ A value that is not a list of section names is ignored (every section starts ope
 
 `string`, `text` (`"monospace": true` gives a code-style editor), `number`, `boolean`,
 `date` (`"time": true` for date and time), `select` (`"options"` as a map or a list;
-`"display": "radio"`), `richtext`, `asset`, `relation`, `matrix` and `tags` (since 0.77).
+`"display": "radio"`), `richtext`, `asset`, `relation`, `matrix`, `tags` (since 0.77) and `link`
+(since 0.91; its value, checks and storage are preflow/fields', see its README).
 
 How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` runs the controls):
 
@@ -1053,6 +1054,18 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   "options_from" names "answer_list", which is not a field of this block; …`). A field type whose
   rules need the other fields of its block implements `HasBlockRules`.
 - `relation`: see [Blocks, matrix or relation?](#blocks-matrix-or-relation).
+- `link` (0.91): "Links to" picks what the link points to. A page or record is found with the
+  relation picker (the record's rows and a search; a type with many records searches
+  `GET {prefix}/_relation/{type}`); `"link": {"types": ["page", "post"]}` names the types offered
+  (with several, a Type select comes first; without it, the types with a public address the user
+  may see). A web address, email address, phone number or file id is typed in. The parts of the
+  other kinds hide as conditional fields do, without a round trip. Then the link text, in the
+  language being edited, and "Open in a new tab". A record link whose record is deleted or no longer
+  published shows "Linked page no longer available." in the editor and after the list cell; its page
+  renders it without an `href`. Folio binds preflow/fields' `RecordAddresses` (the record's public
+  address in the language, the media library's address of a file) unless the site bound its own.
+  The link text counts in the translation status and goes to machine translation like a translatable
+  field.
 - `asset`: each chosen file is a card (a 16:10 thumbnail with the focal point, the name, kind and
   size, "No alt text yet" for an image without one); an empty field is a dashed drop zone. A file
   dropped anywhere on the field, or chosen with its Upload button, is uploaded to the media library

@@ -16,6 +16,7 @@ parameters:
         - packages/core/src
         - packages/data/src
         - packages/devtools/src
+        - packages/fields/src
         - packages/folio/src
         - packages/form/src
         - packages/htmx/src

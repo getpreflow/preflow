@@ -1,0 +1,33 @@
+{
+    "name": "preflow/fields",
+    "description": "Preflow fields — field types as core values: parsing, checks, storage and template helpers (the link field first)",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.4",
+        "preflow/core": "^0.84.0 || @dev",
+        "preflow/data": "^0.91.0 || @dev",
+        "preflow/validation": "^0.91.0 || @dev",
+        "preflow/view": "^0.91.0 || @dev"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0",
+        "preflow/testing": "^0.91.0 || @dev"
+    },
+    "conflict": {
+        "preflow/core": "<0.84.0",
+        "preflow/data": "<0.91.0",
+        "preflow/validation": "<0.91.0",
+        "preflow/view": "<0.91.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Preflow\\Fields\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Preflow\\Fields\\Tests\\": "tests/"
+        }
+    }
+}

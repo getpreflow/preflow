@@ -26,4 +26,11 @@ return [
     ],
     'confirmed' => 'De bevestiging komt niet overeen.',
     'unique' => 'Deze waarde is al in gebruik.',
+    'phone' => 'Moet een telefoonnummer zijn: cijfers, eventueel met + vooraan en spaties, bijv. +41 44 123 45 67.',
+    'link' => [
+        'kind' => 'Kies waarnaar de link verwijst: :kinds.',
+        'target' => 'Kies of vul in waarnaar de link verwijst.',
+        'type' => 'Deze link kan niet naar een item van het type :refused verwijzen; kies een van: :types.',
+        'url' => 'Moet een webadres zijn dat begint met https:// of http://, of een pad op deze site dat begint met /.',
+    ],
 ];

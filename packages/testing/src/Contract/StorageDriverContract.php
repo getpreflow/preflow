@@ -101,6 +101,8 @@ use Preflow\Testing\PlainDriver;
  *   OR in SQL. `total()` counts every match, ignoring limit and offset.
  * - save() of an existing id updates the fields it is given and keeps the others; a field given as
  *   null is stored as null (@since 0.78). delete() of a missing id does nothing.
+ * - Field value shapes (@since 0.91.0): the objects preflow/fields' field types store (a link's
+ *   {kind, target, label, new_tab}) read back from a `json` field as saved (fieldValueShapes()).
  * - A driver with InsertsNew (@since 0.79.0) writes a record only while no record has its id, and says
  *   which: true when written, false when the id exists (the stored record stays as it is). A
  *   given int id is written as it is, and a store that generates ids gives the next record
@@ -406,6 +408,41 @@ abstract class StorageDriverContract extends TestCase
         $stored = $this->record('r1')['meta'] ?? null;
         $decoded = is_string($stored) ? json_decode($stored, true) : $stored;
         $this->assertSame(self::keysSorted($meta), is_array($decoded) ? self::keysSorted($decoded) : $decoded, 'a json field reads back as the saved array, or as JSON text of it (object key order may differ)');
+    }
+
+    /**
+     * The stored shapes of preflow/fields' field types (@since 0.91.0) round-trip in a `json` field:
+     * each reads back as saved (as the object or JSON text of it, keys in any order), with its
+     * nulls, booleans, nested objects and umlauts as they are. A new field type adds its shapes to
+     * fieldValueShapes().
+     *
+     * @param array<string, mixed> $shape
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('fieldValueShapes')]
+    public function test_a_field_types_stored_shape_round_trips(array $shape): void
+    {
+        $this->createRecords();
+        $this->driver->save('records', 'r1', ['uuid' => 'r1', 'meta' => $shape]);
+
+        $stored = $this->record('r1')['meta'] ?? null;
+        $decoded = is_string($stored) ? json_decode($stored, true) : $stored;
+        $this->assertSame(self::keysSorted($shape), is_array($decoded) ? self::keysSorted($decoded) : $decoded);
+    }
+
+    /**
+     * Each field type's stored shapes (preflow/fields): a link of every kind.
+     *
+     * @return array<string, array{array<string, mixed>}>
+     */
+    public static function fieldValueShapes(): array
+    {
+        return [
+            'link to a record' => [['kind' => 'record', 'target' => ['type' => 'page', 'id' => 'p1'], 'label' => ['en' => 'About us', 'de' => 'Über uns'], 'new_tab' => false]],
+            'link to a web address' => [['kind' => 'url', 'target' => 'https://example.org/a?b=1&c=ä', 'label' => 'Example', 'new_tab' => true]],
+            'link to an email address' => [['kind' => 'email', 'target' => 'team@example.org', 'label' => null, 'new_tab' => false]],
+            'link to a phone number' => [['kind' => 'phone', 'target' => '+41 44 123 45 67', 'label' => ['en' => 'Call us'], 'new_tab' => false]],
+            'link to a file' => [['kind' => 'asset', 'target' => 'a0f3', 'label' => 'Price list (PDF)', 'new_tab' => true]],
+        ];
     }
 
     /**

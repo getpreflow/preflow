@@ -2520,6 +2520,13 @@ final class DataManager
             }
         }
 
+        // A field type's own checks (FieldKinds::rules(), 0.91: the link field's), after the field's own.
+        foreach ($typeDef->fields as $name => $field) {
+            foreach ($this->fieldKinds()->rulesOf($field) as $rule) {
+                $rules[$name][] = $rule;
+            }
+        }
+
         // A unique or indexed string, and a unique field's scope, is a bounded column: it may not outgrow it.
         foreach ($this->fieldKinds()->lengthRules($typeDef) as $name => $lengthRule) {
             $rules[$name] = [...($rules[$name] ?? []), $lengthRule];

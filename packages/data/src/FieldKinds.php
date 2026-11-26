@@ -8,8 +8,9 @@ use Preflow\Data\Schema\ColumnKind;
 use Preflow\Data\Validation\MaxChars;
 
 /**
- * Which field types count as free text and which as a relation, and which column kind each
- * type is stored as. Extensions register their own types.
+ * Which field types count as free text and which as a relation, which column kind each
+ * type is stored as, and (since 0.91.0) which checks a type brings itself. Extensions register
+ * their own types.
  */
 final class FieldKinds
 {
@@ -30,6 +31,9 @@ final class FieldKinds
 
     /** @var array<string, ColumnKind|\Closure(array<string, mixed>): ColumnKind> */
     private array $columns;
+
+    /** @var array<string, \Closure(array<string, mixed>): list<string|\Preflow\Validation\ValidationRule>> field type => its own rules for a field's config */
+    private array $rules = [];
 
     public function __construct()
     {
@@ -100,6 +104,36 @@ final class FieldKinds
     public function column(string $fieldType, ColumnKind|\Closure $kind): void
     {
         $this->columns[$fieldType] = $kind;
+    }
+
+    /**
+     * A field type's own checks (preflow/fields' link: a valid address for its kind): $rules gets
+     * the field's config and gives rule names or ValidationRule objects. Every validation of a typed
+     * record runs them after the field's "validate" (DataManager::validate(), saveType()), so Folio,
+     * the REST API, imports and seeds check the same values; a field its show_when hides is not
+     * checked, and rules a caller gives for the field replace them, as they replace "validate".
+     * Replaces an earlier registration for the type.
+     *
+     * @param \Closure(array<string, mixed>): list<string|\Preflow\Validation\ValidationRule> $rules
+     * @since 0.91.0
+     */
+    public function rules(string $fieldType, \Closure $rules): void
+    {
+        $this->rules[$fieldType] = $rules;
+    }
+
+    /**
+     * The rules the field's type registered for this field's config (rules()); none for a type
+     * without.
+     *
+     * @return list<string|\Preflow\Validation\ValidationRule>
+     * @since 0.91.0
+     */
+    public function rulesOf(TypeFieldDefinition $field): array
+    {
+        $rules = $this->rules[$field->type] ?? null;
+
+        return $rules === null ? [] : $rules($field->config);
     }
 
     public function isText(string $type): bool

@@ -6,7 +6,8 @@
 // in its own lang/en/validation.php, and adds a language this package does not ship with
 // lang/{locale}/validation.php. A language without a text falls back to the site's fallback
 // language, then English.
-// :min, :max, :step are the rule's numbers; :values the allowed values, comma-separated.
+// :min, :max, :step are the rule's numbers; :values the allowed values, comma-separated; :kinds and
+// :types (a link's) the allowed link kinds and record types, comma-separated; :refused the refused type.
 return [
     'required' => 'This field is required.',
     'email' => 'Must be a valid email address.',
@@ -31,4 +32,11 @@ return [
     ],
     'confirmed' => 'Confirmation does not match.',
     'unique' => 'This value is already taken.',
+    'phone' => 'Must be a phone number: digits, optionally with a leading + and spaces, e.g. +41 44 123 45 67.',
+    'link' => [
+        'kind' => 'Choose what the link points to: :kinds.',
+        'target' => 'Choose or enter what the link points to.',
+        'type' => 'This link cannot point to a record of type ":refused"; choose one of: :types.',
+        'url' => 'Must be a web address starting with https:// or http://, or a path on this site starting with /.',
+    ],
 ];

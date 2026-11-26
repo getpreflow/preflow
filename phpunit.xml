@@ -73,6 +73,9 @@
         <testsuite name="Codes">
             <directory>packages/codes/tests</directory>
         </testsuite>
+        <testsuite name="Fields">
+            <directory>packages/fields/tests</directory>
+        </testsuite>
         <testsuite name="Media">
             <directory>packages/media/tests</directory>
         </testsuite>
@@ -116,6 +119,7 @@
             <directory>packages/ai/src</directory>
             <directory>packages/blocks/src</directory>
             <directory>packages/codes/src</directory>
+            <directory>packages/fields/src</directory>
             <directory>packages/media/src</directory>
             <directory>packages/members/src</directory>
             <directory>packages/publishing/src</directory>

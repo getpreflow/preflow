@@ -26,4 +26,11 @@ return [
     ],
     'confirmed' => 'Bekräftelsen stämmer inte överens.',
     'unique' => 'Det här värdet används redan.',
+    'phone' => 'Måste vara ett telefonnummer: siffror, eventuellt med + först och mellanslag, t.ex. +41 44 123 45 67.',
+    'link' => [
+        'kind' => 'Välj vad länken pekar på: :kinds.',
+        'target' => 'Välj eller skriv vad länken pekar på.',
+        'type' => 'Den här länken kan inte peka på en post av typen :refused; välj en av: :types.',
+        'url' => 'Måste vara en webbadress som börjar med https:// eller http://, eller en sökväg på den här webbplatsen som börjar med /.',
+    ],
 ];

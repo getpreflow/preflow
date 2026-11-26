@@ -30,4 +30,11 @@ return [
     ],
     'confirmed' => 'La confirmation ne correspond pas.',
     'unique' => 'Cette valeur est déjà utilisée.',
+    'phone' => 'Doit être un numéro de téléphone : des chiffres, avec éventuellement un + au début et des espaces, p. ex. +41 44 123 45 67.',
+    'link' => [
+        'kind' => 'Choisissez la cible du lien : :kinds.',
+        'target' => 'Choisissez ou saisissez la cible du lien.',
+        'type' => 'Ce lien ne peut pas pointer vers une entrée de type :refused ; choisissez parmi : :types.',
+        'url' => 'Doit être une adresse web commençant par https:// ou http://, ou un chemin de ce site commençant par /.',
+    ],
 ];

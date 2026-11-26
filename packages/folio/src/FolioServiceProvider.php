@@ -81,6 +81,10 @@ final class FolioServiceProvider extends ServiceProvider
         if (!$container->hasProvider(\Preflow\Blocks\BlocksServiceProvider::class)) {
             $container->registerProvider(new \Preflow\Blocks\BlocksServiceProvider());
         }
+        // The field values (0.91: the link field): their checks and storage are the core's, Folio draws the inputs.
+        if (!$container->hasProvider(\Preflow\Fields\FieldsServiceProvider::class)) {
+            $container->registerProvider(new \Preflow\Fields\FieldsServiceProvider());
+        }
         // The publishing core: Folio binds its rules (which types publish, validation, languages,
         // the review index, redirects and page-cache tags) below and keeps the screens.
         if (!$container->hasProvider(\Preflow\Publishing\PublishingServiceProvider::class)) {
@@ -599,6 +603,18 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Publishing\LiveContent::class),
         ));
 
+        // Where a link field's record or file lives (preflow/fields, 0.91): a record's public URL in
+        // the locale, read as the render reads (published for a visitor), a file's library URL.
+        // A site that bound its own keeps it.
+        if (!$container->bound(\Preflow\Fields\RecordAddresses::class)) {
+            $container->singleton(\Preflow\Fields\RecordAddresses::class, static fn (Container $c): \Preflow\Fields\RecordAddresses => new \Preflow\Folio\Content\FolioLinkAddresses(
+                $c->get(FrontendResolver::class),
+                $c->get(\Preflow\Publishing\LiveContent::class),
+                $c->get(TypeRegistry::class),
+                static fn (): ?\Preflow\Media\MediaLibrary => $c->get(\Preflow\Folio\Media\MediaAvailability::class)->usable() ? $c->get(\Preflow\Media\MediaLibrary::class) : null,
+            ));
+        }
+
         $uploadsDir = $this->uploadsDir($app);
         $uploadUrlPrefix = rtrim($this->prefix($app), '/') . '/_uploads';
         $folioConfig = $this->folioConfig($app);
@@ -652,6 +668,25 @@ final class FolioServiceProvider extends ServiceProvider
                 $prefix,
                 $c->get(\Preflow\Publishing\LiveContent::class),
                 $can,
+            ));
+            // The link field (0.91): its value, checks and storage are preflow/fields'; this draws the input.
+            $registry->register(new \Preflow\Folio\Field\Types\LinkFieldType(
+                $registry,
+                // Without "link.types": the types with a public address the user may see.
+                static function () use ($c, $can): array {
+                    $frontend = $c->get(FrontendResolver::class);
+
+                    return array_values(array_filter(
+                        $c->get(TypeRegistry::class)->keys(),
+                        static fn (string $type): bool => $frontend->routeFor($type) !== null && $can($type . '.view'),
+                    ));
+                },
+                // A record link is marked in the editor when visitors no longer see its record.
+                static function (string $type, string $id) use ($c): bool {
+                    return $c->get(TypeRegistry::class)->has($type) && $c->get(\Preflow\Publishing\Publisher::class)->live($type, $id) !== null;
+                },
+                static fn (string $type): string => $c->get(\Preflow\Folio\Content\DisplayLabels::class)->one($type),
+                static fn (): ?\Preflow\Fields\RecordAddresses => $c->bound(\Preflow\Fields\RecordAddresses::class) ? $c->get(\Preflow\Fields\RecordAddresses::class) : null,
             ));
             $registry->alias('int', 'number');
             $registry->alias('integer', 'number');

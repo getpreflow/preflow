@@ -13,6 +13,7 @@ use Preflow\Validation\Rules\MaxLength;
 use Preflow\Validation\Rules\MinLength;
 use Preflow\Validation\Rules\Nullable;
 use Preflow\Validation\Rules\Numeric;
+use Preflow\Validation\Rules\Phone;
 use Preflow\Validation\Rules\Regex;
 use Preflow\Validation\Rules\Required;
 use Preflow\Validation\Rules\Slug;
@@ -39,6 +40,7 @@ final class RuleFactory
         'regex' => Regex::class,
         'confirmed' => Confirmed::class,
         'slug' => Slug::class,
+        'phone' => Phone::class, // since 0.91.0
     ];
 
     /**

@@ -6,7 +6,7 @@ Rules for validating arrays and records. A rule is written as a string alias wit
 ## Built-in rules
 
 `required`, `nullable`, `email`, `url`, `numeric`, `integer`, `min:n`, `max:n`, `between:min,max`,
-`step:n`, `in:a,b`, `regex:/pattern/`, `confirmed`, `slug`, `slug:path`.
+`step:n`, `in:a,b`, `regex:/pattern/`, `confirmed`, `slug`, `slug:path`, `phone`.
 
 - `step:n` (since 0.46): the value must be a whole multiple of `n` counted from 0 (`step:0.5` accepts
   `2.5`, refuses `2.3`). The check uses the decimal digits of the value and the step, not floats, so
@@ -20,6 +20,15 @@ Rules for validating arrays and records. A rule is written as a string alias wit
   `Slug::clean($text, path: false)` makes text into a valid value (`Über uns` → `ueber-uns`, `é` → `e`;
   with `path: true` single slashes stay); text with no a-z form gives `''`. Accents are dropped with
   `ext-intl`'s `Normalizer`; without it only the letters ä, ö, ü, ß, æ, œ, ø, đ, ł and þ are converted.
+- `phone` (since 0.91): a phone number as people type it: digits, an optional leading `+`, and
+  spaces, dashes, dots, slashes and parentheses between them; 3 to 15 digits. Only text counts (an
+  int has lost its leading zero). Empty values pass. The message is `validation.phone`.
+  `Phone::dialable('+41 44 123 45 67')` gives `+41441234567`, the number for a `tel:` link (null
+  when it is no phone number).
+
+The messages `validation.link.kind`, `.target`, `.type` and `.url` (since 0.91) belong to
+preflow/fields' link check (`ValidLink`); they live here so a validator without a translator has
+their English text, as for every rule's.
 
 ## Rules for a filled value only
 

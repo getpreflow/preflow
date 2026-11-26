@@ -951,6 +951,13 @@ final class Job extends Model { … }
   (behind `Schema::convertColumn()`). A grammar of your own (`Grammars::register()`) must add it.
 - Custom field types tell the data package their column with `Preflow\Folio\Field\HasColumnKind`
   (`columnKind(array $config): ColumnKind`) or `FieldKinds::column($type, ColumnKind|Closure)`.
+- A field type's own checks (since 0.91): `FieldKinds::rules($type, fn (array $config): array => [...])`
+  gives rule names or `ValidationRule` objects for a field's config. Every validation of a typed
+  record runs them after the field's `validate` (`validate()`, `saveType()`), so the admin, the REST
+  API, imports and seeds check the same values; a field its `show_when` hides is not checked, and
+  rules a caller gives for a field (`validate($record, ['field' => [...]])`) replace them, as they
+  replace `validate`. preflow/fields registers its link field's check this way. `rulesOf($field)`
+  reads them.
 
 ## Slugs
 

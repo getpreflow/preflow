@@ -30,4 +30,11 @@ return [
     ],
     'confirmed' => 'Die Bestätigung stimmt nicht überein.',
     'unique' => 'Dieser Wert ist bereits vergeben.',
+    'phone' => 'Muss eine Telefonnummer sein: Ziffern, wahlweise mit + am Anfang und Leerzeichen, z. B. +41 44 123 45 67.',
+    'link' => [
+        'kind' => 'Wähle, worauf der Link zeigt: :kinds.',
+        'target' => 'Wähle oder gib ein, worauf der Link zeigt.',
+        'type' => 'Dieser Link kann nicht auf einen Eintrag vom Typ :refused zeigen; wähle einen von: :types.',
+        'url' => 'Muss eine Webadresse sein, die mit https:// oder http:// beginnt, oder ein Pfad dieser Website, der mit / beginnt.',
+    ],
 ];

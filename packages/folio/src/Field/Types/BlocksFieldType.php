@@ -716,6 +716,13 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                 $name,
             ));
         }
+        if ($type instanceof LinkFieldType) {
+            try {
+                \Preflow\Fields\LinkOptions::check(['translatable' => $field->translatable] + $field->config);
+            } catch (\LogicException $e) {
+                throw new \Preflow\Folio\Content\FrontendConfigException(sprintf('Block "%s": field "%s": %s', $definition->key, $name, $e->getMessage()), 0, $e);
+            }
+        }
     }
 
     /** @param array<string, mixed> $context */

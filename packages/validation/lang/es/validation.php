@@ -26,4 +26,11 @@ return [
     ],
     'confirmed' => 'La confirmación no coincide.',
     'unique' => 'Este valor ya está en uso.',
+    'phone' => 'Debe ser un número de teléfono: dígitos, opcionalmente con + al inicio y espacios, p. ej. +41 44 123 45 67.',
+    'link' => [
+        'kind' => 'Elige a qué apunta el enlace: :kinds.',
+        'target' => 'Elige o escribe a qué apunta el enlace.',
+        'type' => 'Este enlace no puede apuntar a un registro de tipo :refused; elige uno de: :types.',
+        'url' => 'Debe ser una dirección web que empiece por https:// o http://, o una ruta de este sitio que empiece por /.',
+    ],
 ];
