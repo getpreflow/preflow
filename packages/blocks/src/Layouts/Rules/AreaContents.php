@@ -25,8 +25,8 @@ use Preflow\Validation\ValidationRule;
  * "max" without making existing pages unsavable: a block the area does not accept passes when it
  * was stored in that area already (same uid and key); "max" refuses only a count above it and
  * above the stored count, "min" only a count below it and below the stored count (an editor may
- * reduce an over-full area step by step). Without a stored value (a new record, an area not stored
- * yet) everything is checked plainly.
+ * reduce an over-full area step by step). An area a stored record lacks counts as stored empty
+ * (a type that opts into layouts keeps its pages savable); only a new record is checked plainly.
  *
  * forPage(): a page's "_areas", on the layout its values resolve to (PageLayouts::resolveValues()).
  * forField(): a value {layout, areas} whose layout is from a named set (the areas field).
@@ -76,7 +76,8 @@ final readonly class AreaContents implements ValidationRule
         [$layout, $areas, $storedAreas] = ($this->read)($value, $context);
         foreach ($layout?->areas ?? [] as $name => $area) {
             $blocks = $areas[$name] ?? [];
-            $stored = $storedAreas !== null && array_key_exists($name, $storedAreas) ? self::listOf($storedAreas[$name]) : null;
+            // A stored record without this area (no "_areas" yet, or the layout gained the area) holds it empty.
+            $stored = $storedAreas !== null ? self::listOf($storedAreas[$name] ?? []) : null;
             foreach ($blocks as $block) {
                 $key = $block['_block'] ?? null;
                 if (!is_string($key) || ($this->blocks !== null && $this->blocks->get($key) === null)) {

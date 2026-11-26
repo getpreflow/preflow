@@ -155,6 +155,20 @@ final class LayoutRulesTest extends BlocksAppTestCase
         $this->assertSame([], $this->errors('page', ['slug' => ['en' => 'home'], '_areas' => ['top' => [$quote('q1')]]]));
     }
 
+    public function test_a_stored_page_without_areas_stays_savable(): void
+    {
+        // Stored before the type opted into layouts: no "_areas" at all; the pinned home page's "top" takes at least 1.
+        $this->store('page', ['uuid' => 'p1', 'title' => 'Home', 'slug' => ['en' => 'home']]);
+        $this->store('page', ['uuid' => 'p2', 'title' => 'About', 'slug' => ['en' => 'about'], '_layout' => 'promo', '_areas' => ['side' => [['_uid' => 's1', '_block' => 'quote']]]]);
+
+        $this->assertSame([], $this->errors('page', ['title' => 'Welcome', 'slug' => ['en' => 'home']]), 'a title edit, no "_areas" stored or given');
+        $this->assertSame([], $this->errors('page', ['title' => 'Welcome', 'slug' => ['en' => 'home'], '_areas' => ['top' => []]]), 'the min area given empty, as it is stored');
+        $this->assertSame([], $this->errors('page', ['uuid' => 'p2', 'title' => 'About us', '_layout' => 'promo', '_areas' => ['side' => [['_uid' => 's1', '_block' => 'quote']]]]), '"_areas" lacking the layout\'s areas');
+        $this->assertSame(['_areas' => ['The area "main" does not take "banner" blocks. Move it to another area or remove it.']], $this->errors('page', ['uuid' => 'p2', '_layout' => 'promo', '_areas' => ['main' => [['_uid' => 'b1', '_block' => 'banner']]]]), 'a disallowed block is still refused');
+        $this->assertSame(['_areas' => ['The area "hero" takes at most 1 blocks.']], $this->errors('page', ['uuid' => 'p2', '_layout' => 'promo', '_areas' => ['hero' => [['_uid' => 'b1', '_block' => 'banner'], ['_uid' => 'b2', '_block' => 'banner']]]]), 'max against an empty stored area');
+        $this->assertSame(['_areas' => ['The area "top" takes at least 1 blocks.']], $this->errors('page', ['uuid' => 'p9', 'slug' => ['en' => 'home']]), 'a new record is checked plainly for min');
+    }
+
     public function test_a_broken_layouts_option_stops_the_boot(): void
     {
         $this->model('broken', ['allowed' => ['standard'], 'default' => 'promo']);
