@@ -8,6 +8,27 @@ The types are `link`, `email`, `phone`, `color`, `code`, `json`, `datetime`, `ti
 `embed` (a video), `table` and `location`; each is built the same way (see
 [Adding a field type](#adding-a-field-type)).
 
+At a glance (each type's section below has the options, the checks and the template functions):
+
+| type | stored | searched by loose search |
+|---|---|---|
+| `link` | an object: kind, target, label, new tab | no |
+| `email` | text | yes |
+| `phone` | an object: as typed and the E.164 form | no |
+| `color` | `#rrggbb` or `#rrggbbaa` text | no |
+| `code` | plain text (the language is a field option) | yes |
+| `json` | JSON as text | no |
+| `datetime` | UTC ISO text | no |
+| `time` | `HH:MM` text | no |
+| `daterange` | an object: start and end | no |
+| `embed` | an object: provider, id, address, poster | no |
+| `table` | an object: head and rows | no |
+| `location` | an object: lat, lng, address | no |
+
+A field in a model file, a block or a model class (`#[Field(type: 'link')]`) uses these keys the
+same way. Every value is checked in the core, so a seed, an import and the REST write path refuse the
+same values Folio's form refuses.
+
 ## Install
 
 ```
@@ -18,9 +39,9 @@ composer require preflow/fields
 - Without Folio: add `Preflow\Fields\FieldsServiceProvider` to `config/providers.php`. It tells the
   data package how each type is stored and checked, and adds the template functions to your
   template engine.
-- Upgrading: the field type key `link` now belongs to this package. A site or package that had its
-  own field type `link` (a Folio field type, or `FieldKinds` registrations under that key) gets this
-  package's check and boot check for it; rename yours before upgrading.
+- Upgrading: the twelve type keys above now belong to this package. A site or package that has its
+  own Folio field type under one of them (or `FieldKinds` registrations under that key) gets this
+  package's core checks and boot checks for it; rename yours before upgrading.
 
 ## The link field
 

@@ -996,7 +996,7 @@ A value that is not a list of section names is ignored (every section starts ope
 `date` (`"time": true` for date and time), `select` (`"options"` as a map or a list;
 `"display": "radio"`), `richtext`, `asset`, `relation`, `matrix`, `tags` (since 0.77) and `link`,
 `email`, `phone`, `color`, `code`, `json`, `datetime`, `time`, `daterange`, `embed`, `table` and
-`location` (all since 0.91; their values, checks and storage are preflow/fields', see its README).
+`location` (all since 0.91; their values, checks and storage are preflow/fields', see its [README](../fields/README.md)).
 
 How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` runs the controls):
 
