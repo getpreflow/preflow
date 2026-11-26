@@ -344,10 +344,6 @@ final class LinkFieldType implements FieldType, StructuredFieldType, DisplaysInA
         return [];
     }
 
-    /**
-     * show-when-core.js decides the kind's parts as conditional fields do; fields.js runs them, the
-     * record picker and the file drop; admin.js (every editor loads it) the file picker's Choose and Remove.
-     */
     /** A link to a file holds that asset's id (its target); other kinds hold none (since 0.91). */
     public function mapAssetIds(mixed $value, array $config, \Closure $fn): mixed
     {
@@ -361,6 +357,10 @@ final class LinkFieldType implements FieldType, StructuredFieldType, DisplaysInA
         return $json ? (string) json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : $data;
     }
 
+    /**
+     * show-when-core.js decides the kind's parts as conditional fields do; fields.js runs them, the
+     * record picker and the file drop; admin.js (every editor loads it) the file picker's Choose and Remove.
+     */
     public function assets(): array
     {
         return ['show-when-core.js', 'fields.js'];

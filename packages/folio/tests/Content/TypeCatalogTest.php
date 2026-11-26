@@ -287,6 +287,28 @@ final class TypeCatalogTest extends TestCase
         $catalog->add(['key' => 'member', 'users' => 'members', 'fields' => ['name' => ['type' => 'string'], 'files' => ['type' => $fieldType]]]);
     }
 
+    /** @return iterable<string, array{array<string, mixed>, bool}> */
+    public static function linkFields(): iterable
+    {
+        yield 'every kind (the default) can be a file' => [['type' => 'link'], true];
+        yield 'asset among the kinds' => [['type' => 'link', 'link' => ['kinds' => ['url', 'asset']]], true];
+        yield 'web and record only' => [['type' => 'link', 'link' => ['kinds' => ['url', 'record', 'email', 'phone']]], false];
+    }
+
+    /** @param array<string, mixed> $field */
+    #[\PHPUnit\Framework\Attributes\DataProvider('linkFields')]
+    public function test_a_server_only_type_refuses_a_link_field_only_when_it_allows_files(array $field, bool $refused): void
+    {
+        $catalog = new TypeCatalog($this->dir);
+        $schema = ['key' => 'member', 'users' => 'members', 'fields' => ['name' => ['type' => 'string'], 'cta' => $field]];
+        if ($refused) {
+            $this->expectException(FrontendConfigException::class);
+            $this->expectExceptionMessage('file fields are not supported on it yet');
+        }
+        $catalog->add($schema);
+        $this->assertNotEmpty($catalog->all());
+    }
+
     public function test_file_holding_field_types_cover_upload_types(): void
     {
         $uploads = [];

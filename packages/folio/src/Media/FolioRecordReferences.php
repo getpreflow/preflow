@@ -29,8 +29,8 @@ use Preflow\Media\Usage\CountsAssetUsage;
  * sharing", on routed types and the site singleton) counts like an asset
  * field. Each record is listed once. A revision does not block a delete: the
  * asset goes into the bin, and cleanup and emptying the bin keep it while a
- * revision needs it. Poster use is the media core's own source
- * (PosterReferences).
+ * revision needs it. A video asset's own poster is the media core's source
+ * (PosterReferences); an embed field's poster is counted here, as a field value.
  *
  * Runs on every delete, so it reads only what can hold a reference: types
  * without a field that holds asset ids (asset, blocks, and since 0.91 every type
@@ -205,7 +205,7 @@ final class FolioRecordReferences implements AssetReferenceSource, CountsAssetUs
     }
 
     /**
-     * The rows that may reference one of the assets: those whose asset or blocks columns (and
+     * The rows that may reference one of the assets: those whose columns of file-holding fields (asset, blocks, ReferencesAssets types; and
      * `_seo` with $seo) contain one of the ids (CONTAINS on the stored value, every locale of a
      * translatable field; a reference always holds the id verbatim, in a list, a locale map or
      * block JSON too): the same rows on every driver; JSON reads every file either way. Only

@@ -39,13 +39,13 @@ final class EmbedFieldType implements FieldType, StructuredFieldType, DisplaysIn
     /** One image, public: what the poster picker takes. */
     private const array POSTER_CONFIG = ['asset' => ['multiple' => false, 'accept' => 'image/*']];
 
+    /** @var \Closure(): EmbedProviders */
+    private readonly \Closure $providers;
+
     /**
      * @param (\Closure(): EmbedProviders)|null $providers the app's video hosts (default: YouTube and Vimeo)
      * @param EmbedOutput|null $output the page's player (null: the page shows a link to the video)
      */
-    /** @var \Closure(): EmbedProviders */
-    private readonly \Closure $providers;
-
     public function __construct(
         private readonly ?FieldTypeRegistry $fieldTypes = null,
         ?\Closure $providers = null,

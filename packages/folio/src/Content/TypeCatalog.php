@@ -16,7 +16,8 @@ final class TypeCatalog
      * ReferencesAssets (asset, an embed's poster and a link to a file, since 0.91), plus blocks
      * (hands uploads to nested types) and matrix (its assets()). The catalog is built before the
      * field types, so this list names them; a test keeps it equal to the built-in types that
-     * implement those interfaces. Field types a site registers itself (config/folio.php
+     * implement those interfaces. A link holds files only when it allows its "asset" kind
+     * (holdsFiles()). Field types a site registers itself (config/folio.php
      * "field_types") are not known here.
      */
     public const array FILE_HOLDING_FIELD_TYPES = ['asset', 'blocks', 'matrix', 'embed', 'link'];
@@ -25,8 +26,6 @@ final class TypeCatalog
      * @param \Preflow\Core\Boot\BootManifest|null $manifest the boot manifest the model files' listings come from when it has them
      * @param TypeRegistry|null                   $types    the types; a model file whose key a model class defines is that
      *                                                      class's admin file, listed with the class's schema
-     */
-    /**
      * @param (\Closure(): ?\Preflow\Fields\EmbedProviders)|null $embedProviders the app's video hosts (0.91), asked when the types are read: an embed field listing an unregistered one is a boot error
      */
     public function __construct(
@@ -132,6 +131,22 @@ final class TypeCatalog
         return $files;
     }
 
+    /**
+     * Whether a field's values can hold files. A link field holds one only when it allows the
+     * "asset" kind (a web, email, phone or record-only link holds none).
+     *
+     * @param array<string, mixed> $field
+     */
+    private static function holdsFiles(array $field): bool
+    {
+        $type = $field['type'] ?? null;
+        if ($type === 'link') {
+            return \Preflow\Fields\LinkOptions::fromConfig($field)->allows(\Preflow\Fields\Values\LinkKind::Asset);
+        }
+
+        return in_array($type, self::FILE_HOLDING_FIELD_TYPES, true);
+    }
+
     /** @param array<string, mixed> $data */
     private function listing(array $data, string $section, string $group = 'site'): TypeListing
     {
@@ -166,7 +181,7 @@ final class TypeCatalog
         $transfer = $data['transfer'] ?? $users === null;
         if (!$transfer) {
             foreach (is_array($data['fields'] ?? null) ? $data['fields'] : [] as $field) {
-                if (is_array($field) && in_array($field['type'] ?? null, self::FILE_HOLDING_FIELD_TYPES, true)) {
+                if (is_array($field) && self::holdsFiles($field)) {
                     throw new FrontendConfigException("Type \"{$key}\" keeps its records on the server, but its files would still be exported; file fields are not supported on it yet.");
                 }
             }

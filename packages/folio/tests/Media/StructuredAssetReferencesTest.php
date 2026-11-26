@@ -108,10 +108,20 @@ final class StructuredAssetReferencesTest extends TestCase
 
     public function test_every_built_in_type_that_holds_files_is_in_the_file_holding_list(): void
     {
-        foreach ([new AssetFieldType('/tmp', '/u'), new EmbedFieldType(), new LinkFieldType()] as $type) {
-            $this->assertTrue($type instanceof ReferencesAssets || $type instanceof HandlesUpload);
-            $this->assertContains($type->key(), TypeCatalog::FILE_HOLDING_FIELD_TYPES, $type->key());
+        $checked = 0;
+        foreach (glob(dirname(__DIR__, 2) . '/src/Field/Types/*FieldType.php') ?: [] as $file) {
+            $reflection = new \ReflectionClass('Preflow\\Folio\\Field\\Types\\' . basename($file, '.php'));
+            if ($reflection->isAbstract()) {
+                continue;
+            }
+            $key = $reflection->newInstanceWithoutConstructor()->key(); // key() returns a literal
+            $holds = $reflection->implementsInterface(ReferencesAssets::class)
+                || $reflection->implementsInterface(HandlesUpload::class)
+                || in_array($key, ['blocks', 'matrix'], true); // they nest other fields / have assets()
+            $this->assertSame($holds, in_array($key, TypeCatalog::FILE_HOLDING_FIELD_TYPES, true), "field type \"{$key}\"");
+            $checked++;
         }
+        $this->assertGreaterThan(20, $checked, 'every built-in field type was looked at');
         $dir = $this->assetRoot . '/kept';
         mkdir($dir);
         file_put_contents($dir . '/memo.json', (string) json_encode(['key' => 'memo', 'transfer' => false, 'fields' => ['video' => ['type' => 'embed']]]));

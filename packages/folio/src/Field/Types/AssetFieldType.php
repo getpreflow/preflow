@@ -315,13 +315,13 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
         return [];
     }
 
-    /** fields.js: the drop zone (admin.js runs Choose and Remove). */
     /** Each id (or legacy path) of the value: one, a list, a locale map of those, or JSON text of them (since 0.91). */
     public function mapAssetIds(mixed $value, array $config, \Closure $fn): mixed
     {
         return \Preflow\Folio\Assets\AssetReferences::mapValue($value, $fn);
     }
 
+    /** fields.js: the drop zone (admin.js runs Choose and Remove). */
     public function assets(): array
     {
         return ['fields.js'];
