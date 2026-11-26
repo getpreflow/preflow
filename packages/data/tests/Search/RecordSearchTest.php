@@ -104,6 +104,67 @@ final class RecordSearchTest extends TestCase
     }
 
     #[DataProvider('storages')]
+    public function test_hidden_text_is_not_found(string $storage): void
+    {
+        $this->model('teaser', $storage, [
+            'kind' => ['type' => 'string'],
+            'title' => ['type' => 'string'],
+            'button_url' => ['type' => 'string', 'show_when' => ['field' => 'kind', '=' => 'link']],
+        ], 'title');
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $pdo->exec('CREATE TABLE teaser (uuid TEXT PRIMARY KEY, kind TEXT, title TEXT, button_url TEXT)');
+        $registry = new TypeRegistry($this->dir . '/models', new Locales(['en'], 'en'));
+        $dm = new DataManager(
+            drivers: ['sqlite' => new SqliteDriver($pdo), 'json' => new JsonFileDriver($this->dir . '/store')],
+            defaultDriver: 'sqlite',
+            typeRegistry: $registry,
+        );
+        foreach ([
+            ['uuid' => 't1', 'kind' => 'text', 'title' => 'Hidden one', 'button_url' => 'secretpath'],
+            ['uuid' => 't2', 'kind' => 'link', 'title' => 'Shown one', 'button_url' => 'secretpath'],
+            ['uuid' => 't3', 'kind' => 'text', 'title' => 'secretpath in the title', 'button_url' => 'secretpath'],
+        ] as $row) {
+            $dm->saveType(DynamicRecord::fromArray($registry->get('teaser'), $row), validate: false);
+        }
+        $search = new RecordSearch($dm);
+
+        // t1 matches only through its hidden field; t3 through its title as well.
+        $this->assertSame(['teaser:t2', 'teaser:t3'], self::keys($search->search('secretpath', ['teaser'])));
+        // A record with a hidden field is still found by its shown fields.
+        $this->assertSame(['teaser:t1', 'teaser:t2'], self::keys($search->search('one', ['teaser'])));
+        // Every word must match a shown field: "one" in t1's title, "secretpath" only in its hidden field.
+        $this->assertSame(['teaser:t2'], self::keys($search->search('one secretpath', ['teaser'])));
+        // The cap counts only what is found: the hidden-only hit does not take a place.
+        $this->assertSame(['teaser:t2'], self::keys($search->search('secretpath', ['teaser'], perType: 1)));
+
+        // The kind switches back: the stored text is found again (search reads what is stored now).
+        $dm->saveType(DynamicRecord::fromArray($registry->get('teaser'), ['uuid' => 't1', 'kind' => 'link', 'title' => 'Hidden one', 'button_url' => 'secretpath']), validate: false);
+        $this->assertSame(['teaser:t1', 'teaser:t2', 'teaser:t3'], self::keys($search->search('secretpath', ['teaser'])));
+    }
+
+    public function test_hidden_text_is_not_found_on_a_ranking_storage(): void
+    {
+        file_put_contents($this->dir . '/models/post.json', json_encode([
+            'key' => 'post', 'table' => 'post', 'storage' => 'main', 'id_field' => 'uuid', 'titleField' => 'title', 'fullText' => true,
+            'fields' => ['kind' => ['type' => 'string'], 'title' => ['type' => 'string'], 'body' => ['type' => 'text', 'show_when' => ['field' => 'kind', '=' => 'long']]],
+        ]));
+        $driver = new RankedFakeDriver(new JsonFileDriver($this->dir . '/ranked'));
+        $driver->declare('post', ['title', 'body']);
+        $registry = new TypeRegistry($this->dir . '/models', new Locales(['en'], 'en'));
+        $dm = new DataManager(drivers: ['main' => $driver], defaultDriver: 'main', typeRegistry: $registry);
+        foreach ([
+            'p1' => ['short', 'Garden', 'garden garden garden'],
+            'p2' => ['short', 'Kitchen', 'garden garden garden'],
+            'p3' => ['long', 'Shed', 'garden'],
+        ] as $id => [$kind, $title, $body]) {
+            $dm->saveType(DynamicRecord::fromArray($registry->get('post'), ['uuid' => $id, 'kind' => $kind, 'title' => $title, 'body' => $body]), validate: false);
+        }
+
+        $this->assertEqualsCanonicalizing(['post:p1', 'post:p3'], self::keys((new RecordSearch($dm))->search('garden', ['post'])));
+    }
+
+    #[DataProvider('storages')]
     public function test_per_type_caps_each_type(string $storage): void
     {
         $hits = $this->search($storage)->search('zoo', ['game', 'designer'], perType: 2);

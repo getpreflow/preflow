@@ -121,6 +121,24 @@ final class FolioTextSourceTest extends TestCase
         $this->assertSame([], $this->source('article')->units('missing', 'de', Scope::Needed));
     }
 
+    public function test_a_field_its_show_when_hides_sends_no_unit(): void
+    {
+        $this->writeModel('teaser', [
+            'label' => 'Teasers',
+            'fields' => [
+                'kind' => ['type' => 'string'],
+                'title' => ['type' => 'string', 'translatable' => true],
+                'button_label' => ['type' => 'string', 'translatable' => true, 'show_when' => ['field' => 'kind', '=' => 'link']],
+            ],
+        ]);
+        $this->working('teaser', 't1', ['kind' => 'text', 'title' => ['en' => 'Hello'], 'button_label' => ['en' => 'Go']]);
+
+        $this->assertSame(['title'], array_keys($this->byId($this->source('teaser')->units('t1', 'de', Scope::All))));
+
+        $this->working('teaser', 't1', ['kind' => 'link', 'title' => ['en' => 'Hello'], 'button_label' => ['en' => 'Go']]);
+        $this->assertSame(['title', 'button_label'], array_keys($this->byId($this->source('teaser')->units('t1', 'de', Scope::All))));
+    }
+
     public function test_previous_source_from_revisions_when_sources_absent(): void
     {
         $fp = $this->translationStatus()->fingerprint('Hello');

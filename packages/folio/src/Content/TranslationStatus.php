@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Content;
 
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\FieldVisibility;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Folio\Field\FieldType;
@@ -56,21 +57,33 @@ final class TranslationStatus
     ) {}
 
     /**
-     * Every translatable text of the record; none for a single-locale app.
+     * Every translatable text of the record; none for a single-locale app. A field the record's
+     * show_when hides has none (since 0.91.0): it counts as neither missing nor outdated, and a
+     * machine translation sends none of it. Its stamps stay (stamp()) for when it shows again.
      *
      * @return list<TranslatableText>
      */
     public function texts(TypeDefinition $def, DynamicRecord $record): array
+    {
+        return $this->textsOf($def, $record, FieldVisibility::hiddenFieldsOf($def, $record->toArray()));
+    }
+
+    /**
+     * @param list<string> $hidden fields left out
+     * @return list<TranslatableText>
+     */
+    private function textsOf(TypeDefinition $def, DynamicRecord $record, array $hidden): array
     {
         $locales = $def->locales;
         if (!$locales->isMultilingual()) {
             return [];
         }
         $translatable = array_flip($def->translatableFields());
+        $hidden = array_flip($hidden);
 
         $texts = [];
         foreach ($def->fields as $name => $field) {
-            if (!self::fillable($def, $name, $field)) {
+            if (!self::fillable($def, $name, $field) || isset($hidden[$name])) {
                 continue;
             }
             $type = $this->fieldTypes->get($field->type);
@@ -393,8 +406,9 @@ final class TranslationStatus
             return $after;
         }
 
+        // Every text, hidden ones too: a field its show_when hides keeps its stamps and marks.
         $texts = [];
-        foreach ($this->texts($def, $after) as $text) {
+        foreach ($this->textsOf($def, $after, []) as $text) {
             $texts[$text->path] = $text;
         }
         $fingerprints = self::entries($after, self::KEY);
@@ -402,7 +416,7 @@ final class TranslationStatus
 
         if ($locale !== $locales->default && $locales->has($locale)) {
             $previous = [];
-            foreach ($this->texts($def, $before) as $text) {
+            foreach ($this->textsOf($def, $before, []) as $text) {
                 $previous[$text->path] = $text->in($locale);
             }
             foreach ($texts as $path => $text) {

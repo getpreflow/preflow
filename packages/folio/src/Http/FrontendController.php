@@ -146,7 +146,7 @@ final class FrontendController
         }
 
         $html = $this->engine->render(self::template($this->engine, $route), [
-            'record' => $record->localized($locale)->toArray(),
+            'record' => $this->records->values($record, $locale),
             'rendered' => $this->records->renderedMap($record, $locale),
             'type' => $route->type,
             'preview' => $preview,

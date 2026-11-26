@@ -188,6 +188,30 @@ final class FieldVisibilityTest extends TestCase
         $this->assertSame([], FieldVisibility::hiddenFieldsOf(new \Preflow\Data\TypeDefinition('plain', 'plain', 'default', ['kind' => new TypeFieldDefinition('kind')]), []));
     }
 
+    public function test_visible_values_read_a_hidden_field_as_null(): void
+    {
+        $fields = [
+            'kind' => new TypeFieldDefinition('kind'),
+            'url' => new TypeFieldDefinition('url', config: ['show_when' => ['field' => 'kind', '=' => 'link']]),
+            'label' => new TypeFieldDefinition('label', config: ['show_when' => ['field' => 'url', 'filled' => true]]),
+        ];
+        $type = new \Preflow\Data\TypeDefinition('page', 'page', 'default', $fields);
+
+        // Hidden: null, also a field that depends on a hidden one; keys it does not know stay.
+        $this->assertSame(
+            ['uuid' => 'p1', 'kind' => 'video', 'url' => null, 'label' => null],
+            FieldVisibility::visibleValues($type, ['uuid' => 'p1', 'kind' => 'video', 'url' => '/a', 'label' => 'Go']),
+        );
+        // A hidden field without a stored key reads as null too.
+        $this->assertSame(['kind' => 'video', 'url' => null, 'label' => null], FieldVisibility::visibleValues($type, ['kind' => 'video']));
+        // Shown: the values as given.
+        $shown = ['kind' => 'link', 'url' => '/a', 'label' => 'Go'];
+        $this->assertSame($shown, FieldVisibility::visibleValues($type, $shown));
+        // A type without show_when: unchanged.
+        $plain = new \Preflow\Data\TypeDefinition('plain', 'plain', 'default', ['kind' => new TypeFieldDefinition('kind')]);
+        $this->assertSame(['kind' => 'x', 'other' => 1], FieldVisibility::visibleValues($plain, ['kind' => 'x', 'other' => 1]));
+    }
+
     public function test_sources_lists_every_named_field_once(): void
     {
         $rule = FieldVisibility::fromConfig(['any' => [['field' => 'a', '=' => 'x'], ['all' => [['field' => 'b', 'filled' => true], ['field' => 'a', 'in' => ['y']]]]]]);

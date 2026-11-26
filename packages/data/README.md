@@ -2015,6 +2015,28 @@ What is still checked for a hidden field: the column length of a unique or index
 (the storage would refuse a longer value) and uniqueness. `DynamicRecord::get()` returns the
 stored value as before.
 
+**Reading a hidden field.** What a record holds and what it shows are two things. The record
+keeps the stored value: `DynamicRecord::get()`, `toArray()`, Folio's transfer export and the
+uniqueness check read it unchanged. What it shows reads a hidden field as empty (`null`):
+Folio's rendered values (`rendered`), the page template's `record`, `folio_get`, `folio_list`
+and `folio_find`, list cells (and the list's Excel export), share texts and JSON-LD, search
+(`RecordSearch` gives no hit for text only a hidden field holds; it reads what is stored now,
+so a field that becomes hidden stops matching with the save that hides it), and Folio's
+translation status and machine translation (a hidden text counts as neither missing nor
+outdated, and is never sent to a model). Your own output, such as an API resource, asks for the
+same view in one call:
+
+```php
+use Preflow\Data\FieldVisibility;
+
+$values = FieldVisibility::visibleValues($record->getType(), $record->localized($locale)->toArray());
+// ['kind' => 'video', 'button_url' => null, …]: hidden fields are null, everything else as given
+return Json::response($values);
+```
+
+`visibleValues()` adds a `null` for a hidden field the values lack and changes nothing for a
+type without `show_when`.
+
 When the registry is built (at boot, or when `preflow optimize` builds the boot manifest), a
 rule that cannot work is refused with a `ShowWhenException` naming the type and the field: a
 malformed rule (show_when is an object such as `{"field": "kind", "=": "video"}`), a value
@@ -2029,8 +2051,8 @@ Type "page": field "button_url": show_when names "kind", which is not a field of
 
 `Preflow\Data\FieldVisibility` is the one class that decides: `fromConfig($showWhen)->holds($values)`
 for one rule, `hiddenFields($fields, $values)` for a record's fields (`hiddenFieldsOf($type,
-$values)` parses a type's rules once per definition, for lists), and `assertRules()` for the
-boot check. The cases the browser and the server
+$values)` parses a type's rules once per definition, for lists), `visibleValues($type, $values)`
+for output, and `assertRules()` for the boot check. The cases the browser and the server
 must agree on are in `tests/Fixtures/show-when-cases.json`.
 
 ## Model classes as types

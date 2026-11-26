@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Content;
 
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\FieldVisibility;
 use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Field\DisplaysInAdmin;
 use Preflow\Folio\Field\FieldType;
@@ -13,7 +14,8 @@ use Preflow\Folio\Field\FieldTypeRegistry;
 /**
  * A list cell as plain text: what the admin list shows and the Excel export writes. The field
  * type's admin display with the markup stripped (a list cell never renders field HTML raw);
- * relation columns show their targets' labels.
+ * relation columns show their targets' labels. A field the record's show_when hides is an empty
+ * cell (since 0.91.0).
  */
 final class ListCells
 {
@@ -23,6 +25,9 @@ final class ListCells
      */
     public static function text(FieldTypeRegistry $fieldTypes, TypeDefinition $def, string $name, DynamicRecord $record, array $relationLabels = [], ?DisplayLabels $labels = null): string
     {
+        if (self::hidden($def, $name, $record)) {
+            return '';
+        }
         $localized = $record->localized($def->locales->default);
         if (isset($relationLabels[$name])) {
             $ids = RelationLabels::ids($localized->get($name));
@@ -39,6 +44,17 @@ final class ListCells
         }
 
         return self::plain(self::display($type, $type->fromStorage($localized->get($name)), $config));
+    }
+
+    /**
+     * Whether the record's show_when hides the field: its cell is empty (the list and its Excel
+     * export), the stored value stays.
+     *
+     * @since 0.91.0
+     */
+    public static function hidden(TypeDefinition $def, string $name, DynamicRecord $record): bool
+    {
+        return in_array($name, FieldVisibility::hiddenFieldsOf($def, $record->toArray()), true);
     }
 
     /** Field types whose cells are numbers: the list sets them in mono, right-aligned. */

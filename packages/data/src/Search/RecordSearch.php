@@ -6,6 +6,7 @@ namespace Preflow\Data\Search;
 
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\FieldVisibility;
 use Preflow\Data\RecordTitle;
 use Preflow\Data\TypeDefinition;
 
@@ -19,6 +20,10 @@ use Preflow\Data\TypeDefinition;
  * first CANDIDATES loose-search hits are scored and the best $perType come first (ties in storage
  * order), each with its score. Otherwise the hits are the first $perType in storage order, as
  * before 0.78, without a score. The same records match on every storage; only the order differs.
+ *
+ * Text a field's show_when hides is not searched (since 0.91.0): a record the term finds only
+ * through a hidden field is no hit, on every storage (withoutHidden()). The search reads what is
+ * stored now, so a field that becomes hidden on a save stops matching with that save.
  *
  * It reads working copies and checks no permission: the caller passes only the types the
  * person may read.
@@ -63,10 +68,14 @@ final class RecordSearch
                 array_push($hits, ...$this->ranked($def, $term, $perType));
                 continue;
             }
-            foreach ($this->dataManager->queryType($type)->searchLoose($term)->limit($perType)->get()->items() as $record) {
-                if ($record instanceof DynamicRecord) {
-                    $hits[] = new RecordHit($type, (string) $record->getId(), RecordTitle::of($record));
-                }
+            $conditional = FieldVisibility::rulesOf($def->fields) !== [];
+            $records = array_values(array_filter(
+                // A type with show_when drops hits found only through hidden text: read enough to fill $perType.
+                $this->dataManager->queryType($type)->searchLoose($term)->limit($conditional ? self::CANDIDATES : $perType)->get()->items(),
+                static fn (mixed $record): bool => $record instanceof DynamicRecord,
+            ));
+            foreach (array_slice($conditional ? $this->withoutHidden($def, $term, $records) : $records, 0, $perType) as $record) {
+                $hits[] = new RecordHit($type, (string) $record->getId(), RecordTitle::of($record));
             }
         }
 
@@ -85,6 +94,7 @@ final class RecordSearch
             $this->dataManager->queryType($def->key)->searchLoose($term)->limit(self::CANDIDATES)->get()->items(),
             static fn (mixed $record): bool => $record instanceof DynamicRecord,
         ));
+        $records = $this->withoutHidden($def, $term, $records);
         if ($records === []) {
             return [];
         }
@@ -100,5 +110,47 @@ final class RecordSearch
             static fn (array $hit): RecordHit => new RecordHit($def->key, $hit['id'], RecordTitle::of($hit['record']), $hit['score']),
             array_slice($ranked, 0, $perType),
         );
+    }
+
+    /**
+     * $records without those the term finds only through text a show_when hides: a record with
+     * hidden fields stays when the loose search, asked again on its shown fields alone, still
+     * finds it (one query per set of hidden fields, on the storage's own matching rule). Records
+     * without hidden fields, and every record of a type without show_when, stay as they are.
+     *
+     * @param list<DynamicRecord> $records
+     * @return list<DynamicRecord>
+     */
+    private function withoutHidden(TypeDefinition $def, string $term, array $records): array
+    {
+        $groups = []; // hidden fields joined => [hidden fields, ids]
+        foreach ($records as $record) {
+            $hidden = FieldVisibility::hiddenFieldsOf($def, $record->toArray());
+            if ($hidden !== []) {
+                $key = implode("\0", $hidden);
+                $groups[$key][0] = $hidden;
+                $groups[$key][1][] = (string) $record->getId();
+            }
+        }
+        if ($groups === []) {
+            return $records;
+        }
+        $dropped = [];
+        foreach ($groups as [$hidden, $ids]) {
+            $shown = array_values(array_diff(array_map(strval(...), array_keys($def->fields)), $hidden));
+            $found = [];
+            foreach ($this->dataManager->queryType($def->key)->byIds($ids)->searchLoose($term, $shown)->get()->items() as $record) {
+                if ($record instanceof DynamicRecord) {
+                    $found[(string) $record->getId()] = true;
+                }
+            }
+            foreach ($ids as $id) {
+                if (!isset($found[$id])) {
+                    $dropped[$id] = true;
+                }
+            }
+        }
+
+        return array_values(array_filter($records, static fn (DynamicRecord $record): bool => !isset($dropped[(string) $record->getId()])));
     }
 }

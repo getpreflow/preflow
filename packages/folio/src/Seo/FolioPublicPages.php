@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Seo;
 
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\FieldVisibility;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\FrontendRoute;
 use Preflow\Folio\Content\TypeCatalog;
@@ -80,7 +81,7 @@ final class FolioPublicPages
     private function page(DynamicRecord $record, string $locale, ?string $titleField, bool $sitemap, bool $llms): ?PublicPage
     {
         $seo = SeoSection::fromRecord($record);
-        $values = $record->localized($locale);
+        $values = FieldVisibility::visibleValues($record->getType(), $record->localized($locale)->toArray()); // hidden: null
         if ($seo->noindex() || FolioPageMeta::hiddenByField($record, $locale, $this->geo?->noindexField)) {
             return null;
         }
@@ -89,7 +90,7 @@ final class FolioPublicPages
             return null; // not visible in this locale
         }
 
-        $title = $titleField !== null ? FolioPageMeta::text($values->get($titleField)) : '';
+        $title = $titleField !== null ? FolioPageMeta::text($values[$titleField] ?? null) : '';
         $home = $this->resolver->pathFor($record, $locale) === '/';
         // The URLs the page itself names as canonical and hreflang ("/de" for a home page);
         // GeoEntries adds the slash llms.txt needs for "/de/index.md".
@@ -106,7 +107,7 @@ final class FolioPublicPages
         return new PublicPage(
             title: $title !== '' ? $title : $url,
             url: $url,
-            description: isset($record->getType()->fields['meta_description']) ? FolioPageMeta::text($values->get('meta_description')) : '',
+            description: isset($record->getType()->fields['meta_description']) ? FolioPageMeta::text($values['meta_description'] ?? null) : '',
             order: $home ? 0 : 100,
             lastmod: is_string($publishedAt) && $publishedAt !== '' ? $publishedAt : null,
             // One language needs no alternates.

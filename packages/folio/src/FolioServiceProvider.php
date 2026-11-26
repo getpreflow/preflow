@@ -224,8 +224,12 @@ final class FolioServiceProvider extends ServiceProvider
             );
         }
         if ($geo?->enabled() && $container->bound(\Preflow\View\Geo\GeoEntries::class)) {
-            $container->get(\Preflow\View\Geo\GeoEntries::class)->site(static fn (string $locale): array => $container->get(\Preflow\Folio\Content\Singletons::class)
-                ->record('site')?->localized($locale)->toArray() ?? []);
+            // A field its show_when hides reads as null (FieldVisibility::visibleValues()).
+            $container->get(\Preflow\View\Geo\GeoEntries::class)->site(static function (string $locale) use ($container): array {
+                $site = $container->get(\Preflow\Folio\Content\Singletons::class)->record('site');
+
+                return $site === null ? [] : \Preflow\Data\FieldVisibility::visibleValues($site->getType(), $site->localized($locale)->toArray());
+            });
         }
         if ($seo?->enabled() && $container->bound(\Preflow\View\Seo\SeoSite::class)) {
             $container->singleton(\Preflow\Folio\Seo\FolioPageMeta::class, static fn (Container $c) => new \Preflow\Folio\Seo\FolioPageMeta(

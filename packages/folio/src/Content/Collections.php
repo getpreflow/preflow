@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Content;
 
 use Preflow\Core\Context\Contexts;
+use Preflow\Data\FieldVisibility;
 use Preflow\Publishing\LiveContent;
 
 /**
@@ -15,7 +16,8 @@ use Preflow\Publishing\LiveContent;
  * (DynamicRecord::isVisibleIn(), the detail page's rule); find() is a lookup by key and
  * returns the record whatever its languages. Memoized per render frame and context
  * (ContentMemo: by type and RenderContext::memoKey()); not memoized outside every render. A type
- * gated by frontend.permission lists nothing for visitors without it (FrontendGate).
+ * gated by frontend.permission lists nothing for visitors without it (FrontendGate). A field its
+ * show_when hides reads as null (FieldVisibility::visibleValues(); since 0.91.0).
  */
 final class Collections
 {
@@ -91,6 +93,9 @@ final class Collections
      */
     private function safe(array $values, string $type): array
     {
-        return $this->richText?->fields($values, $this->live->definition($type)->fields) ?? $values;
+        $def = $this->live->definition($type);
+        $values = FieldVisibility::visibleValues($def, $values); // a field its show_when hides reads as null
+
+        return $this->richText?->fields($values, $def->fields) ?? $values;
     }
 }

@@ -241,6 +241,27 @@ final class FieldVisibility
     }
 
     /**
+     * A record's values as the output layers read them: each field its show_when hides is null
+     * (also one without a stored key), every other key stays as given. For rendered values,
+     * templates (folio_get, folio_list, folio_find), list cells and API resources; get(), the
+     * transfer export and uniqueness read the stored value. A type without show_when gives
+     * $values back unchanged.
+     *
+     * @param array<string, mixed> $values the record's values (stored or localized: a rule's
+     *                                     source is never translatable, so both decide alike)
+     * @return array<string, mixed>
+     * @since 0.91.0
+     */
+    public static function visibleValues(TypeDefinition $type, array $values): array
+    {
+        foreach (self::hiddenFieldsOf($type, $values) as $hidden) {
+            $values[$hidden] = null;
+        }
+
+        return $values;
+    }
+
+    /**
      * @param array<string, TypeFieldDefinition|array<string, mixed>> $fields
      * @return array<string, self>
      */

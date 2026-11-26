@@ -72,7 +72,7 @@ final class PreviewController
         $preview = Contexts::current()->asVisitor()->public()->in($locale)->workingCopies()
             ->capturing()->skippingWrites()->because(Purpose::Preview);
         $html = Contexts::within($preview, fn (): string => $this->engine->render(FrontendController::template($this->engine, $route), [
-            'record' => $draft->localized($locale)->toArray(),
+            'record' => $this->records->values($draft, $locale),
             'rendered' => $this->records->renderedMap($draft, $locale),
             'type' => $type,
             'preview' => true,

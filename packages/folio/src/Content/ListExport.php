@@ -113,6 +113,9 @@ final class ListExport
     private function cell(TypeDefinition $def, string $name, DynamicRecord $record, array $labels): Cell
     {
         $type = $def->fields[$name]->type;
+        if (ListCells::hidden($def, $name, $record)) {
+            return new StringCell('', null); // the list's cell: a field its show_when hides is empty
+        }
         $raw = $record->localized($def->locales->default)->get($name);
 
         if (in_array($type, self::NUMERIC_TYPES, true) && is_numeric($raw)) {

@@ -6,7 +6,7 @@
     "require": {
         "php": ">=8.4",
         "preflow/core": "^0.82.0 || @dev",
-        "preflow/data": "^0.90.0 || @dev",
+        "preflow/data": "^0.91.0 || @dev",
         "preflow/view": "^0.74 || @dev",
         "preflow/twig": "^0.65 || @dev",
         "preflow/routing": "^0.78.2 || @dev",
@@ -41,7 +41,7 @@
         "preflow/blocks": "<0.90.0",
         "preflow/codes": "<0.68",
         "preflow/core": "<0.82.0",
-        "preflow/data": "<0.90.0",
+        "preflow/data": "<0.91.0",
         "preflow/devtools": "<0.85.0",
         "preflow/form": "<0.75",
         "preflow/htmx": "<0.65",

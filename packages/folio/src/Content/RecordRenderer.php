@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Content;
 
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\FieldVisibility;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\View\TemplateEngineInterface;
 
@@ -22,14 +23,21 @@ final class RecordRenderer
     ) {}
 
     /**
-     * @return array<string, string> field name => safe frontend HTML
+     * A field its show_when hides is null (since 0.91.0; FieldVisibility::visibleValues()).
+     *
+     * @return array<string, ?string> field name => safe frontend HTML; null for a hidden field
      */
     public function renderedMap(DynamicRecord $record, ?string $locale = null): array
     {
         $typeDef = $record->getType();
         $localized = $record->localized($locale ?? $this->locale($record));
+        $hidden = array_flip(FieldVisibility::hiddenFieldsOf($typeDef, $record->toArray()));
         $map = [];
         foreach ($typeDef->fields as $name => $fieldDef) {
+            if (isset($hidden[$name])) {
+                $map[$name] = null;
+                continue;
+            }
             $fieldType = $this->fieldTypes->get($fieldDef->type);
             $map[$name] = $fieldType->renderFrontend(
                 $fieldType->fromStorage($localized->get($name)),
@@ -37,6 +45,18 @@ final class RecordRenderer
             );
         }
         return $map;
+    }
+
+    /**
+     * The record's values in $locale as a template reads them: a field its show_when hides is
+     * null (FieldVisibility::visibleValues(); the stored value stays in the record).
+     *
+     * @return array<string, mixed>
+     * @since 0.91.0
+     */
+    public function values(DynamicRecord $record, string $locale): array
+    {
+        return FieldVisibility::visibleValues($record->getType(), $record->localized($locale)->toArray());
     }
 
     /** The request's content locale, or the record's default locale. */
@@ -75,7 +95,7 @@ final class RecordRenderer
         }
 
         return $this->engine->render($template, [
-            'record' => $record->localized($this->locale($record))->toArray(),
+            'record' => $this->values($record, $this->locale($record)),
             'rendered' => $this->renderedMap($record),
             'type' => $type,
             'view' => $view,
