@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Assets;
 
+use Preflow\Blocks\Layouts\PageLayouts;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Blocks\BlockRegistry;
@@ -16,14 +17,34 @@ use Preflow\Folio\Field\ReferencesAssets;
  * "blocks" fields, each known block's fields the same way, recursively. Unknown blocks are left
  * untouched. Without a field type registry only "asset" fields are read (as before 0.91). One
  * walker serves the usage scan and the legacy import.
+ *
+ * A type with page layouts (0.92) holds blocks in "_areas" too: every stored area is walked as a
+ * blocks field, the areas its layout does not show included (switching back shows them again).
  */
 final class AssetReferences
 {
-    /** @param (\Closure(): FieldTypeRegistry)|null $fieldTypes the field types, asked which of them hold asset ids */
+    /**
+     * @param (\Closure(): FieldTypeRegistry)|null $fieldTypes the field types, asked which of them hold asset ids
+     * @param (\Closure(): ?PageLayouts)|null      $layouts    the types' page layouts, asked on use
+     */
     public function __construct(
         private readonly BlockRegistry $blocks,
         private readonly ?\Closure $fieldTypes = null,
+        private readonly ?\Closure $layouts = null,
     ) {}
+
+    /**
+     * The system columns of the type that hold blocks besides its fields: "_areas" for a type
+     * with page layouts (0.92), else none.
+     *
+     * @return list<string>
+     */
+    public function blockColumns(TypeDefinition $def): array
+    {
+        $layouts = $this->layouts !== null ? ($this->layouts)() : null;
+
+        return $layouts?->forType($def->key) !== null ? [PageLayouts::AREAS] : [];
+    }
 
     /** Whether a field holds asset ids itself (its type implements ReferencesAssets, or is "asset") or holds blocks that may. */
     public function holdsAssets(TypeFieldDefinition $field): bool
@@ -49,7 +70,14 @@ final class AssetReferences
      */
     public function map(TypeDefinition $def, array $data, \Closure $fn): array
     {
-        return $this->mapFields($def->fields, $data, $fn);
+        $data = $this->mapFields($def->fields, $data, $fn);
+        foreach ($this->blockColumns($def) as $column) {
+            if (array_key_exists($column, $data)) {
+                $data[$column] = $this->mapAreas($data[$column], $fn);
+            }
+        }
+
+        return $data;
     }
 
     /**
@@ -105,6 +133,21 @@ final class AssetReferences
         }
 
         return $json ? json_encode($blocks, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : $blocks;
+    }
+
+    /** A page's areas ({area: [blocks…]}, an array or JSON text), each area as a blocks field. */
+    private function mapAreas(mixed $value, \Closure $fn): mixed
+    {
+        $json = is_string($value);
+        $areas = $json ? json_decode($value, true) : $value;
+        if (!is_array($areas) || $areas === []) {
+            return $value;
+        }
+        foreach ($areas as $name => $blocks) {
+            $areas[$name] = $this->mapBlocks($blocks, $fn);
+        }
+
+        return $json ? json_encode($areas, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : $areas;
     }
 
     /**

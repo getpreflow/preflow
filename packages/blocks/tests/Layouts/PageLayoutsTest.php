@@ -109,7 +109,7 @@ final class PageLayoutsTest extends TestCase
         ]);
 
         $context = $resolved?->context();
-        $this->assertSame(['key' => 'standard', 'label' => 'Standard', 'pinned' => false], $context['layout'] ?? null);
+        $this->assertSame(['key' => 'standard', 'label' => 'Standard', 'pinned' => false, 'template' => 'layouts/standard.twig'], $context['layout'] ?? null);
         $this->assertSame(['main'], array_keys($context['areas'] ?? []), 'only the areas the layout shows');
         $this->assertNull($context['areas']['main'][0]['button_url'], 'a field its show_when hides reads null');
         $this->assertSame('text', $context['areas']['main'][0]['kind']);

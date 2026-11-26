@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Storage;
 
+use Preflow\Blocks\Layouts\PageLayouts;
 use Preflow\Data\DataManager;
 use Preflow\Data\Schema\RecordTables;
 use Preflow\Data\Schema\RecordTableSync;
@@ -36,6 +37,10 @@ use Preflow\Folio\Seo\SeoSection;
  * same shape (folio:extensions:apply, which runs no migrate steps).
  * JSON-stored types are left alone.
  *
+ * A type with page layouts ("layouts", since 0.92) has two columns more, PageLayouts::COLUMNS
+ * ("_layout", "_areas"; columnsFor()), on its table and its published snapshots; every other
+ * table keeps exactly the columns it had.
+ *
  * @phpstan-import-type Entry from RecordTables
  */
 final class TableSync
@@ -45,13 +50,17 @@ final class TableSync
 
     private readonly RecordTableSync $records;
 
-    /** @param list<TypeDefinition> $internal */
+    /**
+     * @param list<TypeDefinition> $internal
+     * @param PageLayouts|null     $layouts  the types' page layouts (preflow/blocks binds them); without, no type has any
+     */
     public function __construct(
         private readonly TypeCatalog $catalog,
         private readonly TypeRegistry $registry,
         private readonly DataManager $dm,
         private readonly PublishingTypes $types,
         private readonly array $internal = [],
+        private readonly ?PageLayouts $layouts = null,
     ) {
         $this->records = new RecordTableSync($dm);
     }
@@ -74,9 +83,9 @@ final class TableSync
         $tables = [];
         foreach ($this->catalog->all() as $listing) {
             $def = $this->registry->get($listing->key);
-            $tables[] = RecordTables::entry($def, self::columns());
+            $tables[] = RecordTables::entry($def, $this->columnsFor($def));
             if ($this->types->publishes($listing->key)) {
-                array_push($tables, ...ShadowTypes::tables($def, self::columns()));
+                array_push($tables, ...ShadowTypes::tables($def, $this->columnsFor($def)));
             }
         }
         foreach ($this->internal as $def) {
@@ -92,13 +101,38 @@ final class TableSync
         return array_values(array_unique(self::SYSTEM));
     }
 
+    /**
+     * The extra columns of a type's tables: columns(), and for a type with page layouts
+     * PageLayouts::COLUMNS too.
+     *
+     * @return list<string>
+     * @since 0.92.0
+     */
+    public function columnsFor(TypeDefinition $def): array
+    {
+        return self::columnsOf($def, $this->layouts);
+    }
+
+    /**
+     * columnsFor() with the page layouts given: FolioRecordColumns, which preflow/publishing asks
+     * for the tables of publishing types, shares it.
+     *
+     * @return list<string>
+     * @internal Folio's table columns
+     */
+    public static function columnsOf(TypeDefinition $def, ?PageLayouts $layouts): array
+    {
+        return $layouts?->forType($def->key) === null ? self::columns() : [...self::columns(), ...PageLayouts::COLUMNS];
+    }
+
     /** @return list<Entry> the tables but those of publishing types (preflow/publishing lists them) */
     public function own(): array
     {
         $tables = [];
         foreach ($this->catalog->all() as $listing) {
             if (!$this->types->publishes($listing->key)) {
-                $tables[] = RecordTables::entry($this->registry->get($listing->key), self::columns());
+                $def = $this->registry->get($listing->key);
+                $tables[] = RecordTables::entry($def, $this->columnsFor($def));
             }
         }
         foreach ($this->internal as $def) {

@@ -229,16 +229,24 @@ final readonly class FrontendRoute
 
     /**
      * Templates to try, in order: the type's userland template, then a
-     * per-type @folio template, then the generic page template.
+     * per-type @folio template, then (a page with a layout, since 0.92) the
+     * layout's template, then the generic page template. For a type named
+     * "page" the per-type template is the generic one: it comes last, so the
+     * layout's template is tried before it.
      *
+     * @param string|null $layoutTemplate the template of the page's layout (ResolvedLayout::template())
      * @return list<string>
      */
-    public function templates(): array
+    public function templates(?string $layoutTemplate = null): array
     {
+        $generic = '@folio/frontend/page.twig';
+        $own = '@folio/frontend/' . $this->type . '.twig';
+
         return array_values(array_unique(array_filter([
             $this->template,
-            '@folio/frontend/' . $this->type . '.twig',
-            '@folio/frontend/page.twig',
+            $own !== $generic ? $own : null,
+            $layoutTemplate,
+            $generic,
         ])));
     }
 }

@@ -33,12 +33,13 @@ final readonly class ResolvedLayout
     }
 
     /**
-     * What a page template gets: "layout" (key, label, pinned; null without a layout) and "areas",
+     * What a page template gets: "layout" (key, label, pinned, and the layout's template name, so a
+     * type's own template may include it; null without a layout) and "areas",
      * the areas the layout shows by name, in its order, each a block list for blocks(areas.main).
      * Areas the layout lacks are not in it (they are never rendered). With a block registry each
      * block is as BlockRegistry::visibleBlock() reads it (a field its show_when hides is null).
      *
-     * @return array{layout: array{key: string, label: string, pinned: bool}|null, areas: array<string, list<array<string, mixed>>>}
+     * @return array{layout: array{key: string, label: string, pinned: bool, template: ?string}|null, areas: array<string, list<array<string, mixed>>>}
      */
     public function context(): array
     {
@@ -50,7 +51,7 @@ final readonly class ResolvedLayout
         }
 
         return [
-            'layout' => $this->layout === null ? null : ['key' => $this->layout->key, 'label' => $this->layout->label, 'pinned' => $this->pinned],
+            'layout' => $this->layout === null ? null : ['key' => $this->layout->key, 'label' => $this->layout->label, 'pinned' => $this->pinned, 'template' => $this->layout->template],
             'areas' => $areas,
         ];
     }

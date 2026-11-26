@@ -292,6 +292,21 @@ final class ModelExtensionTest extends TestCase
         $this->app();
     }
 
+    /** An extension model is defined in Folio's register(): its "layouts" is checked there, so the boot names it (0.92). */
+    #[RunInSeparateProcess]
+    public function test_an_extension_model_with_invalid_layouts_fails_at_boot(): void
+    {
+        $this->members();
+        $member = self::MEMBER;
+        unset($member['users'], $member['list']);
+        $member['layouts'] = ['allowed' => ['standard'], 'default' => 'landing'];
+        $this->write('app/Folio/Members/models/member.json', (string) json_encode($member));
+
+        $this->expectException(ExtensionException::class);
+        $this->expectExceptionMessage('Extension model "member": Type "member": "layouts.default" is "landing", which "layouts.allowed" does not list (standard)');
+        $this->app();
+    }
+
     /** The catalog reads the site's model files on its first use; their error is theirs, not the first extension model's (0.92). */
     #[RunInSeparateProcess]
     public function test_a_site_types_boot_error_names_the_site_type(): void

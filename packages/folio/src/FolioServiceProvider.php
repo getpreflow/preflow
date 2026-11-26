@@ -175,6 +175,10 @@ final class FolioServiceProvider extends ServiceProvider
             try {
                 $types->define($schema);
                 $catalog->add($schema, $section, $group);
+                // Its "layouts" (0.92), checked where it is defined, so the boot error names the extension
+                // model (preflow/blocks' own boot check remembers its result by the model files and
+                // classes, which do not include extension models).
+                \Preflow\Blocks\Layouts\TypeLayouts::fromSchema($schema['key'], $types->schema($schema['key']));
             } catch (\RuntimeException $e) {
                 throw new \Preflow\Folio\Extension\ExtensionException("{$what} \"{$schema['key']}\": {$e->getMessage()}", 0, $e);
             }
@@ -278,6 +282,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(BlockRegistry::class),
             // Which field types hold asset ids (ReferencesAssets, 0.91): asked on use, not at boot.
             static fn (): FieldTypeRegistry => $c->get(FieldTypeRegistry::class),
+            // A page's area blocks (0.92): PageLayouts is bound in preflow/blocks' boot.
+            static fn (): ?\Preflow\Blocks\Layouts\PageLayouts => self::pageLayouts($c),
         ));
         $container->singleton(\Preflow\Folio\Media\FolioRecordReferences::class, fn (Container $c) => new \Preflow\Folio\Media\FolioRecordReferences(
             $c->get(\Preflow\Folio\Assets\AssetReferences::class),
@@ -320,6 +326,8 @@ final class FolioServiceProvider extends ServiceProvider
                 // The declared permissions the site has seen (new ones are announced on the Roles screen).
                 \Preflow\Folio\Permissions\KnownPermissions::definition(),
             ],
+            // Types with page layouts have "_layout" and "_areas" columns (0.92; bound in preflow/blocks' boot).
+            self::pageLayouts($c),
         ));
         $container->get(\Preflow\Data\Schema\RecordTables::class)->add(
             'folio',
@@ -756,10 +764,15 @@ final class FolioServiceProvider extends ServiceProvider
         $container->singleton(\Preflow\Folio\Content\TranslationStatus::class, fn (Container $c) => new \Preflow\Folio\Content\TranslationStatus(
             $c->get(FieldTypeRegistry::class),
             $c->get(\Preflow\Folio\Content\DisplayLabels::class),
+            // A page's area blocks are texts too (0.92).
+            self::pageLayouts($c),
         ));
         $container->bind(DraftRecordFactory::class, fn (Container $c) => new DraftRecordFactory(
             $c->get(FieldTypeRegistry::class),
             $c->get(\Preflow\Folio\Content\TranslationStatus::class),
+            // A page's posted layout and areas, merged by the core (0.92; both bound in preflow/blocks' boot).
+            self::pageLayouts($c),
+            $c->bound(\Preflow\Blocks\Layouts\LayoutInput::class) ? $c->get(\Preflow\Blocks\Layouts\LayoutInput::class) : null,
         ));
         $container->bind(AdminController::class, fn (Container $c) => new AdminController(
             $c->get(TypeCatalog::class),
@@ -852,10 +865,18 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(FrontendResolver::class),
             $c->get(\Preflow\Auth\Access\Access::class),
         ));
+        // The frontend's and the live preview's record renderer: values, rendered fields and (0.92) the page's layout.
+        $container->singleton(RecordRenderer::class, static fn (Container $c): RecordRenderer => new RecordRenderer(
+            $c->get(FieldTypeRegistry::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
+            $c->get(ContentLocale::class),
+            $c->get(BlockRegistry::class),
+            self::pageLayouts($c),
+        ));
         $container->bind(FrontendController::class, fn (Container $c) => new FrontendController(
             $c->get(FrontendResolver::class),
             $c->get(\Preflow\Folio\View\FolioEngine::class),
-            new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class), $c->get(BlockRegistry::class)),
+            $c->get(RecordRenderer::class),
             $c->get(DataManager::class),
             $c->get(\Preflow\Publishing\PreviewLinks::class),
             $c->get(\Preflow\View\AssetCollector::class),
@@ -881,7 +902,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TypeRegistry::class),
             $c->get(DataManager::class),
             $c->get(FieldTypeRegistry::class),
-            new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class), $c->get(BlockRegistry::class)),
+            $c->get(RecordRenderer::class),
             $c->get(\Preflow\Folio\View\FolioEngine::class),
             $c->get(FrontendResolver::class),
             $c->get(DraftRecordFactory::class),
@@ -2147,7 +2168,9 @@ final class FolioServiceProvider extends ServiceProvider
             ));
         }
         if (!$container->bound(\Preflow\Publishing\RecordColumns::class)) {
-            $container->singleton(\Preflow\Publishing\RecordColumns::class, static fn (): \Preflow\Publishing\RecordColumns => new \Preflow\Folio\Publishing\FolioRecordColumns());
+            $container->singleton(\Preflow\Publishing\RecordColumns::class, static fn (Container $c): \Preflow\Publishing\RecordColumns => new \Preflow\Folio\Publishing\FolioRecordColumns(
+                static fn (): ?\Preflow\Blocks\Layouts\PageLayouts => self::pageLayouts($c),
+            ));
         }
         // The save and delete hooks of the type customizations, and the orderable listings, for RecordWriter and RecordDeleter.
         if (!$container->bound(\Preflow\Publishing\SaveHooks::class)) {
@@ -2593,6 +2616,12 @@ final class FolioServiceProvider extends ServiceProvider
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    /** The types' page layouts (0.92): bound in preflow/blocks' boot when there is a type registry. */
+    private static function pageLayouts(Container $c): ?\Preflow\Blocks\Layouts\PageLayouts
+    {
+        return $c->bound(\Preflow\Blocks\Layouts\PageLayouts::class) ? $c->get(\Preflow\Blocks\Layouts\PageLayouts::class) : null;
     }
 
     private static function validatorFactory(Container $c): ?\Preflow\Validation\ValidatorFactory

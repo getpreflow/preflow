@@ -12,7 +12,7 @@ use Preflow\View\TemplateEngineInterface;
 /**
  * Renders a record's fields to a safe per-field HTML map and renders a record
  * through its per-type frontend template (with a default fallback). Shared by
- * the page frontend and the matrix field.
+ * the page frontend and the matrix field. Finds a page's layout (layoutFor(), 0.92).
  */
 final class RecordRenderer
 {
@@ -21,7 +21,21 @@ final class RecordRenderer
         private readonly TemplateEngineInterface $engine,
         private readonly ?ContentLocale $contentLocale = null,
         private readonly ?\Preflow\Blocks\BlockRegistry $blocks = null,
+        /** The types' page layouts (0.92); without, no record has a layout. */
+        private readonly ?\Preflow\Blocks\Layouts\PageLayouts $layouts = null,
     ) {}
+
+    /**
+     * The layout the record renders with (PageLayouts::resolve(): its pin, its "_layout", the
+     * type's default); null for a type without "layouts". A draft resolves the same way, from the
+     * values the form posted. Its context() is the page template's "layout" and "areas".
+     *
+     * @since 0.92.0
+     */
+    public function layoutFor(DynamicRecord $record): ?\Preflow\Blocks\Layouts\ResolvedLayout
+    {
+        return $this->layouts?->resolve($record);
+    }
 
     /**
      * A field its show_when hides is null (since 0.91.0; FieldVisibility::visibleValues()).

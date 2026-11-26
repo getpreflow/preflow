@@ -145,7 +145,9 @@ final class FrontendController
             $this->seo->set($preview ? $meta->with(['noindex' => true]) : $meta);
         }
 
-        $html = $this->engine->render(self::template($this->engine, $route), [
+        // A page with a layout (0.92): its template in the chain, and "layout" and "areas" for the template.
+        $layout = $this->records->layoutFor($record);
+        $html = $this->engine->render(self::template($this->engine, $route, $layout?->template()), [
             'record' => $this->records->values($record, $locale),
             'rendered' => $this->records->renderedMap($record, $locale),
             'type' => $route->type,
@@ -153,6 +155,7 @@ final class FrontendController
             'locale' => $locale,
             'alternates' => $alternates,
             'query' => $request->getQueryParams(),
+            ...($layout?->context() ?? []),
         ]);
 
         // CSS collected while rendering (component styles, focal-point rules) goes into <head>.
@@ -240,10 +243,14 @@ final class FrontendController
         return substr_replace($html, $note, $body[0][1] + strlen($body[0][0]), 0);
     }
 
-    /** First existing template of the route's chain (userland, per-type, generic). */
-    public static function template(TemplateEngineInterface $engine, FrontendRoute $route): string
+    /**
+     * First existing template of the route's chain (userland, per-type, the page's layout's, generic).
+     *
+     * @param string|null $layoutTemplate the template of the page's layout (since 0.92)
+     */
+    public static function template(TemplateEngineInterface $engine, FrontendRoute $route, ?string $layoutTemplate = null): string
     {
-        foreach ($route->templates() as $template) {
+        foreach ($route->templates($layoutTemplate) as $template) {
             if ($engine->exists($template)) {
                 return $template;
             }

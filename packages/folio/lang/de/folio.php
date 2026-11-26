@@ -269,6 +269,8 @@ return [
         'changes' => ':count Änderung|:count Änderungen',
         'change_locales' => 'Sprachen',
         'change_seo' => 'SEO & Teilen',
+        'change_layout' => 'Layout',
+        'change_areas' => 'Seitenbereiche',
         'scheduled_for' => 'Geplant zur Veröffentlichung am :date.',
         'address_redirect_hint' => 'Beim Umbenennen leitet die alte Adresse weiter.',
         'languages_editing' => 'in Bearbeitung',

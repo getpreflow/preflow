@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Content;
 
+use Preflow\Blocks\Layouts\PageLayouts;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\FieldVisibility;
 use Preflow\Data\TypeDefinition;
@@ -14,6 +15,7 @@ use Preflow\Folio\Field\HandlesUpload;
 use Preflow\Folio\Field\ReportsTranslatableTexts;
 use Preflow\Folio\Field\StructuredFieldType;
 use Preflow\Folio\Field\Types\AssetFieldType;
+use Preflow\Folio\Field\Types\BlocksFieldType;
 use Preflow\Folio\Field\Types\BooleanFieldType;
 use Preflow\Folio\Field\Types\EnvFieldType;
 use Preflow\Folio\Field\Types\RichTextFieldType;
@@ -39,6 +41,11 @@ use Preflow\I18n\Machine\MachineMarks;
  * (MachineMarks: the fingerprint of the text as the machine wrote it), so they count as
  * not checked (unchecked()) until a person edits or confirms them, or publishes the record in
  * that language (clearLocales(), from Publisher::publish()).
+ *
+ * A page's areas (a type with page layouts, 0.92) are texts like a blocks field each: paths
+ * "_areas.<area>.<uid>.<field>", labelled "Main › Hero › Headline". Only the areas its layout shows
+ * count (an area "Not shown in this layout" is neither missing nor sent to a translator); stamp()
+ * keeps the stamps of the others for when they show again.
  */
 final class TranslationStatus
 {
@@ -54,6 +61,8 @@ final class TranslationStatus
     public function __construct(
         private readonly FieldTypeRegistry $fieldTypes,
         private readonly ?DisplayLabels $labels = null,
+        /** The types' page layouts (0.92): a page's area blocks are texts too. */
+        private readonly ?PageLayouts $layouts = null,
     ) {}
 
     /**
@@ -71,10 +80,11 @@ final class TranslationStatus
     }
 
     /**
-     * @param list<string> $hidden fields left out
+     * @param list<string> $hidden   fields left out
+     * @param bool         $unplaced the page's areas its layout does not show too
      * @return list<TranslatableText>
      */
-    private function textsOf(TypeDefinition $def, DynamicRecord $record, array $hidden): array
+    private function textsOf(TypeDefinition $def, DynamicRecord $record, array $hidden, bool $unplaced = false): array
     {
         $locales = $def->locales;
         if (!$locales->isMultilingual()) {
@@ -101,7 +111,40 @@ final class TranslationStatus
             }
         }
 
+        return [...$texts, ...$this->areaTexts($def, $record, $unplaced)];
+    }
+
+    /**
+     * The texts of a page's areas, each walked as a blocks field: those its layout shows, in the
+     * layout's order (with $unplaced the others after them); none for a type without page layouts.
+     *
+     * @return list<TranslatableText>
+     */
+    private function areaTexts(TypeDefinition $def, DynamicRecord $record, bool $unplaced): array
+    {
+        $blocks = $this->blocksType();
+        $resolved = $blocks === null ? null : $this->layouts?->resolve($record);
+        if ($resolved === null) {
+            return [];
+        }
+        $areas = $resolved->placement->placed() + ($unplaced ? $resolved->placement->areas() : []);
+        $texts = [];
+        foreach ($areas as $name => $list) {
+            $area = $resolved->layout?->areas[$name] ?? null;
+            $label = $area !== null ? \Preflow\Folio\FolioText::label($area->label) : (new FieldRenderer())->humanize((string) $name);
+            foreach ($blocks->translatableTexts($list, [], $def->locales) as $text) {
+                $texts[] = $text->within(PageLayouts::AREAS . '.' . $name, $label);
+            }
+        }
+
         return $texts;
+    }
+
+    private function blocksType(): ?BlocksFieldType
+    {
+        $type = $this->fieldTypes->has('blocks') ? $this->fieldTypes->get('blocks') : null;
+
+        return $type instanceof BlocksFieldType ? $type : null;
     }
 
     /**
@@ -125,7 +168,8 @@ final class TranslationStatus
             }
         }
 
-        return false;
+        // A page's areas hold blocks (0.92).
+        return $this->layouts?->forType($def->key) !== null && $this->blocksType() !== null;
     }
 
     /** A field an editor cannot fill in on the form has no translation to wait for. */
@@ -408,9 +452,10 @@ final class TranslationStatus
             return $after;
         }
 
-        // Every text, hidden ones too: a field its show_when hides keeps its stamps and marks.
+        // Every text, hidden ones too: a field its show_when hides keeps its stamps and marks, and so
+        // does an area its layout does not show.
         $texts = [];
-        foreach ($this->textsOf($def, $after, []) as $text) {
+        foreach ($this->textsOf($def, $after, [], unplaced: true) as $text) {
             $texts[$text->path] = $text;
         }
         $fingerprints = self::entries($after, self::KEY);
@@ -418,7 +463,7 @@ final class TranslationStatus
 
         if ($locale !== $locales->default && $locales->has($locale)) {
             $previous = [];
-            foreach ($this->textsOf($def, $before, []) as $text) {
+            foreach ($this->textsOf($def, $before, [], unplaced: true) as $text) {
                 $previous[$text->path] = $text->in($locale);
             }
             foreach ($texts as $path => $text) {

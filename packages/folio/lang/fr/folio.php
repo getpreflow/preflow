@@ -269,6 +269,8 @@ return [
         'changes' => ':count modification|:count modifications',
         'change_locales' => 'Langues',
         'change_seo' => 'SEO et partage',
+        'change_layout' => 'Mise en page',
+        'change_areas' => 'Zones de la page',
         'scheduled_for' => 'Publication prévue le :date.',
         'address_redirect_hint' => 'Un renommage garde une redirection depuis l’ancienne adresse.',
         'languages_editing' => 'en cours',

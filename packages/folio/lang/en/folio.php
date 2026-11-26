@@ -281,6 +281,8 @@ return [
         'changes' => ':count change|:count changes',
         'change_locales' => 'Languages',
         'change_seo' => 'SEO & sharing',
+        'change_layout' => 'Layout',
+        'change_areas' => 'Page areas',
         'scheduled_for' => 'Scheduled to publish on :date.',
         'address_redirect_hint' => 'Renaming keeps a redirect from the old address.',
         'languages_editing' => 'editing',

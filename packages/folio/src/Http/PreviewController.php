@@ -71,13 +71,16 @@ final class PreviewController
         // for this stretch: the admin's own locale, identity and texts are back afterwards.
         $preview = Contexts::current()->asVisitor()->public()->in($locale)->workingCopies()
             ->capturing()->skippingWrites()->because(Purpose::Preview);
-        $html = Contexts::within($preview, fn (): string => $this->engine->render(FrontendController::template($this->engine, $route), [
+        // The draft's layout (0.92): the one chosen in the form, with its areas as posted.
+        $layout = $this->records->layoutFor($draft);
+        $html = Contexts::within($preview, fn (): string => $this->engine->render(FrontendController::template($this->engine, $route, $layout?->template()), [
             'record' => $this->records->values($draft, $locale),
             'rendered' => $this->records->renderedMap($draft, $locale),
             'type' => $type,
             'preview' => true,
             'locale' => $locale,
             'alternates' => [],
+            ...($layout?->context() ?? []),
         ]));
 
         $html = $this->assets?->injectInto($html) ?? $html;

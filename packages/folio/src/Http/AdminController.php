@@ -773,9 +773,9 @@ final class AdminController
         }
         $locale = $this->requestLocale($request, $typeDef);
         $record = $this->drafts->build($typeDef, $request, [], $locale, $this->can('assets.upload'));
-        if ($this->drafts->uploadErrors() !== []) {
+        if ($this->drafts->buildErrors() !== []) {
             $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
-            return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.new', ['label' => $this->singularFor($type)]), $this->drafts->uploadErrors(), $csrf, 422, $layout, $locale, $this->prefix . '/' . $type . '/new');
+            return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.new', ['label' => $this->singularFor($type)]), $this->drafts->buildErrors(), $csrf, 422, $layout, $locale, $this->prefix . '/' . $type . '/new');
         }
         // The writer gives the new record its id and, in an orderable list, the last place.
         $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
@@ -873,8 +873,8 @@ final class AdminController
 
         if ($fromForm) {
             $built = $this->drafts->build($typeDef, $request, $current->toArray(), $locale, $this->can('assets.upload'));
-            if ($this->drafts->uploadErrors() !== []) {
-                return $this->form($type, $built->toArray(), $action, $heading, $this->drafts->uploadErrors(), $csrf, 422, locale: $locale, editUrl: $editUrl);
+            if ($this->drafts->buildErrors() !== []) {
+                return $this->form($type, $built->toArray(), $action, $heading, $this->drafts->buildErrors(), $csrf, 422, locale: $locale, editUrl: $editUrl);
             }
             $record = $this->translations->confirm($typeDef, $built, $locale, $path);
             $failed = $this->saveForm($request, $record, $this->saveOptions($request, $type, publish: false), false,
@@ -924,8 +924,8 @@ final class AdminController
         }
         $locale = $this->requestLocale($request, $typeDef);
         $record = $this->drafts->build($typeDef, $request, $existing, $locale, $this->can('assets.upload'));
-        if ($this->drafts->uploadErrors() !== []) {
-            return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . '/' . $id, FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), $this->drafts->uploadErrors(), $csrf, 422, locale: $locale, editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit');
+        if ($this->drafts->buildErrors() !== []) {
+            return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . '/' . $id, FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), $this->drafts->buildErrors(), $csrf, 422, locale: $locale, editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit');
         }
         $action = $this->prefix . '/' . $type . '/' . $id;
         $failed = $this->saveForm($request, $record, $this->saveOptions($request, $type, publish: true), false,
@@ -2270,6 +2270,9 @@ final class AdminController
             isset($typeDef->fields[$key]) => $this->labels->field($type, $key),
             $key === '_locales' => FolioText::get('folio.form.change_locales'),
             $key === SeoSection::KEY => FolioText::get('folio.form.change_seo'),
+            // A page's layout and its areas (0.92).
+            $key === \Preflow\Blocks\Layouts\PageLayouts::LAYOUT => FolioText::get('folio.form.change_layout'),
+            $key === \Preflow\Blocks\Layouts\PageLayouts::AREAS => FolioText::get('folio.form.change_areas'),
             default => (new \Preflow\Form\FieldRenderer())->humanize(ltrim($key, '_')),
         };
     }
