@@ -2423,8 +2423,11 @@ final class DataManager
     }
 
     /**
-     * Validate a dynamic record as saveType() would, without saving it.
+     * Validate a dynamic record as saveType() would, without saving it: its fields' rules
+     * (fieldRules(), a field's list replaced by one given in $rules) and the record checks
+     * (RecordRules::check(), 0.92: the values inside block lists), in one refusal.
      *
+     * @param array<string, list<mixed>> $rules per field, instead of the field's own ([]: not checked)
      * @throws ValidationException
      */
     public function validate(DynamicRecord $record, array $rules = []): void
@@ -2542,32 +2545,7 @@ final class DataManager
         }
 
         $typeDef = $record->getType();
-        $rules = $typeDef->validationRules();
-        foreach ($ownRules as $name => $fieldRules) {
-            foreach ($fieldRules as $rule) {
-                if (!in_array($rule, $rules[$name] ?? [], true)) {
-                    $rules[$name][] = $rule;
-                }
-            }
-        }
-
-        // A field type's own checks (FieldKinds::rules(), 0.91: the link field's), after the field's own.
-        foreach ($typeDef->fields as $name => $field) {
-            foreach ($this->fieldKinds()->rulesOf($field) as $rule) {
-                $rules[$name][] = $rule;
-            }
-        }
-        // The rules packages add for this type's records (RecordRules, 0.92: the page layout rules), after those.
-        foreach ($this->recordRules()->of($typeDef) as $name => $fieldRules) {
-            foreach ($fieldRules as $rule) {
-                $rules[$name][] = $rule;
-            }
-        }
-
-        // A unique or indexed string, and a unique field's scope, is a bounded column: it may not outgrow it.
-        foreach ($this->fieldKinds()->lengthRules($typeDef) as $name => $lengthRule) {
-            $rules[$name] = [...($rules[$name] ?? []), $lengthRule];
-        }
+        $rules = $this->typeRules($typeDef, $ownRules);
 
         if ($extraRules !== []) {
             $rules = array_merge($rules, $extraRules);
@@ -2599,16 +2577,79 @@ final class DataManager
             $data[$key] = $value;
         }
 
-        if ($rules === []) {
-            return;
+        // The record checks (RecordRules::check(), 0.92: the values inside block lists) and the
+        // field rules refuse together, in one exception.
+        $errors = [];
+        foreach ($this->recordRules()->checks() as $check) {
+            foreach ($check($record, $extraRules) as $key => $messages) {
+                $errors[$key] ??= $messages;
+            }
+        }
+        if ($rules !== []) {
+            $result = $this->validatorFactory->make($rules, $data, subject: $subject ?? $record)->validate();
+            if ($result->fails() && $errors === []) {
+                throw new ValidationException($result);
+            }
+            $errors += $result->errors();
+        }
+        if ($errors !== []) {
+            throw new ValidationException(new ValidationResult($errors));
+        }
+    }
+
+    /**
+     * The rules of each field of the type, as every validated write of its records runs them before
+     * a caller's own rules replace a field's (validate()'s $rules): the field's "validate", its
+     * type's checks (FieldKinds::rules()), a select's options (SelectRules), the rules packages add
+     * (RecordRules::add()) and a bounded column's length. A caller that builds whole rule lists
+     * (Folio's RecordValidator) starts from these, so it repeats none of them.
+     *
+     * @return array<string, list<string|ValidationRule>>
+     * @since 0.92.0
+     */
+    public function fieldRules(TypeDefinition $def): array
+    {
+        return $this->typeRules($def);
+    }
+
+    /**
+     * @param array<string, list<mixed>> $ownRules a class-backed type's own rules, added to its type's per field
+     * @return array<string, list<mixed>>
+     */
+    private function typeRules(TypeDefinition $typeDef, array $ownRules = []): array
+    {
+        $rules = $typeDef->validationRules();
+        foreach ($ownRules as $name => $fieldRules) {
+            foreach ($fieldRules as $rule) {
+                if (!in_array($rule, $rules[$name] ?? [], true)) {
+                    $rules[$name][] = $rule;
+                }
+            }
         }
 
-        $validator = $this->validatorFactory->make($rules, $data, subject: $subject ?? $record);
-        $result = $validator->validate();
-
-        if ($result->fails()) {
-            throw new ValidationException($result);
+        // A field type's own checks (FieldKinds::rules(), 0.91: the link field's), after the field's
+        // own; a select's options (0.92: refused on every write path, not only in Folio's form).
+        foreach ($typeDef->fields as $name => $field) {
+            foreach ($this->fieldKinds()->rulesOf($field) as $rule) {
+                $rules[$name][] = $rule;
+            }
+            foreach (Validation\SelectRules::of($field, $typeDef->fields, $this->fieldKinds()) as $rule) {
+                $rules[$name][] = $rule;
+            }
         }
+        // The rules packages add for this type's records (RecordRules, 0.92: the page layout rules), after those.
+        foreach ($this->recordRules()->of($typeDef) as $name => $fieldRules) {
+            foreach ($fieldRules as $rule) {
+                $rules[$name][] = $rule;
+            }
+        }
+
+        // A unique or indexed string, and a unique field's scope, is a bounded column: it may not outgrow it.
+        foreach ($this->fieldKinds()->lengthRules($typeDef) as $name => $lengthRule) {
+            $rules[$name] = [...($rules[$name] ?? []), $lengthRule];
+        }
+
+        return $rules;
     }
 
     /**

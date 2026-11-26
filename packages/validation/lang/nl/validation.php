@@ -19,6 +19,7 @@ return [
     'between' => 'Moet tussen :min en :max liggen.',
     'step' => 'Moet een veelvoud van :step zijn.',
     'in' => 'Moet een van de volgende waarden zijn: :values.',
+    'options_from' => 'Nog geen keuzes: voeg eerst waarden toe aan :field.',
     'regex' => 'Het formaat is ongeldig.',
     'slug' => [
         'segment' => 'Alleen kleine letters a–z, cijfers en koppeltekens daartussen (nooit twee achter elkaar), bijv. ‘over-ons’.',

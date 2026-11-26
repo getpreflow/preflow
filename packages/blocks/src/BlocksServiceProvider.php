@@ -21,9 +21,12 @@ use Preflow\Blocks\Layouts\Rules\LayoutChoice;
 use Preflow\Blocks\Layouts\Rules\PinnedSlug;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Data\DataManager;
+use Preflow\Data\DynamicRecord;
 use Preflow\Data\Locales;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeRegistry;
+use Preflow\Validation\RuleFactory;
+use Preflow\Validation\ValidatorFactory;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\View\TemplateFunctionDefinition;
 
@@ -43,6 +46,10 @@ use Preflow\View\TemplateFunctionDefinition;
  * boot (kept in the boot manifest), and with a DataManager the layout rules on every validated
  * save of their records (RecordRules): the layout choice, a pinned page's slug (drafts too) and
  * what the areas hold.
+ *
+ * Block values (since 0.92): with a DataManager, BlockValueChecks runs on every validated write of
+ * a typed record (a RecordRules check), so a seed, an import or a REST save is refused for a block
+ * value Folio's form refuses, with the same keys and messages.
  *
  * Listed in config/providers.php by a site without Folio; Folio registers it itself.
  */
@@ -109,6 +116,9 @@ final class BlocksServiceProvider extends ServiceProvider
             $c->get(BlocksConfig::class)->maxDepth,
             static fn (string $message) => self::note($c, $message),
         ));
+
+        // In register(): Folio adds its field types' block rules to the instance in its boot.
+        self::registerValueChecks($container);
     }
 
     public function boot(Container $container): void
@@ -226,6 +236,28 @@ final class BlocksServiceProvider extends ServiceProvider
 
             return $type === null || $type->pinned === [] ? [] : [$type->slugField => [new PinnedSlug($layouts, $data, $def)]];
         }, drafts: true);
+    }
+
+    /**
+     * The block value checks (BlockValueChecks), with the data package run on every validated
+     * write of a typed record: the values inside its block lists and, for a type with layouts, its
+     * placed areas. Folio adds its field types' block rules to the same instance.
+     */
+    private static function registerValueChecks(Container $container): void
+    {
+        if (!$container->bound(DataManager::class)) {
+            return;
+        }
+        $data = $container->get(DataManager::class);
+        $container->singleton(BlockValueChecks::class, static fn (Container $c): BlockValueChecks => new BlockValueChecks(
+            $c->get(BlockRegistry::class),
+            $data->fieldKinds(),
+            $c->bound(ValidatorFactory::class) ? $c->get(ValidatorFactory::class) : new ValidatorFactory(new RuleFactory()),
+            // Bound in boot (with a type registry): resolved when the checks are first built.
+            $c->bound(PageLayouts::class) ? $c->get(PageLayouts::class) : null,
+        ));
+        // Built on the first validated write, not at boot (the registry reflects over every block).
+        $data->recordRules()->check(static fn (DynamicRecord $record, array $given): array => $container->get(BlockValueChecks::class)->errors($record->getType(), $record->toArray(), $given));
     }
 
     /** A warning for the site's log (its PSR logger, error_log() without one). */

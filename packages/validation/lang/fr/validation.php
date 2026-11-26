@@ -23,6 +23,7 @@ return [
     'between' => 'Doit être entre :min et :max.',
     'step' => 'Doit être un multiple de :step.',
     'in' => 'Doit être l’une de ces valeurs : :values.',
+    'options_from' => 'Aucun choix pour l’instant : ajoutez d’abord des valeurs à :field.',
     'regex' => 'Le format n’est pas valide.',
     'slug' => [
         'segment' => 'Uniquement des lettres minuscules a–z, des chiffres et des tirets simples entre eux, p. ex. « a-propos ».',

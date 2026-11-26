@@ -85,7 +85,8 @@ final class SelectFieldTypeTest extends TestCase
         $this->assertStringContainsString('<fieldset class="form-group folio-choice-field folio-radio-cards-field" role="radiogroup"><legend>Answer</legend><div class="folio-radio-cards">', $html);
         $this->assertStringContainsString('<label class="folio-radio-card"><input type="radio" name="code" value="301" checked aria-describedby="code-301-help"><span class="folio-radio-card-text"><span class="folio-radio-card-label">301 · Moved for good</span><span class="folio-radio-card-help" id="code-301-help">Search engines move the ranking over.</span></span></label>', $html);
         $this->assertStringContainsString('<span class="folio-radio-card-label">302 · For now</span>', $html);
-        $this->assertSame(['in:301,302'], (new SelectFieldType())->rules($config));
+        $this->assertSame([], (new SelectFieldType())->rules($config), 'the options are the core\'s check (0.92)');
+        $this->assertEquals([new \Preflow\Validation\Rules\WhenFilled(new \Preflow\Validation\Rules\InList(['301', '302']))], \Preflow\Data\Validation\SelectRules::of(new \Preflow\Data\TypeFieldDefinition('code', 'select', config: $config), []));
         $this->assertSame('302 · For now', (new SelectFieldType())->renderFrontend('302', $config));
     }
 
@@ -181,9 +182,10 @@ final class SelectFieldTypeTest extends TestCase
     public function test_options_from_validates_against_the_sources_values_in_the_same_data(): void
     {
         $validators = new \Preflow\Validation\ValidatorFactory(new \Preflow\Validation\RuleFactory());
-        $rules = (new SelectFieldType())->rules(self::FROM);
+        // The core's check since 0.92 (SelectRules); the field type gives none of its own.
+        $this->assertSame([], (new SelectFieldType())->rules(self::FROM));
+        $rules = \Preflow\Data\Validation\SelectRules::of(new \Preflow\Data\TypeFieldDefinition('answer', 'select', config: self::FROM), ['answers' => new \Preflow\Data\TypeFieldDefinition('answers', 'tags')]);
         $this->assertCount(1, $rules);
-        $this->assertNotContains('in:', array_filter($rules, 'is_string'));
         $check = static fn (array $data, array $extra = []): array => $validators->make(['answer' => [...$extra, ...$rules]], $data)->validate()->errors();
 
         $this->assertSame([], $check(['answer' => 'No', 'answers' => ['Yes', 'No']]));
@@ -195,7 +197,7 @@ final class SelectFieldTypeTest extends TestCase
         $this->assertNotSame([], $check(['answer' => 'Yes']), 'no source values: nothing is an option');
     }
 
-    public function test_record_rules_read_the_source_through_its_field_type_and_name_it(): void
+    public function test_the_cores_record_rule_reads_a_list_source_and_names_it(): void
     {
         $dir = TempRoots::path('folio_select_rr_');
         mkdir($dir);
@@ -212,7 +214,11 @@ final class SelectFieldTypeTest extends TestCase
         $types = new \Preflow\Folio\Field\FieldTypeRegistry();
         $types->register(new \Preflow\Folio\Field\Types\TagsFieldType());
         $types->register(new SelectFieldType());
-        $rules = (new SelectFieldType())->recordRules(self::FROM, $def, $types);
+        $this->assertSame([], (new SelectFieldType())->recordRules(self::FROM, $def, $types), 'the core\'s check since 0.92');
+        // Folio tells the core that tags hold a list (FieldKinds), so the core reads an old comma text as tags.
+        $kinds = new \Preflow\Data\FieldKinds();
+        $kinds->list('tags');
+        $rules = \Preflow\Data\Validation\SelectRules::of($def->fields['answer'], $def->fields, $kinds);
         $validators = new \Preflow\Validation\ValidatorFactory(new \Preflow\Validation\RuleFactory());
         $check = static fn (array $data): array => $validators->make(['answer' => $rules], $data)->validate()->errors();
 

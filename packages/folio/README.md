@@ -1035,15 +1035,17 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   is still chosen shows "Must be one of: …". A source the form does not post (hidden or
   read-only) counts with its stored values. An empty choice passes unless the field is
   `required`. A value that is no longer among them stays visible and selected, marked "no longer
-  an option". The source is read by its own field type (a tags field's list, also an old comma
-  text); another field gives a JSON-text list or one text. A translatable source counts with its
+  an option". The source is read as a list (a tags field's, also its old comma text), a JSON-text
+  list or one text. Since 0.92 the core checks this (and a select's `options`) on every write,
+  imports and API saves included, with the same messages. A translatable source counts with its
   default-language values only: add choices there. Boot errors: a name that is not another field of the type, a `blocks` or
   `matrix` field as the source (it holds entries, not values), both `"options"`
   and `"options_from"`, `"display": "cards"`, naming the select in `list.filters` or
   `list.bulk` (its options differ per record). A class-backed type sets it on the class, like `options`. A field type's editor
   gets the record's values as `FieldContext::$values`, whatever its type (each in the default
   language, as its field type reads it; null without a record), and a field type whose rules need the record's other
-  fields implements `HasRecordRules`.
+  fields implements `HasRecordRules`. A field type's `rules()` reach the core at boot (since 0.92), so every write
+  path checks them, each message once.
 
   In a block (since 0.90) the source is another field of **the same block**, never the record's
   or another block's: `#[BlockField(type: 'select', config: ['options_from' => 'answers'])]`.

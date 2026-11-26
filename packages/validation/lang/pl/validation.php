@@ -19,6 +19,7 @@ return [
     'between' => 'Musi wynosić od :min do :max.',
     'step' => 'Musi być wielokrotnością liczby :step.',
     'in' => 'Musi być jedną z wartości: :values.',
+    'options_from' => 'Brak wyborów: najpierw dodaj wartości do :field.',
     'regex' => 'Format jest nieprawidłowy.',
     'slug' => [
         'segment' => 'Tylko małe litery a–z, cyfry i pojedyncze łączniki (-) między nimi, np. „o-nas”.',

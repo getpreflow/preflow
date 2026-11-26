@@ -6,7 +6,8 @@
 // in its own lang/en/validation.php, and adds a language this package does not ship with
 // lang/{locale}/validation.php. A language without a text falls back to the site's fallback
 // language, then English.
-// :min, :max, :step are the rule's numbers; :values the allowed values, comma-separated; :kinds and
+// :min, :max, :step are the rule's numbers; :values the allowed values, comma-separated; :field (a
+// select's "options_from") the label of the field its choices come from; :kinds and
 // :types (a link's) the allowed link kinds and record types, comma-separated; :refused the refused type; :values (a colour's palette) the colours offered; :value and :zone (a date-time that does not exist in a zone), :example (a date range), :start and :end (a range's ends); :providers the video hosts offered and :host the refused one (an embed's); :count and :max (a table's columns or rows).
 // Page layouts' ("layout"): :key the refused layout key and :allowed the keys allowed, comma-separated;
 // :layout, :slug and :type a pin's layout, page slug and type; :area an area's name, :min and :max its
@@ -28,6 +29,7 @@ return [
     'between' => 'Must be between :min and :max.',
     'step' => 'Must be a multiple of :step.',
     'in' => 'Must be one of: :values.',
+    'options_from' => 'No choices yet: add values to :field first.',
     'regex' => 'Format is invalid.',
     'slug' => [
         'segment' => 'Only lowercase letters a-z, digits and single hyphens between them, e.g. "about-us".',

@@ -19,6 +19,7 @@ return [
     'between' => 'Debe estar entre :min y :max.',
     'step' => 'Debe ser un múltiplo de :step.',
     'in' => 'Debe ser uno de los siguientes valores: :values.',
+    'options_from' => 'Aún no hay opciones: añade primero valores a :field.',
     'regex' => 'El formato no es válido.',
     'slug' => [
         'segment' => 'Solo letras minúsculas a–z, números y guiones simples entre ellos, p. ej., «sobre-nosotros».',

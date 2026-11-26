@@ -18,12 +18,20 @@ use Preflow\Validation\ValidationRule;
  * DataManager::validateStorable() (a draft, a restored revision), with or without a validator
  * factory.
  *
+ * Checks (check()) judge a whole record rather than one field: preflow/blocks' values inside block
+ * lists, keyed "<field>.<uid>.<leaf>". Every validation of a typed record runs them with the rules
+ * the caller gave (a field given [] — Folio's read-only fields — is not checked), and refuses with
+ * their errors and the field rules' errors in one ValidationException.
+ *
  * @since 0.92.0
  */
 final class RecordRules
 {
     /** @var list<array{\Closure(TypeDefinition): array<string, list<string|ValidationRule>>, bool}> */
     private array $rules = [];
+
+    /** @var list<\Closure(DynamicRecord, array<string, list<mixed>>): array<string, list<string>>> */
+    private array $checks = [];
 
     /**
      * @param \Closure(TypeDefinition): array<string, list<string|ValidationRule>> $rules
@@ -55,5 +63,27 @@ final class RecordRules
         }
 
         return $out;
+    }
+
+    /**
+     * A check of whole records: it gets the record and the rules the caller gave per field
+     * (DataManager::validate()'s $rules, [] for none), and gives its errors by key (each a list of
+     * messages, in the validator's language), [] when the record passes.
+     *
+     * @param \Closure(DynamicRecord $record, array<string, list<mixed>> $given): array<string, list<string>> $check
+     */
+    public function check(\Closure $check): void
+    {
+        $this->checks[] = $check;
+    }
+
+    /**
+     * The checks, in the order they were added.
+     *
+     * @return list<\Closure(DynamicRecord, array<string, list<mixed>>): array<string, list<string>>>
+     */
+    public function checks(): array
+    {
+        return $this->checks;
     }
 }

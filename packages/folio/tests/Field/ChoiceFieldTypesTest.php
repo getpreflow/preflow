@@ -125,11 +125,13 @@ final class ChoiceFieldTypesTest extends TestCase
         $html = $select->renderEditor(new FieldContext(name: 'status', value: 'published', config: $map));
         $this->assertStringContainsString('<select', $html);
         $this->assertStringContainsString('<option value="published" selected>Published</option>', $html);
-        $this->assertSame(['in:draft,published'], $select->rules($map));
+        $this->assertSame([], $select->rules($map));
+        $this->assertEquals([new \Preflow\Validation\Rules\WhenFilled(new \Preflow\Validation\Rules\InList(['draft', 'published']))], \Preflow\Data\Validation\SelectRules::of(new \Preflow\Data\TypeFieldDefinition('status', 'select', config: $map), []), 'the core checks the options (0.92)');
         $this->assertSame('Published', $select->renderFrontend('published', $map));
 
         $list = ['options' => ['red', 'green']];
-        $this->assertSame(['in:red,green'], $select->rules($list));
+        $this->assertSame([], $select->rules($list));
+        $this->assertEquals([new \Preflow\Validation\Rules\WhenFilled(new \Preflow\Validation\Rules\InList(['red', 'green']))], \Preflow\Data\Validation\SelectRules::of(new \Preflow\Data\TypeFieldDefinition('status', 'select', config: $list), []), 'the core checks the options (0.92)');
         $this->assertStringContainsString(
             '<option value="green" selected>green</option>',
             $select->renderEditor(new FieldContext(name: 'c', value: 'green', config: $list)),

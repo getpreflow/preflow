@@ -19,6 +19,7 @@ return [
     'between' => '必须介于 :min 和 :max 之间。',
     'step' => '必须是 :step 的倍数。',
     'in' => '必须是以下值之一：:values。',
+    'options_from' => '尚无可选项：请先为 :field 添加值。',
     'regex' => '格式不正确。',
     'slug' => [
         'segment' => '只能包含小写字母（a–z）、数字和连字符（-），连字符只能出现在字符之间且不能连续，例如“about-us”。',

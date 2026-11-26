@@ -643,6 +643,8 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(\Preflow\Folio\View\FolioEngine::class),
                 $prefix,
                 $this->dataManager($c, $c->get(Application::class))?->fieldKinds(),
+                // The core's block value checks (0.92), which every write of a record runs too.
+                $c->bound(\Preflow\Blocks\BlockValueChecks::class) ? $c->get(\Preflow\Blocks\BlockValueChecks::class) : null,
             ));
             // The sanitizer is built on the first sanitize call, not on every request.
             $registry->register(new RichTextFieldType(\Preflow\Folio\Field\LazyHtmlSanitizer::standard()));
@@ -2501,7 +2503,8 @@ final class FolioServiceProvider extends ServiceProvider
 
     /**
      * Tells the data package which field types hold searchable text (the SearchableText marker,
-     * extension types included), which hold a list (StoresList, or StoresListFor per config) and which are relations. Only when the app has a DataManager.
+     * extension types included), which hold a list (StoresList, or StoresListFor per config) and which are relations,
+     * and (0.92) gives it their rules (CoreFieldRules). Only when the app has a DataManager.
      */
     private function registerFieldKinds(Container $container, Application $app): void
     {
@@ -2510,8 +2513,11 @@ final class FolioServiceProvider extends ServiceProvider
             return;
         }
         $kinds = $dm->fieldKinds();
-        $tell = static function (FieldType $type) use ($kinds): void {
+        $registry = $container->get(FieldTypeRegistry::class);
+        $tell = static function (FieldType $type) use ($kinds, $registry): void {
             $key = $type->key();
+            // Its rules as the core's checks of the kind (0.92), so every write path runs them once.
+            \Preflow\Folio\Field\CoreFieldRules::registerType($type, $registry, $kinds);
             if ($type instanceof \Preflow\Folio\Field\SearchableText) {
                 $kinds->text($key);
             }
@@ -2524,13 +2530,20 @@ final class FolioServiceProvider extends ServiceProvider
                 $kinds->column($key, static fn (array $config): \Preflow\Data\Schema\ColumnKind => $type->columnKind($config));
             }
         };
-        $registry = $container->get(FieldTypeRegistry::class);
         foreach ($registry->all() as $type) {
             $tell($type);
         }
         // Types registered later (a package's provider booting after Folio) get the same treatment.
         $registry->whenRegistered($tell);
         $kinds->relation('relation');
+        // The aliases' kinds, the rules of types that read other fields (on the records' fields and in
+        // blocks) — builder's call 23 of 0.92: Folio's RecordValidator merges none of these itself.
+        \Preflow\Folio\Field\CoreFieldRules::register(
+            $registry,
+            $kinds,
+            $dm->recordRules(),
+            $container->bound(\Preflow\Blocks\BlockValueChecks::class) ? $container->get(\Preflow\Blocks\BlockValueChecks::class) : null,
+        );
     }
 
     /**

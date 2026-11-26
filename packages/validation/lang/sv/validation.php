@@ -19,6 +19,7 @@ return [
     'between' => 'Måste vara mellan :min och :max.',
     'step' => 'Måste vara en multipel av :step.',
     'in' => 'Måste vara något av följande: :values.',
+    'options_from' => 'Inga val ännu: lägg först till värden i :field.',
     'regex' => 'Formatet är ogiltigt.',
     'slug' => [
         'segment' => 'Endast små bokstäver a–z, siffror och bindestreck mellan dem (aldrig två i rad), t.ex. ”om-oss”.',

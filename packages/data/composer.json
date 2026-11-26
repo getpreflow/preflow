@@ -9,12 +9,12 @@
         "ext-pdo": "*",
         "ext-pdo_sqlite": "*",
         "preflow/core": "^0.84.0 || @dev",
-        "preflow/validation": "^0.52 || @dev"
+        "preflow/validation": "^0.92.0 || @dev"
     },
     "conflict": {
         "preflow/core": "<0.84.0",
-        "preflow/validation": "<0.52",
-        "preflow/folio": "<0.67",
+        "preflow/validation": "<0.92.0",
+        "preflow/folio": "<0.92.0",
         "preflow/publishing": "<0.72",
         "preflow/devtools": "<0.80"
     },

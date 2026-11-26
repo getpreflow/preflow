@@ -6,19 +6,19 @@ namespace Preflow\Folio\Content;
 
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
-use Preflow\Data\FieldVisibility;
 use Preflow\Data\TypeDefinition;
+use Preflow\Folio\Field\CoreFieldRules;
 use Preflow\Folio\Field\FieldTypeRegistry;
-use Preflow\Folio\Field\Types\BlocksFieldType;
 use Preflow\Validation\ValidationException;
-use Preflow\Validation\ValidationResult;
 
 /**
- * Full validation of a record: rules inside blocks fields first (keyed
- * "<field>.<uid>.<leaf>"), then the type's rules plus each field type's own and, since 0.91, the
- * core checks its type registered (FieldKinds::rules()), inside blocks too.
- * With a frontend resolver, the fields a type's public address is built from
- * also get "slug" ("slug:path" for a catch-all): no umlauts, capitals or spaces.
+ * Full validation of a record: the data layer's (DataManager::validate()), which since 0.92 also
+ * checks the values inside block lists and page areas (preflow/blocks' BlockValueChecks) and has
+ * Folio's field types' rules (CoreFieldRules), so this walks no blocks and merges no field-type
+ * rules itself. It gives each field the core's rules (DataManager::fieldRules()) plus Folio's own:
+ * with a frontend resolver, the fields a type's public address is built from also get "slug"
+ * ("slug:path" for a catch-all): no umlauts, capitals or spaces. A "readonly" field gets an empty
+ * list: it is not validated on save, its blocks included (nor checked for being unique).
  */
 final class RecordValidator
 {
@@ -26,45 +26,30 @@ final class RecordValidator
         private readonly FieldTypeRegistry $fieldTypes,
         private readonly DataManager $dm,
         private readonly ?FrontendResolver $frontend = null,
-    ) {}
+    ) {
+        // What FolioServiceProvider does at boot, so a validator built on its own checks the same (each told once).
+        CoreFieldRules::register($fieldTypes, $dm->fieldKinds(), $dm->recordRules());
+    }
 
-    /** @throws ValidationException */
+    /** @throws ValidationException block errors and the fields' errors in one refusal */
     public function validate(DynamicRecord $record): void
     {
-        $typeDef = $record->getType();
-        $errors = [];
-        // A blocks field its show_when hides is not validated (0.91), as DataManager skips a hidden field's rules.
-        $hidden = array_flip(FieldVisibility::hiddenFieldsOf($typeDef, $record->toArray()));
-        foreach ($typeDef->fields as $name => $fieldDef) {
-            $fieldType = $this->fieldTypes->get($fieldDef->type);
-            if (!$fieldType instanceof BlocksFieldType || self::readonly($fieldDef->config) || isset($hidden[$name])) {
-                continue;
-            }
-            foreach ($fieldType->validateBlocks($record->get($name), $fieldDef->config, $typeDef->locales) as $key => $messages) {
-                $errors[$key === '' ? $name : $name . '.' . $key] = $messages;
-            }
-        }
-        if ($errors !== []) {
-            throw new ValidationException(new ValidationResult($errors));
-        }
-
-        $this->dm->validate($record, $this->rules($typeDef));
+        $this->dm->validate($record, $this->rules($record->getType()));
     }
 
     /**
-     * Per-field rules: the JSON "validate" list plus the field type's own rules
-     * (e.g. select's in:…, date's format) and, for a unique or indexed string or a unique
-     * field's scope, its length limit; a field of the type's frontend route, "slug" or
-     * "slug:path" (a catch-all). Keyed by field, because the data
-     * layer merges extra rules per field. A "readonly" field gets an empty list:
-     * it is not validated on save (nor checked for being unique).
+     * Per-field rules: the core's for the field (its "validate", its type's checks, a select's
+     * options, the rules packages add, a bounded column's length) and, for a field of the type's
+     * frontend route, "slug" or "slug:path" (a catch-all). Keyed by field, because the data layer
+     * takes a given list instead of its own. A "readonly" field gets an empty list: it is not
+     * validated on save (nor checked for being unique, nor its blocks).
      *
      * @return array<string, list<string|\Preflow\Validation\ValidationRule>>
      */
     public function rules(TypeDefinition $typeDef): array
     {
         $rules = [];
-        $lengthRules = $this->dm->fieldKinds()->lengthRules($typeDef);
+        $core = $this->dm->fieldRules($typeDef);
         $addressRules = $this->addressRules($typeDef);
         foreach ($typeDef->fields as $name => $fieldDef) {
             if (self::readonly($fieldDef->config)) {
@@ -73,21 +58,7 @@ final class RecordValidator
                 $rules[$name] = [];
                 continue;
             }
-            // Names once, rule objects once per instance: no string cast (a rule object needn't be Stringable).
-            // A type whose rules read the record's other fields (HasRecordRules, 0.89) gets the type.
-            $fieldType = $this->fieldTypes->get($fieldDef->type);
-            $merged = \Preflow\Folio\Field\FieldRules::merge(
-                $fieldDef->validate,
-                $fieldType instanceof \Preflow\Folio\Field\HasRecordRules
-                    ? $fieldType->recordRules($fieldDef->config, $typeDef, $this->fieldTypes)
-                    : $fieldType->rules($fieldDef->config),
-                // The type's core checks (FieldKinds::rules(), 0.91): these rules replace the data
-                // layer's for the field, so they are added here; a Folio field type never repeats them.
-                $this->dm->fieldKinds()->rulesOf($fieldDef),
-            );
-            if (isset($lengthRules[$name])) {
-                $merged[] = $lengthRules[$name];
-            }
+            $merged = $core[$name] ?? [];
             if (isset($addressRules[$name])) {
                 $merged[] = $addressRules[$name];
             }
@@ -98,7 +69,6 @@ final class RecordValidator
 
         return $rules;
     }
-
     /**
      * "slug" for each parameter of the type's route, "slug:path" for a catch-all.
      *

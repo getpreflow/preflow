@@ -40,6 +40,8 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         private readonly string $adminPrefix = '/folio',
         /** The data package's field kinds: a field type's core checks (FieldKinds::rules(), 0.91) apply inside blocks too. */
         private readonly ?\Preflow\Data\FieldKinds $kinds = null,
+        /** The core's block value checks (0.92), the app's instance; without it validateBlocks() builds its own. */
+        private ?\Preflow\Blocks\BlockValueChecks $checks = null,
     ) {}
 
     public function key(): string
@@ -258,8 +260,9 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
     }
 
     /**
-     * Per-instance validation. Keys: "<uid>.<field>", nested
-     * "<uid>.<child>.<cuid>.<field>", "" and "<uid>.<child>" for min/max.
+     * Per-instance validation, the core's (BlockValueChecks): keys "<uid>.<field>", nested
+     * "<uid>.<child>.<cuid>.<field>", and "" and "<uid>.<child>" for min/max (BlockCount). A record's
+     * save runs the same checks in the data layer; this is for callers that judge one value.
      *
      * @param array<string, mixed> $config the blocks field's config (allowed/min/max)
      * @return array<string, list<string>>
@@ -268,64 +271,30 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
     {
         $list = $this->fromStorage($value);
         $errors = [];
-
-        $count = count($list);
-        if (isset($config['min']) && $count < (int) $config['min']) {
-            $errors[rtrim($prefix, '.')][] = \Preflow\Folio\FolioText::choice('folio.blocks.min', (int) $config['min']);
-        }
-        if (isset($config['max']) && $count > (int) $config['max']) {
-            $errors[rtrim($prefix, '.')][] = \Preflow\Folio\FolioText::choice('folio.blocks.max', (int) $config['max']);
-        }
-
-        foreach ($list as $block) {
-            if (!is_array($block) || !is_string($block['_uid'] ?? null)) {
-                continue;
-            }
-            $definition = $this->blocks->get((string) ($block['_block'] ?? ''));
-            if ($definition === null) {
-                continue;
-            }
-            $uid = $block['_uid'];
-            // A field its show_when hides is not validated (0.91), a nested blocks field included.
-            $hidden = array_flip($this->blocks->hiddenFieldsOf($definition->key, $block));
-            $rules = [];
-            // The whole block is the data (in the default language), so a rule may read another field
-            // of it (a select's "options_from", 0.90); only the ruled fields are checked.
-            $data = [];
-            foreach ($definition->fields as $name => $field) {
-                $type = $this->fieldTypes->get($field->type);
-                if ($type instanceof self) {
-                    if (isset($hidden[$name])) {
-                        continue;
-                    }
-                    $errors += $type->validateBlocks($block[$name] ?? [], $field->config, $locales, $prefix . $uid . '.' . $name . '.');
-                    continue;
-                }
-                $data[$name] = $field->translatable
-                    ? LocaleValue::pick($block[$name] ?? null, $locales, $locales->default)
-                    : LocaleValue::default($block[$name] ?? null, $locales);
-                $fieldRules = \Preflow\Folio\Field\FieldRules::merge(
-                    $field->validate,
-                    $type instanceof \Preflow\Folio\Field\HasBlockRules
-                        ? $type->blockRules($field->config, $definition, $this->fieldTypes)
-                        : $type->rules($field->config),
-                    // The type's core checks (FieldKinds::rules(), 0.91), as a record's save runs them.
-                    $this->kinds?->rulesOf($field) ?? [],
-                );
-                if ($fieldRules !== [] && !isset($hidden[$name])) {
-                    $rules[$name] = $fieldRules;
-                }
-            }
-
-            if ($rules !== [] && $this->validators !== null) {
-                $result = $this->validators->make($rules, $data)->validate();
-                foreach ($result->errors() as $field => $messages) {
-                    $errors[$prefix . $uid . '.' . $field] = $messages;
-                }
+        foreach ($this->rules($config) as $rule) {
+            $result = $rule->validate($list, new \Preflow\Validation\ValidationContext(rtrim($prefix, '.'), []));
+            if ($result !== true) {
+                $errors[rtrim($prefix, '.')][] = $result;
             }
         }
+        $checks = $this->valueChecks();
 
-        return $errors;
+        return $checks === null ? $errors : $errors + $checks->blocks($list, $locales, $prefix);
+    }
+
+    /**
+     * The core's block value checks with Folio's field rules: the app's instance, else (a field type
+     * built on its own, without a validator factory none) one over this registry.
+     */
+    private function valueChecks(): ?\Preflow\Blocks\BlockValueChecks
+    {
+        if ($this->checks === null && $this->validators !== null) {
+            $kinds = $this->kinds ?? new \Preflow\Data\FieldKinds();
+            $this->checks = new \Preflow\Blocks\BlockValueChecks($this->blocks, $kinds, $this->validators);
+            \Preflow\Folio\Field\CoreFieldRules::register($this->fieldTypes, $kinds, blocks: $this->checks);
+        }
+
+        return $this->checks;
     }
 
     public function renderEditor(FieldContext $ctx): string
@@ -762,9 +731,8 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
 
         $blocks = [];
         foreach (array_values(array_filter($value, 'is_array')) as $index => $block) {
-            if (!is_string($block['_uid'] ?? null) || preg_match(self::UID, $block['_uid']) !== 1) {
-                $block['_uid'] = hash('xxh3', 'folio-block:' . $index . ':' . json_encode($block['_uid'] ?? null) . ':' . json_encode($block['_block'] ?? null));
-            }
+            // The core derives the same uid (BlockLists::uidOf()), so its errors name the block the editor shows.
+            $block['_uid'] = \Preflow\Blocks\BlockLists::uidOf($block, $index);
             $blocks[] = $block;
         }
 
@@ -784,9 +752,13 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         return ''; // rendered by blocks() through the block components
     }
 
+    /** The field's "min" and "max" (BlockCount); the values inside are the core's (BlockValueChecks). */
     public function rules(array $config): array
     {
-        return [];
+        $min = isset($config['min']) ? (int) $config['min'] : null;
+        $max = isset($config['max']) ? (int) $config['max'] : null;
+
+        return $min === null && $max === null ? [] : [new BlockCount($min, $max)];
     }
 
     public function assets(): array

@@ -19,6 +19,7 @@ return [
     'between' => ':min ile :max arasında olmalıdır.',
     'step' => ':step sayısının katı olmalıdır.',
     'in' => 'Şunlardan biri olmalıdır: :values.',
+    'options_from' => 'Henüz seçenek yok: önce :field alanına değer ekleyin.',
     'regex' => 'Biçim geçersiz.',
     'slug' => [
         'segment' => 'Yalnızca küçük harf (a–z), rakam ve bunların arasında tek tire kullanılabilir, ör. “biz-kimiz”.',

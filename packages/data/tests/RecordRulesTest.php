@@ -121,6 +121,24 @@ final class RecordRulesTest extends TestCase
         }
     }
 
+    public function test_checks_run_with_the_given_rules_and_refuse_together_with_the_field_rules(): void
+    {
+        [$types, $dm] = $this->manager();
+        $seen = new \ArrayObject();
+        $dm->recordRules()->check(static function (DynamicRecord $record, array $given) use ($seen): array {
+            $seen->append([$record->get('slug'), $given]);
+
+            return $record->getType()->key === 'page' ? ['body.a1.text' => ['Missing text.']] : [];
+        });
+        $dm->recordRules()->add(static fn (TypeDefinition $def): array => ['title' => ['required']]);
+
+        $this->assertCount(1, $dm->recordRules()->checks());
+        $this->assertSame(['body.a1.text' => ['Missing text.'], 'title' => ['This field is required.']], $this->errors($dm, $types, 'page', ['title' => '', 'slug' => 'about']), 'one refusal with both');
+        $this->assertSame(['body.a1.text' => ['Missing text.']], $this->errors($dm, $types, 'page', ['title' => 'T'], ['slug' => []]), 'a check alone refuses too');
+        $this->assertSame([], $this->errors($dm, $types, 'note', ['title' => 'T']));
+        $this->assertSame([['about', []], [null, ['slug' => []]], [null, []]], $seen->getArrayCopy(), 'each check gets the record and the rules the caller gave');
+    }
+
     /** @return array{TypeRegistry, DataManager} */
     private function manager(): array
     {

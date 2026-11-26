@@ -41,6 +41,17 @@ final class FieldTypeRegistry
         $this->aliases[$from] = $to;
     }
 
+    /**
+     * The other names of types ("int" for "number"), alias => key.
+     *
+     * @return array<string, string>
+     * @since 0.92.0
+     */
+    public function aliases(): array
+    {
+        return $this->aliases;
+    }
+
     /** @return array<string, FieldType> by key */
     public function all(): array
     {

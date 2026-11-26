@@ -7,6 +7,9 @@ namespace Preflow\Folio\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.92.0: data 0.92.0 (DataManager::fieldRules(), RecordRules, FieldKinds::hasRules(), Validation\SelectRules and
+ * OptionsFrom: the core checks select options and Folio's field rules on every write, and RecordValidator starts from
+ * its rules); blocks 0.92.0 (BlockValueChecks and BlockLists: the core walks the block values Folio walked before).
  * Since 0.91.0: fields 0.91.0 (required: Values\Link, LinkOptions, Rules\ValidLink, RecordAddresses and
  * AssetAddresses, behind the link field's input and FolioLinkAddresses; FieldsServiceProvider, which Folio registers);
  * data 0.91.0 (FieldVisibility, with which the renderer, folio_get/folio_list/folio_find, list cells,
@@ -96,7 +99,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/ai' => '<0.78', 'preflow/auth' => '<0.83.0', 'preflow/blocks' => '<0.91.0', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.82.0', 'preflow/data' => '<0.91.0', 'preflow/devtools' => '<0.85.0', 'preflow/fields' => '<0.91.0', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.83.0', 'preflow/media' => '<0.89.0', 'preflow/members' => '<0.77', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.81.0', 'preflow/rbac' => '<0.84.0', 'preflow/routing' => '<0.78.2', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
+            ['preflow/ai' => '<0.78', 'preflow/auth' => '<0.83.0', 'preflow/blocks' => '<0.92.0', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.82.0', 'preflow/data' => '<0.92.0', 'preflow/devtools' => '<0.85.0', 'preflow/fields' => '<0.91.0', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.83.0', 'preflow/media' => '<0.89.0', 'preflow/members' => '<0.77', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.81.0', 'preflow/rbac' => '<0.84.0', 'preflow/routing' => '<0.78.2', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; ai, members, codes and rbac are suggested, not required.

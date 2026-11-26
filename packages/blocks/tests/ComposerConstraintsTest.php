@@ -9,7 +9,8 @@ use PHPUnit\Framework\TestCase;
 /**
  * Since 0.92.0: data 0.92.0 (RecordRules, DataManager::recordRules(): the page layout rules run on every
  * validated save of a type with "layouts", and a pinned page's slug also on drafts); validation 0.92.0 (the
- * layout rules' messages, "validation.layout.*": an older one would show their keys).
+ * layout rules' messages, "validation.layout.*": an older one would show their keys); folio 0.92.0 (the block values
+ * are checked here, BlockValueChecks; Folio before 0.92 walks them itself too, so each message would show twice).
  * Since 0.91.0: data 0.91.0 (FieldVisibility, with which the registry checks a block field's show_when and
  * visibleBlock() reads a hidden one as empty); folio 0.91.0 (Folio before 0.91 validates a hidden block field, so
  * a required field a block hides would block every save, and its editor would show it).
@@ -44,7 +45,7 @@ final class ComposerConstraintsTest extends TestCase
             'preflow/components' => '<0.70',
             'preflow/core' => '<0.81.0',
             'preflow/data' => '<0.92.0',
-            'preflow/folio' => '<0.91.0',
+            'preflow/folio' => '<0.92.0',
             'preflow/validation' => '<0.92.0',
             'preflow/view' => '<0.70',
         ], $composer['conflict'] ?? null);

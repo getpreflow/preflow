@@ -136,6 +136,17 @@ final class FieldKinds
         return $rules === null ? [] : $rules($field->config);
     }
 
+    /**
+     * Whether the field type registered checks of its own (rules()): an adapter that brings its
+     * field types' rules to the core (Folio) leaves those of a core package in place.
+     *
+     * @since 0.92.0
+     */
+    public function hasRules(string $fieldType): bool
+    {
+        return isset($this->rules[$fieldType]);
+    }
+
     public function isText(string $type): bool
     {
         return isset($this->text[$type]);

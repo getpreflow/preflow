@@ -167,6 +167,24 @@ A blocks field is an ordered list inside the record; nothing extra to migrate:
 ]
 ```
 
+### Checked on every write (0.92)
+
+A block's values are checked wherever a record is saved with validation, not only in an editor's
+form: a seed, an import or an API controller calling `DataManager::saveType()` is refused for the
+same block value, with the same key and message. A section whose required title is empty fails as
+`sections.<uid>.title` ("This field is required."); a quote inside it as
+`sections.<uid>.quotes.<cuid>.text`; a block in a page area as `_areas.main.<uid>.title`.
+
+Each block is checked on its own values, in the default language: each field's `validate`
+(`required` included), a select's options (`options`, or `options_from` read from the same block),
+and the checks a field type brings (`FieldKinds::rules()`, such as preflow/fields' link). What is
+not checked: a field its `show_when` hides, blocks in an area the page's layout does not show, a
+block whose class is gone, and a field the caller gives no rules (`$rules[$field] = []`).
+
+You write none of this: `BlocksServiceProvider` runs `Preflow\Blocks\BlockValueChecks` for you. An
+adapter adds rules for block fields with `BlockValueChecks::extraRules()`; `BlockLists` is the one
+place that knows which field types hold blocks.
+
 ## Configuration
 
 `config/blocks.php` (a missing file means the defaults):
