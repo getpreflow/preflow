@@ -126,6 +126,35 @@ final class LayoutRulesTest extends BlocksAppTestCase
         $this->assertSame(['_areas' => ['The area "hero" takes at most 1 blocks.']], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$b1, $b2, ['_uid' => 'b3', '_block' => 'banner']], 'main' => []]]), 'a changed list is checked');
     }
 
+    public function test_removing_a_block_from_an_over_full_area_is_allowed(): void
+    {
+        $banner = static fn (string $uid): array => ['_uid' => $uid, '_block' => 'banner'];
+        $this->store('page', ['uuid' => 'p1', '_layout' => 'promo', '_areas' => ['hero' => [$banner('b1'), $banner('b2'), $banner('b3')], 'main' => []]]);
+
+        $this->assertSame([], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$banner('b1'), $banner('b2')], 'main' => []]]), 'still over max 1, but fewer than stored');
+        $this->assertSame([], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$banner('b3'), $banner('b1'), $banner('b2')], 'main' => []]]), 'reordered: the same count');
+    }
+
+    public function test_adding_to_an_over_full_area_is_refused(): void
+    {
+        $banner = static fn (string $uid): array => ['_uid' => $uid, '_block' => 'banner'];
+        $this->store('page', ['uuid' => 'p1', '_layout' => 'promo', '_areas' => ['hero' => [$banner('b1'), $banner('b2')], 'main' => []]]);
+
+        $this->assertSame(['_areas' => ['The area "hero" takes at most 1 blocks.']], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$banner('b1'), $banner('b2'), $banner('b3')], 'main' => []]]));
+        $this->assertSame(['_areas' => ['The area "hero" takes at most 1 blocks.']], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$banner('b1'), $banner('b3'), $banner('b4')], 'main' => []]]), 'swapped and grown past the stored count');
+    }
+
+    public function test_a_below_min_area_may_grow_but_not_shrink(): void
+    {
+        $quote = static fn (string $uid): array => ['_uid' => $uid, '_block' => 'quote'];
+        // The pinned home page's "top" takes at least 1; stored empty before the limit.
+        $this->store('page', ['uuid' => 'p1', 'slug' => ['en' => 'home'], '_layout' => 'home', '_areas' => ['top' => []]]);
+
+        $this->assertSame([], $this->errors('page', ['slug' => ['en' => 'home'], '_areas' => ['top' => []]]), 'unchanged');
+        $this->assertSame(['_areas' => ['The area "top" takes at least 1 blocks.']], $this->errors('page', ['uuid' => 'p9', 'slug' => ['en' => 'home'], '_areas' => ['top' => []]]), 'a new record is checked plainly');
+        $this->assertSame([], $this->errors('page', ['slug' => ['en' => 'home'], '_areas' => ['top' => [$quote('q1')]]]));
+    }
+
     public function test_a_broken_layouts_option_stops_the_boot(): void
     {
         $this->model('broken', ['allowed' => ['standard'], 'default' => 'promo']);
@@ -158,7 +187,7 @@ final class LayoutRulesTest extends BlocksAppTestCase
     }
 
     /**
-     * The errors of a validated save of record p1 with these values.
+     * The errors of a validated save of these values (record p1 unless they name another uuid).
      *
      * @param array<string, mixed> $values
      * @return array<string, list<string>>
@@ -166,7 +195,7 @@ final class LayoutRulesTest extends BlocksAppTestCase
     private function errors(string $type, array $values): array
     {
         try {
-            $this->data()->validate(DynamicRecord::fromArray($this->types()->get($type), ['uuid' => 'p1'] + $values));
+            $this->data()->validate(DynamicRecord::fromArray($this->types()->get($type), $values + ['uuid' => 'p1']));
         } catch (ValidationException $e) {
             return $e->errors();
         }

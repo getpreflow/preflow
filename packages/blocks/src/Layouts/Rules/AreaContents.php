@@ -23,9 +23,10 @@ use Preflow\Validation\ValidationRule;
  *
  * Only what a write introduces is refused, so a site may narrow an area's "allowed" or lower its
  * "max" without making existing pages unsavable: a block the area does not accept passes when it
- * was stored in that area already (same uid and key), and the limits are checked only when the
- * area's block list (its blocks' uids and keys, in order) differs from the stored one. Without a
- * stored value (a new record, an area not stored yet) everything is checked.
+ * was stored in that area already (same uid and key); "max" refuses only a count above it and
+ * above the stored count, "min" only a count below it and below the stored count (an editor may
+ * reduce an over-full area step by step). Without a stored value (a new record, an area not stored
+ * yet) everything is checked plainly.
  *
  * forPage(): a page's "_areas", on the layout its values resolve to (PageLayouts::resolveValues()).
  * forField(): a value {layout, areas} whose layout is from a named set (the areas field).
@@ -87,13 +88,12 @@ final readonly class AreaContents implements ValidationRule
                     return new Message('validation.layout.area_block', ['area' => $name, 'block' => $key]);
                 }
             }
-            if ($stored !== null && self::listOf($blocks) === $stored) {
-                continue; // the area as stored: its limits may have changed since
-            }
-            if ($area->max !== null && count($blocks) > $area->max) {
+            // Against the stored count: a write may move an area towards its limits, never further past them.
+            $count = count($blocks);
+            if ($area->max !== null && $count > $area->max && ($stored === null || $count > count($stored))) {
                 return new Message('validation.layout.area_max', ['area' => $name, 'max' => (string) $area->max]);
             }
-            if ($area->min !== null && count($blocks) < $area->min) {
+            if ($area->min !== null && $count < $area->min && ($stored === null || $count < count($stored))) {
                 return new Message('validation.layout.area_min', ['area' => $name, 'min' => (string) $area->min]);
             }
         }
@@ -102,8 +102,7 @@ final readonly class AreaContents implements ValidationRule
     }
 
     /**
-     * An area's block list as its blocks' uids and keys, in order (what moving, adding or removing
-     * a block changes; editing a block's fields does not).
+     * An area's stored blocks as their uids and keys.
      *
      * @param list<array<string, mixed>> $blocks
      * @return list<array{mixed, mixed}>
