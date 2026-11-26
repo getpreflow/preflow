@@ -56,6 +56,13 @@ const localDate = (days) => {
     d.setDate(d.getDate() + days);
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
+/** The wall time in a zone (default Europe/Zurich) of now + ms, as a datetime-local value: independent of the process TZ. */
+const zoneDateTime = (ms, zone = 'Europe/Zurich') => {
+    const p = {};
+    new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+        .formatToParts(new Date(Date.now() + ms)).forEach((part) => { p[part.type] = part.value; });
+    return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+};
 const localDateTime = (ms) => {
     const d = new Date(Date.now() + ms);
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -113,7 +120,7 @@ test('the date hint follows the date (with the zone of a date and time); clear e
     });
     assert.equal(p.hint.textContent, 'Europe/Zurich', 'empty: the zone only');
 
-    type(p.w, p.input, localDateTime(2 * 86400 * 1000 + 60000));
+    type(p.w, p.input, zoneDateTime(2 * 86400 * 1000 + 60000)); // the field's zone (Zurich), not the browser's
     assert.equal(p.hint.textContent, 'In 2 days · Europe/Zurich');
     assert.equal(p.clear.hidden, false);
 
