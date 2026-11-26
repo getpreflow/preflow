@@ -2017,17 +2017,20 @@ stored value as before.
 
 When the registry is built (at boot, or when `preflow optimize` builds the boot manifest), a
 rule that cannot work is refused with a `ShowWhenException` naming the type and the field: a
-malformed rule, a rule naming a field the type does not have, the field itself, a translatable
-field (a field shown in one language and hidden in another would split its checks and
-storage), or a field that depends on this one again (a cycle). For example:
+malformed rule (show_when is an object such as `{"field": "kind", "=": "video"}`), a value
+on a number field that is not a whole number (`"many"` would read as 0), a rule naming a field
+the type does not have, the field itself, a translatable field (a field shown in one language
+and hidden in another would split its checks and storage), or a field that depends on this one
+again (a cycle). For example:
 
 ```
 Type "page": field "button_url": show_when names "kind", which is not a field of the type. Name a field of the same type.
 ```
 
 `Preflow\Data\FieldVisibility` is the one class that decides: `fromConfig($showWhen)->holds($values)`
-for one rule, `hiddenFields($fields, $values)` for a record's fields, and `assertRules()` for
-the boot check. The cases the browser and the server
+for one rule, `hiddenFields($fields, $values)` for a record's fields (`hiddenFieldsOf($type,
+$values)` parses a type's rules once per definition, for lists), and `assertRules()` for the
+boot check. The cases the browser and the server
 must agree on are in `tests/Fixtures/show-when-cases.json`.
 
 ## Model classes as types

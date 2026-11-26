@@ -88,8 +88,7 @@ final class TypeRegistry
     {
         foreach ($this->classes as $key => $class) {
             $path = $this->modelsPath . '/' . $key . '.json';
-            $file = is_file($path) ? \Preflow\Core\Config\ParsedJsonFiles::read($path) : null;
-            $file = is_array($file) && ($file['extends'] ?? false) !== true ? $file : [];
+            $file = $this->adminFile((string) $key);
             $entity = (new \ReflectionClass($class))->getAttributes(Attributes\Entity::class);
             $attribute = $entity === [] ? null : $entity[0]->newInstance()->titleField;
             if ($attribute === null && !array_key_exists('titleField', $file)) {
@@ -99,13 +98,8 @@ final class TypeRegistry
             $titleField = ModelSchema::titleField($schema, $file, $path, $class);
             self::assertTitleField((string) $key, self::titleField($titleField, (string) $key), $schema['fields']);
         }
-        foreach (glob($this->modelsPath . '/*.json') ?: [] as $path) {
-            $key = basename($path, '.json');
-            if (isset($this->classes[$key])) {
-                continue;
-            }
-            $file = \Preflow\Core\Config\ParsedJsonFiles::read($path);
-            if (!is_array($file) || ($file['extends'] ?? false) === true || !array_key_exists('titleField', $file)) {
+        foreach ($this->ownModelFiles() as $key => $file) {
+            if (isset($this->classes[$key]) || !array_key_exists('titleField', $file)) {
                 continue;
             }
             $type = is_string($file['key'] ?? null) ? $file['key'] : $key;
@@ -122,14 +116,43 @@ final class TypeRegistry
      */
     private function assertActions(): void
     {
-        foreach (glob($this->modelsPath . '/*.json') ?: [] as $path) {
-            $file = \Preflow\Core\Config\ParsedJsonFiles::read($path);
-            if (!is_array($file) || ($file['extends'] ?? false) === true
-                || (!array_key_exists('readonly', $file) && !array_key_exists('creatable', $file))) {
+        foreach ($this->ownModelFiles() as $key => $file) {
+            if (!array_key_exists('readonly', $file) && !array_key_exists('creatable', $file)) {
                 continue;
             }
-            self::actions($file, is_string($file['key'] ?? null) ? $file['key'] : basename($path, '.json'));
+            self::actions($file, is_string($file['key'] ?? null) ? $file['key'] : $key);
         }
+    }
+
+    /**
+     * Each model file that is a schema of its own, by its file name's key: decoded (once per
+     * process, ParsedJsonFiles), an object, and not an "extends" file (that patches a runtime
+     * type, which define() checks). The boot checks over model files read them through this.
+     *
+     * @return \Generator<string, array<string, mixed>>
+     */
+    private function ownModelFiles(): \Generator
+    {
+        foreach (glob($this->modelsPath . '/*.json') ?: [] as $path) {
+            $file = \Preflow\Core\Config\ParsedJsonFiles::read($path);
+            if (is_array($file) && ($file['extends'] ?? false) !== true) {
+                yield basename($path, '.json') => $file;
+            }
+        }
+    }
+
+    /**
+     * The admin file of a class-backed type: its model file, or [] when it has none or the file
+     * is an "extends" patch of a runtime type (not this class's).
+     *
+     * @return array<string, mixed>
+     */
+    private function adminFile(string $key): array
+    {
+        $path = $this->modelsPath . '/' . $key . '.json';
+        $file = is_file($path) ? \Preflow\Core\Config\ParsedJsonFiles::read($path) : null;
+
+        return is_array($file) && ($file['extends'] ?? false) !== true ? $file : [];
     }
 
     /**
@@ -144,22 +167,15 @@ final class TypeRegistry
     private function assertShowWhen(): void
     {
         foreach ($this->classes as $key => $class) {
-            $path = $this->modelsPath . '/' . $key . '.json';
-            $file = is_file($path) ? \Preflow\Core\Config\ParsedJsonFiles::read($path) : null;
-            $file = is_array($file) && ($file['extends'] ?? false) !== true ? $file : [];
-            if (self::fileHasShowWhen($file) || self::classHasShowWhen($class)) {
+            if (self::fileHasShowWhen($this->adminFile((string) $key)) || self::classHasShowWhen($class)) {
                 self::assertShowWhenRules((string) $key, $this->schema((string) $key));
             }
         }
-        foreach (glob($this->modelsPath . '/*.json') ?: [] as $path) {
-            if (isset($this->classes[basename($path, '.json')])) {
+        foreach ($this->ownModelFiles() as $key => $file) {
+            if (isset($this->classes[$key]) || !self::fileHasShowWhen($file)) {
                 continue;
             }
-            $file = \Preflow\Core\Config\ParsedJsonFiles::read($path);
-            if (!is_array($file) || ($file['extends'] ?? false) === true || !self::fileHasShowWhen($file)) {
-                continue;
-            }
-            self::assertShowWhenRules(is_string($file['key'] ?? null) ? $file['key'] : basename($path, '.json'), $file);
+            self::assertShowWhenRules(is_string($file['key'] ?? null) ? $file['key'] : $key, $file);
         }
     }
 
@@ -220,8 +236,8 @@ final class TypeRegistry
     {
         foreach ($this->classes as $key => $class) {
             $path = $this->modelsPath . '/' . $key . '.json';
-            $file = is_file($path) ? \Preflow\Core\Config\ParsedJsonFiles::read($path) : null;
-            if (is_array($file) && ($file['extends'] ?? false) !== true) {
+            $file = $this->adminFile((string) $key);
+            if ($file !== []) { // an empty admin file holds nothing to disagree with
                 ModelSchema::assertAdminOnly($file, $path, $key, $class);
                 ModelSchema::assertActionsAgree($file, $path, (string) $key, $class);
             }

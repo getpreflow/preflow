@@ -2532,7 +2532,7 @@ final class DataManager
         // A field its show_when hides is not validated: its type's, own and given rules drop out
         // (its stored value is kept). What the storage refuses stays checked: the bounded-column
         // length here, the unique check below.
-        foreach (FieldVisibility::hiddenFields($typeDef->fields, $record->toArray()) as $hidden) {
+        foreach (FieldVisibility::hiddenFieldsOf($typeDef, $record->toArray()) as $hidden) {
             $kept = array_values(array_filter($rules[$hidden] ?? [], static fn (mixed $rule): bool => $rule instanceof Validation\MaxChars));
             if ($kept === []) {
                 unset($rules[$hidden]);

@@ -34,6 +34,11 @@ final class FieldVisibility
     /** The comparisons a rule takes next to "field". */
     public const array OPERATORS = ['=', '!=', 'in', 'not_in', 'empty', 'filled'];
 
+    private const string NOT_AN_OBJECT = 'show_when is an object such as {"field": "kind", "=": "video"}; give one rule like it, or combine rules with {"all": [...]} or {"any": [...]}.';
+
+    /** @var \WeakMap<TypeDefinition, array<string, self>>|null each type's parsed rules (hiddenFieldsOf()) */
+    private static ?\WeakMap $parsedByType = null;
+
     /**
      * @param 'all'|'any'|'='|'!='|'in'|'not_in'|'empty'|'filled' $operator
      * @param list<bool|int|float|string> $values the values compared with (one for = and !=)
@@ -57,6 +62,9 @@ final class FieldVisibility
      */
     public static function fromConfig(array $showWhen, array $types = []): self
     {
+        if (array_is_list($showWhen)) {
+            throw new ShowWhenException(self::NOT_AN_OBJECT);
+        }
         $shown = self::show($showWhen);
         foreach (['all', 'any'] as $join) {
             if (!array_key_exists($join, $showWhen)) {
@@ -112,7 +120,7 @@ final class FieldVisibility
                 throw new ShowWhenException("show_when {$shown} needs a list of values for \"{$operator}\", such as [\"link\", \"video\"].");
             }
             foreach ($value as $one) {
-                self::checkValue($one, $shown, $field, $operator);
+                self::checkValue($one, $shown, $field, $operator, $number);
             }
 
             return new self($operator, $field, $value, number: $number);
@@ -121,7 +129,7 @@ final class FieldVisibility
         if (is_array($value)) {
             throw new ShowWhenException("show_when {$shown} compares with a list; use \"in\" for a list of values, or give one value.");
         }
-        self::checkValue($value, $shown, $field, $operator);
+        self::checkValue($value, $shown, $field, $operator, $number);
 
         return new self($operator, $field, [$value], number: $number);
     }
@@ -185,7 +193,8 @@ final class FieldVisibility
      * a block field writes them (['show_when' => …]).
      *
      * @param array<string, TypeFieldDefinition|array<string, mixed>> $fields
-     * @return array<string, array<mixed>> field name => its show_when
+     * @return array<string, mixed> field name => its show_when, as written (an object for a rule
+     *                              that can work; assertRules() refuses anything else)
      */
     public static function rulesOf(array $fields): array
     {
@@ -193,7 +202,7 @@ final class FieldVisibility
         foreach ($fields as $name => $field) {
             $rule = $field instanceof TypeFieldDefinition ? $field->config['show_when'] ?? null : $field['show_when'] ?? null;
             if ($rule !== null) {
-                $rules[(string) $name] = is_array($rule) ? $rule : [$rule];
+                $rules[(string) $name] = $rule;
             }
         }
 
@@ -212,6 +221,31 @@ final class FieldVisibility
      */
     public static function hiddenFields(array $fields, array $values): array
     {
+        return self::hide(self::parseAll($fields), $values);
+    }
+
+    /**
+     * hiddenFields() for a type's fields, with the type's rules parsed once per definition (a
+     * list reads many records of one type). Holds nothing but the parsed rules, which depend on
+     * the definition alone; the memo goes with the definition.
+     *
+     * @param array<string, mixed> $values the record's values
+     * @return list<string>
+     */
+    public static function hiddenFieldsOf(TypeDefinition $type, array $values): array
+    {
+        self::$parsedByType ??= new \WeakMap();
+        $parsed = self::$parsedByType[$type] ??= self::parseAll($type->fields);
+
+        return self::hide($parsed, $values);
+    }
+
+    /**
+     * @param array<string, TypeFieldDefinition|array<string, mixed>> $fields
+     * @return array<string, self>
+     */
+    private static function parseAll(array $fields): array
+    {
         $rules = self::rulesOf($fields);
         if ($rules === []) {
             return [];
@@ -219,14 +253,42 @@ final class FieldVisibility
         $types = self::typesOf($fields);
         $parsed = [];
         foreach ($rules as $name => $rule) {
-            $parsed[$name] = self::fromConfig($rule, $types);
+            $parsed[$name] = self::parse($rule, $types);
+        }
+
+        return $parsed;
+    }
+
+    /**
+     * @param mixed $rule a field's show_when as written
+     * @param array<string, string> $types
+     */
+    private static function parse(mixed $rule, array $types): self
+    {
+        if (!is_array($rule)) {
+            throw new ShowWhenException(self::NOT_AN_OBJECT);
+        }
+
+        return self::fromConfig($rule, $types);
+    }
+
+    /**
+     * @param array<string, self> $parsed
+     * @param array<string, mixed> $values
+     * @return list<string>
+     */
+    private static function hide(array $parsed, array $values): array
+    {
+        if ($parsed === []) {
+            return [];
         }
         $hidden = [];
         foreach (array_keys($parsed) as $name) {
             self::resolve($name, $parsed, $values, $hidden, []);
         }
 
-        return array_keys(array_filter($hidden));
+        // In the order of the fields (resolve() decides a field's sources first).
+        return array_values(array_filter(array_keys($parsed), static fn (string $name): bool => $hidden[$name] ?? false));
     }
 
     /**
@@ -251,7 +313,7 @@ final class FieldVisibility
         foreach ($rules as $name => $rule) {
             $prefix = "{$owner}: field \"{$name}\": ";
             try {
-                $parsed = self::fromConfig($rule, $types);
+                $parsed = self::parse($rule, $types);
             } catch (ShowWhenException $e) {
                 throw new ShowWhenException($prefix . $e->getMessage(), 0, $e);
             }
@@ -382,7 +444,7 @@ final class FieldVisibility
         return in_array($stored, [true, 1, '1', 'true', 'on'], true);
     }
 
-    private static function checkValue(mixed $value, string $shown, string $field, string $operator): void
+    private static function checkValue(mixed $value, string $shown, string $field, string $operator, bool $number): void
     {
         if ($value === null) {
             throw new ShowWhenException("show_when {$shown} compares with no value; for no value use {\"field\": \"{$field}\", \"empty\": true}.");
@@ -395,6 +457,13 @@ final class FieldVisibility
         }
         if (!is_scalar($value)) {
             throw new ShowWhenException("show_when {$shown} compares with " . self::show($value) . '; give a text, a number, true or false.');
+        }
+        // A number field compares as whole numbers: any other value would read as 0 and match the wrong records.
+        $whole = is_int($value) || is_bool($value)
+            || (is_float($value) && is_finite($value) && floor($value) === $value)
+            || (is_string($value) && preg_match('/^-?\d+$/D', $value) === 1);
+        if ($number && !$whole) {
+            throw new ShowWhenException("show_when {$shown} compares the number field \"{$field}\" with " . self::show($value) . '; give a whole number, such as 3.');
         }
     }
 

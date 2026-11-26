@@ -126,6 +126,68 @@ final class FieldVisibilityTest extends TestCase
         FieldVisibility::fromConfig($rule);
     }
 
+    /** @return iterable<string, array{mixed, string}> */
+    public static function notAnObject(): iterable
+    {
+        yield 'a text' => ['kind', 'Type "page": field "url": show_when is an object such as {"field": "kind", "=": "video"}; give one rule like it, or combine rules with {"all": [...]} or {"any": [...]}.'];
+        yield 'true' => [true, 'Type "page": field "url": show_when is an object such as {"field": "kind", "=": "video"};'];
+        yield 'a list of rules' => [[['field' => 'kind', '=' => 'link']], 'Type "page": field "url": show_when is an object such as {"field": "kind", "=": "video"};'];
+    }
+
+    #[DataProvider('notAnObject')]
+    public function test_a_show_when_that_is_not_an_object_is_refused(mixed $showWhen, string $message): void
+    {
+        $this->expectException(ShowWhenException::class);
+        $this->expectExceptionMessage($message);
+
+        FieldVisibility::assertRules('Type "page"', ['kind' => ['type' => 'string'], 'url' => ['show_when' => $showWhen]], static fn (string $field): bool => false);
+    }
+
+    /** @return iterable<string, array{array<string, mixed>, string}> */
+    public static function numberMismatches(): iterable
+    {
+        yield 'a word' => [['field' => 'count', '=' => 'many'], 'Type "page": field "url": show_when {"field":"count","=":"many"} compares the number field "count" with "many"; give a whole number, such as 3.'];
+        yield 'a decimal text' => [['field' => 'count', '!=' => '2.5'], 'Type "page": field "url": show_when {"field":"count","!=":"2.5"} compares the number field "count" with "2.5"; give a whole number, such as 3.'];
+        yield 'a decimal in a list' => [['field' => 'count', 'in' => [1, 2.5]], 'Type "page": field "url": show_when {"field":"count","in":[1,2.5]} compares the number field "count" with 2.5; give a whole number, such as 3.'];
+    }
+
+    /** @param array<string, mixed> $rule */
+    #[DataProvider('numberMismatches')]
+    public function test_a_number_field_refuses_a_value_that_is_not_a_whole_number(array $rule, string $message): void
+    {
+        $this->expectException(ShowWhenException::class);
+        $this->expectExceptionMessage($message);
+
+        FieldVisibility::assertRules('Type "page"', ['count' => ['type' => 'number'], 'url' => ['show_when' => $rule]], static fn (string $field): bool => false);
+    }
+
+    public function test_a_number_field_takes_whole_numbers_as_numbers_or_text(): void
+    {
+        FieldVisibility::assertRules('Type "page"', [
+            'count' => ['type' => 'number'],
+            'a' => ['show_when' => ['field' => 'count', 'in' => [1, '2', -3, 4.0]]],
+            'b' => ['show_when' => ['field' => 'count', '=' => true]],
+            'c' => ['show_when' => ['field' => 'kind', '=' => 'many']],
+            'kind' => ['type' => 'string'],
+        ], static fn (string $field): bool => false);
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_hidden_fields_of_a_type_parses_its_rules_once_and_answers_as_hidden_fields(): void
+    {
+        $fields = [
+            'kind' => new TypeFieldDefinition('kind'),
+            'url' => new TypeFieldDefinition('url', config: ['show_when' => ['field' => 'kind', '=' => 'link']]),
+        ];
+        $type = new \Preflow\Data\TypeDefinition('page', 'page', 'default', $fields);
+
+        foreach ([['kind' => 'video'], ['kind' => 'link'], []] as $values) {
+            $this->assertSame(FieldVisibility::hiddenFields($fields, $values), FieldVisibility::hiddenFieldsOf($type, $values));
+        }
+        $this->assertSame([], FieldVisibility::hiddenFieldsOf(new \Preflow\Data\TypeDefinition('plain', 'plain', 'default', ['kind' => new TypeFieldDefinition('kind')]), []));
+    }
+
     public function test_sources_lists_every_named_field_once(): void
     {
         $rule = FieldVisibility::fromConfig(['any' => [['field' => 'a', '=' => 'x'], ['all' => [['field' => 'b', 'filled' => true], ['field' => 'a', 'in' => ['y']]]]]]);
@@ -260,6 +322,31 @@ final class FieldVisibilityTest extends TestCase
         new TypeRegistry($this->dir . '/models');
     }
 
+    public function test_validate_skips_rules_of_hidden_fields_of_a_model_class(): void
+    {
+        $registry = new TypeRegistry($this->dir . '/models', classes: ['fv_offer' => ShowWhenOffer::class]);
+        $dm = new DataManager(
+            drivers: ['default' => new JsonFileDriver($this->dir . '/store')],
+            defaultDriver: 'default',
+            typeRegistry: $registry,
+            validatorFactory: new ValidatorFactory(new RuleFactory()),
+        );
+
+        $hidden = new ShowWhenOffer();
+        $hidden->kind = 'video';
+        $dm->save($hidden);
+        $this->assertNotSame('', (string) $hidden->uuid);
+
+        $visible = new ShowWhenOffer();
+        $visible->kind = 'link';
+        try {
+            $dm->save($visible);
+            $this->fail('A visible required field must fail.');
+        } catch (ValidationException $e) {
+            $this->assertSame(['url'], array_keys($e->errors()));
+        }
+    }
+
     public function test_boot_checks_a_model_class_field(): void
     {
         $this->expectException(ShowWhenException::class);
@@ -361,4 +448,18 @@ final class ShowWhenTeaser extends \Preflow\Data\Model
 
     #[\Preflow\Data\Attributes\Field(config: ['show_when' => ['field' => 'kind', '=' => 'link']])]
     public string $url = '';
+}
+
+#[\Preflow\Data\Attributes\Entity(table: 'fv_offers', type: 'fv_offer')]
+final class ShowWhenOffer extends \Preflow\Data\Model
+{
+    #[\Preflow\Data\Attributes\Id]
+    public ?string $uuid = null;
+
+    #[\Preflow\Data\Attributes\Field]
+    public string $kind = '';
+
+    #[\Preflow\Data\Attributes\Field(config: ['show_when' => ['field' => 'kind', '=' => 'link']])]
+    #[\Preflow\Validation\Attributes\Validate('required')]
+    public ?string $url = null;
 }

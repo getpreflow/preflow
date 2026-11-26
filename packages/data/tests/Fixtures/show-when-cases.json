@@ -50,7 +50,21 @@
         {"name": "any: no rule holds", "rule": {"any": [{"field": "kind", "=": "video"}, {"field": "featured", "=": true}]}, "values": {"kind": "image", "featured": false}, "holds": false},
         {"name": "nested: any inside all holds", "rule": {"all": [{"field": "url", "filled": true}, {"any": [{"field": "kind", "in": ["link", "video"]}, {"field": "featured", "=": true}]}]}, "values": {"url": "x", "kind": "link"}, "holds": true},
         {"name": "nested: any inside all fails", "rule": {"all": [{"field": "url", "filled": true}, {"any": [{"field": "kind", "in": ["link", "video"]}, {"field": "featured", "=": true}]}]}, "values": {"url": "x", "kind": "image"}, "holds": false},
-        {"name": "nested: all inside any holds", "rule": {"any": [{"field": "kind", "=": "video"}, {"all": [{"field": "featured", "=": true}, {"field": "note", "empty": true}]}]}, "values": {"kind": "image", "featured": "1"}, "holds": true}
+        {"name": "nested: all inside any holds", "rule": {"any": [{"field": "kind", "=": "video"}, {"all": [{"field": "featured", "=": true}, {"field": "note", "empty": true}]}]}, "values": {"kind": "image", "featured": "1"}, "holds": true},
+        {"name": "boolean = true: stored \"true\" is on", "rule": {"field": "featured", "=": true}, "values": {"featured": "true"}, "holds": true},
+        {"name": "boolean = true: stored \"on\" is on", "rule": {"field": "featured", "=": true}, "values": {"featured": "on"}, "holds": true},
+        {"name": "boolean = true: stored \"yes\" is off", "rule": {"field": "featured", "=": true}, "values": {"featured": "yes"}, "holds": false},
+        {"name": "in with a boolean: on matches true", "rule": {"field": "featured", "in": [true]}, "values": {"featured": "1"}, "holds": true},
+        {"name": "in with a boolean: missing key is off, matches false", "rule": {"field": "featured", "in": [false]}, "values": {}, "holds": true},
+        {"name": "not_in with a boolean: on is in [true]", "rule": {"field": "featured", "not_in": [true]}, "values": {"featured": true}, "holds": false},
+        {"name": "not_in with a boolean: off is not in [true]", "rule": {"field": "featured", "not_in": [true]}, "values": {"featured": 0}, "holds": true},
+        {"name": "number field != : \"3.0\" is 3", "rule": {"field": "count", "!=": 3}, "fields": {"count": "number"}, "values": {"count": "3.0"}, "holds": false},
+        {"name": "number field != : 4 is not 3", "rule": {"field": "count", "!=": 3}, "fields": {"count": "number"}, "values": {"count": 4}, "holds": true},
+        {"name": "number field != : an empty field is not 0", "rule": {"field": "count", "!=": 0}, "fields": {"count": "number"}, "values": {"count": ""}, "holds": true},
+        {"name": "number field != : a missing field is not 3", "rule": {"field": "count", "!=": 3}, "fields": {"count": "number"}, "values": {}, "holds": true},
+        {"name": "number field not_in: 2.7 is 2, in the list", "rule": {"field": "count", "not_in": [1, 2]}, "fields": {"count": "number"}, "values": {"count": 2.7}, "holds": false},
+        {"name": "number field not_in: 5 is not in the list", "rule": {"field": "count", "not_in": [1, 2]}, "fields": {"count": "number"}, "values": {"count": "5"}, "holds": true},
+        {"name": "number field: a rule value \"3\" is the number 3", "rule": {"field": "count", "=": "3"}, "fields": {"count": "number"}, "values": {"count": 3}, "holds": true}
     ],
     "hidden": [
         {
@@ -92,6 +106,16 @@
             },
             "values": {"count": "2.5"},
             "hidden": []
+        },
+        {
+            "name": "hidden fields come in the order of the fields, not of their sources",
+            "fields": {
+                "c": {"type": "string", "show_when": {"field": "b", "filled": true}},
+                "a": {"type": "string"},
+                "b": {"type": "string", "show_when": {"field": "a", "=": "on"}}
+            },
+            "values": {"a": "off", "b": "kept"},
+            "hidden": ["c", "b"]
         }
     ]
 }
