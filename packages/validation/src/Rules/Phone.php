@@ -10,8 +10,9 @@ use Preflow\Validation\ValidationRule;
 
 /**
  * A phone number as people type it: digits, an optional leading "+", and spaces (also a
- * non-breaking or narrow non-breaking one), dashes, dots, slashes and parentheses between them; 5 to
- * 15 digits (E.164 allows 15; no line breaks or tabs). Only a string counts: a number as an int has lost its leading zero. An empty value
+ * non-breaking or narrow non-breaking one), dashes, dots, slashes and parentheses between them; 3 to
+ * 15 digits (short service numbers such as 112 or 1414 are numbers too; E.164 allows 15; no line
+ * breaks or tabs). Only a string counts: a number as an int has lost its leading zero. An empty value
  * passes ("required" decides). dialable() is the same number for a tel: link.
  *
  * @since 0.91.0
@@ -39,7 +40,7 @@ final class Phone implements ValidationRule
         }
         $digits = (string) preg_replace('/\D+/', '', $typed);
         $length = strlen($digits);
-        if ($length < 5 || $length > 15) {
+        if ($length < 3 || $length > 15) {
             return null;
         }
 

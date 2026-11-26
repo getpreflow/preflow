@@ -21,7 +21,7 @@ Rules for validating arrays and records. A rule is written as a string alias wit
   with `path: true` single slashes stay); text with no a-z form gives `''`. Accents are dropped with
   `ext-intl`'s `Normalizer`; without it only the letters ä, ö, ü, ß, æ, œ, ø, đ, ł and þ are converted.
 - `phone` (since 0.91): a phone number as people type it: digits, an optional leading `+`, and
-  spaces (also non-breaking ones), dashes, dots, slashes and parentheses between them; 5 to 15 digits. Only text counts (an
+  spaces (also non-breaking ones), dashes, dots, slashes and parentheses between them; 3 to 15 digits (short service numbers such as 112 count). Only text counts (an
   int has lost its leading zero). Empty values pass. The message is `validation.phone`.
   `Phone::dialable('+41 44 123 45 67')` gives `+41441234567`, the number for a `tel:` link (null
   when it is no phone number).
