@@ -292,6 +292,41 @@ final class ModelExtensionTest extends TestCase
         $this->app();
     }
 
+    /** The catalog reads the site's model files on its first use; their error is theirs, not the first extension model's (0.92). */
+    #[RunInSeparateProcess]
+    public function test_a_site_types_boot_error_names_the_site_type(): void
+    {
+        $this->members();
+        $this->write('config/models/news.json', (string) json_encode([
+            'key' => 'news',
+            'table' => 'news',
+            'storage' => 'json',
+            'fields' => ['topic' => ['type' => 'select', 'options_from' => 'nothing_here']],
+        ]));
+
+        try {
+            $this->app();
+            $this->fail('The site type should be refused at boot.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringStartsWith('Type "news"', $e->getMessage());
+            $this->assertStringNotContainsString('Extension model', $e->getMessage());
+        }
+    }
+
+    #[RunInSeparateProcess]
+    public function test_an_extension_models_error_keeps_its_prefix(): void
+    {
+        $this->members();
+        $member = self::MEMBER;
+        unset($member['users'], $member['list']);
+        $member['fields']['topic'] = ['type' => 'select', 'options_from' => 'nothing_here'];
+        $this->write('app/Folio/Members/models/member.json', (string) json_encode($member));
+
+        $this->expectException(ExtensionException::class);
+        $this->expectExceptionMessageMatches('~^Extension model "member": ~');
+        $this->app();
+    }
+
     #[RunInSeparateProcess]
     public function test_site_file_redefining_a_field_fails_at_boot(): void
     {

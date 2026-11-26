@@ -168,6 +168,9 @@ final class FolioServiceProvider extends ServiceProvider
             fn (): array => $this->extensionTypes($container, $extensions, $modelsPath),
             [$modelsPath],
         );
+        // The catalog reads the site's model files on first use: do it here, so a site type's error is not
+        // reported under the first extension model's name below.
+        $catalog->all();
         foreach ($extensionTypes as [$schema, $section, $what, $group]) {
             try {
                 $types->define($schema);
