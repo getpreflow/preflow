@@ -31,7 +31,6 @@ return [
     'color_palette' => 'Välj en av de färger som erbjuds: :values.',
     'json' => 'Måste vara giltig JSON, t.ex. {"namn": "värde"} eller [1, 2, 3].',
     'phone_region' => 'Det går inte att se vilket land numret hör till: börja med + och landskoden, t.ex. +41 44 123 45 67.',
-    'code_language' => 'Språket måste vara ett kort namn som php eller javascript (bokstäver, siffror och + # . _ -).',
     'link' => [
         'kind' => 'Välj vad länken pekar på: :kinds.',
         'target' => 'Välj eller skriv vad länken pekar på.',

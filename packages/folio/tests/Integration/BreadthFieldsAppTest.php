@@ -8,7 +8,6 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Context\Contexts;
 use Preflow\Data\DynamicRecord;
-use Preflow\Fields\Values\Code;
 use Preflow\Fields\Values\Phone;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Preflow\Testing\ChecksFrameBalance;
@@ -40,7 +39,7 @@ final class BreadthFieldsAppTest extends TestCase
             'mobile' => ['type' => 'phone', 'label' => 'Mobile'],
             'tint' => ['type' => 'color', 'label' => 'Tint', 'palette' => ['Brand red' => '#c00000', 'Sky' => '#0a5ca8']],
             'accent' => ['type' => 'color', 'label' => 'Accent', 'palette' => ['Brand red' => '#c00000', 'Sky' => '#0a5ca8'], 'palette_only' => true],
-            'snippet' => ['type' => 'code', 'label' => 'Snippet', 'languages' => ['php', 'html'], 'default_language' => 'html'],
+            'snippet' => ['type' => 'code', 'label' => 'Snippet', 'language' => 'php'],
             'settings' => ['type' => 'json', 'label' => 'Settings'],
             'kind' => ['type' => 'select', 'options' => ['mail' => 'Mail', 'none' => 'None']],
             'extra_email' => ['type' => 'email', 'show_when' => ['field' => 'kind', '=' => 'mail']],
@@ -62,7 +61,7 @@ final class BreadthFieldsAppTest extends TestCase
     {
         return [
             'uuid' => 'c1', 'name' => 'Ada', 'email' => ' ada@example.org ', 'phone' => '044 123 45 67', 'mobile' => '+49 170 1234567',
-            'tint' => '#C00', 'accent' => '#0a5ca8', 'snippet' => ['code' => "<?php\r\necho 1;", 'language' => 'php'], 'settings' => "{\"b\": 1,\n \"a\": [1]}\n",
+            'tint' => '#C00', 'accent' => '#0a5ca8', 'snippet' => "<?php\r\necho 1;", 'settings' => "{\"b\": 1,\n \"a\": [1]}\n",
             'kind' => 'none',
         ];
     }
@@ -77,9 +76,8 @@ final class BreadthFieldsAppTest extends TestCase
         $this->assertStringContainsString('<input type="text" id="folio-color-tint" name="tint"', $html);
         $this->assertStringContainsString('data-folio-swatch="#0a5ca8"', $html);
         $this->assertStringContainsString('<input type="radio" name="accent" value="#c00000">', $html);
-        $this->assertStringContainsString('<select id="folio-code-snippet-language" name="snippet[language]">', $html);
-        $this->assertStringContainsString('<option value="html" selected>html</option>', $html);
-        $this->assertStringContainsString('name="snippet[code]"', $html);
+        $this->assertStringContainsString('<textarea name="snippet"', $html);
+        $this->assertStringContainsString('<span class="folio-code-language">php</span>', $html, 'the field\'s language beside the label');
         $this->assertStringContainsString('<textarea name="settings"', $html);
         $this->assertStringContainsString('fields.js', $html, 'the colour controls');
     }
@@ -96,7 +94,7 @@ final class BreadthFieldsAppTest extends TestCase
         $this->assertSame(['as_typed' => '+49 170 1234567', 'e164' => '+491701234567'], Phone::fromStored($stored->get('mobile'))?->toStored());
         $this->assertSame('#cc0000', $stored->get('tint'), 'read leniently, stored as #rrggbb');
         $this->assertSame('#0a5ca8', $stored->get('accent'));
-        $this->assertSame(['code' => "<?php\necho 1;", 'language' => 'php'], \Preflow\Fields\Values\Link::decode($stored->get('snippet')));
+        $this->assertSame("<?php\necho 1;", $stored->get('snippet'), 'code is the text, line breaks as \\n');
         $this->assertSame("{\"b\": 1,\n \"a\": [1]}", $stored->get('settings'), 'JSON as written, trimmed');
 
         $html = (string) $this->get('/folio/contact/' . $stored->getId() . '/edit')->getBody();
@@ -104,7 +102,6 @@ final class BreadthFieldsAppTest extends TestCase
         $this->assertStringContainsString('Dialled as +41441234567.', $html);
         $this->assertStringContainsString('value="#cc0000"', $html);
         $this->assertStringContainsString('<input type="radio" name="accent" value="#0a5ca8" checked>', $html);
-        $this->assertStringContainsString('<option value="php" selected>php</option>', $html);
     }
 
     #[RunInSeparateProcess]
@@ -116,7 +113,6 @@ final class BreadthFieldsAppTest extends TestCase
             ['phone', 'call me', 'Must be a phone number: digits, optionally with a leading + and spaces, e.g. +41 44 123 45 67.'],
             ['tint', 'red', 'Must be a colour in hex form, such as #1a2b3c (or #1a2b3c80 with transparency).'],
             ['accent', '#123456', 'Choose one of the colours offered: #c00000, #0a5ca8.'],
-            ['snippet', ['code' => 'x', 'language' => 'ruby'], 'Must be one of: php, html.'],
             ['settings', '{a: 1}', 'Must be valid JSON, such as {"name": "value"} or [1, 2, 3].'],
         ] as [$field, $value, $message]) {
             $res = $this->post('/folio/contact', ['name' => 'x', $field => $value] + $this->valid());
@@ -129,14 +125,14 @@ final class BreadthFieldsAppTest extends TestCase
     #[RunInSeparateProcess]
     public function test_each_type_works_in_a_block(): void
     {
-        $block = ['_block' => 'contact_card', 'email' => 'ada@example.org', 'phone' => '044 123 45 67', 'accent' => '#c00000', 'snippet' => ['code' => 'echo 1;', 'language' => 'php'], 'settings' => '[1, 2]'];
+        $block = ['_block' => 'contact_card', 'email' => 'ada@example.org', 'phone' => '044 123 45 67', 'accent' => '#c00000', 'snippet' => 'echo 1;', 'settings' => '[1, 2]'];
         $post = static fn (array $over): array => ['name' => 'Ada', 'sections' => ['_order' => [self::UID], self::UID => $over + $block]];
 
         $html = (string) $this->get('/folio/contact/new')->getBody();
         $this->assertStringNotContainsString('sections[' . self::UID, $html);
         $this->dm()->saveType(DynamicRecord::fromArray($this->dm()->getTypeRegistry()->get('contact'), ['uuid' => 'c2', 'name' => 'Blocks', 'sections' => [['_uid' => self::UID, '_block' => 'contact_card']]]), validate: false);
         $html = (string) $this->get('/folio/contact/c2/edit')->getBody();
-        foreach (['<input type="email" name="sections[' . self::UID . '][email]"', '<input type="tel" name="sections[' . self::UID . '][phone]"', '<input type="radio" name="sections[' . self::UID . '][accent]" value="#c00000">', 'name="sections[' . self::UID . '][snippet][code]"', '<textarea name="sections[' . self::UID . '][settings]"'] as $needle) {
+        foreach (['<input type="email" name="sections[' . self::UID . '][email]"', '<input type="tel" name="sections[' . self::UID . '][phone]"', '<input type="radio" name="sections[' . self::UID . '][accent]" value="#c00000">', '<textarea name="sections[' . self::UID . '][snippet]"', '<textarea name="sections[' . self::UID . '][settings]"'] as $needle) {
             $this->assertStringContainsString($needle, $html);
         }
 
@@ -144,7 +140,6 @@ final class BreadthFieldsAppTest extends TestCase
             ['email', 'nope', 'Must be a valid email address.'],
             ['phone', 'call me', 'Must be a phone number'],
             ['accent', '#123456', 'Choose one of the colours offered: #c00000, #0a5ca8.'],
-            ['snippet', ['code' => 'x', 'language' => 'ruby'], 'Must be one of: php, html.'],
             ['settings', '{oops', 'Must be valid JSON'],
         ] as [$field, $value, $message]) {
             $res = $this->post('/folio/contact/c2', $post([$field => $value]));
@@ -158,18 +153,18 @@ final class BreadthFieldsAppTest extends TestCase
         $this->assertSame('ada@example.org', $saved['email']);
         $this->assertSame(['as_typed' => '044 123 45 67', 'e164' => '+41441234567'], Phone::fromStored($saved['phone'])?->toStored());
         $this->assertSame('#c00000', $saved['accent']);
-        $this->assertSame(['code' => 'echo 1;', 'language' => 'php'], \Preflow\Fields\Values\Link::decode($saved['snippet']));
+        $this->assertSame('echo 1;', $saved['snippet']);
         $this->assertSame('[1, 2]', $saved['settings']);
     }
 
     #[RunInSeparateProcess]
     public function test_a_hidden_field_of_each_type_keeps_its_value_and_reads_empty(): void
     {
-        $kept = ['extra_email' => 'old@example.org', 'extra_phone' => ['as_typed' => '+41 44 1', 'e164' => '+41441'], 'extra_color' => '#123456', 'extra_code' => ['code' => 'x', 'language' => 'php'], 'extra_json' => '{"a": 1}'];
+        $kept = ['extra_email' => 'old@example.org', 'extra_phone' => ['as_typed' => '+41 44 1', 'e164' => '+41441'], 'extra_color' => '#123456', 'extra_code' => 'x', 'extra_json' => '{"a": 1}'];
         $this->dm()->saveType(DynamicRecord::fromArray($this->dm()->getTypeRegistry()->get('contact'), ['uuid' => 'c3', 'name' => 'Cond', 'kind' => 'mail'] + $kept), validate: false);
 
         // Switched so they hide, posted with values that would not pass: saved, the values kept.
-        $res = $this->post('/folio/contact/c3', ['name' => 'Cond', 'kind' => 'none', 'extra_email' => 'bad', 'extra_phone' => 'call me', 'extra_color' => 'red', 'extra_code' => ['code' => 'y', 'language' => 'a b'], 'extra_json' => '{oops']);
+        $res = $this->post('/folio/contact/c3', ['name' => 'Cond', 'kind' => 'none', 'extra_email' => 'bad', 'extra_phone' => 'call me', 'extra_color' => 'red', 'extra_code' => 'y', 'extra_json' => '{oops']);
         $this->assertSame(302, $res->getStatusCode(), (string) $res->getBody());
         $stored = $this->stored('contact', 'c3');
         foreach ($kept as $field => $value) {
@@ -192,12 +187,12 @@ final class BreadthFieldsAppTest extends TestCase
         $this->assertStringContainsString('<td>ada@example.org</td>', $html);
         $this->assertStringContainsString('<td>044 123 45 67</td>', $html, 'the number as typed');
         $this->assertStringContainsString('<td>#cc0000</td>', $html);
-        $this->assertStringContainsString('<td>php: &lt;?php echo 1;</td>', $html, 'code on one line with its language');
+        $this->assertStringContainsString('<td>&lt;?php echo 1;</td>', $html, 'code on one line');
         $this->assertStringContainsString('<td>{"b": 1, "a": [1]}</td>', html_entity_decode($html));
     }
 
     #[RunInSeparateProcess]
-    public function test_loose_search_finds_the_email_and_not_the_structured_types_or_json(): void
+    public function test_loose_search_finds_the_email_and_the_code_but_not_the_phone_or_json(): void
     {
         $this->post('/folio/contact', $this->valid() + []);
         $dm = $this->dm();
@@ -205,7 +200,7 @@ final class BreadthFieldsAppTest extends TestCase
 
         $id = $this->first()->getId();
         $this->assertSame([$id], $ids('ada@example.org'));
-        $this->assertSame([], $ids('echo'), 'code is stored as an object: not searched, like a link');
+        $this->assertSame([$id], $ids('echo'), 'code is plain text: found');
         $this->assertSame([], $ids('+41441234567'));
         $this->assertSame([], $ids('"a"'));
     }
@@ -218,14 +213,14 @@ final class BreadthFieldsAppTest extends TestCase
 
         $this->assertSame(
             'mailto:ada@example.org|tel:+41441234567|<pre><code class="language-php">&lt;?php\necho 1;</code></pre>',
-            str_replace("\n", '\n', $this->page('{{ mailto_href(email) }}|{{ tel_href(phone) }}|{{ code_html(snippet) }}', ['email' => $c->get('email'), 'phone' => $c->get('phone'), 'snippet' => $c->get('snippet')])),
+            str_replace("\n", '\n', $this->page('{{ mailto_href(email) }}|{{ tel_href(phone) }}|{{ code_html(snippet, "php") }}', ['email' => $c->get('email'), 'phone' => $c->get('phone'), 'snippet' => $c->get('snippet')])),
         );
     }
 
     #[RunInSeparateProcess]
     public function test_transfer_carries_the_stored_values_unchanged(): void
     {
-        $values = ['name' => 'Ada', 'email' => 'ada@example.org', 'phone' => ['as_typed' => '044 123 45 67', 'e164' => '+41441234567'], 'tint' => '#cc0000', 'snippet' => ['code' => "a\nb", 'language' => 'php'], 'settings' => "{\n \"a\": 1\n}"];
+        $values = ['name' => 'Ada', 'email' => 'ada@example.org', 'phone' => ['as_typed' => '044 123 45 67', 'e164' => '+41441234567'], 'tint' => '#cc0000', 'snippet' => "a\nb", 'settings' => "{\n \"a\": 1\n}"];
         $this->working('contact', 'c4', $values);
         $app = $this->app();
         $dm = $app->container()->get(\Preflow\Data\DataManager::class);
@@ -245,7 +240,7 @@ final class BreadthFieldsAppTest extends TestCase
         $this->assertSame('ada@example.org', $stored->get('email'));
         $this->assertSame($values['phone'], Phone::fromStored($stored->get('phone'))?->toStored());
         $this->assertSame('#cc0000', $stored->get('tint'));
-        $this->assertSame($values['snippet'], Code::fromStored($stored->get('snippet'))?->toStored());
+        $this->assertSame("a\nb", $stored->get('snippet'));
         $this->assertSame($values['settings'], $stored->get('settings'));
     }
 

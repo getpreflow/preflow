@@ -158,27 +158,38 @@ page and its stored value is kept.
 
 All five are registered by `FieldsServiceProvider` (their column, their check, the template
 functions), so a site without Folio stores and checks them the same way. None of them is
-`translatable` (a boot error says so: the value is the same in every language).
+`translatable` (a boot error says so: the value is the same in every language). Their options
+(`default_region`, `palette`, `palette_only`, `language`) are keys of the field itself, next to
+`"type"`; an object under the type's own name (`"color": {…}`) is a boot error that says where the
+option goes.
 
 | type | stored | check | page |
 |---|---|---|---|
 | `email` | the address, text | the `email` rule | `mailto_href(value)` |
 | `phone` | `{"as_typed": "044 123 45 67", "e164": "+41441234567"}` | `ValidPhone` | `tel_href(value)` |
 | `color` | `"#rrggbb"` or `"#rrggbbaa"`, lowercase | the `color` rule | the text itself |
-| `code` | `{"code": "…", "language": "php"}` | `ValidCode` | `code_html(value)` |
+| `code` | the code as plain text | none (any text is code) | `code_html(value, language)` |
 | `json` | JSON text, as written | the `json` rule | `json_data(value)` |
 
 An empty value is `null` and passes (`"validate": ["required"]` makes it required).
+
+The stored shapes above are what Folio, `Phone::of()` and `Color::parse()` produce. A caller that
+writes records itself (REST, a seed, an import) builds them with those first: a plain phone string
+or an uppercase colour is read back as given, and a phone's `e164` must match its `as_typed`
+(the check refuses a mismatch).
 
 ### Phone and its E.164 form
 
 The number is kept as typed and gets an E.164 form (`+` and the digits with the country code) for
 `tel:` links and for matching. There is no library; `Values\Phone::e164()` does it in four steps:
 
-1. A number with a leading `+` keeps its digits; a leading `00` means `+`.
+1. A number with a leading `+` keeps its digits; a leading `00` means `+`. A `(0)` directly after
+   the country code (`+41 (0)44 123 45 67`, `0041 (0)44 …`) is the trunk 0 written for people and is
+   dropped; a bare 0 elsewhere stays (`+39 06 …`). A `+` or `00` number has at least 7 digits after
+   it (service numbers are written without `+`).
 2. Any other number is national. It gets the calling code of the field's `"default_region"`
    (`"phone": {"type": "phone", "default_region": "CH"}`), after dropping the one leading `0` of
-   regions that write a trunk prefix. The regions are in `Phone::REGIONS`: CH, LI, DE, AT, FR, IT,
+   regions that write a trunk prefix (not LI, IT, ES, PT, LU, DK, NO, PL, CZ). The regions are in `Phone::REGIONS`: CH, LI, DE, AT, FR, IT,
    ES, PT, NL, BE, LU, GB, IE, DK, SE, NO, FI, PL, CZ, US, CA. For any other country numbers are
    typed with `+`.
 3. A short number (up to 5 digits: 112, 1414) is a service number: no E.164 form, dialled as typed.
@@ -186,6 +197,8 @@ The number is kept as typed and gets an E.164 form (`+` and the digits with the 
    digits with the code) is refused: "Cannot tell which country this number belongs to: start it
    with + and the country code, e.g. +41 44 123 45 67."
 
+A stored `e164` must be what `as_typed` normalizes to (with the field's region, or no region for
+an international `as_typed`); a mismatch is refused, so a `tel:` link never dials another number.
 `Phone::of($typed, $region)->toStored()` builds the stored value in code (a seed, an import).
 Without Folio, a plain text number is accepted by the check and read as `as_typed`.
 
@@ -198,16 +211,16 @@ other colour, with or without Folio. `Values\Color::parse()` reads what people t
 
 ### Code
 
-`"languages": ["php", "javascript"]` limits the language (a select in Folio) and
-`"default_language"` starts a new value with one. Without `"languages"` any short name passes
-(letters, digits and `+ # . _ -`). `code_html(value)` outputs
-`<pre><code class="language-php">…</code></pre>`; the code is always escaped.
+The code is stored as plain text, so it is found by loose search like any text. The language is a
+setting of the field, one per field: `"snippet": {"type": "code", "language": "php"}` (a short name:
+letters, digits and `+ # . _ -`). Folio shows it beside the label. `code_html(value, "php")` outputs
+`<pre><code class="language-php">…</code></pre>` (no class without a language); the code is always
+escaped.
 
 ### Search and transfer
 
-`email` is text: loose search finds it. `phone`, `code` and a link are stored as objects and, like a
-blocks field, are not searched in 0.91 (the code's text is in the object and reachable by reading
-it, not by search); `json` is not searched either. Transfer and export carry every stored value as
+`email` and `code` are text: loose search finds them. `phone` and a link are stored as objects and,
+like a blocks field, are not searched in 0.91; `color` and `json` are not searched either. Transfer and export carry every stored value as
 it is.
 
 ## Adding a field type

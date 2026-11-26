@@ -76,11 +76,11 @@ final class StoredTypesTest extends TestCase
     {
         $def = $dm->getTypeRegistry()->get('contact');
         $phone = Phone::of('044 123 45 67', 'CH');
-        $code = new Code("<?php\necho \"ä € 😀\";", 'php');
+        $code = "<?php\necho \"ä € 😀\";\n\treturn;";
         $json = "{\n  \"b\": 1,\n  \"a\": [\"ä\", null]\n}";
         $dm->saveType(DynamicRecord::fromArray($def, [
             'uuid' => 'c1', 'name' => 'Full', 'email' => 'team@example.org', 'phone' => $phone->toStored(),
-            'brand' => '#c00000', 'tint' => '#c0000080', 'snippet' => $code->toStored(), 'settings' => $json,
+            'brand' => '#c00000', 'tint' => '#c0000080', 'snippet' => $code, 'settings' => $json,
         ]));
         $dm->saveType(DynamicRecord::fromArray($def, ['uuid' => 'c2', 'name' => 'Empty', 'email' => null, 'phone' => null, 'brand' => null, 'snippet' => null, 'settings' => null]));
 
@@ -90,7 +90,7 @@ final class StoredTypesTest extends TestCase
         $this->assertSame(['as_typed' => '044 123 45 67', 'e164' => '+41441234567'], Phone::fromStored($full?->get('phone'))?->toStored());
         $this->assertSame('#c00000', Color::fromStored($full?->get('brand'))?->toStored());
         $this->assertSame('#c0000080', Color::fromStored($full?->get('tint'))?->toStored());
-        $this->assertEquals($code, Code::fromStored($full?->get('snippet')));
+        $this->assertSame($code, Code::fromStored($full?->get('snippet'))?->toStored(), 'code is the text itself');
         $this->assertSame($json, JsonText::fromStored($full?->get('settings')), 'JSON text kept as written');
         $this->assertSame(['b' => 1, 'a' => ['ä', null]], JsonText::decode($full?->get('settings')));
 
@@ -112,7 +112,6 @@ final class StoredTypesTest extends TestCase
             ['mobile', ['as_typed' => '044 123 45 67', 'e164' => null], 'Cannot tell which country this number belongs to: start it with + and the country code, e.g. +41 44 123 45 67.'],
             ['phone', ['as_typed' => 'call me', 'e164' => null], 'Must be a phone number: digits, optionally with a leading + and spaces, e.g. +41 44 123 45 67.'],
             ['brand', 'red', 'Must be a colour in hex form, such as #1a2b3c (or #1a2b3c80 with transparency).'],
-            ['snippet', ['code' => 'x', 'language' => 'a b'], 'The language must be a short name such as php or javascript (letters, digits and + # . _ -).'],
             ['settings', '{a: 1}', 'Must be valid JSON, such as {"name": "value"} or [1, 2, 3].'],
         ] as [$field, $value, $message]) {
             try {
@@ -148,24 +147,24 @@ final class StoredTypesTest extends TestCase
         $this->assertSame(ColumnKind::Text, $kind('email'), 'a short column only when unique or indexed');
         $this->assertSame(ColumnKind::Short, $dm->fieldKinds()->columnKindOf($fields['email']->withIndex()));
         $this->assertSame(ColumnKind::Text, $kind('phone'));
-        $this->assertSame(ColumnKind::Text, $kind('snippet'));
+        $this->assertSame(ColumnKind::Text, $kind('snippet'), 'a code column is text');
         $this->assertSame(ColumnKind::Text, $kind('settings'));
         $this->assertSame(ColumnKind::Short, $dm->fieldKinds()->columnKindOf($fields['brand']->withIndex()));
     }
 
     #[DataProvider('storages')]
-    public function test_loose_search_reaches_an_email_but_not_the_structured_types_or_json(string $storage): void
+    public function test_loose_search_reaches_an_email_and_code_but_not_the_structured_types_or_json(string $storage): void
     {
         $dm = $this->dm($storage);
         $def = $dm->getTypeRegistry()->get('contact');
         $dm->saveType(DynamicRecord::fromArray($def, [
             'uuid' => 'c1', 'name' => 'Alpha', 'email' => 'findable@example.org', 'phone' => Phone::of('+41 44 123 45 67')->toStored(),
-            'brand' => '#c00000', 'snippet' => ['code' => 'uniquecodeword', 'language' => 'php'], 'settings' => '{"jsonword": 1}',
+            'brand' => '#c00000', 'snippet' => "<?php\n\$x = uniquecodeword();", 'settings' => '{"jsonword": 1}',
         ]));
         $ids = static fn (string $term): array => array_map(static fn (DynamicRecord $r): string => (string) $r->getId(), $dm->queryType('contact')->searchLoose($term)->get()->items());
 
         $this->assertSame(['c1'], $ids('findable@example.org'), 'an email field is text');
-        $this->assertSame([], $ids('uniquecodeword'), 'code is stored as an object: not searched, like a link');
+        $this->assertSame(['c1'], $ids('uniquecodeword'), 'code is plain text: found');
         $this->assertSame([], $ids('jsonword'));
         $this->assertSame([], $ids('+41441234567'));
     }
@@ -182,7 +181,7 @@ final class StoredTypesTest extends TestCase
                 'brand' => ['type' => 'color'],
                 'tint' => ['type' => 'color'],
                 'accent' => ['type' => 'color', 'palette' => ['#C00000', '#0a5ca8'], 'palette_only' => true],
-                'snippet' => ['type' => 'code'],
+                'snippet' => ['type' => 'code', 'language' => 'php'],
                 'settings' => ['type' => 'json'],
             ],
         ]));

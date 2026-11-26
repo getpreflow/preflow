@@ -32,8 +32,7 @@ Rules for validating arrays and records. A rule is written as a string alias wit
 - `json` (since 0.91): text that is valid JSON (`json_validate()`; any JSON value). Empty values
   pass. The message is `validation.json`.
 
-The messages `validation.phone_region` and `validation.code_language` belong to preflow/fields' phone
-and code checks and live here for the same reason. The messages `validation.link.kind`, `.target`, `.type` and `.url` (since 0.91) belong to
+The message `validation.phone_region` belongs to preflow/fields' phone check and lives here for the same reason. The messages `validation.link.kind`, `.target`, `.type` and `.url` (since 0.91) belong to
 preflow/fields' link check (`ValidLink`); they live here so a validator without a translator has
 their English text, as for every rule's.
 

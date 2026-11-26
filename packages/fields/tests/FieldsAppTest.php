@@ -101,18 +101,19 @@ final class FieldsAppTest extends TestCase
         $values = [
             'email' => 'a?bcc=x@example.org',
             'phone' => ['as_typed' => '044 123 45 67', 'e164' => '+41441234567'],
-            'code' => ['code' => '<script>alert("x")</script>', 'language' => 'html'],
+            'code' => '<script>alert("x")</script>',
             'settings' => '{"limit": 3, "tags": ["a"]}',
             'none' => null,
         ];
-        $template = '{{ mailto_href(email) }}|{{ tel_href(phone) }}|{{ tel_href("+41 44 123 45 67") }}|{{ code_html(code) }}|{{ json_data(settings).limit }}|{{ json_data(settings).tags[0] }}'
+        $template = '{{ mailto_href(email) }}|{{ tel_href(phone) }}|{{ tel_href("+41 44 123 45 67") }}|{{ code_html(code, "html") }}|{{ json_data(settings).limit }}|{{ json_data(settings).tags[0] }}'
             . '|[{{ mailto_href(none) }}][{{ tel_href(none) }}][{{ code_html(none) }}][{{ json_data(none) }}]';
 
         $this->assertSame(
             'mailto:a%3Fbcc%3Dx@example.org|tel:+41441234567|tel:+41441234567|<pre><code class="language-html">&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;</code></pre>|3|a|[][][][]',
             $this->render($template, $values),
         );
-        $this->assertSame('<pre><code class="language-html">&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;</code></pre>', $this->render('{{ code_html(code) }}', $values), 'safe markup, escaped inside');
+        $this->assertSame('<pre><code class="language-html">&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;</code></pre>', $this->render('{{ code_html(code, "html") }}', $values), 'safe markup, escaped inside');
+        $this->assertSame('<pre><code>&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;</code></pre>', $this->render('{{ code_html(code) }}', $values), 'no language: no class');
         $this->assertSame('tel:+41441234567', $this->render('{{ tel_href(phone) }}', ['phone' => json_encode($values['phone'])]), 'JSON text as SQL storage gives it');
     }
 

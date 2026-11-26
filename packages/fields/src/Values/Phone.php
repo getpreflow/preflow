@@ -16,8 +16,11 @@ use Preflow\Validation\Rules\Phone as PhoneRule;
  *
  * The normalization is small and has no library (e164()):
  *
- * 1. a number with a leading "+" keeps its digits ("+41 44 123 45 67" gives "+41441234567");
- * 2. a leading "00" is the same as "+" ("0041 44 …" gives "+4144 …");
+ * 1. a number with a leading "+" keeps its digits ("+41 44 123 45 67" gives "+41441234567"); a
+ *    "(0)" directly after the country code is the national trunk 0 written for people and is
+ *    dropped ("+41 (0)44 123 45 67" gives "+41441234567"); a bare 0 elsewhere stays (Italy: "+39 06 …");
+ * 2. a leading "00" is the same as "+" ("0041 44 …" gives "+4144 …"). A "+" or "00" number has at
+ *    least 7 digits after it (service numbers are written without "+");
  * 3. any other number is national: it gets the calling code of the field's default region
  *    (REGIONS, below), after dropping the one leading "0" that regions with a trunk prefix write
  *    ("044 123 45 67" with CH gives "+41441234567"; Italy keeps its 0). A US or Canadian number of
@@ -41,7 +44,7 @@ final readonly class Phone
      * leading "0"]. Add none to a site's data: a number of another country is typed with "+".
      */
     public const array REGIONS = [
-        'CH' => ['41', true], 'LI' => ['423', true], 'DE' => ['49', true], 'AT' => ['43', true],
+        'CH' => ['41', true], 'LI' => ['423', false], 'DE' => ['49', true], 'AT' => ['43', true],
         'FR' => ['33', true], 'IT' => ['39', false], 'ES' => ['34', false], 'PT' => ['351', false],
         'NL' => ['31', true], 'BE' => ['32', true], 'LU' => ['352', false], 'GB' => ['44', true],
         'IE' => ['353', true], 'DK' => ['45', false], 'SE' => ['46', true], 'NO' => ['47', false],
@@ -51,6 +54,12 @@ final readonly class Phone
 
     /** A national number with up to this many digits is a service number (no E.164 form). */
     private const int SERVICE_DIGITS = 5;
+
+    /** A number written with "+" or "00" has at least this many digits after it. */
+    private const int INTERNATIONAL_DIGITS = 7;
+
+    /** The separators of PhoneRule: space, no-break spaces, - . / */
+    private const string SEPARATORS = ' \x{00A0}\x{202F}.\/-';
 
     public function __construct(
         public string $asTyped,
@@ -116,22 +125,29 @@ final readonly class Phone
         return self::read($typed, $region)[1];
     }
 
+    /** "+41 (0)44 …" as "+41 44 …": the "(0)" that directly follows the country code of an international number. */
+    private static function withoutTrunkZero(string $typed): string
+    {
+        $sep = '[' . self::SEPARATORS . ']*';
+        $dropped = preg_replace('~^(\s*(?:\+|00)' . $sep . '\d(?:' . $sep . '\d){0,2}' . $sep . ')\(0\)~u', '$1', $typed);
+
+        return is_string($dropped) ? $dropped : $typed;
+    }
+
     /**
      * @return array{0: string|null, 1: string|null} [E.164 form, problem message key]
      */
     private static function read(string $typed, ?string $region): array
     {
-        $dialable = PhoneRule::dialable($typed);
+        $dialable = PhoneRule::dialable(self::withoutTrunkZero($typed));
         if ($dialable === null) {
             return [null, 'validation.phone'];
         }
-        if (str_starts_with($dialable, '+')) {
-            return [$dialable, null];
-        }
-        if (str_starts_with($dialable, '00') && strlen($dialable) > 2) {
-            $digits = substr($dialable, 2);
+        if (str_starts_with($dialable, '+') || str_starts_with($dialable, '00')) {
+            $digits = ltrim($dialable, '+');
+            $digits = str_starts_with($dialable, '+') ? $digits : substr($digits, 2);
 
-            return strlen($digits) <= 15 ? ['+' . $digits, null] : [null, 'validation.phone'];
+            return strlen($digits) >= self::INTERNATIONAL_DIGITS && strlen($digits) <= 15 ? ['+' . $digits, null] : [null, 'validation.phone'];
         }
         if (strlen($dialable) <= self::SERVICE_DIGITS) {
             return [null, null];

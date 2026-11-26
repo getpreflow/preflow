@@ -57,6 +57,7 @@ final readonly class ColorOptions
     public static function check(array $config): void
     {
         FieldOptions::refuseTranslatable('color', $config);
+        FieldOptions::refuseNested('color', $config, ['palette', 'palette_only']);
         if (array_key_exists('palette', $config)) {
             $palette = $config['palette'];
             if (!is_array($palette) || $palette === []) {

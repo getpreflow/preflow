@@ -31,7 +31,6 @@ return [
     'color_palette' => '제공된 색상 중에서 선택하세요: :values.',
     'json' => '올바른 JSON이어야 합니다. 예: {"name": "value"} 또는 [1, 2, 3].',
     'phone_region' => '이 번호의 국가를 알 수 없습니다. +와 국가 번호로 시작하세요. 예: +41 44 123 45 67.',
-    'code_language' => '언어는 php나 javascript 같은 짧은 이름이어야 합니다(영문자, 숫자 및 + # . _ -).',
     'link' => [
         'kind' => '링크가 가리킬 대상을 선택하세요: :kinds.',
         'target' => '링크가 가리킬 대상을 선택하거나 입력하세요.',

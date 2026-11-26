@@ -38,6 +38,7 @@ final readonly class PhoneOptions
     public static function check(array $config): void
     {
         FieldOptions::refuseTranslatable('phone', $config);
+        FieldOptions::refuseNested('phone', $config, ['default_region']);
         if (!array_key_exists('default_region', $config)) {
             return;
         }

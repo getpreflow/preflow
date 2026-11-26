@@ -21,9 +21,8 @@ final class ContactCardBlock
     #[BlockField(type: 'color', label: 'Accent', config: ['palette' => ['Brand red' => '#c00000', 'Sky' => '#0a5ca8'], 'palette_only' => true])]
     public ?string $accent = null;
 
-    /** @var array<string, mixed>|null */
-    #[BlockField(type: 'code', label: 'Snippet', config: ['languages' => ['php', 'html']])]
-    public ?array $snippet = null;
+    #[BlockField(type: 'code', label: 'Snippet', config: ['language' => 'php'])]
+    public ?string $snippet = null;
 
     #[BlockField(type: 'json', label: 'Settings')]
     public ?string $settings = null;

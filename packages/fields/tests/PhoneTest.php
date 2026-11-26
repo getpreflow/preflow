@@ -20,14 +20,25 @@ final class PhoneTest extends TestCase
     {
         yield 'with + and spaces' => ['+41 44 123 45 67', null, '+41441234567'];
         yield 'with 00' => ['0041 44 123 45 67', null, '+41441234567'];
+        yield '(0) after the country code, CH' => ['+41 (0)44 123 45 67', null, '+41441234567'];
+        yield '(0) after 00, CH' => ['0041 (0)44 123 45 67', null, '+41441234567'];
+        yield '(0) after the country code, DE' => ['+49 (0)30 1234567', null, '+49301234567'];
+        yield '(0) with spaces, AT' => ['+43 (0) 1 234 5678', null, '+4312345678'];
+        yield '(0) after the country code, GB' => ['+44 (0)20 7946 0958', null, '+442079460958'];
+        yield 'a bare 0 after + stays (Italy)' => ['+39 06 1234 5678', null, '+390612345678'];
+        yield 'a (0) later in the number stays as typed' => ['+41 44 (0) 123 45 67', null, '+414401234567'];
         yield 'national, CH' => ['044 123 45 67', 'CH', '+41441234567'];
         yield 'national in brackets, DE' => ['(030) 1234567', 'DE', '+49301234567'];
         yield 'a lower-case region' => ['044 123 45 67', 'ch', '+41441234567'];
         yield 'Italy keeps its zero' => ['06 1234 5678', 'IT', '+390612345678'];
+        yield 'LI has no trunk zero' => ['0 232 12 34', 'LI', '+42302321234'];
         yield 'no trunk zero, ES' => ['612 345 678', 'ES', '+34612345678'];
         yield 'US 10 digits' => ['(555) 010-9999', 'US', '+15550109999'];
         yield 'US with the 1' => ['1 555 010 9999', 'US', '+15550109999'];
         yield 'non-breaking spaces' => ["+41\u{00A0}44\u{202F}123 45 67", null, '+41441234567'];
+        yield 'too few digits after +' => ['+123', null, null];
+        yield 'too few digits after 00' => ['001', null, null];
+        yield 'six digits after + are too few' => ['+41 44 12', null, null];
         yield 'a service number has no E.164 form' => ['112', 'CH', null];
         yield 'a service number without a region' => ['1414', null, null];
         yield 'national without a region' => ['044 123 45 67', null, null];
@@ -52,6 +63,9 @@ final class PhoneTest extends TestCase
         $this->assertSame('validation.phone', Phone::problem('call me', 'CH'));
         $this->assertSame('validation.phone', Phone::problem('012345678901234', 'CH'));
         $this->assertSame('validation.phone', Phone::problem('00' . str_repeat('1', 16)));
+        $this->assertSame('validation.phone', Phone::problem('+123'), 'service numbers are written without +');
+        $this->assertSame('validation.phone', Phone::problem('0041 44'));
+        $this->assertNull(Phone::problem('+41 44 123 4'), 'enough digits after +');
     }
 
     public function test_the_stored_shape_has_both_keys_and_reads_back(): void
@@ -120,6 +134,26 @@ final class PhoneTest extends TestCase
         }
     }
 
+    public function test_a_stored_e164_must_be_what_the_number_normalizes_to(): void
+    {
+        $this->assertTrue($this->check(['as_typed' => '044 123 45 67', 'e164' => '+41441234567'], ['default_region' => 'CH']));
+        $this->assertTrue($this->check(['as_typed' => '+41 44 123 45 67', 'e164' => '+41441234567']), 'international: no default region needed');
+        $this->assertTrue($this->check(['as_typed' => '+41 (0)44 123 45 67', 'e164' => '+41441234567']));
+        $this->assertTrue($this->check(['as_typed' => '112', 'e164' => null]));
+        foreach ([
+            [['as_typed' => '044 123 45 67', 'e164' => '+49441234567'], ['default_region' => 'CH']],
+            [['as_typed' => '+41 44 123 45 67', 'e164' => '+41441234568'], []],
+            [['as_typed' => '112', 'e164' => '+41112'], ['default_region' => 'CH']],
+            [['as_typed' => '+41 (0)44 123 45 67', 'e164' => '+410441234567'], []],
+        ] as [$value, $config]) {
+            $message = $this->check($value, $config);
+            $this->assertInstanceOf(Message::class, $message, json_encode($value) ?: '');
+            $this->assertSame('validation.phone', $message->key);
+        }
+        // National without a region cannot be matched: still refused, naming the fix.
+        $this->assertSame('validation.phone_region', $this->check(['as_typed' => '044 123 45 67', 'e164' => '+41441234567'])->key ?? null);
+    }
+
     public function test_options_read_and_check_the_default_region(): void
     {
         $this->assertSame('CH', PhoneOptions::fromConfig(['default_region' => 'ch'])->defaultRegion);
@@ -129,6 +163,12 @@ final class PhoneTest extends TestCase
 
         $this->expectExceptionMessage('"default_region" is "Switzerland"; use one of CH, LI, DE');
         PhoneOptions::check(['default_region' => 'Switzerland']);
+    }
+
+    public function test_a_nested_phone_object_is_refused_naming_where_the_option_goes(): void
+    {
+        $this->expectExceptionMessage('"phone" holds options, but a phone field takes them at its top level, next to "type": move "default_region" out of "phone".');
+        PhoneOptions::check(['phone' => ['default_region' => 'CH']]);
     }
 
     public function test_a_phone_field_cannot_be_translatable(): void

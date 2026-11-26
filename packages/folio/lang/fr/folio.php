@@ -597,7 +597,7 @@ return [
             'broken' => 'La page liée n’est plus disponible.',
             'broken_hint' => 'Choisissez-en une autre ou supprimez le lien.',
         ],
-        // Les champs téléphone, couleur et code (0.91 ; Phone, Color et Code de preflow/fields).
+        // Les champs téléphone et couleur (0.91 ; Phone et Color de preflow/fields).
         'phone' => [
             'dialled' => 'Numéro composé : :number.',
         ],
@@ -608,11 +608,6 @@ return [
             'palette' => 'Couleurs de la palette',
             'none' => 'Aucune couleur',
             'outside' => ':color (hors de la palette)',
-        ],
-        'code' => [
-            'language' => 'Langage',
-            'none' => 'Aucun langage',
-            'code' => 'Code',
         ],
         'view' => 'Vue',
         // Le champ de tags (0.77).

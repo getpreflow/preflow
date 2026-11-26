@@ -597,7 +597,7 @@ return [
             'broken' => 'Verlinkte Seite nicht mehr verfügbar.',
             'broken_hint' => 'Wähle eine andere oder entferne den Link.',
         ],
-        // Die Felder Telefon, Farbe und Code (0.91; Phone, Color und Code aus preflow/fields).
+        // Die Felder Telefon und Farbe (0.91; Phone und Color aus preflow/fields).
         'phone' => [
             'dialled' => 'Gewählt wird :number.',
         ],
@@ -608,11 +608,6 @@ return [
             'palette' => 'Farben der Palette',
             'none' => 'Keine Farbe',
             'outside' => ':color (nicht in der Palette)',
-        ],
-        'code' => [
-            'language' => 'Sprache',
-            'none' => 'Keine Sprache',
-            'code' => 'Code',
         ],
         'view' => 'Ansicht',
         // Das Tag-Feld (0.77).

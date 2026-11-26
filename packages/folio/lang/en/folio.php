@@ -614,7 +614,7 @@ return [
             'broken' => 'Linked page no longer available.',
             'broken_hint' => 'Choose another one or remove the link.',
         ],
-        // The phone, colour and code fields (0.91; preflow/fields' Phone, Color and Code).
+        // The phone and colour fields (0.91; preflow/fields' Phone and Color).
         'phone' => [
             'dialled' => 'Dialled as :number.',
         ],
@@ -625,11 +625,6 @@ return [
             'palette' => 'Colours of the palette',
             'none' => 'No colour',
             'outside' => ':color (not in the palette)',
-        ],
-        'code' => [
-            'language' => 'Language',
-            'none' => 'No language',
-            'code' => 'Code',
         ],
         'view' => 'View',
         // The tag field (0.77).

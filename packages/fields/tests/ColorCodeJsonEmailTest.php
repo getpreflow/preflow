@@ -8,13 +8,10 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Fields\CodeOptions;
 use Preflow\Fields\ColorOptions;
 use Preflow\Fields\FieldOptions;
-use Preflow\Fields\Rules\ValidCode;
 use Preflow\Fields\Values\Code;
 use Preflow\Fields\Values\Color;
 use Preflow\Fields\Values\Email;
 use Preflow\Fields\Values\JsonText;
-use Preflow\Validation\Message;
-use Preflow\Validation\ValidationContext;
 
 /** The values and options of the email, colour, code and JSON fields (0.91). */
 final class ColorCodeJsonEmailTest extends TestCase
@@ -70,49 +67,35 @@ final class ColorCodeJsonEmailTest extends TestCase
         FieldOptions::check('color', $config);
     }
 
-    public function test_code_is_stored_with_its_language_and_output_escaped(): void
+    public function test_code_is_plain_text_and_output_escaped_with_the_fields_language(): void
     {
-        $code = new Code("echo '<b>' . \$x;", 'php');
+        $code = Code::fromStored("echo '<b>' . \$x;", 'php');
 
-        $this->assertSame(['code' => "echo '<b>' . \$x;", 'language' => 'php'], $code->toStored());
-        $this->assertEquals($code, Code::fromStored($code->toStored()));
-        $this->assertEquals($code, Code::fromStored(json_encode($code->toStored())));
-        $this->assertSame('<pre><code class="language-php">echo &#039;&lt;b&gt;&#039; . $x;</code></pre>', $code->html());
-        $this->assertSame('<pre><code>a &amp; b</code></pre>', (new Code('a & b'))->html());
-        $this->assertSame('<pre><code>x</code></pre>', (new Code('x', '"><script>'))->html(), 'a language that is no short name is no class');
-        $this->assertSame(['code' => 'plain', 'language' => null], Code::fromStored('plain')?->toStored(), 'plain text is code without a language');
-        foreach ([null, '', '{}', ['language' => 'php'], ['code' => ''], ['code' => 5]] as $none) {
+        $this->assertSame("echo '<b>' . \$x;", $code?->toStored(), 'stored as the text itself');
+        $this->assertSame('<pre><code class="language-php">echo &#039;&lt;b&gt;&#039; . $x;</code></pre>', $code?->html());
+        $this->assertSame('<pre><code>a &amp; b</code></pre>', Code::fromStored('a & b')?->html(), 'no language, no class');
+        $this->assertSame('<pre><code>x</code></pre>', Code::fromStored('x', '"><script>')?->html(), 'a language that is no short name is no class');
+        $this->assertSame('{ "a": 1 }', Code::fromStored('{ "a": 1 }')?->toStored(), 'code that starts with a brace is code');
+        foreach ([null, '', ['code' => 'x'], 5] as $none) {
             $this->assertNull(Code::fromStored($none), json_encode($none) ?: '');
         }
     }
 
-    /** @param array<string, mixed> $config */
-    private function checkCode(mixed $value, array $config = []): true|Message
+    public function test_the_language_is_an_option_of_the_field(): void
     {
-        return (new ValidCode(CodeOptions::fromConfig($config)))->validate($value, new ValidationContext('snippet', []));
-    }
-
-    public function test_the_code_check_looks_at_the_language(): void
-    {
-        $this->assertTrue($this->checkCode(['code' => 'x', 'language' => 'c++']));
-        $this->assertTrue($this->checkCode(['code' => 'x', 'language' => null]));
-        $this->assertTrue($this->checkCode('plain code'));
-        $this->assertTrue($this->checkCode(['code' => 'x', 'language' => 'php'], ['languages' => ['php', 'html']]));
-        $this->assertTrue($this->checkCode(null));
-
-        $this->assertSame('The language must be a short name such as php or javascript (letters, digits and + # . _ -).', (string) $this->checkCode(['code' => 'x', 'language' => 'a b"c']));
-        $this->assertSame('Must be one of: php, html.', (string) $this->checkCode(['code' => 'x', 'language' => 'ruby'], ['languages' => ['php', 'html']]));
-        $this->assertSame('validation.required', $this->checkCode(['code' => '', 'language' => 'php'])->key ?? null);
-        $this->assertSame('validation.code_language', $this->checkCode(['code' => 'x', 'language' => 5])->key ?? null);
+        $this->assertSame('php', CodeOptions::fromConfig(['language' => 'php'])->language);
+        $this->assertNull(CodeOptions::fromConfig([])->language);
+        $this->assertNull(CodeOptions::fromConfig(['language' => 'a b'])->language);
+        FieldOptions::check('code', ['language' => 'c++']);
+        FieldOptions::check('code', []);
     }
 
     public function test_a_code_config_mistake_names_what_to_write(): void
     {
         foreach ([
-            [['languages' => 'php'], '"languages" must be a list such as ["php", "javascript"].'],
-            [['languages' => ['php', 'my lang']], '"languages" lists "my lang"; use short names such as php, javascript or c++'],
-            [['languages' => ['php'], 'default_language' => 'html'], '"default_language" is "html", which "languages" does not list; add it there or choose one of: php.'],
-            [['default_language' => 5], '"default_language" is 5; use a short name such as php.'],
+            [['language' => 5], '"language" is 5; use a short name such as php, javascript or c++'],
+            [['language' => 'my lang'], '"language" is "my lang"; use a short name'],
+            [['code' => ['language' => 'php']], '"code" holds options, but a code field takes them at its top level, next to "type": move "language" out of "code".'],
             [['translatable' => true], 'A code field cannot be translatable'],
         ] as [$config, $message]) {
             try {
@@ -122,7 +105,12 @@ final class ColorCodeJsonEmailTest extends TestCase
                 $this->assertStringContainsString($message, $e->getMessage());
             }
         }
-        FieldOptions::check('code', ['languages' => ['php', 'html'], 'default_language' => 'html']);
+    }
+
+    public function test_a_nested_colour_object_is_refused_naming_where_the_option_goes(): void
+    {
+        $this->expectExceptionMessage('"color" holds options, but a color field takes them at its top level, next to "type": move "palette", "palette_only" out of "color".');
+        FieldOptions::check('color', ['color' => ['palette_only' => true]]);
     }
 
     public function test_json_is_kept_as_written_and_decoded_on_demand(): void

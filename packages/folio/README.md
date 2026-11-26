@@ -1077,13 +1077,13 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   E.164 form, using the field's `"default_region": "CH"` for a number without `+` (the editor says
   "Dialled as +41441234567."); `color` is a hex text with the browser's picker and the site's
   `"palette"` as swatches to click, or with `"palette_only": true` a choice of the palette's colours;
-  `code` is a monospace textarea with the language (a select of `"languages"`, starting with
-  `"default_language"`, or a text input); `json` is a monospace textarea. Their checks are the
+  `code` is a monospace textarea, stored as plain text (found by loose search), with the field's
+  `"language": "php"` shown beside the label; `json` is a monospace textarea. Their checks are the
   core's and apply in blocks too, so a Folio input returns none of its own. A boot error names the
   field when an option is wrong or `"translatable"` is set (none of them is translatable). In a
   block, the options go in the field's `config` (`config: ['default_region' => 'CH']`). List cells
-  show the number as typed, the colour with a swatch, code on one line with its language, and
-  JSON's first characters.
+  show the number as typed, the colour as hex text (list cells are plain text: no swatch), code on
+  one line, and JSON's first characters.
 - `asset`: each chosen file is a card (a 16:10 thumbnail with the focal point, the name, kind and
   size, "No alt text yet" for an image without one); an empty field is a dashed drop zone. A file
   dropped anywhere on the field, or chosen with its Upload button, is uploaded to the media library

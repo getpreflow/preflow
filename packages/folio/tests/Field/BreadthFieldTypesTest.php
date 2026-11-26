@@ -30,7 +30,8 @@ final class BreadthFieldTypesTest extends TestCase
     public function test_capabilities_and_no_rules_of_their_own(): void
     {
         $this->assertInstanceOf(SearchableText::class, new EmailFieldType(), 'an email is text: loose search covers it');
-        foreach ([new PhoneFieldType(), new ColorFieldType(), new CodeFieldType(), new JsonFieldType()] as $type) {
+        $this->assertInstanceOf(SearchableText::class, new CodeFieldType(), 'code is plain text: loose search covers it');
+        foreach ([new PhoneFieldType(), new ColorFieldType(), new JsonFieldType()] as $type) {
             $this->assertNotInstanceOf(SearchableText::class, $type, $type->key() . ' is not searched');
         }
         foreach ([new EmailFieldType(), new PhoneFieldType(), new ColorFieldType(), new CodeFieldType(), new JsonFieldType()] as $type) {
@@ -93,7 +94,7 @@ final class BreadthFieldTypesTest extends TestCase
 
         $this->assertSame('#c00000', $type->renderFrontend('#C00000', []));
         $this->assertSame('', $type->renderFrontend(null, []));
-        $this->assertSame('<svg class="folio-swatch folio-swatch-inline" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect width="24" height="24" rx="5" fill="#c00000"/></svg>#c00000', $type->renderAdmin('#c00000', []));
+        $this->assertSame('#c00000', $type->renderAdmin('#C00000', []), 'list cells are plain text: no swatch');
     }
 
     public function test_color_editor_with_a_palette_offers_swatches_that_fill_the_text(): void
@@ -128,36 +129,33 @@ final class BreadthFieldTypesTest extends TestCase
         $this->assertStringContainsString('#123456 (not in the palette)', $outside);
     }
 
-    public function test_code_input_posts_code_and_language(): void
+    public function test_code_is_a_plain_text_input_that_shows_the_fields_language(): void
     {
         $type = new CodeFieldType();
-        $this->assertSame(['code' => "a\nb", 'language' => 'php'], $type->normalizeInput(['code' => "a\r\nb", 'language' => ' php '], []));
-        $this->assertSame(['code' => 'x', 'language' => null], $type->normalizeInput(['code' => 'x', 'language' => ''], []));
-        $this->assertNull($type->normalizeInput(['code' => " \n ", 'language' => 'php'], []), 'a language without code is no value');
+        $this->assertSame("a\nb", $type->normalizeInput("a\r\nb", []));
+        $this->assertSame("\n  x", $type->normalizeInput("\n  x", []), 'a leading line break is code');
+        $this->assertNull($type->normalizeInput(" \n ", []));
         $this->assertNull($type->normalizeInput(null, []));
-        $this->assertSame(['code' => 'plain', 'language' => null], $type->normalizeInput('plain', []));
 
-        $free = $type->renderEditor(new FieldContext('snippet', label: 'Snippet', value: ['code' => "<b>\n", 'language' => 'php']));
-        $this->assertStringContainsString('name="snippet[language]" value="php"', $free);
-        $this->assertStringContainsString('name="snippet[code]" class="folio-input-mono"', $free);
-        $this->assertStringContainsString('&lt;b&gt;', $free, 'the code is escaped in the textarea');
+        $html = $type->renderEditor(new FieldContext('snippet', label: 'Snippet', value: "<b>\n", config: ['language' => 'php']));
+        $this->assertStringContainsString('<textarea name="snippet" id="snippet" class="folio-input-mono"', $html);
+        $this->assertStringContainsString('&lt;b&gt;', $html, 'the code is escaped in the textarea');
+        $this->assertStringContainsString('<span class="folio-code-language">php</span>', $html);
+        $this->assertStringNotContainsString('folio-code-language', $type->renderEditor(new FieldContext('snippet', value: 'x')), 'no language, no label');
+        $this->assertStringNotContainsString('[language]', $html, 'the language is not posted: it is the field\'s');
 
-        $listed = $type->renderEditor(new FieldContext('snippet', value: null, config: ['languages' => ['php', 'html'], 'default_language' => 'html']));
-        $this->assertStringContainsString('<select id="folio-code-snippet-language" name="snippet[language]">', $listed);
-        $this->assertStringContainsString('<option value="html" selected>html</option>', $listed, 'a new value starts with the default language');
-        $this->assertStringContainsString('<option value="">No language</option>', $listed);
-
-        $legacy = $type->renderEditor(new FieldContext('snippet', value: ['code' => 'x', 'language' => 'ruby'], config: ['languages' => ['php']]));
-        $this->assertStringContainsString('<option value="ruby" selected>ruby</option>', $legacy, 'a stored language the field no longer offers stays visible');
+        $this->assertStringContainsString("\n\n  x</textarea>", $type->renderEditor(new FieldContext('snippet', value: "\n  x")), 'a guard line break, so a leading one survives the parser');
+        $this->assertStringContainsString("\n{&quot;a&quot;: 1}</textarea>", (new JsonFieldType())->renderEditor(new FieldContext('settings', value: '{"a": 1}')), 'JSON: the same guard line break (its text is trimmed, so none of its own survives)');
     }
 
     public function test_code_and_json_output_is_escaped(): void
     {
         $code = new CodeFieldType();
-        $this->assertSame('<pre><code class="language-html">&lt;script&gt;x&lt;/script&gt;</code></pre>', $code->renderFrontend(['code' => '<script>x</script>', 'language' => 'html'], []));
+        $this->assertSame('<pre><code class="language-html">&lt;script&gt;x&lt;/script&gt;</code></pre>', $code->renderFrontend('<script>x</script>', ['language' => 'html']));
+        $this->assertSame('<pre><code>a</code></pre>', $code->renderFrontend('a', []));
         $this->assertSame('', $code->renderFrontend(null, []));
-        $this->assertSame('php: echo 1; echo 2;', $code->renderAdmin(['code' => "echo 1;\necho 2;", 'language' => 'php'], []), 'one line in a list cell');
-        $this->assertSame(['code' => 'x', 'language' => 'php'], $code->fromStorage('{"code":"x","language":"php"}'));
+        $this->assertSame('echo 1; echo 2;', $code->renderAdmin("echo 1;\necho 2;", []), 'one line in a list cell');
+        $this->assertSame('x', $code->fromStorage('x'));
 
         $json = new JsonFieldType();
         $this->assertSame('<pre><code class="language-json">{&quot;a&quot;: &quot;&lt;b&gt;&quot;}</code></pre>', $json->renderFrontend('{"a": "<b>"}', []));
@@ -189,7 +187,9 @@ final class BreadthFieldTypesTest extends TestCase
         yield 'json translatable' => [['type' => 'json', 'translatable' => true], 'Type "thing": field "f": A json field cannot be translatable; it holds the same value in every language. Remove "translatable".'];
         yield 'palette_only alone' => [['type' => 'color', 'palette_only' => true], 'Type "thing": field "f": "palette_only" needs a "palette" naming the colours that are allowed.'];
         yield 'palette colour' => [['type' => 'color', 'palette' => ['red']], 'Type "thing": field "f": "palette" lists "red"; write each colour as #rrggbb (or #rrggbbaa).'];
-        yield 'code languages' => [['type' => 'code', 'languages' => ['php', 'my lang']], 'Type "thing": field "f": "languages" lists "my lang"; use short names such as php, javascript or c++ (letters, digits and + # . _ -).'];
+        yield 'code language' => [['type' => 'code', 'language' => 'my lang'], 'Type "thing": field "f": "language" is "my lang"; use a short name such as php, javascript or c++'];
+        yield 'nested colour options' => [['type' => 'color', 'color' => ['palette_only' => true]], 'Type "thing": field "f": "color" holds options, but a color field takes them at its top level, next to "type": move "palette", "palette_only" out of "color".'];
+        yield 'nested phone options' => [['type' => 'phone', 'phone' => ['default_region' => 'CH']], 'Type "thing": field "f": "phone" holds options, but a phone field takes them at its top level, next to "type": move "default_region" out of "phone".'];
     }
 
     /** @param array<string, mixed> $field */
@@ -216,7 +216,7 @@ final class BreadthFieldTypesTest extends TestCase
         mkdir($dir);
         file_put_contents($dir . '/thing.json', (string) json_encode(['key' => 'thing', 'fields' => [
             'a' => ['type' => 'email'], 'b' => ['type' => 'phone', 'default_region' => 'ch'], 'c' => ['type' => 'color', 'palette' => ['#c00000'], 'palette_only' => true],
-            'd' => ['type' => 'code', 'languages' => ['php'], 'default_language' => 'php'], 'e' => ['type' => 'json'],
+            'd' => ['type' => 'code', 'language' => 'php'], 'e' => ['type' => 'json'],
         ]]));
         try {
             $this->assertCount(1, (new TypeCatalog($dir))->all());

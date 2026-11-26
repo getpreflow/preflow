@@ -25,7 +25,7 @@ use Preflow\View\TemplateFunctionDefinition;
  *
  * - mailto_href(value): an email field's `mailto:` address (Email::href()), or null;
  * - tel_href(value): a phone field's `tel:` address (Phone::href(): the E.164 form, else the digits), or null;
- * - code_html(value): a code field as `<pre><code class="language-…">` with the code escaped (Code::html()), '' for none;
+ * - code_html(value, language = null): a code field (language: its field's "language" option, for the class) as `<pre><code class="language-…">` with the code escaped (Code::html()), '' for none;
  * - json_data(value): a json field decoded (array, text, number), null when empty or invalid.
  *
  * value is the field's value as a template gets it (the stored object, or JSON text of it). The
@@ -68,7 +68,7 @@ final class FieldsExtensionProvider implements TemplateExtensionProvider
             ),
             new TemplateFunctionDefinition(
                 name: 'code_html',
-                callable: static fn (mixed $value): string => Code::fromStored($value)?->html() ?? '',
+                callable: static fn (mixed $value, ?string $language = null): string => Code::fromStored($value, $language)?->html() ?? '',
                 isSafe: true,
             ),
             new TemplateFunctionDefinition(

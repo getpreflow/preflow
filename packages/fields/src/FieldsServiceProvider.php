@@ -11,7 +11,6 @@ use Preflow\Data\DataManager;
 use Preflow\Data\FieldKinds;
 use Preflow\Data\Locales;
 use Preflow\Data\Schema\ColumnKind;
-use Preflow\Fields\Rules\ValidCode;
 use Preflow\Fields\Rules\ValidLink;
 use Preflow\Fields\Rules\ValidPhone;
 use Preflow\Validation\Rules\Color;
@@ -86,9 +85,9 @@ final class FieldsServiceProvider extends ServiceProvider
             return [new Color($options->paletteOnly ? $options->values() : null)];
         });
 
-        // code: an object ({code, language}), JSON text in an SQL column; not searchable, like a link.
+        // code: plain text (the language is the field's setting), so loose search covers it; nothing to check.
         $kinds->column('code', ColumnKind::Text);
-        $kinds->rules('code', static fn (array $config): array => [new ValidCode(CodeOptions::fromConfig($config))]);
+        $kinds->text('code');
 
         // json: JSON as text, as the editor wrote it; not searchable.
         $kinds->column('json', ColumnKind::Text);

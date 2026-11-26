@@ -31,7 +31,6 @@ return [
     'color_palette' => 'Kies een van de aangeboden kleuren: :values.',
     'json' => 'Moet geldige JSON zijn, bijv. {"naam": "waarde"} of [1, 2, 3].',
     'phone_region' => 'Het land van dit nummer is niet te herkennen: begin met + en de landcode, bijv. +41 44 123 45 67.',
-    'code_language' => 'De taal moet een korte naam zijn zoals php of javascript (letters, cijfers en + # . _ -).',
     'link' => [
         'kind' => 'Kies waarnaar de link verwijst: :kinds.',
         'target' => 'Kies of vul in waarnaar de link verwijst.',

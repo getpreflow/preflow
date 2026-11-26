@@ -152,19 +152,14 @@ final class ColorFieldType implements FieldType, DisplaysInAdmin, HasColumnKind
     }
 
     /**
-     * A swatch and the hex text (no space between: a list cell reads as the plain hex text).
+     * The hex text. List cells and read-only fields show plain text (markup is stripped there), so
+     * no swatch; the editor has them.
      *
      * @param array<string, mixed> $config
      */
     public function renderAdmin(mixed $value, array $config): string
     {
-        $color = Color::fromStored($value);
-        if ($color === null) {
-            return '';
-        }
-        $e = htmlspecialchars($color->hex, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-
-        return self::swatch($color->hex, 'folio-swatch-inline') . $e;
+        return htmlspecialchars(Color::fromStored($value)->hex ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 
     public function rules(array $config): array

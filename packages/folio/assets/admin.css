@@ -4464,12 +4464,8 @@ code.folio-redirect-to { color: var(--c-accent-text); }
 .folio-color-swatches, .folio-color-choices { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .folio-swatch { display: inline-block; width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--c-border-strong); vertical-align: middle; flex: none; }
 .folio-swatch-none { background: repeating-linear-gradient(45deg, transparent 0 4px, var(--c-border-strong) 4px 5px); }
-.folio-swatch-inline { width: 14px; height: 14px; border-radius: 4px; margin-right: 6px; }
 .folio-swatch-button { display: inline-flex; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 6px; }
 .folio-swatch-button:focus-visible, .folio-swatch-choice input:focus-visible + .folio-swatch { outline: 2px solid var(--c-accent); outline-offset: 2px; }
 .folio-swatch-choice { display: inline-flex; align-items: center; gap: 6px; font-weight: normal; }
 .folio-swatch-choice input:checked + .folio-swatch { outline: 2px solid var(--c-accent); outline-offset: 2px; }
-.folio-code { display: grid; gap: 10px; }
-.folio-code > legend { margin-bottom: 4px; }
-.folio-code .form-group { margin: 0; }
-.folio-code textarea { width: 100%; white-space: pre; overflow: auto; }
+.folio-code-language { font-family: var(--font-mono); font-size: .8em; padding: 1px 6px; border-radius: 4px; background: var(--c-accent-soft); color: var(--c-accent-text); }

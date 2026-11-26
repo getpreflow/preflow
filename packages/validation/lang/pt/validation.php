@@ -31,7 +31,6 @@ return [
     'color_palette' => 'Escolha uma das cores oferecidas: :values.',
     'json' => 'Deve ser JSON válido, p. ex. {"nome": "valor"} ou [1, 2, 3].',
     'phone_region' => 'Não é possível saber a que país pertence este número: comece-o com + e o indicativo do país, p. ex. +41 44 123 45 67.',
-    'code_language' => 'A linguagem deve ser um nome curto como php ou javascript (letras, dígitos e + # . _ -).',
     'link' => [
         'kind' => 'Escolha para onde o link aponta: :kinds.',
         'target' => 'Escolha ou digite para onde o link aponta.',

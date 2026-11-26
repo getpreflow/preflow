@@ -8,22 +8,18 @@ use Preflow\Fields\CodeOptions;
 use Preflow\Fields\Values\Code;
 use Preflow\Folio\Field\DisplaysInAdmin;
 use Preflow\Folio\Field\FieldContext;
-use Preflow\Folio\Field\FieldType;
-use Preflow\Folio\FolioText;
+use Preflow\Folio\Field\SearchableText;
 
 /**
- * Code (0.91; the value, check and storage are preflow/fields': Values\Code, CodeOptions, ValidCode).
- * A monospace textarea and the language: a select of the field's "languages", or a text input
- * (with the languages as suggestions) when it names none. Stored as {code, language}, null for
- * no code. Structured, so not found by loose search (as a link is not).
- *
- * Posted: {name}[code], {name}[language]. The page gets `<pre><code class="language-php">` with
- * the code escaped (code_html(value) in a template).
- *
- * The check is the core's (ValidCode through FieldKinds::rules()): rules() adds none.
+ * Code (0.91; the value is preflow/fields' Code, the option CodeOptions). A monospace textarea.
+ * The code is stored as plain text, so loose search finds it. Its language is a setting of the
+ * field (`"language": "php"`), not of each value: the editor shows it beside the label, and the page
+ * gets `<pre><code class="language-php">` with the code escaped (`code_html(value, "php")` in a
+ * template). Nothing to check: any text is code.
  */
-final class CodeFieldType implements FieldType, DisplaysInAdmin
+final class CodeFieldType extends AbstractScalarFieldType implements SearchableText, DisplaysInAdmin
 {
+    /** How much of the code a list cell shows. */
     private const int CELL = 80;
 
     public function key(): string
@@ -31,68 +27,44 @@ final class CodeFieldType implements FieldType, DisplaysInAdmin
         return 'code';
     }
 
-    public function renderEditor(FieldContext $ctx): string
+    protected function inputType(): string
     {
-        $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $options = CodeOptions::fromConfig($ctx->config);
-        $code = Code::fromStored($ctx->value);
-        $language = $code->language ?? ($code === null ? $options->defaultLanguage : null) ?? '';
-        $label = $ctx->label ?? ucfirst(str_replace('_', ' ', $ctx->name));
-        $id = 'folio-code-' . trim((string) preg_replace('/[^a-z0-9]+/i', '-', $ctx->name), '-');
-        $t = static fn (string $key): string => $e(FolioText::get('folio.fields.code.' . $key));
-        $hasError = $ctx->errors !== [];
-
-        $html = '<fieldset class="form-group folio-code' . ($hasError ? ' has-error' : '') . '">' . "\n";
-        $html .= '  <legend>' . $e($label) . ($ctx->required ? ' <span class="form-required">*</span>' : '') . '</legend>' . "\n";
-
-        $html .= '  <div class="form-group"><label for="' . $e($id) . '-language">' . $t('language') . '</label>';
-        if ($options->languages !== null) {
-            $html .= '<select id="' . $e($id) . '-language" name="' . $e($ctx->name) . '[language]"><option value=""' . ($language === '' ? ' selected' : '') . '>' . $t('none') . '</option>';
-            $offered = $options->languages;
-            if ($language !== '' && !in_array($language, $offered, true)) {
-                $offered[] = $language; // a stored language the field no longer offers stays visible (the check refuses it)
-            }
-            foreach ($offered as $choice) {
-                $html .= '<option value="' . $e($choice) . '"' . ($choice === $language ? ' selected' : '') . '>' . $e($choice) . '</option>';
-            }
-            $html .= '</select>';
-        } else {
-            $html .= '<input type="text" id="' . $e($id) . '-language" name="' . $e($ctx->name) . '[language]" value="' . $e($language) . '" placeholder="php" autocomplete="off" spellcheck="false" maxlength="32">';
-        }
-        $html .= '</div>' . "\n";
-
-        $html .= '  <div class="form-group"><label for="' . $e($id) . '-code">' . $t('code') . '</label>'
-            . '<textarea id="' . $e($id) . '-code" name="' . $e($ctx->name) . '[code]" class="folio-input-mono" rows="10" spellcheck="false" autocomplete="off" wrap="off">' . $e($code->code ?? (is_string($ctx->value) ? $ctx->value : '')) . '</textarea></div>' . "\n";
-
-        if ($ctx->help !== null && $ctx->help !== '') {
-            $html .= '  <small class="form-help">' . $e($ctx->help) . '</small>' . "\n";
-        }
-        if ($hasError) {
-            $html .= '  <div class="form-error">' . $e((string) $ctx->errors[0]) . '</div>' . "\n";
-        }
-
-        return $html . '</fieldset>';
+        return 'textarea';
     }
 
-    /**
-     * The submitted code and language: line breaks as "\n", the language trimmed; null when there
-     * is no code (a language without code is no value).
-     *
-     * @return array{code: string, language: string|null}|null
-     */
+    protected function editorAttrs(FieldContext $ctx): array
+    {
+        return ['class' => 'folio-input-mono', 'spellcheck' => 'false', 'autocomplete' => 'off', 'wrap' => 'off', 'rows' => '10'];
+    }
+
+    public function renderEditor(FieldContext $ctx): string
+    {
+        $language = CodeOptions::fromConfig($ctx->config)->language;
+        $options = [
+            'type' => 'textarea',
+            'value' => (string) (Code::fromStored($ctx->value)->code ?? ''),
+            'help' => $ctx->help ?? '',
+            'required' => $ctx->required,
+            'errors' => $ctx->errors,
+            'attrs' => $this->editorAttrs($ctx) + ($ctx->placeholder !== null ? ['placeholder' => $ctx->placeholder] : []),
+        ];
+        if ($ctx->label !== null) {
+            $options['label'] = $ctx->label;
+        }
+        if ($language === null) {
+            return $this->renderer->renderField($ctx->name, $options);
+        }
+        $aside = '<span class="folio-code-language">' . htmlspecialchars($language, ENT_QUOTES | ENT_HTML5, 'UTF-8') . '</span>';
+
+        return $this->renderDecorated($ctx->name, $options, static fn (string $input): string => $input, $aside);
+    }
+
+    /** The code with its line breaks as "\n"; null when it is empty. */
     public function normalizeInput(mixed $raw, array $config): mixed
     {
-        if (is_string($raw)) {
-            $raw = ['code' => $raw];
-        }
-        $input = is_array($raw) ? $raw : [];
-        $code = is_string($input['code'] ?? null) ? str_replace(["\r\n", "\r"], "\n", $input['code']) : '';
-        if (trim($code) === '') {
-            return null;
-        }
-        $language = is_string($input['language'] ?? null) ? trim($input['language']) : '';
+        $code = is_string($raw) ? str_replace(["\r\n", "\r"], "\n", $raw) : '';
 
-        return ['code' => $code, 'language' => $language === '' ? null : $language];
+        return trim($code) === '' ? null : $code;
     }
 
     public function toStorage(mixed $value): mixed
@@ -108,32 +80,18 @@ final class CodeFieldType implements FieldType, DisplaysInAdmin
     /** `<pre><code class="language-…">`, the code escaped. */
     public function renderFrontend(mixed $value, array $config): string
     {
-        return Code::fromStored($value)?->html() ?? '';
+        return Code::fromStored($value, CodeOptions::fromConfig($config)->language)?->html() ?? '';
     }
 
     /**
-     * The first line of the code with its language, on one line.
+     * The code on one line (list cells, read-only fields).
      *
      * @param array<string, mixed> $config
      */
     public function renderAdmin(mixed $value, array $config): string
     {
         $code = Code::fromStored($value);
-        if ($code === null) {
-            return '';
-        }
-        $text = mb_strimwidth((string) preg_replace('/\s+/', ' ', $code->code), 0, self::CELL, '…');
 
-        return htmlspecialchars(($code->language !== null ? $code->language . ': ' : '') . $text, ENT_QUOTES | ENT_HTML5 | ENT_SUBSTITUTE, 'UTF-8');
-    }
-
-    public function rules(array $config): array
-    {
-        return [];
-    }
-
-    public function assets(): array
-    {
-        return [];
+        return $code === null ? '' : htmlspecialchars(mb_strimwidth((string) preg_replace('/\s+/', ' ', $code->code), 0, self::CELL, '…'), ENT_QUOTES | ENT_HTML5 | ENT_SUBSTITUTE, 'UTF-8');
     }
 }

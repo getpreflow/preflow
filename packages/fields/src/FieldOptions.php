@@ -35,6 +35,22 @@ final class FieldOptions
         };
     }
 
+    /**
+     * Refuses the options of $type given as an object under its own name (the shape of the link
+     * field's `"link": {…}`): these types take theirs at the field's top level, and a nested
+     * object would be ignored without a word.
+     *
+     * @param array<string, mixed> $config
+     * @param list<string> $options the type's option names
+     */
+    public static function refuseNested(string $type, array $config, array $options): void
+    {
+        if (is_array($config[$type] ?? null)) {
+            $names = implode(', ', array_map(static fn (string $o): string => "\"{$o}\"", $options));
+            throw new \LogicException("\"{$type}\" holds options, but a {$type} field takes them at its top level, next to \"type\": move {$names} out of \"{$type}\".");
+        }
+    }
+
     /** @param array<string, mixed> $config */
     public static function refuseTranslatable(string $type, array $config): void
     {

@@ -19,11 +19,7 @@ use Preflow\Folio\Field\FieldContext;
  */
 final class JsonFieldType extends AbstractScalarFieldType implements DisplaysInAdmin
 {
-    /**
-     * How much of the JSON a list cell shows.
-     *
-     * @param array<string, mixed> $config
-     */
+    /** How much of the JSON a list cell shows. */
     private const int CELL = 80;
 
     public function key(): string

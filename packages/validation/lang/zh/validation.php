@@ -31,7 +31,6 @@ return [
     'color_palette' => '请从提供的颜色中选择一个：:values。',
     'json' => '必须是有效的 JSON，例如 {"name": "value"} 或 [1, 2, 3]。',
     'phone_region' => '无法判断此号码属于哪个国家：请以 + 和国家区号开头，例如 +41 44 123 45 67。',
-    'code_language' => '语言必须是简短的名称，例如 php 或 javascript（字母、数字及 + # . _ -）。',
     'link' => [
         'kind' => '请选择链接指向的内容：:kinds。',
         'target' => '请选择或输入链接指向的内容。',

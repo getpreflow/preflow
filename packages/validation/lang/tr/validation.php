@@ -31,7 +31,6 @@ return [
     'color_palette' => 'Sunulan renklerden birini seçin: :values.',
     'json' => 'Geçerli bir JSON olmalıdır, örn. {"ad": "değer"} veya [1, 2, 3].',
     'phone_region' => 'Bu numaranın hangi ülkeye ait olduğu anlaşılamıyor: numarayı + ve ülke koduyla başlatın, örn. +41 44 123 45 67.',
-    'code_language' => 'Dil, php veya javascript gibi kısa bir ad olmalıdır (harfler, rakamlar ve + # . _ -).',
     'link' => [
         'kind' => 'Bağlantının neyi gösterdiğini seçin: :kinds.',
         'target' => 'Bağlantının neyi gösterdiğini seçin veya girin.',

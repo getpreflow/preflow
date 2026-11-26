@@ -16,8 +16,10 @@ use Preflow\Validation\ValidationRule;
  * A phone field's value (the stored object {as_typed, e164}, JSON text of it, or the number as
  * text) is a phone number (Preflow\Validation\Rules\Phone) that can be normalized: it starts with "+"
  * or "00" and the country code, or it is national and the field has a default region, or it is a
- * short service number (Phone::problem()). A stored e164 must read "+" and 3 to 15 digits. An empty
- * value passes ("required" decides).
+ * short service number (Phone::problem()). A stored e164 must be the number as_typed normalizes
+ * to (with the field's default region; an international as_typed needs none), so a "tel:" link
+ * never dials a number the editor did not type: it is null for a service number. An empty value
+ * passes ("required" decides).
  *
  * FieldsServiceProvider registers it for every "phone" field (FieldKinds::rules()).
  *
@@ -53,7 +55,10 @@ final class ValidPhone implements ValidationRule
             return $result;
         }
         $problem = Phone::problem($typed, $this->options->defaultRegion);
+        if ($problem !== null) {
+            return new Message($problem);
+        }
 
-        return $problem === null ? true : new Message($problem);
+        return $e164 === null || $e164 === Phone::e164($typed, $this->options->defaultRegion) ? true : new Message('validation.phone');
     }
 }
