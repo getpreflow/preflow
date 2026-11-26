@@ -18,11 +18,12 @@ namespace Preflow\Data;
  * What a rule compares (built on Condition's reading of stored values):
  * - A field without a value is empty: no key, null, '' or an empty list. "0", 0, false and
  *   spaces are values. "empty" holds for an empty field, "filled" for any other.
- * - "=" with true or false reads the field as on or off: true, 1, '1', 'true' and 'on' are on,
+ * - "=" with true or false reads the field as on or off: true, 1 (also 1.0), '1', 'true' and 'on' are on,
  *   anything else (an empty field too) is off.
  * - "=" with another value: a number field (type "number") compares as whole numbers
  *   (Condition::wholeNumber(): "3.0" and 3.9 are 3), every other field as text, exactly
- *   (Condition::text(): "Video" is not "video"). An empty field matches no value.
+ *   (Condition::text(): "Video" is not "video"; a list as its JSON text, where 1.0 is written 1,
+ *   as a browser writes it). An empty field matches no value.
  * - "!=" holds exactly when "=" does not (an empty field is not "video"); "in" holds when one
  *   value of the list matches as "=" does, "not_in" when none does.
  * - "all" holds when each of its rules holds, "any" when one does; each needs one rule or more.
@@ -210,6 +211,25 @@ final class FieldVisibility
     }
 
     /**
+     * The fields some show_when rule names (each once, in the order of the fields that have rules):
+     * the values that decide what is hidden. [] without show_when.
+     *
+     * @param TypeDefinition|array<string, TypeFieldDefinition|array<string, mixed>> $fields
+     * @return list<string>
+     * @since 0.91.0
+     */
+    public static function sourcesOf(TypeDefinition|array $fields): array
+    {
+        $parsed = $fields instanceof TypeDefinition ? self::parsedOf($fields) : self::parseAll($fields);
+        $sources = [];
+        foreach ($parsed as $rule) {
+            $sources = [...$sources, ...$rule->sources()];
+        }
+
+        return array_values(array_unique($sources));
+    }
+
+    /**
      * The fields whose rule does not hold on $values, in the order of $fields. A field whose rule
      * names a hidden field is hidden too (A hides B, so C, which names B, hides). A field without
      * show_when is never hidden. A rule naming a field $fields does not have reads it as empty.
@@ -234,10 +254,15 @@ final class FieldVisibility
      */
     public static function hiddenFieldsOf(TypeDefinition $type, array $values): array
     {
-        self::$parsedByType ??= new \WeakMap();
-        $parsed = self::$parsedByType[$type] ??= self::parseAll($type->fields);
+        return self::hide(self::parsedOf($type), $values);
+    }
 
-        return self::hide($parsed, $values);
+    /** @return array<string, self> a type's parsed rules, once per definition */
+    private static function parsedOf(TypeDefinition $type): array
+    {
+        self::$parsedByType ??= new \WeakMap();
+
+        return self::$parsedByType[$type] ??= self::parseAll($type->fields);
     }
 
     /**
@@ -494,7 +519,8 @@ final class FieldVisibility
 
     private static function isOn(mixed $stored): bool
     {
-        return in_array($stored, [true, 1, '1', 'true', 'on'], true);
+        // 1.0 too: a browser (show-when-core.js) cannot tell it from 1, and both sides must agree.
+        return in_array($stored, [true, 1, '1', 'true', 'on'], true) || $stored === 1.0;
     }
 
     private static function checkValue(mixed $value, string $shown, string $field, string $operator, bool $number): void

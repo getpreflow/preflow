@@ -992,16 +992,22 @@
     Folio.placeFocal = placeFocal;
 
     // ---- Conditional fields (show_when, 0.91) --------------------------------------------------------
-    // A field with a rule is wrapped in [data-folio-show-when] (the record form's field wrap, or a wrap in a
-    // block card): {rule, types, values, prefix}. Its sources are read as the form would post them (a
-    // block's source is "<prefix>[<field>]"); a source without a control (read-only) reads the value the
-    // server gave. FolioShowWhenCore (show-when-core.js, loaded only where a rule exists) decides as the
-    // server does. A hidden field gets hidden and aria-hidden, and every control in it is disabled (it
-    // does not post; the server keeps the stored value anyway); a field naming a hidden one hides too.
-    // Pages without a rule do nothing here.
+    // A field with a rule is wrapped in [data-folio-show-when] (the record form's field wrap, a System field
+    // row, or a wrap in a block card): {rule, types, values, prefix}. Its sources are read as the record
+    // form would post them, from that form's controls only (a block's source is "<prefix>[<field>]"); a
+    // source without a control (read-only) reads the value the server gave. FolioShowWhenCore
+    // (show-when-core.js, loaded only where a rule exists) decides as the server does. A hidden field gets
+    // hidden (out of the reading and tab order) and every control in it is disabled (it does not post; the
+    // server keeps the stored value anyway); a field naming a hidden one hides too. Each source control
+    // names the fields it shows or hides in aria-controls. Pages without a rule do nothing here, and a
+    // change of a control no rule reads decides nothing.
     var SHOW = '[data-folio-show-when]';
     var OFF = 'data-folio-show-off';
     var CONTROLS = 'input, select, textarea, button';
+    var ID_PREFIX = 'folio-show-when-';
+    var showIds = 0;
+    // The control names some rule reads (name and name[]), from the last refresh.
+    var sourceNames = {};
 
     function showConfig(box) {
         if (!box._folioShowWhen) {
@@ -1026,12 +1032,21 @@
         return (el.getAttribute && el.getAttribute('name')) || el.name || '';
     }
 
-    // name => its controls in page order (only the names a rule reads).
-    function controlsByName(wanted) {
+    // The form whose values decide a wrap: the form around it, the form its controls name (a side
+    // panel field, form="folio-record"), else the record form (a read-only System field row).
+    function ownerOf(box) {
+        var around = box.closest ? box.closest('form') : null;
+        if (around) { return around; }
+        var named = box.querySelector(CONTROLS);
+        return (named && named.form) || document.getElementById('folio-record') || null;
+    }
+
+    // name => the owner form's controls of that name, in page order (only the names a rule reads).
+    function controlsByName(owner, wanted) {
         var map = {};
         document.querySelectorAll(CONTROLS).forEach(function (el) {
             var name = controlName(el);
-            if (name && wanted[name]) { (map[name] = map[name] || []).push(el); }
+            if (name && wanted[name] && (owner === null || el.form === owner)) { (map[name] = map[name] || []).push(el); }
         });
         return map;
     }
@@ -1041,7 +1056,7 @@
     function readSource(map, name) {
         var list = map[name + '[]'];
         var plain = map[name];
-        if (!list && !plain) { return { found: false }; }
+        if (!list && !plain) { return { found: false, controls: [] }; }
         var hidden = false;
         var posts = function (el) {
             if (insideHidden(el)) { hidden = true; return false; }
@@ -1050,7 +1065,7 @@
         if (list) {
             var values = [];
             list.forEach(function (el) { if (posts(el)) { values.push(el.value); } });
-            return { found: true, hidden: hidden, value: values };
+            return { found: true, hidden: hidden, value: values, controls: list };
         }
         var value = null;
         plain.forEach(function (el) {
@@ -1061,7 +1076,7 @@
                 value = el.value;
             }
         });
-        return { found: true, hidden: hidden, value: value };
+        return { found: true, hidden: hidden, value: value, controls: plain };
     }
 
     function sourceName(config, field) {
@@ -1071,30 +1086,43 @@
     function setBox(box, show) {
         if (show === !isHiddenBox(box)) { return false; }
         box.hidden = !show;
-        if (show) {
-            box.removeAttribute('hidden');
-            box.removeAttribute('aria-hidden');
-        } else {
-            box.setAttribute('hidden', '');
-            box.setAttribute('aria-hidden', 'true');
-        }
+        if (show) { box.removeAttribute('hidden'); } else { box.setAttribute('hidden', ''); }
         return true;
+    }
+
+    // aria-controls on each source control: the wraps it shows or hides (other ids it names stay).
+    function linkControls(controlled) {
+        controlled.forEach(function (entry) {
+            var el = entry.control;
+            if (el.type === 'hidden') { return; }
+            var own = (el.getAttribute('aria-controls') || '').split(/\s+/).filter(function (id) { return id && id.indexOf(ID_PREFIX) !== 0; });
+            var ids = own.concat(entry.ids);
+            if (ids.length) { el.setAttribute('aria-controls', ids.join(' ')); } else { el.removeAttribute('aria-controls'); }
+        });
     }
 
     function refreshShowWhen() {
         var core = window.FolioShowWhenCore;
         var boxes = Array.prototype.slice.call(document.querySelectorAll(SHOW));
+        sourceNames = {};
         if (!core || boxes.length === 0) { return; }
-        var wanted = {};
+        var owners = [];
+        var wanted = [];
         boxes.forEach(function (box) {
             var config = showConfig(box);
+            if (!box.id) { box.id = ID_PREFIX + (++showIds); }
+            var owner = ownerOf(box);
+            var at = owners.indexOf(owner);
+            if (at < 0) { owners.push(owner); wanted.push({}); at = owners.length - 1; }
+            box._folioShowOwner = at;
             core.sources(config.rule).forEach(function (field) {
                 var name = sourceName(config, field);
-                wanted[name] = true;
-                wanted[name + '[]'] = true;
+                wanted[at][name] = wanted[at][name + '[]'] = true;
+                sourceNames[name] = sourceNames[name + '[]'] = true;
             });
         });
-        var map = controlsByName(wanted);
+        var maps = owners.map(function (owner, i) { return controlsByName(owner, wanted[i]); });
+        var controlled = [];
         // Showing or hiding a field can show or hide another (a chain): repeat until nothing changes.
         for (var round = 0; round <= boxes.length; round++) {
             var changed = false;
@@ -1103,10 +1131,17 @@
                 var values = {};
                 var sourceHidden = false;
                 core.sources(config.rule).forEach(function (field) {
-                    var read = readSource(map, sourceName(config, field));
+                    var read = readSource(maps[box._folioShowOwner], sourceName(config, field));
                     if (read.found) {
                         if (read.hidden) { sourceHidden = true; }
                         values[field] = read.value;
+                        if (round === 0) {
+                            read.controls.forEach(function (control) {
+                                var entry = controlled.filter(function (c) { return c.control === control; })[0];
+                                if (!entry) { entry = { control: control, ids: [] }; controlled.push(entry); }
+                                if (entry.ids.indexOf(box.id) < 0) { entry.ids.push(box.id); }
+                            });
+                        }
                     } else if (config.values && Object.prototype.hasOwnProperty.call(config.values, field)) {
                         values[field] = config.values[field];
                     }
@@ -1115,6 +1150,7 @@
             });
             if (!changed) { break; }
         }
+        linkControls(controlled);
         // A control in a hidden field is disabled and marked, so showing it enables only what this disabled.
         boxes.forEach(function (box) {
             box.querySelectorAll(CONTROLS).forEach(function (el) {
@@ -1134,7 +1170,8 @@
 
     function onShowWhenChange(e) {
         var target = e.target;
-        if (!target || !target.getAttribute || !controlName(target) || !document.querySelector(SHOW)) { return; }
+        var name = target && target.getAttribute ? controlName(target) : '';
+        if (!name || !sourceNames[name]) { return; } // no rule reads it (or the page has none)
         refreshShowWhen();
     }
 

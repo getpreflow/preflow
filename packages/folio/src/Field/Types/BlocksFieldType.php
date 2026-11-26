@@ -98,9 +98,18 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
 
             $block = ['_uid' => $uid, '_block' => $key];
             $blockFiles = is_array($files[$uid] ?? null) ? $files[$uid] : [];
+            // A field its show_when hides (0.91), decided on the posted sources before anything is
+            // built or uploaded: it keeps its stored value, and a file posted for it is never written.
+            $hidden = $this->blocks->hasShowWhen() ? array_flip($this->blocks->hiddenFieldsOf($key, $this->sourceValues($definition, $data, $previous))) : [];
             foreach ($definition->fields as $name => $field) {
                 $type = $this->fieldTypes->get($field->type);
                 self::assertLeaf($definition, $name, $field, $type);
+                if (isset($hidden[$name])) {
+                    if (array_key_exists($name, $previous)) {
+                        $block[$name] = $previous[$name];
+                    }
+                    continue;
+                }
 
                 if ($type instanceof StructuredFieldType) {
                     $block[$name] = $ctx->depth + 1 >= $this->maxDepth
@@ -617,6 +626,31 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                 'id' => $record['id'] ?? '',
             ], '', '&', PHP_QUERY_RFC3986),
         ]);
+    }
+
+    /**
+     * The stored block with each show_when source as posted (normalized as buildValue() stores it);
+     * a source posted as files or nested blocks counts with its stored value.
+     *
+     * @param array<string, mixed> $data the posted block
+     * @param array<string, mixed> $previous the stored block ([] for a new one)
+     * @return array<string, mixed>
+     */
+    private function sourceValues(\Preflow\Blocks\BlockDefinition $definition, array $data, array $previous): array
+    {
+        foreach (\Preflow\Data\FieldVisibility::sourcesOf($definition->fields) as $source) {
+            $field = $definition->fields[$source] ?? null;
+            if ($field === null) {
+                continue;
+            }
+            $type = $this->fieldTypes->get($field->type);
+            if ($type instanceof StructuredFieldType || $type instanceof AssetFieldType || $type instanceof HandlesUpload) {
+                continue;
+            }
+            $previous[$source] = $type->toStorage($type->normalizeInput($data[$source] ?? null, $field->config));
+        }
+
+        return $previous;
     }
 
     /**

@@ -41,7 +41,7 @@ final class ShowWhenMarkup
         $json = (string) json_encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR);
 
         return ' data-folio-show-when="' . htmlspecialchars($json, ENT_QUOTES, 'UTF-8') . '"'
-            . ($hidden ? ' hidden aria-hidden="true"' : '');
+            . ($hidden ? ' hidden' : ''); // hidden alone takes it out of the reading and tab order
     }
 
     /**

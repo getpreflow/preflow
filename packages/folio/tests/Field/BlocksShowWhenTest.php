@@ -127,7 +127,7 @@ final class BlocksShowWhenTest extends TestCase
         [$kindA, $urlA] = $cards[self::A];
         $this->assertStringNotContainsString('data-folio-show-when', $kindA, 'a field without show_when is not wrapped');
         $config = htmlspecialchars('{"rule":{"field":"kind","=":"link"},"types":{"kind":"select"},"values":{"kind":"text"},"prefix":"body[' . self::A . ']"}', ENT_QUOTES, 'UTF-8');
-        $this->assertStringStartsWith('<div class="folio-show-when" data-folio-show-when="' . $config . '" hidden aria-hidden="true">', $urlA);
+        $this->assertStringStartsWith('<div class="folio-show-when" data-folio-show-when="' . $config . '" hidden>', $urlA);
         $this->assertStringContainsString('value="/a"', $urlA, 'the stored value is in the hidden input, ready when it shows');
         [, $urlB] = $cards[self::B];
         $this->assertStringContainsString('data-folio-show-when=', $urlB);

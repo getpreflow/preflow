@@ -1,7 +1,8 @@
 // Conditional fields (show_when, 0.91): assets/show-when-core.js decides as Preflow\Data\FieldVisibility
 // does (every case of packages/data/tests/Fixtures/show-when-cases.json, which the PHP test reads too), and
 // fields.js shows or hides a field of the record form or of a block card as its source changes, without a
-// round trip: a hidden field gets hidden and aria-hidden, its controls are disabled so they do not post.
+// round trip: a hidden field gets hidden (out of the reading and tab order), its controls are disabled so
+// they do not post, and a source control names the fields it controls in aria-controls.
 // Run: node --test packages/folio/tests/js/show-when.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -39,7 +40,7 @@ for (const c of cases.hidden) {
 function wrap(doc, parent, config, hidden = false) {
     const el = parent.appendChild(doc.createElement('div'));
     el.setAttribute('data-folio-show-when', JSON.stringify({ rule: config.rule, types: config.types || {}, values: config.values || {}, prefix: config.prefix || '' }));
-    if (hidden) { el.hidden = true; el.setAttribute('hidden', ''); el.setAttribute('aria-hidden', 'true'); }
+    if (hidden) { el.hidden = true; el.setAttribute('hidden', ''); }
     return el;
 }
 
@@ -68,7 +69,7 @@ function choose(w, control, value) {
 }
 
 function shown(el) {
-    return el.hidden === false && el.getAttribute('hidden') === null && el.getAttribute('aria-hidden') === null;
+    return el.hidden === false && el.getAttribute('hidden') === null;
 }
 
 test('a record field shows when its source holds the value and hides again, its input disabled while hidden', () => {
@@ -80,7 +81,9 @@ test('a record field shows when its source holds the value and hides again, its 
     });
     assert.equal(p.box.hidden, true, 'hidden as the server rendered it');
     assert.equal(p.url.disabled, true, 'its input does not post');
-    assert.equal(p.box.getAttribute('aria-hidden'), 'true');
+    assert.equal(p.box.getAttribute('aria-hidden'), null, 'hidden alone; no redundant aria-hidden');
+    assert.ok(p.box.id, 'the wrap has an id');
+    assert.equal(p.kind.getAttribute('aria-controls'), p.box.id, 'the source names the field it controls');
 
     choose(p.w, p.kind, 'link');
     assert.ok(shown(p.box), 'shown without a round trip');
@@ -89,7 +92,6 @@ test('a record field shows when its source holds the value and hides again, its 
 
     choose(p.w, p.kind, 'video');
     assert.equal(p.box.hidden, true);
-    assert.equal(p.box.getAttribute('aria-hidden'), 'true');
     assert.equal(p.url.disabled, true);
 });
 
@@ -225,6 +227,52 @@ test('a hidden blocks field disables the cards inside; shown again, each card fi
     assert.equal(p.inner.hidden, true, 'the card field still hides by its own source');
     assert.equal(p.url.disabled, true);
     assert.equal(p.own.disabled, true, 'a control disabled on its own stays disabled');
+});
+
+test('only the record form\'s controls decide, not a control of the same name in another form', () => {
+    const p = page(({ doc, el, form, wrap }) => {
+        const kind = el(form, 'select', { name: 'kind', value: 'text' });
+        const box = wrap(form, { rule: { field: 'kind', '=': 'link' } }, true);
+        el(box, 'input', { type: 'text', name: 'button_url' });
+        const other = el(doc.body, 'form', { id: 'comment' });
+        const stray = el(other, 'select', { name: 'kind', value: 'link' });
+        return { kind, box, stray };
+    });
+    choose(p.w, p.stray, 'link');
+    assert.equal(p.box.hidden, true, 'the other form\'s "kind" (later in the page) does not show it');
+    choose(p.w, p.kind, 'link');
+    assert.ok(shown(p.box));
+});
+
+test('a side panel field (outside the form, form="folio-record") and a read-only System row read the record form', () => {
+    const p = page(({ doc, el, form, wrap }) => {
+        const kind = el(form, 'select', { name: 'kind', value: 'text' });
+        const side = doc.body.appendChild(doc.createElement('aside'));
+        const field = wrap(side, { rule: { field: 'kind', '=': 'link' } }, true);
+        const input = el(field, 'input', { type: 'text', name: 'button_url', form: 'folio-record' });
+        const row = wrap(side, { rule: { field: 'kind', '=': 'link' }, values: { kind: 'text' } }, true);
+        return { kind, field, input, row };
+    });
+    choose(p.w, p.kind, 'link');
+    assert.ok(shown(p.field));
+    assert.equal(p.input.disabled, false);
+    assert.ok(shown(p.row), 'the live form value counts, not the value the page was rendered with');
+    assert.deepEqual(p.kind.getAttribute('aria-controls').split(' ').sort(), [p.field.id, p.row.id].sort());
+});
+
+test('a change of a control no rule reads decides nothing', () => {
+    const p = page(({ el, form, wrap }) => {
+        const kind = el(form, 'select', { name: 'kind', value: 'text' });
+        const title = el(form, 'input', { type: 'text', name: 'title' });
+        const box = wrap(form, { rule: { field: 'kind', '=': 'link' } }, true);
+        el(box, 'input', { type: 'text', name: 'button_url' });
+        return { kind, title, box };
+    });
+    p.kind.value = 'link'; // changed without its own event
+    p.title.dispatchEvent(new p.w.Event('input', { bubbles: true }));
+    assert.equal(p.box.hidden, true, 'typing in the title does not re-decide the form');
+    p.kind.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+    assert.ok(shown(p.box));
 });
 
 test('a form without show_when is left alone', () => {

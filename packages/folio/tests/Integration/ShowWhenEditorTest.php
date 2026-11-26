@@ -62,7 +62,7 @@ final class ShowWhenEditorTest extends TestCase
 
         // The editor renders it hidden, with its value, for fields.js to show when kind turns link.
         $html = (string) $this->get('/folio/teaser/t1/edit')->getBody();
-        $this->assertMatchesRegularExpression('#<div class="folio-field-wrap" data-folio-show-when="[^"]*" hidden aria-hidden="true">\s*<div[^>]*>.*?name="button_url"[^>]*value="/a"#s', $html);
+        $this->assertMatchesRegularExpression('#<div class="folio-field-wrap" data-folio-show-when="[^"]*" hidden>\s*<div[^>]*>.*?name="button_url"[^>]*value="/a"#s', $html);
         $this->assertStringContainsString('show-when-core.js', $html);
 
         // Switched back: the editor shows /a.
@@ -97,6 +97,32 @@ final class ShowWhenEditorTest extends TestCase
         $values = \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->in('en'), static fn (): ?array => $singletons->get('banner'));
         $out = '[' . ($values['sections'][0]['button_url'] ?? 'null') . '|' . ($values['sections'][1]['button_url'] ?? 'null') . ']';
         $this->assertSame('[null|/b2]', $out, 'each block decides by its own source');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_search_finds_no_record_through_a_hidden_block_field(): void
+    {
+        // Loose search reads a type's text kinds; a blocks field is not one (BlocksFieldType is no
+        // SearchableText), so no block text is searched, hidden or not.
+        $this->seed('teaser', 't1', ['title' => 'One', 'kind' => 'text', 'sections' => [
+            ['_uid' => 'aaaaaaaaaaaaaaaa', '_block' => 'offer', 'kind' => 'text', 'button_url' => '/zebrapath'],
+        ]]);
+
+        $this->assertSame([], $this->app()->container()->get(\Preflow\Data\Search\RecordSearch::class)->search('zebrapath', ['teaser']));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_read_only_system_field_carries_its_rule_too(): void
+    {
+        $this->writeModel('offer', ['label' => 'Offers', 'publishing' => false, 'fields' => [
+            'kind' => ['type' => 'select', 'options' => ['text' => 'Text', 'link' => 'Link']],
+            'checked_url' => ['type' => 'string', 'readonly' => true, 'panel' => 'side', 'show_when' => ['field' => 'kind', '=' => 'link']],
+        ]]);
+        $this->seed('offer', 'o1', ['kind' => 'text', 'checked_url' => '/checked']);
+
+        $html = (string) $this->get('/folio/offer/o1/edit')->getBody();
+
+        $this->assertMatchesRegularExpression('#<div data-folio-show-when="[^"]*" hidden><dt>Checked Url</dt><dd>/checked</dd>#', $html);
     }
 
     #[RunInSeparateProcess]

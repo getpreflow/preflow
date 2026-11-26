@@ -2007,7 +2007,7 @@ The rules:
 | `{"field": "note", "filled": true}` | `note` has a value |
 | `{"all": [rule, …]}` / `{"any": [rule, …]}` | every rule holds / one rule holds (they nest) |
 
-On/off: `true`, `1`, `"1"`, `"true"` and `"on"` are on; anything else, an empty field too, is
+On/off: `true`, `1` (also `1.0`), `"1"`, `"true"` and `"on"` are on; anything else, an empty field too, is
 off. A field whose rule names a hidden field is hidden too: if `kind` hides `button_url`, a
 `button_label` with `{"field": "button_url", "filled": true}` hides with it.
 
@@ -2041,10 +2041,14 @@ type without `show_when`.
 the values you save carry it. Folio's editor does this for you. Your own write path, such as an API
 endpoint that saves posted values, calls `keepStored()` before it saves: a hidden field takes its
 stored value, whatever was posted (one with nothing stored is left out); every other value stays as
-posted. Which fields are hidden is decided on the posted values.
+posted. Which fields are hidden is decided on the values you pass, so pass the whole record: for a
+partial update (a PATCH that sends only `button_url`), merge the posted values over the stored ones
+first. Otherwise a missing `kind` reads as empty, `button_url` counts as hidden, and the value the
+client sent is replaced by the stored one without a word.
 
 ```php
-$values = FieldVisibility::keepStored($type, $posted, $record?->toArray() ?? []);
+$stored = $record?->toArray() ?? [];
+$values = FieldVisibility::keepStored($type, array_replace($stored, $posted), $stored);
 $dm->saveType(DynamicRecord::fromArray($type, $values));
 ```
 

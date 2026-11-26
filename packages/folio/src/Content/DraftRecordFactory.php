@@ -35,7 +35,9 @@ use Psr\Http\Message\UploadedFileInterface;
  * BeforeSave hook sets it).
  *
  * A field its show_when hides (0.91) keeps its stored value too, whatever was posted for it
- * (FieldVisibility::keepStored(); the editor disables its input, but a post can carry one).
+ * (FieldVisibility::keepStored(); the editor disables its input, but a post can carry one). Which
+ * fields are hidden is decided from the posted source values before any upload is stored, so a
+ * file posted for a hidden field is never written.
  */
 final class DraftRecordFactory
 {
@@ -83,12 +85,13 @@ final class DraftRecordFactory
         }
         $uploads = $request->getUploadedFiles();
         $data = [];
+        $hidden = array_flip(FieldVisibility::hiddenFieldsOf($typeDef, $this->sourceValues($typeDef, $submitted, $existing)));
 
         foreach ($typeDef->fields as $name => $fieldDef) {
             if ($name === $typeDef->idField) {
                 continue;
             }
-            if (self::locked($fieldDef->config)) {
+            if (self::locked($fieldDef->config) || isset($hidden[$name])) {
                 if (array_key_exists($name, $existing)) {
                     $data[$name] = $existing[$name];
                 }
@@ -232,6 +235,33 @@ final class DraftRecordFactory
         );
 
         return SeoSection::fromValue($value)->isEmpty() ? null : $value;
+    }
+
+    /**
+     * The stored values with each show_when source as posted (as the loop below takes it), to decide
+     * which fields are hidden before anything is built or uploaded. A source the form does not post
+     * as a plain value (locked, structured, asset, upload) counts with its stored value. The stored
+     * values alone for a type without show_when.
+     *
+     * @param array<string, mixed> $submitted
+     * @param array<string, mixed> $existing
+     * @return array<string, mixed>
+     */
+    private function sourceValues(TypeDefinition $typeDef, array $submitted, array $existing): array
+    {
+        foreach (FieldVisibility::sourcesOf($typeDef) as $source) {
+            $fieldDef = $typeDef->fields[$source] ?? null;
+            if ($fieldDef === null || self::locked($fieldDef->config)) {
+                continue;
+            }
+            $fieldType = $this->fieldTypes->get($fieldDef->type);
+            if ($fieldType instanceof StructuredFieldType || $fieldType instanceof AssetFieldType || $fieldType instanceof HandlesUpload || $fieldType instanceof EnvFieldType) {
+                continue;
+            }
+            $existing[$source] = $fieldType->toStorage($fieldType->normalizeInput($submitted[$source] ?? null, $fieldDef->config));
+        }
+
+        return $existing;
     }
 
     /**

@@ -64,7 +64,11 @@
         {"name": "number field != : a missing field is not 3", "rule": {"field": "count", "!=": 3}, "fields": {"count": "number"}, "values": {}, "holds": true},
         {"name": "number field not_in: 2.7 is 2, in the list", "rule": {"field": "count", "not_in": [1, 2]}, "fields": {"count": "number"}, "values": {"count": 2.7}, "holds": false},
         {"name": "number field not_in: 5 is not in the list", "rule": {"field": "count", "not_in": [1, 2]}, "fields": {"count": "number"}, "values": {"count": "5"}, "holds": true},
-        {"name": "number field: a rule value \"3\" is the number 3", "rule": {"field": "count", "=": "3"}, "fields": {"count": "number"}, "values": {"count": 3}, "holds": true}
+        {"name": "number field: a rule value \"3\" is the number 3", "rule": {"field": "count", "=": "3"}, "fields": {"count": "number"}, "values": {"count": 3}, "holds": true},
+        {"name": "boolean = true: stored 1.0 is on (a browser cannot tell it from 1)", "rule": {"field": "featured", "=": true}, "values": {"featured": 1.0}, "holds": true},
+        {"name": "boolean = false: stored 1.0 is not off", "rule": {"field": "featured", "=": false}, "values": {"featured": 1.0}, "holds": false},
+        {"name": "a list compares as JSON text, a whole float in it without .0", "rule": {"field": "tags", "=": "[1,2.5]"}, "values": {"tags": [1.0, 2.5]}, "holds": true},
+        {"name": "a list with a float in it: in matches its JSON text", "rule": {"field": "tags", "in": ["[2.5]", "x"]}, "values": {"tags": [2.5]}, "holds": true}
     ],
     "hidden": [
         {

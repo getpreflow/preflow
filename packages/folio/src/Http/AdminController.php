@@ -1443,6 +1443,18 @@ final class AdminController
         foreach ($typeDef->fields as $name => $other) {
             $read[$name] = $this->fieldTypes->get($other->type)->fromStorage(LocaleValue::default($values[$name] ?? null, $locales));
         }
+        // Conditional fields (show_when, 0.91): the field's wrap carries its rule for fields.js, which shows
+        // or hides it as the source changes; one hidden now is rendered hidden. A type without one: nothing.
+        $rules = FieldVisibility::rulesOf($typeDef->fields);
+        $hiddenNow = $rules === [] ? [] : array_flip(FieldVisibility::hiddenFieldsOf($typeDef, $values));
+        if ($rules !== []) {
+            $editorAssets['show-when-core.js'] = true;
+        }
+        $showWhen = static function (string $name) use ($rules, $typeDef, $read, $hiddenNow): string {
+            $rule = $rules[$name] ?? null;
+
+            return is_array($rule) ? ShowWhenMarkup::attributes($rule, $typeDef->fields, $read, '', isset($hiddenNow[$name])) : '';
+        };
         foreach ($typeDef->fields as $name => $fieldDef) {
             if ($name === $typeDef->idField || ($fieldDef->config['hidden'] ?? false) === true) {
                 continue;
@@ -1458,6 +1470,7 @@ final class AdminController
                         'label' => $this->labels->fieldText($type, $name) ?? (new \Preflow\Form\FieldRenderer())->humanize($name),
                         'help' => $this->labels->help($type, $name),
                         'html' => $display,
+                        'show_when' => $showWhen($name),
                     ];
                     continue;
                 }
@@ -1543,18 +1556,10 @@ final class AdminController
             }
         }
 
-        // Conditional fields (show_when, 0.91): the field's wrap carries its rule for fields.js, which shows
-        // or hides it as the source changes; one hidden now is rendered hidden. A type without one: nothing.
-        $rules = FieldVisibility::rulesOf($typeDef->fields);
-        $hiddenNow = $rules === [] ? [] : array_flip(FieldVisibility::hiddenFieldsOf($typeDef, $values));
-        if ($rules !== []) {
-            $editorAssets['show-when-core.js'] = true;
-        }
         foreach ($fields as &$entry) {
             $entry['outdated'] = $outdated[$entry['name']] ?? null;
             $entry['unchecked'] = $unchecked[$entry['name']] ?? null;
-            $rule = $rules[$entry['name']] ?? null;
-            $entry['show_when'] = is_array($rule) ? ShowWhenMarkup::attributes($rule, $typeDef->fields, $read, '', isset($hiddenNow[$entry['name']])) : '';
+            $entry['show_when'] = $showWhen($entry['name']);
         }
         unset($entry);
 
