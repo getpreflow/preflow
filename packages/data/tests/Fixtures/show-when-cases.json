@@ -1,0 +1,97 @@
+{
+    "holds": [
+        {"name": "= text matches", "rule": {"field": "kind", "=": "video"}, "values": {"kind": "video"}, "holds": true},
+        {"name": "= text differs", "rule": {"field": "kind", "=": "video"}, "values": {"kind": "image"}, "holds": false},
+        {"name": "= text is exact (case counts)", "rule": {"field": "kind", "=": "video"}, "values": {"kind": "Video"}, "holds": false},
+        {"name": "= missing key is empty, matches no value", "rule": {"field": "kind", "=": "video"}, "values": {}, "holds": false},
+        {"name": "= null is empty, matches no value", "rule": {"field": "kind", "=": "video"}, "values": {"kind": null}, "holds": false},
+        {"name": "!= text differs", "rule": {"field": "kind", "!=": "video"}, "values": {"kind": "image"}, "holds": true},
+        {"name": "!= text matches", "rule": {"field": "kind", "!=": "video"}, "values": {"kind": "video"}, "holds": false},
+        {"name": "!= missing key holds (the opposite of =)", "rule": {"field": "kind", "!=": "video"}, "values": {}, "holds": true},
+        {"name": "in: one of the list", "rule": {"field": "kind", "in": ["link", "video"]}, "values": {"kind": "video"}, "holds": true},
+        {"name": "in: none of the list", "rule": {"field": "kind", "in": ["link", "video"]}, "values": {"kind": "image"}, "holds": false},
+        {"name": "in: missing key", "rule": {"field": "kind", "in": ["link", "video"]}, "values": {}, "holds": false},
+        {"name": "not_in: none of the list", "rule": {"field": "kind", "not_in": ["link", "video"]}, "values": {"kind": "image"}, "holds": true},
+        {"name": "not_in: one of the list", "rule": {"field": "kind", "not_in": ["link", "video"]}, "values": {"kind": "link"}, "holds": false},
+        {"name": "not_in: missing key holds (the opposite of in)", "rule": {"field": "kind", "not_in": ["link"]}, "values": {}, "holds": true},
+        {"name": "empty: missing key", "rule": {"field": "note", "empty": true}, "values": {}, "holds": true},
+        {"name": "empty: null", "rule": {"field": "note", "empty": true}, "values": {"note": null}, "holds": true},
+        {"name": "empty: empty text", "rule": {"field": "note", "empty": true}, "values": {"note": ""}, "holds": true},
+        {"name": "empty: empty list", "rule": {"field": "tags", "empty": true}, "values": {"tags": []}, "holds": true},
+        {"name": "empty: text \"0\" is a value", "rule": {"field": "note", "empty": true}, "values": {"note": "0"}, "holds": false},
+        {"name": "empty: number 0 is a value", "rule": {"field": "note", "empty": true}, "values": {"note": 0}, "holds": false},
+        {"name": "empty: false is a value", "rule": {"field": "note", "empty": true}, "values": {"note": false}, "holds": false},
+        {"name": "empty: spaces are a value", "rule": {"field": "note", "empty": true}, "values": {"note": " "}, "holds": false},
+        {"name": "filled: text", "rule": {"field": "note", "filled": true}, "values": {"note": "hello"}, "holds": true},
+        {"name": "filled: text \"0\"", "rule": {"field": "note", "filled": true}, "values": {"note": "0"}, "holds": true},
+        {"name": "filled: number 0", "rule": {"field": "note", "filled": true}, "values": {"note": 0}, "holds": true},
+        {"name": "filled: empty text", "rule": {"field": "note", "filled": true}, "values": {"note": ""}, "holds": false},
+        {"name": "filled: null", "rule": {"field": "note", "filled": true}, "values": {"note": null}, "holds": false},
+        {"name": "filled: missing key", "rule": {"field": "note", "filled": true}, "values": {}, "holds": false},
+        {"name": "boolean = true: true", "rule": {"field": "featured", "=": true}, "values": {"featured": true}, "holds": true},
+        {"name": "boolean = true: stored 1", "rule": {"field": "featured", "=": true}, "values": {"featured": 1}, "holds": true},
+        {"name": "boolean = true: stored \"1\"", "rule": {"field": "featured", "=": true}, "values": {"featured": "1"}, "holds": true},
+        {"name": "boolean = true: false", "rule": {"field": "featured", "=": true}, "values": {"featured": false}, "holds": false},
+        {"name": "boolean = true: stored \"0\"", "rule": {"field": "featured", "=": true}, "values": {"featured": "0"}, "holds": false},
+        {"name": "boolean = true: missing key is off", "rule": {"field": "featured", "=": true}, "values": {}, "holds": false},
+        {"name": "boolean = false: missing key is off", "rule": {"field": "featured", "=": false}, "values": {}, "holds": true},
+        {"name": "boolean = false: stored 0", "rule": {"field": "featured", "=": false}, "values": {"featured": 0}, "holds": true},
+        {"name": "boolean != true: true", "rule": {"field": "featured", "!=": true}, "values": {"featured": true}, "holds": false},
+        {"name": "number field: \"3.0\" is 3", "rule": {"field": "count", "=": 3}, "fields": {"count": "number"}, "values": {"count": "3.0"}, "holds": true},
+        {"name": "number field: 3.9 is 3", "rule": {"field": "count", "=": 3}, "fields": {"count": "number"}, "values": {"count": 3.9}, "holds": true},
+        {"name": "number field: 4 is not 3", "rule": {"field": "count", "=": 3}, "fields": {"count": "number"}, "values": {"count": 4}, "holds": false},
+        {"name": "number field: in a list of numbers", "rule": {"field": "count", "in": [1, 2, 3]}, "fields": {"count": "number"}, "values": {"count": "2"}, "holds": true},
+        {"name": "number field: empty matches no number", "rule": {"field": "count", "=": 0}, "fields": {"count": "number"}, "values": {"count": ""}, "holds": false},
+        {"name": "text field: \"3.0\" is not 3", "rule": {"field": "code", "=": 3}, "fields": {"code": "string"}, "values": {"code": "3.0"}, "holds": false},
+        {"name": "text field: \"3\" is 3", "rule": {"field": "code", "=": 3}, "values": {"code": "3"}, "holds": true},
+        {"name": "all: every rule holds", "rule": {"all": [{"field": "kind", "=": "video"}, {"field": "url", "filled": true}]}, "values": {"kind": "video", "url": "https://example.com"}, "holds": true},
+        {"name": "all: one rule fails", "rule": {"all": [{"field": "kind", "=": "video"}, {"field": "url", "filled": true}]}, "values": {"kind": "video", "url": ""}, "holds": false},
+        {"name": "any: one rule holds", "rule": {"any": [{"field": "kind", "=": "video"}, {"field": "featured", "=": true}]}, "values": {"kind": "image", "featured": true}, "holds": true},
+        {"name": "any: no rule holds", "rule": {"any": [{"field": "kind", "=": "video"}, {"field": "featured", "=": true}]}, "values": {"kind": "image", "featured": false}, "holds": false},
+        {"name": "nested: any inside all holds", "rule": {"all": [{"field": "url", "filled": true}, {"any": [{"field": "kind", "in": ["link", "video"]}, {"field": "featured", "=": true}]}]}, "values": {"url": "x", "kind": "link"}, "holds": true},
+        {"name": "nested: any inside all fails", "rule": {"all": [{"field": "url", "filled": true}, {"any": [{"field": "kind", "in": ["link", "video"]}, {"field": "featured", "=": true}]}]}, "values": {"url": "x", "kind": "image"}, "holds": false},
+        {"name": "nested: all inside any holds", "rule": {"any": [{"field": "kind", "=": "video"}, {"all": [{"field": "featured", "=": true}, {"field": "note", "empty": true}]}]}, "values": {"kind": "image", "featured": "1"}, "holds": true}
+    ],
+    "hidden": [
+        {
+            "name": "a chain: A hides B, so C (which names B) hides too",
+            "fields": {
+                "a": {"type": "string"},
+                "b": {"type": "string", "show_when": {"field": "a", "=": "on"}},
+                "c": {"type": "string", "show_when": {"field": "b", "filled": true}}
+            },
+            "values": {"a": "off", "b": "kept", "c": "kept"},
+            "hidden": ["b", "c"]
+        },
+        {
+            "name": "a chain: A shows B, B shows C",
+            "fields": {
+                "a": {"type": "string"},
+                "b": {"type": "string", "show_when": {"field": "a", "=": "on"}},
+                "c": {"type": "string", "show_when": {"field": "b", "filled": true}}
+            },
+            "values": {"a": "on", "b": "kept"},
+            "hidden": []
+        },
+        {
+            "name": "a chain: B shown but empty hides C",
+            "fields": {
+                "a": {"type": "string"},
+                "b": {"type": "string", "show_when": {"field": "a", "=": "on"}},
+                "c": {"type": "string", "show_when": {"field": "b", "filled": true}}
+            },
+            "values": {"a": "on", "b": ""},
+            "hidden": ["c"]
+        },
+        {
+            "name": "fields without show_when are never hidden",
+            "fields": {
+                "a": {"type": "string"},
+                "b": {"type": "number", "show_when": {"field": "count", "=": 2}},
+                "count": {"type": "number"}
+            },
+            "values": {"count": "2.5"},
+            "hidden": []
+        }
+    ]
+}

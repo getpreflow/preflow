@@ -1976,6 +1976,60 @@ $dm->queryType('page')->locale('de')->where('slug', 'ueber-uns')->first();
 - **Validation:** `required` binds the default locale; other rules run for every locale
   with a value, keyed `field.locale`.
 
+## Conditional fields: `show_when` (0.91)
+
+A field can show only when another field of the same record has a certain value. Say a page
+has a `kind` select and a `button_url` that only makes sense for links:
+
+```json
+"fields": {
+    "kind": {"type": "select", "options": ["text", "link", "video"]},
+    "button_url": {"type": "string", "validate": ["required", "url"], "show_when": {"field": "kind", "=": "link"}}
+}
+```
+
+While `kind` is not `link`, `button_url` is hidden: Folio does not show its input, and
+`DataManager` does not validate it, so its `required` does not apply. This happens in the
+core write path (`validate()`, `saveType()` and the class-backed saves), so Folio, the REST
+API, imports and seeds behave alike. The stored value of a hidden field is kept: switch `kind`
+back to `link` and the old address is there again. A model class writes the rule in the
+field's config: `#[Field(config: ['show_when' => ['field' => 'kind', '=' => 'link']])]`.
+
+The rules:
+
+| Rule | Holds when |
+|---|---|
+| `{"field": "kind", "=": "link"}` | `kind` is `link` (text compares exactly; a number field as whole numbers; `true`/`false` as on/off) |
+| `{"field": "kind", "!=": "link"}` | `=` does not hold (an empty `kind` is not `link`) |
+| `{"field": "kind", "in": ["link", "video"]}` | `kind` is one of the list |
+| `{"field": "kind", "not_in": ["link", "video"]}` | `kind` is none of the list |
+| `{"field": "note", "empty": true}` | `note` has no value: no key, `null`, `""` or an empty list (`"0"`, `0` and `false` are values) |
+| `{"field": "note", "filled": true}` | `note` has a value |
+| `{"all": [rule, …]}` / `{"any": [rule, …]}` | every rule holds / one rule holds (they nest) |
+
+On/off: `true`, `1`, `"1"`, `"true"` and `"on"` are on; anything else, an empty field too, is
+off. A field whose rule names a hidden field is hidden too: if `kind` hides `button_url`, a
+`button_label` with `{"field": "button_url", "filled": true}` hides with it.
+
+What is still checked for a hidden field: the column length of a unique or indexed string
+(the storage would refuse a longer value) and uniqueness. `DynamicRecord::get()` returns the
+stored value as before.
+
+When the registry is built (at boot, or when `preflow optimize` builds the boot manifest), a
+rule that cannot work is refused with a `ShowWhenException` naming the type and the field: a
+malformed rule, a rule naming a field the type does not have, the field itself, a translatable
+field (a field shown in one language and hidden in another would split its checks and
+storage), or a field that depends on this one again (a cycle). For example:
+
+```
+Type "page": field "button_url": show_when names "kind", which is not a field of the type. Name a field of the same type.
+```
+
+`Preflow\Data\FieldVisibility` is the one class that decides: `fromConfig($showWhen)->holds($values)`
+for one rule, `hiddenFields($fields, $values)` for a record's fields, and `assertRules()` for
+the boot check. The cases the browser and the server
+must agree on are in `tests/Fixtures/show-when-cases.json`.
+
 ## Model classes as types
 
 Content without code is a JSON file; the app's own models are PHP classes; Folio edits both.
