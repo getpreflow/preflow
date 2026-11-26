@@ -217,7 +217,7 @@ final class BlocksServiceProvider extends ServiceProvider
 
             return [
                 PageLayouts::LAYOUT => [new LayoutChoice($layouts, $data, $def)],
-                PageLayouts::AREAS => [AreaContents::forPage($layouts, $def, $container->get(BlockRegistry::class))],
+                PageLayouts::AREAS => [AreaContents::forPage($layouts, $def, $container->get(BlockRegistry::class), $data)],
             ];
         });
         $data->recordRules()->add(static function (TypeDefinition $def) use ($container, $data): array {

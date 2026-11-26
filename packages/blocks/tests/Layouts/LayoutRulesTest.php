@@ -100,6 +100,32 @@ final class LayoutRulesTest extends BlocksAppTestCase
         $this->assertSame([], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$banner('b1')], 'main' => [$quote('q1')]]]));
     }
 
+    public function test_area_narrowed_after_storing_keeps_the_page_savable(): void
+    {
+        // Stored before "main" excluded banners.
+        $b1 = ['_uid' => 'b1', '_block' => 'banner', 'title' => ['en' => 'Old']];
+        $q1 = ['_uid' => 'q1', '_block' => 'quote', 'text' => ['en' => 'Hi']];
+        $this->store('page', ['uuid' => 'p1', '_layout' => 'promo', '_areas' => ['hero' => [], 'main' => [$b1, $q1]]]);
+
+        $this->assertSame([], $this->errors('page', ['title' => 'Edited', '_layout' => 'promo', '_areas' => ['hero' => [], 'main' => [$b1, $q1]]]), 'the area as stored');
+        $this->assertSame([], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [], 'main' => [['title' => ['en' => 'New text']] + $b1, $q1]]]), 'its stored banner edited in place');
+        $this->assertSame([], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [], 'main' => [$b1]]]), 'another block removed: the stored banner stays');
+        $this->assertSame(['_areas' => ['The area "main" does not take "banner" blocks. Move it to another area or remove it.']], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [], 'main' => [$b1, $q1, ['_uid' => 'b2', '_block' => 'banner']]]]), 'a new one is refused');
+        $this->assertSame(['_areas' => ['The area "hero" does not take "quote" blocks. Move it to another area or remove it.']], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$q1], 'main' => [$b1]]]), 'one moved in is refused');
+    }
+
+    public function test_lowered_max_does_not_block_an_unchanged_area(): void
+    {
+        // Stored when the hero took more than one block.
+        $b1 = ['_uid' => 'b1', '_block' => 'banner', 'title' => ['en' => 'One']];
+        $b2 = ['_uid' => 'b2', '_block' => 'banner', 'title' => ['en' => 'Two']];
+        $this->store('page', ['uuid' => 'p1', '_layout' => 'promo', '_areas' => json_encode(['hero' => [$b1, $b2], 'main' => []])]);
+
+        $this->assertSame([], $this->errors('page', ['title' => 'Edited', '_layout' => 'promo', '_areas' => ['hero' => [$b1, $b2], 'main' => []]]));
+        $this->assertSame([], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [['title' => ['en' => 'Edited']] + $b1, $b2], 'main' => []]]), 'editing a block keeps the list');
+        $this->assertSame(['_areas' => ['The area "hero" takes at most 1 blocks.']], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$b1, $b2, ['_uid' => 'b3', '_block' => 'banner']], 'main' => []]]), 'a changed list is checked');
+    }
+
     public function test_a_broken_layouts_option_stops_the_boot(): void
     {
         $this->model('broken', ['allowed' => ['standard'], 'default' => 'promo']);
