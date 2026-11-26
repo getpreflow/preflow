@@ -25,7 +25,7 @@ abstract class BlocksAppTestCase extends TestCase
     {
         // The fixture app's App\Components\… and App\Blocks\… classes (a site's composer autoload).
         spl_autoload_register(static function (string $class): void {
-            foreach (['App\\Components\\' => 'app/Components/', 'App\\Blocks\\' => 'app/Blocks/'] as $prefix => $dir) {
+            foreach (['App\\Components\\' => 'app/Components/', 'App\\Blocks\\' => 'app/Blocks/', 'App\\Layouts\\' => 'app/Layouts/'] as $prefix => $dir) {
                 $file = __DIR__ . '/Fixtures/app/' . $dir . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
                 if (str_starts_with($class, $prefix) && is_file($file)) {
                     require $file;
