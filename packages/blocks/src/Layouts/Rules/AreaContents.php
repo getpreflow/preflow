@@ -59,7 +59,7 @@ final readonly class AreaContents implements ValidationRule
     /** A value {"layout": key, "areas": {…}} whose layout the set resolves (by key, else by its number of areas). */
     public static function forField(AreaLayoutSet $set, ?BlockRegistry $blocks = null): self
     {
-        return new self(static function (mixed $value): array {
+        return new self(static function (mixed $value) use ($set): array {
             if (is_string($value)) {
                 $value = trim($value) === '' ? [] : json_decode($value, true);
             }
@@ -74,7 +74,7 @@ final readonly class AreaContents implements ValidationRule
     public function validate(mixed $value, ValidationContext $context): true|Message
     {
         [$layout, $areas, $storedAreas] = ($this->read)($value, $context);
-        foreach ($layout?->areas ?? [] as $name => $area) {
+        foreach ($layout->areas ?? [] as $name => $area) {
             $blocks = $areas[$name] ?? [];
             // A stored record without this area (no "_areas" yet, or the layout gained the area) holds it empty.
             $stored = $storedAreas !== null ? self::listOf($storedAreas[$name] ?? []) : null;
