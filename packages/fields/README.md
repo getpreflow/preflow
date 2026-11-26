@@ -223,6 +223,73 @@ escaped.
 like a blocks field, are not searched in 0.91; `color` and `json` are not searched either. Transfer and export carry every stored value as
 it is.
 
+## Date with time, time and date range
+
+`datetime`, `time` and `daterange` are registered by `FieldsServiceProvider` like the others. None of
+them is `translatable`; their options (`zone`, `with_time`) are keys of the field itself, next to
+`"type"` (an object under the type's own name is a boot error).
+
+| type | stored | check | page |
+|---|---|---|---|
+| `datetime` | UTC ISO text, `"2026-03-29T12:30:00Z"` | `ValidDateTime` | `datetime_local(value, format, zone)` |
+| `time` | `"HH:MM"`, 24 hours (`"09:05"`) | `ValidTime` | `time_format(value, format)` |
+| `daterange` | `{"start": "2026-03-01", "end": "2026-03-07"}`, or with `"with_time": true` the two ends as UTC ISO text | `ValidDateRange` | `daterange_start(value, format, zone)`, `daterange_end(...)` |
+
+An empty value is `null` and passes (`"validate": ["required"]` makes it required).
+
+### Zones: what is stored and what people see
+
+A `datetime` is one instant, stored in **UTC**. People type and read it in the field's **zone**:
+`"zone": "Europe/Zurich"` on the field, else the **site's zone**, which is `timezone` in
+`config/app.php` (the application sets it as PHP's default zone). So an event at a place reads the
+same for every editor, whatever their browser's zone. A site changes the zone in one place; a
+field sets its own for a place elsewhere. A `time` is a wall-clock time and has no zone and no date
+(`"09:05"` is 09:05 wherever it is read). `"zone"` on a `time`, or on a `daterange` without
+`"with_time"`, is a boot error (a date has no zone either).
+
+UTC ISO text sorts correctly as text, so a `datetime` column sorts by the instant on every storage:
+its column kind is `date` (the same as a `date` field), and Folio's list lets you sort by it. A
+`time` is a short text column (`HH:MM` sorts as text); a `daterange` is an object and a text column.
+It is not meant to be sorted (the stored text starts with the start, but use a `datetime` or `date`
+field beside it if the list needs an order).
+
+### The clock changes: spring forward and fall back
+
+Two clock times do not map to one instant. The rule is the same for every zone:
+
+- **A time that does not exist** (the hour the clocks skip when they go forward, in
+  `Europe/Zurich` 02:00 to 03:00 on 2026-03-29) is **refused**, with a message naming the time and the
+  zone: "2026-03-29 02:30 does not exist in Europe/Zurich (clocks go forward). Choose another
+  time." Nothing is shifted silently.
+- **A time that happens twice** (the hour the clocks repeat when they go back, 02:00 to 03:00 on
+  2026-10-25) is the **earlier instant**: 02:30 is read as summer time (00:30 UTC), not as winter
+  time (01:30 UTC). The editor cannot pick the later one; choose 03:00 or later, or type the
+  UTC value.
+
+`DateTimeValue::fromLocal($text, $zone)` applies the rules (null for a time that does not exist) and
+`DateTimeValue::localProblem()` says why. Without Folio the check wants the stored form
+(`2026-03-29T12:30:00Z`); text typed in the zone is refused (the check reads a time of the skipped
+hour as the "does not exist" message, anything else as "Must be a date and time in UTC, such as
+2026-03-29T12:30:00Z."). `DateTimeValue::fromLocal($text, (new DateOptions())->zone())->toStored()`
+builds the stored value from what a person typed (a seed, an import).
+
+### Date range
+
+`{"start", "end"}`, both given, the end on or after the start (the same day is fine; a range counts
+both ends). The refusal names both: "The end (2026-03-01) is before the start (2026-03-07). Choose
+an end on or after 2026-03-07." With `"with_time": true` the ends are date-times in UTC, typed in
+the field's zone like a `datetime`, and shown in that zone in the message. A range with one end is
+refused ("Must be a date range with a start and an end, such as 2026-03-01 – 2026-03-07.").
+
+### In templates
+
+`datetime_local(value, format = "Y-m-d H:i", zone = null)` writes the instant with a PHP `date()`
+format in the site's zone (or the zone named); `time_format(value, format = "H:i")` reformats a time
+(`"g:i a"` gives `9:05 am`); `daterange_start(value, format = null, zone = null)` and
+`daterange_end(...)` write an end (default `Y-m-d`, or `Y-m-d H:i` for a range with a time). All
+give `''` for an empty value. They are `TemplateFunctionDefinition`s, so they work in every
+template engine. The value for `<time datetime="…">` is the stored text itself.
+
 ## Adding a field type
 
 Each type of this package is built from the same parts. The link field shows each one:

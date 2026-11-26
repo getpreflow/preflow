@@ -31,6 +31,11 @@ return [
     'color_palette' => 'Sunulan renklerden birini seçin: :values.',
     'json' => 'Geçerli bir JSON olmalıdır, örn. {"ad": "değer"} veya [1, 2, 3].',
     'phone_region' => 'Bu numaranın hangi ülkeye ait olduğu anlaşılamıyor: numarayı + ve ülke koduyla başlatın, örn. +41 44 123 45 67.',
+    'datetime' => 'UTC olarak tarih ve saat olmalıdır, örn. 2026-03-29T12:30:00Z.',
+    'datetime_gap' => ':value, :zone diliminde yoktur (saatler ileri alınır). Başka bir saat seçin.',
+    'time' => 'Saat ve dakika olarak bir saat olmalıdır, örn. 14:30.',
+    'daterange' => 'Başlangıcı ve bitişi olan bir tarih aralığı olmalıdır, örn. :example.',
+    'daterange_order' => 'Bitiş (:end) başlangıçtan (:start) önce. :start tarihinde veya sonrasında bir bitiş seçin.',
     'link' => [
         'kind' => 'Bağlantının neyi gösterdiğini seçin: :kinds.',
         'target' => 'Bağlantının neyi gösterdiğini seçin veya girin.',

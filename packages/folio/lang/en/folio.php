@@ -618,6 +618,11 @@ return [
         'phone' => [
             'dialled' => 'Dialled as :number.',
         ],
+        // The date range field (0.91).
+        'daterange' => [
+            'from' => 'From',
+            'to' => 'To',
+        ],
         'color' => [
             'pick' => 'Pick a colour',
             'placeholder' => '#rrggbb',

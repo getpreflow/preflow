@@ -23,7 +23,7 @@ final readonly class ListQuery
     public const int PER_PAGE = 50;
 
     /** Field types the admin list shows when "list.columns" is not set. */
-    public const array LIST_TYPES = ['string', 'number', 'int', 'integer', 'float', 'select', 'boolean', 'date'];
+    public const array LIST_TYPES = ['string', 'number', 'int', 'integer', 'float', 'select', 'boolean', 'date', 'datetime', 'time'];
 
     /** Upper bound for the requested page, so (page - 1) * PER_PAGE can never overflow an int. */
     private const int MAX_PAGE = 1_000_000;

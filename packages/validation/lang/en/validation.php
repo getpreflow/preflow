@@ -7,7 +7,7 @@
 // lang/{locale}/validation.php. A language without a text falls back to the site's fallback
 // language, then English.
 // :min, :max, :step are the rule's numbers; :values the allowed values, comma-separated; :kinds and
-// :types (a link's) the allowed link kinds and record types, comma-separated; :refused the refused type; :values (a colour's palette) the colours offered.
+// :types (a link's) the allowed link kinds and record types, comma-separated; :refused the refused type; :values (a colour's palette) the colours offered; :value and :zone (a date-time that does not exist in a zone), :example (a date range), :start and :end (a range's ends).
 return [
     'required' => 'This field is required.',
     'email' => 'Must be a valid email address.',
@@ -37,6 +37,11 @@ return [
     'color_palette' => 'Choose one of the colours offered: :values.',
     'json' => 'Must be valid JSON, such as {"name": "value"} or [1, 2, 3].',
     'phone_region' => 'Cannot tell which country this number belongs to: start it with + and the country code, e.g. +41 44 123 45 67.',
+    'datetime' => 'Must be a date and time in UTC, such as 2026-03-29T12:30:00Z.',
+    'datetime_gap' => ':value does not exist in :zone (clocks go forward). Choose another time.',
+    'time' => 'Must be a time of day as hours and minutes, such as 14:30.',
+    'daterange' => 'Must be a date range with a start and an end, such as :example.',
+    'daterange_order' => 'The end (:end) is before the start (:start). Choose an end on or after :start.',
     'link' => [
         'kind' => 'Choose what the link points to: :kinds.',
         'target' => 'Choose or enter what the link points to.',

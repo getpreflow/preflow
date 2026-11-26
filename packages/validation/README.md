@@ -34,7 +34,7 @@ Rules for validating arrays and records. A rule is written as a string alias wit
 
 The message `validation.phone_region` belongs to preflow/fields' phone check and lives here for the same reason. The messages `validation.link.kind`, `.target`, `.type` and `.url` (since 0.91) belong to
 preflow/fields' link check (`ValidLink`); they live here so a validator without a translator has
-their English text, as for every rule's.
+their English text, as for every rule's. So do `validation.datetime`, `.datetime_gap` (`:value`, `:zone`), `.time`, `.daterange` (`:example`) and `.daterange_order` (`:start`, `:end`) (since 0.91), the messages of the date-time, time and date range fields.
 
 ## Rules for a filled value only
 

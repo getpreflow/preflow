@@ -11,8 +11,11 @@ use Preflow\Data\DataManager;
 use Preflow\Data\FieldKinds;
 use Preflow\Data\Locales;
 use Preflow\Data\Schema\ColumnKind;
+use Preflow\Fields\Rules\ValidDateRange;
+use Preflow\Fields\Rules\ValidDateTime;
 use Preflow\Fields\Rules\ValidLink;
 use Preflow\Fields\Rules\ValidPhone;
+use Preflow\Fields\Rules\ValidTime;
 use Preflow\Validation\Rules\Color;
 use Preflow\Validation\Rules\Email;
 use Preflow\Validation\Rules\Json;
@@ -92,5 +95,17 @@ final class FieldsServiceProvider extends ServiceProvider
         // json: JSON as text, as the editor wrote it; not searchable.
         $kinds->column('json', ColumnKind::Text);
         $kinds->rules('json', static fn (array $config): array => [new Json()]);
+
+        // datetime: UTC ISO text ("2026-03-29T12:30:00Z"), which sorts as text: a date column.
+        $kinds->column('datetime', ColumnKind::Date);
+        $kinds->rules('datetime', static fn (array $config): array => [new ValidDateTime(DateOptions::fromConfig($config))]);
+
+        // time: "HH:MM" text.
+        $kinds->column('time', ColumnKind::Short);
+        $kinds->rules('time', static fn (array $config): array => [new ValidTime()]);
+
+        // daterange: an object ({start, end}), JSON text in an SQL column; not searchable, like a link.
+        $kinds->column('daterange', ColumnKind::Text);
+        $kinds->rules('daterange', static fn (array $config): array => [new ValidDateRange(DateOptions::fromConfig($config))]);
     }
 }

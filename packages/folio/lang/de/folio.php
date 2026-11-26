@@ -601,6 +601,11 @@ return [
         'phone' => [
             'dialled' => 'Gewählt wird :number.',
         ],
+        // The date range field (0.91).
+        'daterange' => [
+            'from' => 'Von',
+            'to' => 'Bis',
+        ],
         'color' => [
             'pick' => 'Farbe wählen',
             'placeholder' => '#rrggbb',

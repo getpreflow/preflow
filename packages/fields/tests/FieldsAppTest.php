@@ -31,10 +31,13 @@ final class FieldsAppTest extends TestCase
 
     private int $renders = 0;
 
+    private string $previousZone = 'UTC';
+
     protected function setUp(): void
     {
+        $this->previousZone = date_default_timezone_get(); // booting the app sets app.timezone as the default zone
         $this->dir = sys_get_temp_dir() . '/fields_app_' . bin2hex(random_bytes(4));
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Fields', 'debug' => 1, 'engine' => 'twig', 'key' => 'fields-app-test-key-0123456789abcdef'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Fields', 'debug' => 1, 'engine' => 'twig', 'timezone' => 'Europe/Zurich', 'key' => 'fields-app-test-key-0123456789abcdef'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Fields\\FieldsServiceProvider::class];\n");
         $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url_strategy' => 'prefix'];\n");
         $this->write('config/data.php', "<?php\nreturn ['drivers' => ['json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data']], 'default' => 'json', 'models_path' => __DIR__ . '/models'];\n");
@@ -46,6 +49,7 @@ final class FieldsAppTest extends TestCase
 
     protected function tearDown(): void
     {
+        date_default_timezone_set($this->previousZone);
         Contexts::reset();
         if (!is_dir($this->dir)) {
             return;
@@ -115,6 +119,27 @@ final class FieldsAppTest extends TestCase
         $this->assertSame('<pre><code class="language-html">&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;</code></pre>', $this->render('{{ code_html(code, "html") }}', $values), 'safe markup, escaped inside');
         $this->assertSame('<pre><code>&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;</code></pre>', $this->render('{{ code_html(code) }}', $values), 'no language: no class');
         $this->assertSame('tel:+41441234567', $this->render('{{ tel_href(phone) }}', ['phone' => json_encode($values['phone'])]), 'JSON text as SQL storage gives it');
+    }
+
+    public function test_template_functions_for_datetime_time_and_range_in_the_site_zone(): void
+    {
+        $values = [
+            'at' => '2026-07-15T10:30:00Z',
+            'winter' => '2026-01-15T10:30:00Z',
+            'opens' => '09:05',
+            'stay' => ['start' => '2026-03-01', 'end' => '2026-03-07'],
+            'slot' => json_encode(['start' => '2026-07-15T07:00:00Z', 'end' => '2026-07-15T15:30:00Z']),
+            'none' => null,
+        ];
+        $template = '{{ datetime_local(at) }}|{{ datetime_local(winter) }}|{{ datetime_local(at, "j.n.Y, G:i") }}|{{ datetime_local(at, "H:i", "Asia/Tokyo") }}|{{ datetime_local(at, "H:i", "Nowhere/Land") }}'
+            . '|{{ time_format(opens) }}|{{ time_format(opens, "g:i a") }}'
+            . '|{{ daterange_start(stay) }}|{{ daterange_end(stay, "j M") }}|{{ daterange_start(slot) }}|{{ daterange_end(slot, "H:i") }}|{{ daterange_end(slot, "H:i", "UTC") }}'
+            . '|[{{ datetime_local(none) }}][{{ time_format(none) }}][{{ daterange_start(none) }}][{{ daterange_end("junk") }}]';
+
+        $this->assertSame(
+            '2026-07-15 12:30|2026-01-15 11:30|15.7.2026, 12:30|19:30|12:30|09:05|9:05 am|2026-03-01|7 Mar|2026-07-15 09:00|17:30|15:30|[][][][]',
+            $this->render($template, $values),
+        );
     }
 
     private function write(string $rel, string $content): void

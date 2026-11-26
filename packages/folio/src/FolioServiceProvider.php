@@ -688,7 +688,7 @@ final class FolioServiceProvider extends ServiceProvider
                 static fn (): ?\Preflow\Data\Locales => $c->bound(\Preflow\Data\Locales::class) ? $c->get(\Preflow\Data\Locales::class) : null,
             ));
             // email, phone, colour, code and JSON (0.91): their values, checks and storage are preflow/fields'; these draw the inputs.
-            foreach ([\Preflow\Folio\Field\Types\EmailFieldType::class, \Preflow\Folio\Field\Types\PhoneFieldType::class, \Preflow\Folio\Field\Types\ColorFieldType::class, \Preflow\Folio\Field\Types\CodeFieldType::class, \Preflow\Folio\Field\Types\JsonFieldType::class] as $class) {
+            foreach ([\Preflow\Folio\Field\Types\EmailFieldType::class, \Preflow\Folio\Field\Types\PhoneFieldType::class, \Preflow\Folio\Field\Types\ColorFieldType::class, \Preflow\Folio\Field\Types\CodeFieldType::class, \Preflow\Folio\Field\Types\JsonFieldType::class, \Preflow\Folio\Field\Types\DateTimeFieldType::class, \Preflow\Folio\Field\Types\TimeFieldType::class, \Preflow\Folio\Field\Types\DateRangeFieldType::class] as $class) {
                 $registry->register(new $class());
             }
             $registry->alias('int', 'number');

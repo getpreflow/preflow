@@ -17,7 +17,7 @@ namespace Preflow\Fields;
 final class FieldOptions
 {
     /** The field types of this package that take options or refuse "translatable". */
-    public const array TYPES = ['link', 'email', 'phone', 'color', 'code', 'json'];
+    public const array TYPES = ['link', 'email', 'phone', 'color', 'code', 'json', 'datetime', 'time', 'daterange'];
 
     /**
      * @param array<string, mixed> $config the field's config, with its "translatable" as a key
@@ -30,6 +30,7 @@ final class FieldOptions
             'phone' => PhoneOptions::check($config),
             'color' => ColorOptions::check($config),
             'code' => CodeOptions::check($config),
+            'datetime', 'time', 'daterange' => DateOptions::check($type, $config),
             'email', 'json' => self::refuseTranslatable($type, $config),
             default => null,
         };

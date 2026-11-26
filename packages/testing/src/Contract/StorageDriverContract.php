@@ -102,9 +102,9 @@ use Preflow\Testing\PlainDriver;
  * - save() of an existing id updates the fields it is given and keeps the others; a field given as
  *   null is stored as null (@since 0.78). delete() of a missing id does nothing.
  * - Field value shapes (@since 0.91.0): the objects preflow/fields' field types store (a link's
- *   {kind, target, label, new_tab}, a phone's {as_typed, e164}) read back
+ *   {kind, target, label, new_tab}, a phone's {as_typed, e164}, a date range's {start, end}) read back
  *   from a `json` field as saved (fieldValueShapes()); the texts of the text-valued types (an
- *   email, a colour, code, JSON text) read back from a text column byte for byte (textValueShapes()).
+ *   email, a colour, code, JSON text, a UTC date and time, a time of day) read back from a text column byte for byte (textValueShapes()).
  * - A driver with InsertsNew (@since 0.79.0) writes a record only while no record has its id, and says
  *   which: true when written, false when the id exists (the stored record stays as it is). A
  *   given int id is written as it is, and a store that generates ids gives the next record
@@ -446,6 +446,8 @@ abstract class StorageDriverContract extends TestCase
             'link to a file' => [['kind' => 'asset', 'target' => 'a0f3', 'label' => 'Price list (PDF)', 'new_tab' => true]],
             'phone number' => [['as_typed' => '044 123 45 67', 'e164' => '+41441234567']],
             'phone number without an E.164 form' => [['as_typed' => '112', 'e164' => null]],
+            'date range' => [['start' => '2026-03-01', 'end' => '2026-03-07']],
+            'date range with times' => [['start' => '2026-03-29T00:30:00Z', 'end' => '2026-03-29T17:00:00Z']],
         ];
     }
 
@@ -474,6 +476,8 @@ abstract class StorageDriverContract extends TestCase
             'JSON object as written' => ["{\n  \"b\": 1,\n  \"a\": [\"ä\", null]\n}"],
             'code with line breaks, quotes and umlauts' => ["<?php\necho \"ä € 😀\"; // 'q' & <t>\n\treturn;"],
             'code that starts with a brace' => ['{ "a": 1 }'],
+            'date and time (UTC)' => ['2026-03-29T00:30:00Z'],
+            'time of day' => ['09:05'],
             'JSON text' => ['"text with \\"quotes\\""'],
         ];
     }

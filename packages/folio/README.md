@@ -1084,6 +1084,17 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   block, the options go in the field's `config` (`config: ['default_region' => 'CH']`). List cells
   show the number as typed, the colour as hex text (list cells are plain text: no swatch), code on
   one line, and JSON's first characters.
+- `datetime`, `time`, `daterange` (0.91): `datetime` is the browser's date-and-time input in the date
+  box, typed and shown in the field's `"zone"` (else the site's, `timezone` in `config/app.php`; the
+  zone is written under the input) and stored as UTC (`2026-03-29T12:30:00Z`), so the list sorts by
+  the instant. A time the clocks skip (spring forward) is kept as typed and refused with a message
+  naming the time and the zone; a time that happens twice (fall back) is the earlier instant: both
+  rules are in preflow/fields' README. `time` is the time input, stored as `HH:MM` with no zone.
+  `daterange` is two inputs ("From", "To") stored as `{start, end}`: dates, or with
+  `"with_time": true` date-times in UTC typed in the zone; the end may not be before the start, and
+  both are needed. Their checks are the core's (blocks too). List cells show the date and time in
+  the interface language in the field's zone, `HH:MM`, and "start – end". `datetime` and `time`
+  columns are part of the default list; a range is not (it does not sort).
 - `asset`: each chosen file is a card (a 16:10 thumbnail with the focal point, the name, kind and
   size, "No alt text yet" for an image without one); an empty field is a dashed drop zone. A file
   dropped anywhere on the field, or chosen with its Upload button, is uploaded to the media library

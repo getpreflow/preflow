@@ -601,6 +601,11 @@ return [
         'phone' => [
             'dialled' => 'Numéro composé : :number.',
         ],
+        // The date range field (0.91).
+        'daterange' => [
+            'from' => 'Du',
+            'to' => 'Au',
+        ],
         'color' => [
             'pick' => 'Choisir une couleur',
             'placeholder' => '#rrggbb',

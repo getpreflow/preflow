@@ -31,6 +31,11 @@ return [
     'color_palette' => 'Elige uno de los colores ofrecidos: :values.',
     'json' => 'Debe ser JSON válido, p. ej. {"nombre": "valor"} o [1, 2, 3].',
     'phone_region' => 'No se puede saber a qué país pertenece este número: empieza por + y el prefijo del país, p. ej. +41 44 123 45 67.',
+    'datetime' => 'Debe ser una fecha con hora en UTC, p. ej. 2026-03-29T12:30:00Z.',
+    'datetime_gap' => ':value no existe en :zone (los relojes se adelantan). Elige otra hora.',
+    'time' => 'Debe ser una hora con horas y minutos, p. ej. 14:30.',
+    'daterange' => 'Debe ser un rango de fechas con inicio y fin, p. ej. :example.',
+    'daterange_order' => 'El fin (:end) es anterior al inicio (:start). Elige un fin igual o posterior a :start.',
     'link' => [
         'kind' => 'Elige a qué apunta el enlace: :kinds.',
         'target' => 'Elige o escribe a qué apunta el enlace.',

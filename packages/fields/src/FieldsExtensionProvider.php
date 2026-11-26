@@ -7,10 +7,13 @@ namespace Preflow\Fields;
 use Preflow\Core\Context\Contexts;
 use Preflow\Data\Locales;
 use Preflow\Fields\Values\Code;
+use Preflow\Fields\Values\DateRange;
+use Preflow\Fields\Values\DateTimeValue;
 use Preflow\Fields\Values\Email;
 use Preflow\Fields\Values\JsonText;
 use Preflow\Fields\Values\Link;
 use Preflow\Fields\Values\Phone;
+use Preflow\Fields\Values\TimeOfDay;
 use Preflow\View\TemplateExtensionProvider;
 use Preflow\View\TemplateFunctionDefinition;
 
@@ -27,6 +30,13 @@ use Preflow\View\TemplateFunctionDefinition;
  * - tel_href(value): a phone field's `tel:` address (Phone::href(): the E.164 form, else the digits), or null;
  * - code_html(value, language = null): a code field (language: its field's "language" option, for the class) as `<pre><code class="language-…">` with the code escaped (Code::html()), '' for none;
  * - json_data(value): a json field decoded (array, text, number), null when empty or invalid.
+ *
+ * - datetime_local(value, format = "Y-m-d H:i", zone = null): a datetime field's instant written with a
+ *   PHP date() format in the site's zone (app.timezone), or the zone named, or '' for none;
+ * - time_format(value, format = "H:i"): a time field's "HH:MM" written with a date() format ("g:i a"), or '';
+ * - daterange_start(value, format = null, zone = null), daterange_end(...): an end of a daterange
+ *   field written with a date() format (default "Y-m-d", or "Y-m-d H:i" for a range with a time, in
+ *   the site's zone or the zone named), or '' for none.
  *
  * value is the field's value as a template gets it (the stored object, or JSON text of it). The
  * locale is the render's (Contexts::current()->locale) unless given. A record link resolves
@@ -72,6 +82,22 @@ final class FieldsExtensionProvider implements TemplateExtensionProvider
                 isSafe: true,
             ),
             new TemplateFunctionDefinition(
+                name: 'datetime_local',
+                callable: static fn (mixed $value, string $format = 'Y-m-d H:i', ?string $zone = null): string => DateTimeValue::fromStored($value)?->format($format, self::zone($zone)) ?? '',
+            ),
+            new TemplateFunctionDefinition(
+                name: 'time_format',
+                callable: static fn (mixed $value, string $format = 'H:i'): string => TimeOfDay::fromStored($value)?->format($format) ?? '',
+            ),
+            new TemplateFunctionDefinition(
+                name: 'daterange_start',
+                callable: static fn (mixed $value, ?string $format = null, ?string $zone = null): string => DateRange::fromStored($value)?->format(false, self::zone($zone), $format) ?? '',
+            ),
+            new TemplateFunctionDefinition(
+                name: 'daterange_end',
+                callable: static fn (mixed $value, ?string $format = null, ?string $zone = null): string => DateRange::fromStored($value)?->format(true, self::zone($zone), $format) ?? '',
+            ),
+            new TemplateFunctionDefinition(
                 name: 'json_data',
                 callable: static fn (mixed $value): mixed => JsonText::decode($value),
             ),
@@ -81,6 +107,16 @@ final class FieldsExtensionProvider implements TemplateExtensionProvider
     public function getTemplateGlobals(): array
     {
         return [];
+    }
+
+    /** The zone named, else the site's (app.timezone); an unknown name is the site's too. */
+    private static function zone(?string $name): \DateTimeZone
+    {
+        try {
+            return new \DateTimeZone($name ?? date_default_timezone_get());
+        } catch (\Exception) {
+            return new \DateTimeZone(date_default_timezone_get());
+        }
     }
 
     private function locale(?string $given): string

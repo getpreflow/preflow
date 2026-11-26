@@ -4457,6 +4457,10 @@ code.folio-redirect-to { color: var(--c-accent-text); }
   color: var(--c-text-subtle); overflow-wrap: anywhere; user-select: text;
 }
 
+/* The date range field (0.91): the two ends side by side, stacked on a narrow screen. */
+.folio-daterange-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 12px; }
+.folio-daterange .folio-date-hint { margin-top: 6px; }
+
 /* The colour field (0.91): the picker, the hex text, the palette as swatches (inline SVG, the colour is its fill). */
 .folio-color-row { display: flex; align-items: center; gap: 8px; }
 .folio-color-row .folio-color-picker { width: 40px; height: 36px; padding: 2px; flex: none; }
