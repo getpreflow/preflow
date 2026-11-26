@@ -3116,7 +3116,7 @@
         },
         {
             "name": "preflow/ai",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/ai",
@@ -3178,7 +3178,7 @@
         },
         {
             "name": "preflow/auth",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/auth",
@@ -3220,7 +3220,7 @@
         },
         {
             "name": "preflow/blade",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/blade",
@@ -3264,7 +3264,7 @@
         },
         {
             "name": "preflow/blocks",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/blocks",
@@ -3313,7 +3313,7 @@
         },
         {
             "name": "preflow/codes",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/codes",
@@ -3355,7 +3355,7 @@
         },
         {
             "name": "preflow/components",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/components",
@@ -3395,7 +3395,7 @@
         },
         {
             "name": "preflow/core",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/core",
@@ -3450,7 +3450,7 @@
         },
         {
             "name": "preflow/data",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/data",
@@ -3497,7 +3497,7 @@
         },
         {
             "name": "preflow/devtools",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/devtools",
@@ -3545,11 +3545,11 @@
         },
         {
             "name": "preflow/fields",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/fields",
-                "reference": "16041315a0d90bdacb0b92afd1db156af70b3ce5"
+                "reference": "639c5294e0bbd68610175fac262a390188b574a6"
             },
             "require": {
                 "php": ">=8.4",
@@ -3559,6 +3559,7 @@
                 "preflow/view": "^0.91.0 || @dev"
             },
             "conflict": {
+                "preflow/blocks": "<0.91.0",
                 "preflow/core": "<0.84.0",
                 "preflow/data": "<0.91.0",
                 "preflow/validation": "<0.91.0",
@@ -3566,7 +3567,11 @@
             },
             "require-dev": {
                 "phpunit/phpunit": "^11.0",
+                "preflow/blocks": "^0.91.0 || @dev",
                 "preflow/testing": "^0.91.0 || @dev"
+            },
+            "suggest": {
+                "preflow/blocks": "The options of these field types in block fields are checked when the block registry is built"
             },
             "type": "library",
             "autoload": {
@@ -3590,7 +3595,7 @@
         },
         {
             "name": "preflow/folio",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/folio",
@@ -3716,7 +3721,7 @@
         },
         {
             "name": "preflow/form",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/form",
@@ -3760,7 +3765,7 @@
         },
         {
             "name": "preflow/htmx",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/htmx",
@@ -3805,7 +3810,7 @@
         },
         {
             "name": "preflow/i18n",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/i18n",
@@ -3862,7 +3867,7 @@
         },
         {
             "name": "preflow/media",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/media",
@@ -3933,7 +3938,7 @@
         },
         {
             "name": "preflow/members",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/members",
@@ -4004,7 +4009,7 @@
         },
         {
             "name": "preflow/notify",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/notify",
@@ -4053,7 +4058,7 @@
         },
         {
             "name": "preflow/publishing",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/publishing",
@@ -4119,7 +4124,7 @@
         },
         {
             "name": "preflow/rbac",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/rbac",
@@ -4203,7 +4208,7 @@
         },
         {
             "name": "preflow/roles",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/roles",
@@ -4243,7 +4248,7 @@
         },
         {
             "name": "preflow/routing",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/routing",
@@ -4281,7 +4286,7 @@
         },
         {
             "name": "preflow/testing",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/testing",
@@ -4330,7 +4335,7 @@
         },
         {
             "name": "preflow/twig",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/twig",
@@ -4373,7 +4378,7 @@
         },
         {
             "name": "preflow/validation",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/validation",
@@ -4428,7 +4433,7 @@
         },
         {
             "name": "preflow/view",
-            "version": "dev-main",
+            "version": "dev-integration/0.91.0",
             "dist": {
                 "type": "path",
                 "url": "packages/view",
