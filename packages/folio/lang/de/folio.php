@@ -606,6 +606,30 @@ return [
             'from' => 'Von',
             'to' => 'Bis',
         ],
+        // Video, Tabelle und Ort (0.91; Embed, Table, Location von preflow/fields).
+        'embed' => [
+            'url' => 'Video-Adresse',
+            'hint' => 'Füge die Adresse eines Videos auf :providers ein, wie sie der Browser zeigt.',
+            'plays_from' => 'Wird von :provider abgespielt (Video :id). Von :provider wird erst etwas geladen, wenn jemand das Video startet.',
+            'poster' => 'Vorschaubild',
+            'poster_help' => 'Wird gezeigt, bevor das Video läuft. Ohne Vorschaubild zeigt die Seite nur eine Abspieltaste (nie ein Bild des Video-Anbieters).',
+        ],
+        'table' => [
+            'header' => 'Kopfzeile',
+            'header_cell' => 'Kopfzeile, Spalte :column',
+            'cell' => 'Zeile :row, Spalte :column',
+            'hint' => 'In die leere Zeile oder Spalte tippen fügt eine hinzu. Alle Zellen einer Zeile oder Spalte leeren entfernt sie. Kopfzeile leer lassen für eine Tabelle ohne Kopfzeile.',
+            'hint_translate' => 'Zeilen und Spalten folgen der Tabelle in :language; hier übersetzt du jede Zelle.',
+            'size' => ':rows Zeilen × :columns Spalten',
+        ],
+        'location' => [
+            'lat' => 'Breitengrad',
+            'lng' => 'Längengrad',
+            'lat_placeholder' => '47.3769',
+            'lng_placeholder' => '8.5417',
+            'address' => 'Adresse',
+            'hint' => 'Breiten- und Längengrad in Grad, Norden und Osten positiv (aus einer Karten-App kopieren).',
+        ],
         'color' => [
             'pick' => 'Farbe wählen',
             'placeholder' => '#rrggbb',

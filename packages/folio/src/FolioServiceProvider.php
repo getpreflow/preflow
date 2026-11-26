@@ -691,6 +691,25 @@ final class FolioServiceProvider extends ServiceProvider
             foreach ([\Preflow\Folio\Field\Types\EmailFieldType::class, \Preflow\Folio\Field\Types\PhoneFieldType::class, \Preflow\Folio\Field\Types\ColorFieldType::class, \Preflow\Folio\Field\Types\CodeFieldType::class, \Preflow\Folio\Field\Types\JsonFieldType::class, \Preflow\Folio\Field\Types\DateTimeFieldType::class, \Preflow\Folio\Field\Types\TimeFieldType::class, \Preflow\Folio\Field\Types\DateRangeFieldType::class] as $class) {
                 $registry->register(new $class());
             }
+            // video embed, table and location (0.91): their values, checks, storage and page output
+            // are preflow/fields'; these draw the inputs. The poster uses the asset picker; the
+            // player, the video hosts and a site's LocationPicker come from the container.
+            $registry->register(new \Preflow\Folio\Field\Types\EmbedFieldType(
+                $registry,
+                static fn (): \Preflow\Fields\EmbedProviders => $c->get(\Preflow\Fields\EmbedProviders::class),
+                new \Preflow\Fields\EmbedOutput(
+                    static fn (): \Preflow\Fields\EmbedProviders => $c->get(\Preflow\Fields\EmbedProviders::class),
+                    static fn (): \Preflow\Fields\EmbedPlayer => $c->bound(\Preflow\Fields\EmbedPlayer::class) ? $c->get(\Preflow\Fields\EmbedPlayer::class) : new \Preflow\Fields\PrivacyEmbedPlayer(),
+                    static fn (): ?\Preflow\Fields\RecordAddresses => $c->bound(\Preflow\Fields\RecordAddresses::class) ? $c->get(\Preflow\Fields\RecordAddresses::class) : null,
+                    static fn (): ?\Preflow\View\AssetCollector => $c->has(\Preflow\View\AssetCollector::class) ? $c->get(\Preflow\View\AssetCollector::class) : null,
+                ),
+            ));
+            $registry->register(new \Preflow\Folio\Field\Types\TableFieldType(
+                static fn (): ?\Preflow\Data\Locales => $c->bound(\Preflow\Data\Locales::class) ? $c->get(\Preflow\Data\Locales::class) : null,
+            ));
+            $registry->register(new \Preflow\Folio\Field\Types\LocationFieldType(
+                static fn (): ?\Preflow\Fields\LocationPicker => $c->bound(\Preflow\Fields\LocationPicker::class) ? $c->get(\Preflow\Fields\LocationPicker::class) : null,
+            ));
             $registry->alias('int', 'number');
             $registry->alias('integer', 'number');
             $registry->alias('float', 'number');

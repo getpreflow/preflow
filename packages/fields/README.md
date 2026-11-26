@@ -4,8 +4,8 @@ Field types as core values. A field type here is more than an input: it says wha
 like, how it is checked, how it is stored and what a template does with it. All of that works
 without Folio. Folio only adds the editor input for each type.
 
-The types so far are `link`, `email`, `phone`, `color`, `code` and `json`. More follow in the same
-package (dates, embeds, tables, locations); each is built the same way (see
+The types are `link`, `email`, `phone`, `color`, `code`, `json`, `datetime`, `time`, `daterange`,
+`embed` (a video), `table` and `location`; each is built the same way (see
 [Adding a field type](#adding-a-field-type)).
 
 ## Install
@@ -288,6 +288,189 @@ format in the site's zone (or the zone named); `time_format(value, format = "H:i
 `daterange_end(...)` write an end (default `Y-m-d`, or `Y-m-d H:i` for a range with a time). All
 give `''` for an empty value; a zone name that is no zone (`"Nowhere/Land"`) throws a `LogicException` naming it. They are `TemplateFunctionDefinition`s, so they work in every
 template engine. The value for `<time datetime="…">` is the stored text itself.
+
+## Video embed, table and location
+
+`embed`, `table` and `location` are registered by `FieldsServiceProvider` like the others (their
+column, their check, the template functions), so a site without Folio stores and checks them the
+same way. Their options are keys of the field itself, next to `"type"`; an object under the type's
+own name (`"table": {…}`) is a boot error that says where the option goes. None of them takes
+`"translatable"` (a boot error): a video and a place are the same in every language, and a table
+translates each cell inside the value.
+
+| type | stored | check | page |
+|---|---|---|---|
+| `embed` | `{"provider": "youtube", "id": "aqz-KE-bpKQ", "url": "https://youtu.be/aqz-KE-bpKQ", "poster": "a0f3"}` | `ValidEmbed` | `embed_player(value, title)`, `embed_data(value)` |
+| `table` | `{"head": ["Size", "Price"], "rows": [["S", "CHF 10"]]}`, a cell a text or a text per language | `ValidTable` | `table_html(value)`, `table_data(value)` |
+| `location` | `{"lat": 47.3769, "lng": 8.5417, "address": "Bahnhofplatz, Zürich"}` | `ValidLocation` | `location_data(value)`, `geo_href(value)` |
+
+An empty value is `null` and passes (`"validate": ["required"]` makes it required). All three are
+objects: a JSON file holds them, SQL storage JSON text in a text column, and each value's
+`fromStored()` reads both.
+
+### The video embed
+
+```json
+"video": {"type": "embed"}
+"clip":  {"type": "embed", "providers": ["peertube"]}
+```
+
+The editor pastes the address of the video as the browser shows it. These are recognized
+(`Values\Embed::fromUrl()`):
+
+- YouTube: `youtube.com/watch?v=…` (also `m.` and `music.`), `youtu.be/…`, `youtube.com/shorts/…`,
+  `youtube.com/live/…`, `youtube.com/embed/…` and `youtube-nocookie.com/embed/…`. The id is
+  YouTube's 11 characters.
+- Vimeo: `vimeo.com/76979871`, `vimeo.com/channels/…/76979871`, `vimeo.com/groups/…/videos/…`,
+  `vimeo.com/showcase/…/video/…` and `player.vimeo.com/video/76979871`. A video shared with a
+  private link keeps its hash: `vimeo.com/76979871/8272103f6e` (or `?h=8272103f6e`) has the id
+  `76979871:8272103f6e`.
+
+The address is stored as pasted (`url`); the player address is never stored, it comes from the
+provider. Any other address is refused, naming the host and what to paste instead: "Videos from
+www.dailymotion.com cannot be embedded here; paste the address of a video on YouTube, Vimeo." A
+stored `provider` and `id` must be the ones the `url` gives (a seed or the REST API may also write
+the plain address: `"https://youtu.be/aqz-KE-bpKQ"` passes and reads back as the video). `poster`
+is the id of an image of the media library, or null.
+
+**Another video host.** A site adds one in code and lists it on the fields that offer it:
+
+```php
+final class PeerTube implements \Preflow\Fields\EmbedProvider
+{
+    public function name(): string { return 'peertube'; }
+    public function label(): string { return 'PeerTube'; }
+    public function idOf(string $url): ?string
+    {
+        return preg_match('~^https://video\.example\.org/w/([A-Za-z0-9]+)$~', $url, $m) === 1 ? $m[1] : null;
+    }
+    public function playerUrl(string $id): string { return 'https://video.example.org/videos/embed/' . rawurlencode($id); }
+}
+
+// in a service provider's boot():
+$container->get(\Preflow\Fields\EmbedProviders::class)->add(new PeerTube());
+```
+
+YouTube and Vimeo are always offered; `"providers"` lists only added ones (listing `youtube` or
+`vimeo` is a boot error). A field that lists a name no `EmbedProvider` was added for throws a
+`LogicException` naming it on its first check.
+
+**On the page.** `{{ embed_player(page.video, "Our film") }}` prints the built-in player
+(`PrivacyEmbedPlayer`): a real button (keyboard and screen readers: "Play video: Our film"), with
+the poster when there is one, and a note "The video plays from YouTube." with a link to the video
+there. Until a visitor presses the button the page loads **nothing** from the video's host: the
+iframe waits in an inert `<template>`, the poster is the site's own file (never the provider's
+thumbnail), and the player address is `youtube-nocookie.com` for YouTube and `dnt=1` for Vimeo.
+The click puts the iframe in place of the button (it has the title, and gets the focus). The
+texts are in English, German and French (the page's language; another one reads English);
+without a title the iframe's is "Video (YouTube)". The title is optional.
+
+The player's script (`assets/embed-player.js`, one click listener for every player) and a few
+layout rules (`assets/embed-player.css`: a 16:9 box, no colours, every rule at zero specificity so
+any rule of the site wins) are added to the page's assets once, so they print with the page's CSP
+nonce like every collected script and style (where the layout calls `{{ head() }}` and
+`{{ assets() }}`, else before `</head>` and `</body>` of the page). No inline handler, no style
+attribute. The
+poster's address comes from the bound `RecordAddresses` when it also implements `AssetAddresses`
+(Folio's does); without one the player shows no poster.
+
+**The site's Content-Security-Policy** allows frames from the site only (`frame-src 'self'`), so
+the player stays blank after the click until the site allows the providers' player hosts, in
+`config/security.php`:
+
+```php
+return [
+    'csp' => [
+        'frame-src' => ["'self'", 'https://www.youtube-nocookie.com', 'https://player.vimeo.com'],
+    ],
+];
+```
+
+A directive given there replaces the default one, so keep `'self'`. Add the player host of each
+provider the site added. Nothing else is needed: the poster is the site's own image (`img-src
+'self'`) and the script is the page's own.
+
+**Your own markup.** Two ways, both for every template engine:
+
+- Bind your own `Preflow\Fields\EmbedPlayer` (`html(EmbedView $view): string`) in a service provider:
+  `$container->singleton(\Preflow\Fields\EmbedPlayer::class, fn () => new MyPlayer());`.
+  `embed_player()` and Folio's page output then print yours. `EmbedView` holds the value, the
+  provider's label, the player address, the poster's address, the title and the language (its
+  `text()` gives the built-in texts). Keep the three hooks and the script does the click for you:
+  an element with `data-preflow-embed`, a `<button data-preflow-embed-play>` inside it, and a
+  `<template data-preflow-embed-frame>` holding the iframe.
+- Or write the markup in the template from `embed_data(value)`: `provider`, `id`, `url`, `poster`,
+  `player` (the address to load after a click), `label` and `poster_url`. A template that does this
+  loads nothing itself: the script comes with `embed_player()` only.
+
+Either way: load nothing from the provider before the visitor starts the video.
+
+### The table
+
+```json
+"prices": {"type": "table", "max_columns": 4, "max_rows": 20}
+```
+
+A header row (`head`, or `null` without one) and rows of plain-text cells. Each cell is a text, or
+a text per language (`{"en": "Small", "de": "Klein"}`) as a link's label: the rows and columns are
+the same in every language and each cell translates on its own. `Values\Table::fromStored()` pads a
+short row with `''`; a table with no text in any cell is `null`.
+
+- `"max_columns"` (the widest row or the header) and `"max_rows"` (the header not counted) limit it,
+  with or without Folio: "This table has 5 rows; at most 4 are allowed. Remove a row." Without them
+  there is no limit.
+- The check refuses what is no table: rows that are no list, a cell that is no text (a number
+  too: write `"10"`), a text per language that is not text ("Must be a table: an optional header
+  row and rows of text cells.").
+
+`table_html(value, locale = null)` prints `<table class="preflow-table">` with the header row in
+`<thead>` (`<th scope="col">`) and every text escaped, each cell in the page's language along the
+content languages' fallback chain. `table_data(value, locale = null)` gives the texts as
+`{head: list|null, rows: list<list>}` for your own markup.
+
+### The location
+
+```json
+"place": {"type": "location"}
+```
+
+A latitude from -90 to 90 and a longitude from -180 to 180 (degrees as maps and phones give them:
+north and east positive), both numbers (a number as text is read too), and an optional address line.
+A refusal names the coordinate: "The latitude must be a number from -90 to 90 (north is positive),
+such as 47.3769." A place needs both coordinates; an address alone is refused. The field takes no
+options.
+
+No map is drawn by default, in the editor or on the page: no map tiles, no third-party request.
+`location_data(value)` gives `{lat, lng, address}` for the site's own map or text, and
+`geo_href(value)` a `geo:47.3769,8.5417` address that opens the map app on a phone.
+
+**A map in the editor: LocationPicker.** A site that wants one binds a
+`Preflow\Fields\LocationPicker`:
+
+```php
+interface LocationPicker
+{
+    /** @param array{lat: string, lng: string, address: string} $inputIds */
+    public function editorHtml(array $inputIds, ?Location $value, array $config): string;
+
+    /** @return list<string> */
+    public function editorAssets(): array;
+}
+```
+
+Folio puts its `editorHtml()` below the field's inputs and loads its `editorAssets()` (files the site
+serves through Folio's `AdminAssets`). The picker writes a picked place into the inputs (by their
+ids, firing `input`); the inputs stay the value, so what is saved is what they hold and the core
+check applies as without a picker. Its tiles or search come from a third party: the admin's
+Content-Security-Policy must allow them (`img-src`, `connect-src`). No inline script or style.
+
+### Search, transfer, blocks
+
+`embed`, `table` and `location` are not searched in 0.91: they are structured values, like a link
+or a blocks field, and loose search does not reach them (no core change: a table's cells would need
+a search over the texts inside an object, which no storage offers yet). Transfer and export carry the
+stored objects as they are. In a block the options go in the field's `config`
+(`#[BlockField(type: 'table', config: ['max_columns' => 2])]`); the checks apply there too.
 
 ## Adding a field type
 

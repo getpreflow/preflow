@@ -102,7 +102,9 @@ use Preflow\Testing\PlainDriver;
  * - save() of an existing id updates the fields it is given and keeps the others; a field given as
  *   null is stored as null (@since 0.78). delete() of a missing id does nothing.
  * - Field value shapes (@since 0.91.0): the objects preflow/fields' field types store (a link's
- *   {kind, target, label, new_tab}, a phone's {as_typed, e164}, a date range's {start, end}) read back
+ *   {kind, target, label, new_tab}, a phone's {as_typed, e164}, a date range's {start, end}, a video
+ *   embed's {provider, id, url, poster}, a table's {head, rows} with a text per language in a cell,
+ *   a location's {lat, lng, address} with its decimals) read back
  *   from a `json` field as saved (fieldValueShapes()); the texts of the text-valued types (an
  *   email, a colour, code, JSON text, a UTC date and time, a time of day) read back from a text column byte for byte (textValueShapes()).
  * - A driver with InsertsNew (@since 0.79.0) writes a record only while no record has its id, and says
@@ -448,6 +450,12 @@ abstract class StorageDriverContract extends TestCase
             'phone number without an E.164 form' => [['as_typed' => '112', 'e164' => null]],
             'date range' => [['start' => '2026-03-01', 'end' => '2026-03-07']],
             'date range with times' => [['start' => '2026-03-29T00:30:00Z', 'end' => '2026-03-29T17:00:00Z']],
+            'video embed' => [['provider' => 'youtube', 'id' => 'aqz-KE-bpKQ', 'url' => 'https://www.youtube.com/watch?v=aqz-KE-bpKQ&t=42s', 'poster' => 'a0f3']],
+            'video embed without a poster' => [['provider' => 'vimeo', 'id' => '76979871:8272103f6e', 'url' => 'https://vimeo.com/76979871/8272103f6e', 'poster' => null]],
+            'table' => [['head' => ['Size', 'Price'], 'rows' => [['S', 'CHF 10.–'], ['M "medium"', '']]]],
+            'table with a text per language' => [['head' => null, 'rows' => [[['en' => 'Small', 'de' => 'Klein'], "two\nlines"]]]],
+            'location' => [['lat' => 47.3769, 'lng' => -8.5417, 'address' => 'Bahnhofplatz 1, 8001 Zürich']],
+            'location without an address' => [['lat' => -33.8568, 'lng' => 151.2153, 'address' => null]],
         ];
     }
 

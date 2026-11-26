@@ -623,6 +623,30 @@ return [
             'from' => 'From',
             'to' => 'To',
         ],
+        // The video embed, table and location fields (0.91; preflow/fields' Embed, Table, Location).
+        'embed' => [
+            'url' => 'Video address',
+            'hint' => 'Paste the address of a video on :providers, as the browser shows it.',
+            'plays_from' => 'Plays from :provider (video :id). Nothing loads from :provider until a visitor starts it.',
+            'poster' => 'Poster image',
+            'poster_help' => 'Shown before the video plays. Without one the page shows a play button only (never an image from the video\'s host).',
+        ],
+        'table' => [
+            'header' => 'Header',
+            'header_cell' => 'Header, column :column',
+            'cell' => 'Row :row, column :column',
+            'hint' => 'Type into the empty row or column to add one. Empty all cells of a row or column to remove it. Leave the header empty for a table without one.',
+            'hint_translate' => 'Rows and columns follow the :language table; translate each cell here.',
+            'size' => ':rows rows × :columns columns',
+        ],
+        'location' => [
+            'lat' => 'Latitude',
+            'lng' => 'Longitude',
+            'lat_placeholder' => '47.3769',
+            'lng_placeholder' => '8.5417',
+            'address' => 'Address',
+            'hint' => 'Latitude and longitude in degrees, north and east positive (copy them from a map app).',
+        ],
         'color' => [
             'pick' => 'Pick a colour',
             'placeholder' => '#rrggbb',

@@ -606,6 +606,30 @@ return [
             'from' => 'Du',
             'to' => 'Au',
         ],
+        // Les champs vidéo, tableau et lieu (0.91 ; Embed, Table, Location de preflow/fields).
+        'embed' => [
+            'url' => 'Adresse de la vidéo',
+            'hint' => 'Collez l’adresse d’une vidéo sur :providers, telle que le navigateur l’affiche.',
+            'plays_from' => 'Lue depuis :provider (vidéo :id). Rien n’est chargé depuis :provider avant qu’un visiteur la lance.',
+            'poster' => 'Image d’affiche',
+            'poster_help' => 'Affichée avant la lecture. Sans affiche, la page montre seulement un bouton de lecture (jamais une image de l’hébergeur de la vidéo).',
+        ],
+        'table' => [
+            'header' => 'En-tête',
+            'header_cell' => 'En-tête, colonne :column',
+            'cell' => 'Ligne :row, colonne :column',
+            'hint' => 'Saisissez dans la ligne ou la colonne vide pour en ajouter une. Videz toutes les cellules d’une ligne ou d’une colonne pour la supprimer. Laissez l’en-tête vide pour un tableau sans en-tête.',
+            'hint_translate' => 'Les lignes et les colonnes suivent le tableau en :language ; traduisez ici chaque cellule.',
+            'size' => ':rows lignes × :columns colonnes',
+        ],
+        'location' => [
+            'lat' => 'Latitude',
+            'lng' => 'Longitude',
+            'lat_placeholder' => '47.3769',
+            'lng_placeholder' => '8.5417',
+            'address' => 'Adresse',
+            'hint' => 'Latitude et longitude en degrés, nord et est positifs (copiez-les depuis une application de cartes).',
+        ],
         'color' => [
             'pick' => 'Choisir une couleur',
             'placeholder' => '#rrggbb',

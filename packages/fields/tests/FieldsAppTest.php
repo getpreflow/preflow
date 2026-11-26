@@ -142,6 +142,52 @@ final class FieldsAppTest extends TestCase
         );
     }
 
+    public function test_the_embed_player_brings_its_script_and_style_with_the_nonce_and_its_poster_from_the_bound_addresses(): void
+    {
+        $this->app()->container()->instance(RecordAddresses::class, new FakeAddresses([], ['p1' => '/media/poster.jpg']));
+        $video = ['provider' => 'youtube', 'id' => 'aqz-KE-bpKQ', 'url' => 'https://youtu.be/aqz-KE-bpKQ', 'poster' => 'p1'];
+
+        $html = $this->render('{{ embed_player(video, "Our film") }}{{ head() }}{{ assets() }}', ['video' => json_encode($video)], 'de');
+
+        $this->assertStringContainsString('<div class="preflow-embed" data-preflow-embed data-provider="youtube">', $html);
+        $this->assertStringContainsString('<img class="preflow-embed-poster" src="/media/poster.jpg" alt="" loading="lazy">', $html);
+        $this->assertStringContainsString('aria-label="Video abspielen: Our film"', $html, 'in the render\'s language');
+        $this->assertMatchesRegularExpression('~<script nonce="[^"]+">[^<]*data-preflow-embed-play~', $html, 'the player script, inline with the nonce');
+        $this->assertMatchesRegularExpression('~<style nonce="[^"]+">[^<]*\.preflow-embed~', $html);
+        $this->assertSame('', $this->render('{{ embed_player(none) }}{{ assets() }}', ['none' => null]), 'no video: no markup, no script');
+    }
+
+    public function test_a_site_replaces_the_player_markup_and_adds_a_provider_in_its_container(): void
+    {
+        $container = $this->app()->container();
+        $container->get(\Preflow\Fields\EmbedProviders::class)->add(new Support\ExampleVideoProvider());
+        $container->instance(\Preflow\Fields\EmbedPlayer::class, new class implements \Preflow\Fields\EmbedPlayer {
+            public function html(\Preflow\Fields\EmbedView $view): string
+            {
+                return '<figure data-preflow-embed>' . htmlspecialchars($view->providerLabel . ' ' . $view->playerUrl . ' ' . $view->title) . '</figure>';
+            }
+        });
+        $clip = ['provider' => 'example', 'id' => 'kT2pQx', 'url' => 'https://video.example.org/w/kT2pQx', 'poster' => null];
+
+        $this->assertSame('<figure data-preflow-embed>Example Video https://video.example.org/videos/embed/kT2pQx Video (Example Video)</figure>', $this->render('{{ embed_player(clip) }}', ['clip' => $clip]));
+        $this->assertSame('example|kT2pQx|https://video.example.org/videos/embed/kT2pQx|Example Video|', $this->render('{% set d = embed_data(clip) %}{{ d.provider }}|{{ d.id }}|{{ d.player }}|{{ d.label }}|{{ d.poster_url }}', ['clip' => $clip]));
+    }
+
+    public function test_template_functions_for_table_and_location(): void
+    {
+        $prices = ['head' => [['en' => 'Size', 'de' => 'Grösse'], 'CHF'], 'rows' => [[['en' => 'Small', 'de' => 'Klein'], '10']]];
+        $place = ['lat' => 47.3769, 'lng' => 8.5417, 'address' => 'Bahnhofplatz, Zürich'];
+
+        $this->assertSame(
+            '<table class="preflow-table"><thead><tr><th scope="col">Grösse</th><th scope="col">CHF</th></tr></thead><tbody><tr><td>Klein</td><td>10</td></tr></tbody></table>|Klein|Size',
+            $this->render('{{ table_html(prices) }}|{{ table_data(prices).rows[0][0] }}|{{ table_data(prices, "en").head[0] }}', ['prices' => json_encode($prices)], 'de'),
+        );
+        $this->assertSame('47.3769|8.5417|Bahnhofplatz, Zürich|geo:47.3769,8.5417|[][][]', $this->render(
+            '{% set p = location_data(place) %}{{ p.lat }}|{{ p.lng }}|{{ p.address }}|{{ geo_href(place) }}|[{{ table_html(none) }}][{{ location_data(none) }}][{{ geo_href(none) }}]',
+            ['place' => $place, 'none' => null],
+        ));
+    }
+
     public function test_a_zone_name_that_is_no_zone_in_a_template_is_an_error_naming_it(): void
     {
         $this->expectException(\Throwable::class);

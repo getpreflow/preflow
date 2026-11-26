@@ -341,7 +341,7 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 - ~~**HEIC/HEIF uploads:**~~ done in 0.46 (converted to JPEG with Imagick, `heic_max_pixels`)
 - ~~**`importFile(…, bool $private)`**~~ — done in 0.43
 - ~~**Derived assets** and **asset garbage collection**~~ — done in 0.43 (copies as stacks in the library; opt-in cleanup into a bin)
-- **External video embeds (later, if a project needs one):** YouTube/Vimeo as their own field type (an embed URL with a poster), not a media asset: the library holds files only
+- ~~**External video embeds:**~~ done in 0.91 (preflow/fields' `embed` field: YouTube, Vimeo and hosts a site adds, a poster from the library, a player that loads nothing from the host before a click)
 
 ### Folio
 

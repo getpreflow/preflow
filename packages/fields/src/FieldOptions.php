@@ -9,15 +9,16 @@ namespace Preflow\Fields;
  * catalog and block definitions call check() for a field of a type from here.
  *
  * Each type refuses what it cannot use with a message naming the option and what to write
- * instead. None of these types is translatable: a phone number, an address, a colour, code and JSON are the same in every language
- * (a link translates its label inside the value instead).
+ * instead. None of these types is translatable: a phone number, an address, a colour, code, JSON,
+ * a video and a place are the same in every language (a link translates its label and a table its
+ * cells inside the value instead).
  *
  * @since 0.91.0
  */
 final class FieldOptions
 {
     /** The field types of this package that take options or refuse "translatable". */
-    public const array TYPES = ['link', 'email', 'phone', 'color', 'code', 'json', 'datetime', 'time', 'daterange'];
+    public const array TYPES = ['link', 'email', 'phone', 'color', 'code', 'json', 'datetime', 'time', 'daterange', 'embed', 'table', 'location'];
 
     /**
      * @param array<string, mixed> $config the field's config, with its "translatable" as a key
@@ -31,6 +32,9 @@ final class FieldOptions
             'color' => ColorOptions::check($config),
             'code' => CodeOptions::check($config),
             'datetime', 'time', 'daterange' => DateOptions::check($type, $config),
+            'embed' => EmbedOptions::check($config),
+            'table' => TableOptions::check($config),
+            'location' => self::checkLocation($config),
             'email', 'json' => self::refuseTranslatable($type, $config),
             default => null,
         };
@@ -48,7 +52,7 @@ final class FieldOptions
     {
         if (is_array($config[$type] ?? null)) {
             $names = implode(', ', array_map(static fn (string $o): string => "\"{$o}\"", $options));
-            throw new \LogicException("\"{$type}\" holds options, but a {$type} field takes them at its top level, next to \"type\": move {$names} out of \"{$type}\".");
+            throw new \LogicException("\"{$type}\" holds options, but " . self::article($type) . " {$type} field takes them at its top level, next to \"type\": move {$names} out of \"{$type}\".");
         }
     }
 
@@ -56,7 +60,25 @@ final class FieldOptions
     public static function refuseTranslatable(string $type, array $config): void
     {
         if (($config['translatable'] ?? false) === true) {
-            throw new \LogicException((str_contains('aeiou', $type[0]) ? 'An' : 'A') . " {$type} field cannot be translatable; it holds the same value in every language. Remove \"translatable\".");
+            throw new \LogicException(ucfirst(self::article($type)) . " {$type} field cannot be translatable; it holds the same value in every language. Remove \"translatable\".");
         }
+    }
+
+    /**
+     * A location field takes no options of its own (a map comes from a LocationPicker).
+     *
+     * @param array<string, mixed> $config
+     */
+    private static function checkLocation(array $config): void
+    {
+        self::refuseTranslatable('location', $config);
+        if (array_key_exists('location', $config)) {
+            throw new \LogicException('"location" holds options, but a location field takes none; remove "location". A map comes from a LocationPicker the site binds.');
+        }
+    }
+
+    private static function article(string $type): string
+    {
+        return str_contains('aeiou', $type[0]) ? 'an' : 'a';
     }
 }

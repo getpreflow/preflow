@@ -995,8 +995,8 @@ A value that is not a list of section names is ignored (every section starts ope
 `string`, `text` (`"monospace": true` gives a code-style editor), `number`, `boolean`,
 `date` (`"time": true` for date and time), `select` (`"options"` as a map or a list;
 `"display": "radio"`), `richtext`, `asset`, `relation`, `matrix`, `tags` (since 0.77) and `link`,
-`email`, `phone`, `color`, `code` and `json` (all since 0.91; their values, checks and storage are
-preflow/fields', see its README).
+`email`, `phone`, `color`, `code`, `json`, `datetime`, `time`, `daterange`, `embed`, `table` and
+`location` (all since 0.91; their values, checks and storage are preflow/fields', see its README).
 
 How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` runs the controls):
 
@@ -1095,6 +1095,23 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   both are needed. Their checks are the core's (blocks too). List cells show the date and time in
   the interface language in the field's zone, `HH:MM`, and "start – end". `datetime` and `time`
   columns are part of the default list; a range is not, and a range column in `list.columns` has no sort header (it is an object; `sort` for it is ignored). The relative hint under a date-and-time input ("In 3 hours") is computed in the field's zone, whatever the editor's browser zone.
+- `embed`, `table`, `location` (0.91): `embed` takes the address of a video as the browser shows it
+  (YouTube, Vimeo, and the hosts the site added and the field lists in `"providers"`); under it the
+  editor names the providers it takes, and for a saved video "Plays from YouTube (video …). Nothing
+  loads from YouTube until a visitor starts it."; a poster image is chosen with the asset field's
+  picker (one image). An address of another host is refused on the field, naming the host. The
+  page's `rendered.<field>` is preflow/fields' privacy player (nothing from the video's host before a
+  click; the site's `frame-src` must allow the player hosts, see preflow/fields' README). `table` is a
+  grid of text inputs, the header row first: in the default language one empty row and column more
+  (within `"max_rows"` / `"max_columns"`; a new table starts two by two) to type into, and emptying all
+  cells of a row or column removes it on save, with its translations; in another language the rows
+  and columns stay and each input shows the default text as placeholder. No script. Each cell counts
+  in the translation status and goes to machine translation (`prices.rows.0.1`), like a link's text.
+  `location` is two number inputs (latitude, longitude; a decimal comma is read as a point) and an
+  address line; a site that binds a `Preflow\Fields\LocationPicker` gets its markup (a map) below
+  them and its files on the form, without one there is no map and no third-party request. Their checks
+  are the core's (blocks too). List cells show "YouTube · aqz-KE-bpKQ", "3 rows × 2 columns" and
+  "47.3769, 8.5417 · address"; they have no sort header (objects; `sort` is ignored), like a range.
 - `asset`: each chosen file is a card (a 16:10 thumbnail with the focal point, the name, kind and
   size, "No alt text yet" for an image without one); an empty field is a dashed drop zone. A file
   dropped anywhere on the field, or chosen with its Upload button, is uploaded to the media library

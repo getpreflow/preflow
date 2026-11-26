@@ -7,7 +7,7 @@
 // lang/{locale}/validation.php. A language without a text falls back to the site's fallback
 // language, then English.
 // :min, :max, :step are the rule's numbers; :values the allowed values, comma-separated; :kinds and
-// :types (a link's) the allowed link kinds and record types, comma-separated; :refused the refused type; :values (a colour's palette) the colours offered; :value and :zone (a date-time that does not exist in a zone), :example (a date range), :start and :end (a range's ends).
+// :types (a link's) the allowed link kinds and record types, comma-separated; :refused the refused type; :values (a colour's palette) the colours offered; :value and :zone (a date-time that does not exist in a zone), :example (a date range), :start and :end (a range's ends); :providers the video hosts offered and :host the refused one (an embed's); :count and :max (a table's columns or rows).
 return [
     'required' => 'This field is required.',
     'email' => 'Must be a valid email address.',
@@ -42,6 +42,15 @@ return [
     'time' => 'Must be a time of day as hours and minutes, such as 14:30.',
     'daterange' => 'Must be a date range with a start and an end, such as :example.',
     'daterange_order' => 'The end (:end) is before the start (:start). Choose an end on or after :start.',
+    'embed' => 'Must be the address of a video on :providers, such as https://www.youtube.com/watch?v=aqz-KE-bpKQ.',
+    'embed_provider' => 'Videos from :host cannot be embedded here; paste the address of a video on :providers.',
+    'embed_poster' => 'The poster must be an image of the media library; choose one or remove it.',
+    'table' => 'Must be a table: an optional header row and rows of text cells.',
+    'table_columns' => 'This table has :count columns; at most :max are allowed. Remove a column.',
+    'table_rows' => 'This table has :count rows; at most :max are allowed. Remove a row.',
+    'location' => 'Must be a place with a latitude and a longitude, such as 47.3769, 8.5417.',
+    'location_lat' => 'The latitude must be a number from -90 to 90 (north is positive), such as 47.3769.',
+    'location_lng' => 'The longitude must be a number from -180 to 180 (east is positive), such as 8.5417.',
     'link' => [
         'kind' => 'Choose what the link points to: :kinds.',
         'target' => 'Choose or enter what the link points to.',

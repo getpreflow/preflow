@@ -4461,6 +4461,18 @@ code.folio-redirect-to { color: var(--c-accent-text); }
 .folio-daterange-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 12px; }
 .folio-daterange .folio-date-hint { margin-top: 6px; }
 
+/* The table field (0.91): a grid of text inputs, the header row first; it scrolls sideways when wide. */
+.folio-table-scroll { overflow-x: auto; }
+.folio-table-grid { border-collapse: separate; border-spacing: 4px; margin: 0 -4px; }
+.folio-table-grid th { padding: 0 6px 0 0; font-size: 12px; font-weight: 500; color: var(--c-text-muted); text-align: right; white-space: nowrap; }
+.folio-table-grid td { padding: 0; min-width: 8rem; }
+.folio-table-grid input { width: 100%; }
+.folio-table-head input { font-weight: 600; }
+
+/* The location field (0.91): latitude and longitude side by side, stacked on a narrow screen. */
+.folio-location-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 12px; }
+.folio-location-picker { margin-top: 8px; }
+
 /* The colour field (0.91): the picker, the hex text, the palette as swatches (inline SVG, the colour is its fill). */
 .folio-color-row { display: flex; align-items: center; gap: 8px; }
 .folio-color-row .folio-color-picker { width: 40px; height: 36px; padding: 2px; flex: none; }

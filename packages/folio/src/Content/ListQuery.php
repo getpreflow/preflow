@@ -329,10 +329,13 @@ final readonly class ListQuery
         return $query;
     }
 
-    /** Whether a list column of this type sorts: not a relation (ids) and not a date range (an object; no header, "sort" is ignored; since 0.91). */
+    /** Field types whose value is an object, so sorting by its stored text means nothing (since 0.91). */
+    private const array UNSORTABLE = ['daterange', 'embed', 'table', 'location'];
+
+    /** Whether a list column of this type sorts: not a relation (ids) and not an object (a date range, an embed, a table, a location: no header, "sort" is ignored; since 0.91). */
     public static function sortable(string $type): bool
     {
-        return !self::isRelation($type) && $type !== 'daterange';
+        return !self::isRelation($type) && !in_array($type, self::UNSORTABLE, true);
     }
 
     private static function isRelation(string $type): bool

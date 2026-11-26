@@ -12,8 +12,11 @@ use Preflow\Fields\Values\DateTimeValue;
 use Preflow\Fields\Values\Email;
 use Preflow\Fields\Values\JsonText;
 use Preflow\Fields\Values\Link;
+use Preflow\Fields\Values\Location;
 use Preflow\Fields\Values\Phone;
+use Preflow\Fields\Values\Table;
 use Preflow\Fields\Values\TimeOfDay;
+use Preflow\View\AssetCollector;
 use Preflow\View\TemplateExtensionProvider;
 use Preflow\View\TemplateFunctionDefinition;
 
@@ -38,6 +41,19 @@ use Preflow\View\TemplateFunctionDefinition;
  *   field written with a date() format (default "Y-m-d", or "Y-m-d H:i" for a range with a time, in
  *   the site's zone or the zone named), or '' for none.
  *
+ * - embed_player(value, title = null, locale = null): an embed field's player (EmbedOutput::html():
+ *   the bound EmbedPlayer's markup, PrivacyEmbedPlayer by default, which loads nothing from the
+ *   video's host before a click), its script and layout rules added to the page's assets; '' for none;
+ * - embed_data(value): an embed field's parts for your own markup (provider, id, url, poster,
+ *   player, label, poster_url), or null.
+ *
+ * - table_html(value, locale = null): a table field as an escaped `<table class="preflow-table">`
+ *   with its header row in `<thead>`, each cell in the locale (along the fallback chain), or '';
+ * - table_data(value, locale = null): its texts as {head: list|null, rows: list<list>}, or null.
+ *
+ * - location_data(value): a location field's {lat, lng, address}, or null;
+ * - geo_href(value): its `geo:lat,lng` address (opens the map app on a phone), or null.
+ *
  * value is the field's value as a template gets it (the stored object, or JSON text of it). The
  * locale is the render's (Contexts::current()->locale) unless given. A record link resolves
  * through the RecordAddresses bound when the function runs.
@@ -46,11 +62,31 @@ use Preflow\View\TemplateFunctionDefinition;
  */
 final class FieldsExtensionProvider implements TemplateExtensionProvider
 {
-    /** @param \Closure(): ?RecordAddresses $addresses the bound RecordAddresses, asked on each call */
+    private readonly EmbedOutput $embeds;
+
+    /**
+     * @param \Closure(): ?RecordAddresses $addresses the bound RecordAddresses, asked on each call
+     * @param (\Closure(): EmbedProviders)|null $providers the app's video hosts (default: YouTube and Vimeo)
+     * @param (\Closure(): EmbedPlayer)|null $player the bound EmbedPlayer (default: PrivacyEmbedPlayer)
+     * @param (\Closure(): ?AssetCollector)|null $assets the page's assets, for the player's script and rules
+     */
     public function __construct(
         private readonly \Closure $addresses,
         private readonly ?Locales $locales = null,
-    ) {}
+        ?\Closure $providers = null,
+        ?\Closure $player = null,
+        ?\Closure $assets = null,
+    ) {
+        $builtIn = null;
+        $this->embeds = new EmbedOutput(
+            $providers ?? static function () use (&$builtIn): EmbedProviders {
+                return $builtIn ??= new EmbedProviders();
+            },
+            $player ?? static fn (): EmbedPlayer => new PrivacyEmbedPlayer(),
+            $addresses,
+            $assets ?? static fn (): ?AssetCollector => null,
+        );
+    }
 
     public function getTemplateFunctions(): array
     {
@@ -96,6 +132,32 @@ final class FieldsExtensionProvider implements TemplateExtensionProvider
             new TemplateFunctionDefinition(
                 name: 'daterange_end',
                 callable: static fn (mixed $value, ?string $format = null, ?string $zone = null): string => DateRange::fromStored($value)?->format(true, self::zone($zone), $format) ?? '',
+            ),
+            new TemplateFunctionDefinition(
+                name: 'embed_player',
+                callable: fn (mixed $value, ?string $title = null, ?string $locale = null): string => $this->embeds->html($value, $title, $this->locale($locale)),
+                isSafe: true,
+            ),
+            new TemplateFunctionDefinition(
+                name: 'embed_data',
+                callable: fn (mixed $value): ?array => $this->embeds->data($value),
+            ),
+            new TemplateFunctionDefinition(
+                name: 'table_html',
+                callable: fn (mixed $value, ?string $locale = null): string => Table::fromStored($value)?->html($this->locale($locale), $this->locales) ?? '',
+                isSafe: true,
+            ),
+            new TemplateFunctionDefinition(
+                name: 'table_data',
+                callable: fn (mixed $value, ?string $locale = null): ?array => Table::fromStored($value)?->texts($this->locale($locale), $this->locales),
+            ),
+            new TemplateFunctionDefinition(
+                name: 'location_data',
+                callable: static fn (mixed $value): ?array => Location::fromStored($value)?->toStored(),
+            ),
+            new TemplateFunctionDefinition(
+                name: 'geo_href',
+                callable: static fn (mixed $value): ?string => Location::fromStored($value)?->geoHref(),
             ),
             new TemplateFunctionDefinition(
                 name: 'json_data',
