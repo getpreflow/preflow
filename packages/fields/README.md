@@ -318,7 +318,7 @@ objects: a JSON file holds them, SQL storage JSON text in a text column, and eac
 The editor pastes the address of the video as the browser shows it. These are recognized
 (`Values\Embed::fromUrl()`):
 
-- YouTube: `youtube.com/watch?v=…` (also `m.` and `music.`), `youtu.be/…`, `youtube.com/shorts/…`,
+- YouTube: `youtube.com/watch?v=…` (also with `&list=…&index=…` from a playlist, and on `m.` and `music.`), `youtu.be/…`, `youtube.com/shorts/…`,
   `youtube.com/live/…`, `youtube.com/embed/…` and `youtube-nocookie.com/embed/…`. The id is
   YouTube's 11 characters.
 - Vimeo: `vimeo.com/76979871`, `vimeo.com/channels/…/76979871`, `vimeo.com/groups/…/videos/…`,
@@ -330,8 +330,14 @@ The address is stored as pasted (`url`); the player address is never stored, it 
 provider. Any other address is refused, naming the host and what to paste instead: "Videos from
 www.dailymotion.com cannot be embedded here; paste the address of a video on YouTube, Vimeo." A
 stored `provider` and `id` must be the ones the `url` gives (a seed or the REST API may also write
-the plain address: `"https://youtu.be/aqz-KE-bpKQ"` passes and reads back as the video). `poster`
-is the id of an image of the media library, or null.
+the plain address: `"https://youtu.be/aqz-KE-bpKQ"` passes and reads back as the video), and
+`Embed::fromStored()` checks them again: a value that disagrees with its address (a file edited by
+hand, an import past the check) reads as no video and renders nothing. `poster` is the id of an
+image of the media library, or null: with Folio (its `RecordAddresses` implements
+`Preflow\Fields\AssetImages`) the check refuses an id that is no image of the library or no file at
+all; a site without a media library (nothing implements `AssetImages`) checks only that it is an id
+as text. A poster and a link to a file count as used in the library (Folio's `ReferencesAssets`):
+the file cannot be deleted while a record shows it, and cleanup never bins it.
 
 **Another video host.** A site adds one in code and lists it on the fields that offer it:
 
@@ -342,18 +348,23 @@ final class PeerTube implements \Preflow\Fields\EmbedProvider
     public function label(): string { return 'PeerTube'; }
     public function idOf(string $url): ?string
     {
-        return preg_match('~^https://video\.example\.org/w/([A-Za-z0-9]+)$~', $url, $m) === 1 ? $m[1] : null;
+        return preg_match('~^https://video\.example\.org/w/([A-Za-z0-9]+)\z~', $url, $m) === 1 ? $m[1] : null;
     }
     public function playerUrl(string $id): string { return 'https://video.example.org/videos/embed/' . rawurlencode($id); }
 }
 
-// in a service provider's boot():
-$container->get(\Preflow\Fields\EmbedProviders::class)->add(new PeerTube());
+// in a service provider's register(), so the hosts are known when the content types are read:
+$container->singleton(\Preflow\Fields\EmbedProviders::class, fn () => new \Preflow\Fields\EmbedProviders(new PeerTube()));
 ```
 
 YouTube and Vimeo are always offered; `"providers"` lists only added ones (listing `youtube` or
-`vimeo` is a boot error). A field that lists a name no `EmbedProvider` was added for throws a
-`LogicException` naming it on its first check.
+`vimeo` is a boot error). With Folio, a field (or a block's field) that lists a name no provider is
+registered for stops the boot, naming the field and how to register one. Where no such check
+runs (a site without Folio has no content-type catalog), the save is refused on the field instead:
+"Videos from "peertube" cannot be saved here: the site has no video provider of that name. …";
+it never becomes an error page. `EmbedProviders::add()` works too, as long as it runs before the
+types are read (Folio reads them in its `boot()`): `register()` is the safe place. Anchor an
+`idOf()` pattern with `\z`, not `$` (which also matches before a final line break).
 
 **On the page.** `{{ embed_player(page.video, "Our film") }}` prints the built-in player
 (`PrivacyEmbedPlayer`): a real button (keyboard and screen readers: "Play video: Our film"), with
@@ -372,7 +383,10 @@ nonce like every collected script and style (where the layout calls `{{ head() }
 `{{ assets() }}`, else before `</head>` and `</body>` of the page). No inline handler, no style
 attribute. The
 poster's address comes from the bound `RecordAddresses` when it also implements `AssetAddresses`
-(Folio's does); without one the player shows no poster.
+(Folio's does); without one the player shows no poster. Without an asset collector (an app that
+renders outside preflow/view's page pipeline) the script could not reach the page, so
+`embed_player()` prints a plain link to the video (`<a class="preflow-embed-link">`, the title as
+its text) instead of a button that would do nothing.
 
 **The site's Content-Security-Policy** allows frames from the site only (`frame-src 'self'`), so
 the player stays blank after the click until the site allows the providers' player hosts, in

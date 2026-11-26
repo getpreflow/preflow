@@ -38,6 +38,7 @@ return [
     'daterange_order' => 'Het einde (:end) ligt voor het begin (:start). Kies een einde op of na :start.',
     'embed' => 'Moet het adres van een video op :providers zijn, bijvoorbeeld https://www.youtube.com/watch?v=aqz-KE-bpKQ.',
     'embed_provider' => 'Video’s van :host kunnen hier niet worden ingesloten; plak het adres van een video op :providers.',
+    'embed_unregistered' => 'Video’s van ":provider" kunnen hier niet worden opgeslagen: de site heeft geen videoaanbieder met die naam. Registreer hem in een service provider of verwijder hem uit "providers" van het veld.',
     'embed_poster' => 'De posterafbeelding moet een afbeelding uit de mediabibliotheek zijn; kies er een of verwijder hem.',
     'table' => 'Moet een tabel zijn: een optionele kopregel en regels met tekstcellen.',
     'table_columns' => 'Deze tabel heeft :count kolommen; er zijn er hoogstens :max toegestaan. Verwijder een kolom.',

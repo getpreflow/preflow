@@ -42,6 +42,7 @@ return [
     'daterange_order' => 'La fin (:end) précède le début (:start). La fin doit être postérieure ou égale à :start.',
     'embed' => 'Doit être l’adresse d’une vidéo sur :providers, par exemple https://www.youtube.com/watch?v=aqz-KE-bpKQ.',
     'embed_provider' => 'Les vidéos de :host ne peuvent pas être intégrées ici ; collez l’adresse d’une vidéo sur :providers.',
+    'embed_unregistered' => 'Les vidéos de « :provider » ne peuvent pas être enregistrées ici : le site n’a aucun fournisseur vidéo de ce nom. Enregistrez-le dans un service provider ou retirez-le des « providers » du champ.',
     'embed_poster' => 'L’affiche doit être une image de la médiathèque ; choisissez-en une ou retirez-la.',
     'table' => 'Doit être un tableau : une ligne d’en-tête facultative et des lignes de cellules de texte.',
     'table_columns' => 'Ce tableau a :count colonnes ; :max au maximum sont autorisées. Supprimez une colonne.',

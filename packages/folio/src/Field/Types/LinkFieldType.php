@@ -44,7 +44,7 @@ use Preflow\Folio\FolioText;
  * unpublished or not in the language; the file is gone) is marked in the editor ("Linked page no
  * longer available"): the mark is decided by the same href, read as a visitor reads.
  */
-final class LinkFieldType implements FieldType, StructuredFieldType, DisplaysInAdmin, ReportsTranslatableTexts, AcceptsTranslatedTexts
+final class LinkFieldType implements FieldType, StructuredFieldType, DisplaysInAdmin, ReportsTranslatableTexts, AcceptsTranslatedTexts, \Preflow\Folio\Field\ReferencesAssets
 {
     /**
      * @param (\Closure(): list<string>)|null $linkableTypes the types a field without "link.types" offers (Folio: the routed ones)
@@ -348,6 +348,19 @@ final class LinkFieldType implements FieldType, StructuredFieldType, DisplaysInA
      * show-when-core.js decides the kind's parts as conditional fields do; fields.js runs them, the
      * record picker and the file drop; admin.js (every editor loads it) the file picker's Choose and Remove.
      */
+    /** A link to a file holds that asset's id (its target); other kinds hold none (since 0.91). */
+    public function mapAssetIds(mixed $value, array $config, \Closure $fn): mixed
+    {
+        $json = is_string($value);
+        $data = Link::decode($value);
+        if ($data === null || ($data['kind'] ?? null) !== LinkKind::Asset->value || !is_string($data['target'] ?? null) || $data['target'] === '') {
+            return $value;
+        }
+        $data['target'] = $fn($data['target']);
+
+        return $json ? (string) json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : $data;
+    }
+
     public function assets(): array
     {
         return ['show-when-core.js', 'fields.js'];

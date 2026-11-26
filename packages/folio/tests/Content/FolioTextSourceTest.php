@@ -72,6 +72,11 @@ final class FolioTextSourceTest extends TestCase
             'label' => 'Badges',
             'fields' => ['name' => ['type' => 'string'], 'active' => ['type' => 'boolean', 'translatable' => true], 'logo' => ['type' => 'string', 'hidden' => true, 'translatable' => true]],
         ]);
+        $this->writeModel('pricelist', [
+            'label' => 'Price lists',
+            'publishing' => false,
+            'fields' => ['name' => ['type' => 'string'], 'prices' => ['type' => 'table'], 'more' => ['type' => 'link']],
+        ]);
         $this->writeModel('memo', [
             'label' => 'Memos',
             'publishing' => false,
@@ -427,6 +432,33 @@ final class FolioTextSourceTest extends TestCase
 
         $this->assertSame(WriteOutcomeStatus::Written, $this->source('post')->write('p1', 'de', ['slug' => 'Doku/Erste Schritte'])->status);
         $this->assertSame(['en' => 'docs/start', 'de' => 'doku/erste-schritte'], $this->stored('post', 'p1')->get('slug'));
+    }
+
+    public function test_table_cells_reach_machine_translation_like_a_link_label(): void
+    {
+        // A plain-text cell (a seed, the REST API) counts as the default language's text, as a plain link label does.
+        $this->working('pricelist', 'l1', [
+            'name' => 'Spring',
+            'prices' => ['head' => [['en' => 'Size'], 'Price'], 'rows' => [[['en' => 'Small', 'de' => 'Klein'], '10']]],
+            'more' => ['kind' => 'url', 'target' => 'https://example.org', 'label' => 'More', 'new_tab' => false],
+        ]);
+        $this->assertTrue($this->app()->container()->get(TextSources::class)->has('pricelist'), 'a table makes the type translatable, as a link does');
+
+        $units = $this->byId($this->source('pricelist')->units('l1', 'de', Scope::Needed));
+        $this->assertSame(['prices.head.0', 'prices.head.1', 'prices.rows.0.1', 'more.label'], array_keys($units), 'the translated cell is not needed');
+        $this->assertSame('Price', $units['prices.head.1']->source);
+        $this->assertSame('More', $units['more.label']->source);
+
+        $outcome = $this->source('pricelist')->write('l1', 'de', ['prices.head.0' => 'Grösse', 'prices.head.1' => 'Preis', 'prices.rows.0.1' => '10', 'more.label' => 'Mehr']);
+        $this->assertSame(WriteOutcomeStatus::Written, $outcome->status);
+        $stored = $this->stored('pricelist', 'l1');
+        $prices = is_string($stored->get('prices')) ? json_decode($stored->get('prices'), true) : $stored->get('prices');
+        $this->assertSame(['en' => 'Size', 'de' => 'Grösse'], $prices['head'][0]);
+        $this->assertSame(['en' => 'Price', 'de' => 'Preis'], $prices['head'][1]);
+        $this->assertSame(['en' => 'Small', 'de' => 'Klein'], $prices['rows'][0][0]);
+        $more = is_string($stored->get('more')) ? json_decode($stored->get('more'), true) : $stored->get('more');
+        $this->assertSame(['en' => 'More', 'de' => 'Mehr'], $more['label']);
+        $this->assertSame([], $this->translationStatus()->missing($stored->getType(), $stored, 'de'));
     }
 
     public function test_registered_per_multilingual_type(): void

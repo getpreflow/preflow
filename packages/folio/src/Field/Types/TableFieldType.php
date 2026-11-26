@@ -28,7 +28,7 @@ use Preflow\Folio\FolioText;
  * saved yet) the grid has one empty row and one empty column more, while the field's
  * "max_rows" / "max_columns" allow: typing into them adds a row or a column (a new table starts
  * two by two). Emptying every cell of a row (or a column) there removes it on save, with its
- * translations. In another language the grid
+ * translations; emptying one cell there empties its translations too. In another language the grid
  * keeps the default language's rows and columns; each input shows the default text as its
  * placeholder and saves the translation of that cell only. No script is needed.
  *
@@ -137,6 +137,9 @@ final class TableFieldType implements FieldType, StructuredFieldType, DisplaysIn
             }
             if (!$multilingual && !is_array($old)) {
                 return $text;
+            }
+            if ($text === '' && $ctx->locale === $ctx->locales->default) {
+                return ''; // the default text emptied: its translations have nothing left to translate
             }
             $map = is_array($old) ? $old : (is_string($old) && $old !== '' ? [$ctx->locales->default => $old] : []);
             $map[$ctx->locale] = $text;

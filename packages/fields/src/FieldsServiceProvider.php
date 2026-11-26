@@ -56,7 +56,16 @@ final class FieldsServiceProvider extends ServiceProvider
         // Without config/data.php there is no storage to register with. With it, an error building
         // the DataManager is the site's to see, so it is not caught here.
         if ($container->get(Application::class)->hasConfigFile('data')) {
-            self::registerKinds($container->get(DataManager::class)->fieldKinds(), static fn (): EmbedProviders => $container->get(EmbedProviders::class));
+            self::registerKinds(
+                $container->get(DataManager::class)->fieldKinds(),
+                static fn (): EmbedProviders => $container->get(EmbedProviders::class),
+                // A poster is checked against the library when the bound RecordAddresses can tell (Folio's can).
+                static function () use ($container): ?AssetImages {
+                    $addresses = $container->bound(RecordAddresses::class) ? $container->get(RecordAddresses::class) : null;
+
+                    return $addresses instanceof AssetImages ? $addresses : null;
+                },
+            );
         }
 
         if ($container->has(TemplateEngineInterface::class)) {
@@ -79,13 +88,11 @@ final class FieldsServiceProvider extends ServiceProvider
      * one entry here: its column kind and its rules for a field's config.
      *
      * @param (\Closure(): EmbedProviders)|null $embedProviders the app's video hosts, asked when a value is checked (default: YouTube and Vimeo)
+     * @param (\Closure(): ?AssetImages)|null $images whether a poster is an image of the library (null: shape only)
      */
-    public static function registerKinds(FieldKinds $kinds, ?\Closure $embedProviders = null): void
+    public static function registerKinds(FieldKinds $kinds, ?\Closure $embedProviders = null, ?\Closure $images = null): void
     {
-        $builtIn = null;
-        $embedProviders ??= static function () use (&$builtIn): EmbedProviders {
-            return $builtIn ??= new EmbedProviders();
-        };
+        $embedProviders ??= EmbedProviders::lazyBuiltIn();
 
         // link: an object ({kind, target, label, new_tab}), JSON text in an SQL column.
         $kinds->column('link', ColumnKind::Text);
@@ -130,7 +137,7 @@ final class FieldsServiceProvider extends ServiceProvider
 
         // embed: an object ({provider, id, url, poster}), JSON text in an SQL column; not searchable.
         $kinds->column('embed', ColumnKind::Text);
-        $kinds->rules('embed', static fn (array $config): array => [new ValidEmbed(EmbedOptions::fromConfig($config), $embedProviders())]);
+        $kinds->rules('embed', static fn (array $config): array => [new ValidEmbed(EmbedOptions::fromConfig($config), $embedProviders(), $images !== null ? $images() : null)]);
 
         // table: an object ({head, rows}, a cell a text or a text per language), JSON text in an SQL
         // column; not searchable in 0.91 (a structured value, like a link's label or a block).

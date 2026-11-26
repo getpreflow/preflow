@@ -44,6 +44,7 @@ return [
     'daterange_order' => 'The end (:end) is before the start (:start). Choose an end on or after :start.',
     'embed' => 'Must be the address of a video on :providers, such as https://www.youtube.com/watch?v=aqz-KE-bpKQ.',
     'embed_provider' => 'Videos from :host cannot be embedded here; paste the address of a video on :providers.',
+    'embed_unregistered' => 'Videos from ":provider" cannot be saved here: the site has no video provider of that name. Register it in a service provider, or remove it from the field\'s "providers".',
     'embed_poster' => 'The poster must be an image of the media library; choose one or remove it.',
     'table' => 'Must be a table: an optional header row and rows of text cells.',
     'table_columns' => 'This table has :count columns; at most :max are allowed. Remove a column.',

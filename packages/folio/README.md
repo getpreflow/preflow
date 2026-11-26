@@ -1099,7 +1099,7 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   (YouTube, Vimeo, and the hosts the site added and the field lists in `"providers"`); under it the
   editor names the providers it takes, and for a saved video "Plays from YouTube (video …). Nothing
   loads from YouTube until a visitor starts it."; a poster image is chosen with the asset field's
-  picker (one image). An address of another host is refused on the field, naming the host. The
+  picker (one image; a poster or a link to a file counts as used in the library, so it is not deleted or cleaned up while shown). An address of another host is refused on the field, naming the host; a field listing a provider the site never registered stops the boot. The
   page's `rendered.<field>` is preflow/fields' privacy player (nothing from the video's host before a
   click; the site's `frame-src` must allow the player hosts, see preflow/fields' README). `table` is a
   grid of text inputs, the header row first: in the default language one empty row and column more
@@ -1111,7 +1111,7 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   address line; a site that binds a `Preflow\Fields\LocationPicker` gets its markup (a map) below
   them and its files on the form, without one there is no map and no third-party request. Their checks
   are the core's (blocks too). List cells show "YouTube · aqz-KE-bpKQ", "3 rows × 2 columns" and
-  "47.3769, 8.5417 · address"; they have no sort header (objects; `sort` is ignored), like a range.
+  "47.3769, 8.5417 · address"; they have no sort header (objects; `sort` is ignored), like a range, a link and a phone number.
 - `asset`: each chosen file is a card (a 16:10 thumbnail with the focal point, the name, kind and
   size, "No alt text yet" for an image without one); an empty field is a dashed drop zone. A file
   dropped anywhere on the field, or chosen with its Upload button, is uploaded to the media library
@@ -1278,6 +1278,13 @@ The order is built-ins, then packages' types, then `config/folio.php`'s: a later
 already taken replaces the earlier one, so the app's config wins. A listed class that is no field
 type stops the boot naming the package. A type a provider registers itself later
 (`$container->get(FieldTypeRegistry::class)->register(…)` in `boot()`) gets its field kinds too.
+
+A field type whose value holds ids of media library files implements
+`Preflow\Folio\Field\ReferencesAssets` (`mapAssetIds($value, $config, $fn)`: the value with each id
+replaced by `$fn(id)`, same shape) (since 0.91). Folio's asset walker asks it, so those files
+count as used: the library refuses to delete them while a record (or a block in it) holds them,
+and cleanup never bins them. `asset`, `embed` (its poster) and `link` (a link to a file)
+implement it; a type that holds ids without it has its files treated as unused.
 
 A field type's `assets()` names the `.css` and `.js` files its editor needs; Folio loads
 them only on forms that render the field, from `{prefix}/_assets/{file}`. A package

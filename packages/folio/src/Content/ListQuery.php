@@ -330,9 +330,9 @@ final readonly class ListQuery
     }
 
     /** Field types whose value is an object, so sorting by its stored text means nothing (since 0.91). */
-    private const array UNSORTABLE = ['daterange', 'embed', 'table', 'location'];
+    private const array UNSORTABLE = ['daterange', 'embed', 'table', 'location', 'link', 'phone'];
 
-    /** Whether a list column of this type sorts: not a relation (ids) and not an object (a date range, an embed, a table, a location: no header, "sort" is ignored; since 0.91). */
+    /** Whether a list column of this type sorts: not a relation (ids) and not an object (a date range, an embed, a table, a location, a link, a phone number: no header, "sort" is ignored; since 0.91). */
     public static function sortable(string $type): bool
     {
         return !self::isRelation($type) && !in_array($type, self::UNSORTABLE, true);

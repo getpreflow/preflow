@@ -43,7 +43,7 @@ final class LocationFieldType implements FieldType, DisplaysInAdmin
         $label = $ctx->label ?? ucfirst(str_replace('_', ' ', $ctx->name));
         $id = 'folio-location-' . trim((string) preg_replace('/[^a-z0-9]+/i', '-', $ctx->name), '-');
         $hasError = $ctx->errors !== [];
-        $text = static fn (mixed $v): string => is_int($v) || is_float($v) ? self::number((float) $v) : (is_string($v) ? $v : '');
+        $text = static fn (mixed $v): string => is_int($v) || is_float($v) ? Location::coordinate((float) $v) : (is_string($v) ? $v : '');
         $ids = ['lat' => $id . '-lat', 'lng' => $id . '-lng', 'address' => $id . '-address'];
 
         $html = '<fieldset class="form-group folio-location' . ($hasError ? ' has-error' : '') . '">' . "\n";
@@ -125,7 +125,7 @@ final class LocationFieldType implements FieldType, DisplaysInAdmin
         }
         $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
-        return '<a href="' . $e($location->geoHref()) . '">' . $e($location->address ?? self::number($location->lat) . ', ' . self::number($location->lng)) . '</a>';
+        return '<a href="' . $e($location->geoHref()) . '">' . $e($location->address ?? Location::coordinate($location->lat) . ', ' . Location::coordinate($location->lng)) . '</a>';
     }
 
     /**
@@ -139,7 +139,7 @@ final class LocationFieldType implements FieldType, DisplaysInAdmin
         if ($location === null) {
             return '';
         }
-        $text = self::number($location->lat) . ', ' . self::number($location->lng) . ($location->address !== null ? ' · ' . $location->address : '');
+        $text = Location::coordinate($location->lat) . ', ' . Location::coordinate($location->lng) . ($location->address !== null ? ' · ' . $location->address : '');
 
         return htmlspecialchars($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
@@ -159,13 +159,5 @@ final class LocationFieldType implements FieldType, DisplaysInAdmin
     private function picker(): ?LocationPicker
     {
         return $this->picker !== null ? ($this->picker)() : null;
-    }
-
-    /** A coordinate as typed in the input: no exponent, no trailing zeros. */
-    private static function number(float $value): string
-    {
-        $text = rtrim(rtrim(sprintf('%.7F', $value), '0'), '.');
-
-        return $text === '-0' ? '0' : $text;
     }
 }

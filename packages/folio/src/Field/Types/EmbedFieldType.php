@@ -16,6 +16,7 @@ use Preflow\Folio\Field\DisplaysInAdmin;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldType;
 use Preflow\Folio\Field\FieldTypeRegistry;
+use Preflow\Folio\Field\ReferencesAssets;
 use Preflow\Folio\Field\StructuredFieldType;
 use Preflow\Folio\FolioText;
 
@@ -33,7 +34,7 @@ use Preflow\Folio\FolioText;
  * The page gets the core's privacy player (EmbedOutput: the bound EmbedPlayer, nothing loaded from
  * the video's host before a click). The check is the core's: rules() adds none.
  */
-final class EmbedFieldType implements FieldType, StructuredFieldType, DisplaysInAdmin
+final class EmbedFieldType implements FieldType, StructuredFieldType, DisplaysInAdmin, ReferencesAssets
 {
     /** One image, public: what the poster picker takes. */
     private const array POSTER_CONFIG = ['asset' => ['multiple' => false, 'accept' => 'image/*']];
@@ -42,11 +43,16 @@ final class EmbedFieldType implements FieldType, StructuredFieldType, DisplaysIn
      * @param (\Closure(): EmbedProviders)|null $providers the app's video hosts (default: YouTube and Vimeo)
      * @param EmbedOutput|null $output the page's player (null: the page shows a link to the video)
      */
+    /** @var \Closure(): EmbedProviders */
+    private readonly \Closure $providers;
+
     public function __construct(
         private readonly ?FieldTypeRegistry $fieldTypes = null,
-        private readonly ?\Closure $providers = null,
+        ?\Closure $providers = null,
         private readonly ?EmbedOutput $output = null,
-    ) {}
+    ) {
+        $this->providers = $providers ?? EmbedProviders::lazyBuiltIn();
+    }
 
     public function key(): string
     {
@@ -69,7 +75,7 @@ final class EmbedFieldType implements FieldType, StructuredFieldType, DisplaysIn
         $html .= '  <legend>' . $e($label) . ($ctx->required ? ' <span class="form-required">*</span>' : '') . '</legend>' . "\n";
         $html .= '  <div class="form-group"><label for="' . $e($id) . '-url">' . $t('url') . '</label>'
             . '<input type="url" id="' . $e($id) . '-url" name="' . $e($ctx->name) . '[url]" value="' . $e($url) . '" placeholder="https://…" inputmode="url" autocomplete="off" aria-describedby="' . $e($id) . '-hint">';
-        $embed = Embed::fromStored($data);
+        $embed = Embed::fromStored($data, $providers);
         $provider = $embed !== null && !$hasError ? $providers->get($embed->provider) : null;
         $hint = $provider !== null
             ? $t('plays_from', ['provider' => $provider->label(), 'id' => $embed->id])
@@ -206,6 +212,19 @@ final class EmbedFieldType implements FieldType, StructuredFieldType, DisplaysIn
         return [];
     }
 
+    /** The poster: the one asset id an embed holds (so the library keeps the file while the video shows it). */
+    public function mapAssetIds(mixed $value, array $config, \Closure $fn): mixed
+    {
+        $json = is_string($value);
+        $data = $json ? (str_starts_with(ltrim($value), '{') ? json_decode($value, true) : null) : $value;
+        if (!is_array($data) || !is_string($data['poster'] ?? null) || $data['poster'] === '') {
+            return $value;
+        }
+        $data['poster'] = $fn($data['poster']);
+
+        return $json ? (string) json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : $data;
+    }
+
     /** fields.js runs the poster picker's file drop; admin.js (every editor loads it) its Choose and Remove. */
     public function assets(): array
     {
@@ -214,7 +233,7 @@ final class EmbedFieldType implements FieldType, StructuredFieldType, DisplaysIn
 
     private function providers(): EmbedProviders
     {
-        return $this->providers !== null ? ($this->providers)() : new EmbedProviders();
+        return ($this->providers)();
     }
 
     /**

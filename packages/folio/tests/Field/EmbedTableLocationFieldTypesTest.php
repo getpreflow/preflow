@@ -109,6 +109,11 @@ final class EmbedTableLocationFieldTypesTest extends TestCase
         $this->assertSame(['en' => 'Price', 'de' => 'Preis'], $back['head'][1]);
         $this->assertSame($de['rows'], $back['rows']);
 
+        // Emptying one cell's default text empties its translations too (nothing left to translate).
+        $cell = $type->buildValue(['head' => ['', 'Price'], 'rows' => [['Small', '10']]], $de, [], new BuildContext($locales, 'en', false));
+        $this->assertSame('', $cell['head'][0]);
+        $this->assertSame(['en' => 'Small', 'de' => 'Klein'], $cell['rows'][0][0]);
+
         // Emptying a row in the default language removes it with its translations.
         $this->assertSame(['head' => [['en' => 'Size', 'de' => 'Grösse'], ['en' => 'Price']], 'rows' => []], $type->buildValue(['head' => ['Size', 'Price'], 'rows' => [['', '']]], $de, [], new BuildContext($locales, 'en', false)));
     }
@@ -159,7 +164,7 @@ final class EmbedTableLocationFieldTypesTest extends TestCase
 
     public function test_the_structured_columns_have_no_sort(): void
     {
-        foreach (['embed', 'table', 'location'] as $type) {
+        foreach (['embed', 'table', 'location', 'link', 'phone'] as $type) {
             $this->assertFalse(ListQuery::sortable($type), $type);
         }
     }
@@ -175,6 +180,41 @@ final class EmbedTableLocationFieldTypesTest extends TestCase
         yield 'table nested' => [['type' => 'table', 'table' => ['max_rows' => 2]], 'Type "thing": field "f": "table" holds options, but a table field takes them at its top level'];
         yield 'location translatable' => [['type' => 'location', 'translatable' => true], 'Type "thing": field "f": A location field cannot be translatable'];
         yield 'location nested' => [['type' => 'location', 'location' => ['zoom' => 3]], 'Type "thing": field "f": "location" holds options, but a location field takes none'];
+    }
+
+    public function test_an_embed_field_listing_an_unregistered_provider_stops_the_boot_naming_it(): void
+    {
+        $dir = TempRoots::path('folio_etl_providers_');
+        mkdir($dir);
+        file_put_contents($dir . '/thing.json', (string) json_encode(['key' => 'thing', 'fields' => ['clip' => ['type' => 'embed', 'providers' => ['peertube']]]]));
+        try {
+            (new TypeCatalog($dir, null, null, static fn (): EmbedProviders => new EmbedProviders()))->all();
+            $this->fail('accepted an unregistered provider');
+        } catch (FrontendConfigException $e) {
+            $this->assertStringStartsWith('Type "thing": field "clip": "providers" lists "peertube", but no EmbedProvider of that name is registered: bind the site\'s providers in a service provider\'s register()', $e->getMessage());
+        } finally {
+            unlink($dir . '/thing.json');
+            rmdir($dir);
+        }
+    }
+
+    public function test_a_block_embed_field_listing_an_unregistered_provider_is_refused_naming_the_block(): void
+    {
+        $fields = new \Preflow\Folio\Field\FieldTypeRegistry();
+        $fields->register(new EmbedFieldType());
+        $blocks = new \Preflow\Folio\Field\Types\BlocksFieldType(
+            new \Preflow\Blocks\BlockRegistry([\Preflow\Folio\Tests\Fixtures\Blocks\ClipBlock::class]),
+            $fields,
+            4,
+            new \Preflow\Validation\ValidatorFactory(new \Preflow\Validation\RuleFactory()),
+            embedProviders: static fn (): EmbedProviders => new EmbedProviders(),
+        );
+        $fields->register($blocks);
+        $uid = str_repeat('a', 16);
+
+        $this->expectException(FrontendConfigException::class);
+        $this->expectExceptionMessage('Block "clip": field "clip": "providers" lists "peertube", but no EmbedProvider of that name is registered');
+        $blocks->buildValue(['_order' => [$uid], $uid => ['_block' => 'clip', 'clip' => ['url' => 'https://youtu.be/aqz-KE-bpKQ']]], null, [], new BuildContext(Locales::single('en'), 'en', false));
     }
 
     /** @param array<string, mixed> $field */

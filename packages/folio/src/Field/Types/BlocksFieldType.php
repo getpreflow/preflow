@@ -40,6 +40,8 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         private readonly string $adminPrefix = '/folio',
         /** The data package's field kinds: a field type's core checks (FieldKinds::rules(), 0.91) apply inside blocks too. */
         private readonly ?\Preflow\Data\FieldKinds $kinds = null,
+        /** The app's video hosts (0.91): a block's embed field listing an unregistered one is refused. @var (\Closure(): ?\Preflow\Fields\EmbedProviders)|null */
+        private readonly ?\Closure $embedProviders = null,
     ) {}
 
     public function key(): string
@@ -105,7 +107,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
             $hidden = $this->blocks->hasShowWhen() ? array_flip($this->blocks->hiddenFieldsOf($key, $this->sourceValues($definition, $data, $previous))) : [];
             foreach ($definition->fields as $name => $field) {
                 $type = $this->fieldTypes->get($field->type);
-                self::assertLeaf($definition, $name, $field, $type);
+                $this->assertLeaf($definition, $name, $field, $type);
                 if (isset($hidden[$name])) {
                     if (array_key_exists($name, $previous)) {
                         $block[$name] = $previous[$name];
@@ -544,7 +546,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
 
         foreach ($definition->fields as $field => $def) {
             $type = $this->fieldTypes->get($def->type);
-            self::assertLeaf($definition, $field, $def, $type);
+            $this->assertLeaf($definition, $field, $def, $type);
             $raw = $block[$field] ?? null;
 
             if ($type instanceof self) {
@@ -711,7 +713,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
      *
      * @throws \Preflow\Folio\Content\FrontendConfigException
      */
-    private static function assertLeaf(\Preflow\Blocks\BlockDefinition $definition, string $name, \Preflow\Data\TypeFieldDefinition $field, \Preflow\Folio\Field\FieldType $type): void
+    private function assertLeaf(\Preflow\Blocks\BlockDefinition $definition, string $name, \Preflow\Data\TypeFieldDefinition $field, \Preflow\Folio\Field\FieldType $type): void
     {
         if ($type instanceof TagsFieldType && $field->translatable) {
             throw new \Preflow\Folio\Content\FrontendConfigException(sprintf(
@@ -722,7 +724,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         }
         if (in_array($type->key(), \Preflow\Fields\FieldOptions::TYPES, true)) {
             try {
-                \Preflow\Fields\FieldOptions::check($type->key(), ['translatable' => $field->translatable] + $field->config);
+                \Preflow\Fields\FieldOptions::check($type->key(), ['translatable' => $field->translatable] + $field->config, $this->embedProviders !== null ? ($this->embedProviders)() : null);
             } catch (\LogicException $e) {
                 throw new \Preflow\Folio\Content\FrontendConfigException(sprintf('Block "%s": field "%s": %s', $definition->key, $name, $e->getMessage()), 0, $e);
             }

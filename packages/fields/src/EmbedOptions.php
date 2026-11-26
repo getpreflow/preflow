@@ -34,26 +34,32 @@ final readonly class EmbedOptions
     }
 
     /**
+     * With $providers (the app's, when the caller has them) a listed name no provider is
+     * registered for is refused too.
+     *
      * @param array<string, mixed> $config the field's config (its "translatable" too)
      * @throws \LogicException
      */
-    public static function check(array $config): void
+    public static function check(array $config, ?EmbedProviders $providers = null): void
     {
         FieldOptions::refuseTranslatable('embed', $config);
         FieldOptions::refuseNested('embed', $config, ['providers']);
         if (!array_key_exists('providers', $config)) {
             return;
         }
-        $providers = $config['providers'];
-        if (!is_array($providers) || !array_is_list($providers) || $providers === []) {
+        $listed = $config['providers'];
+        if (!is_array($listed) || !array_is_list($listed) || $listed === []) {
             throw new \LogicException('"providers" must be a list of provider names such as ["peertube"] (YouTube and Vimeo are always offered).');
         }
-        foreach ($providers as $name) {
-            if (!is_string($name) || preg_match('/^[a-z0-9_-]+$/', $name) !== 1) {
+        foreach ($listed as $name) {
+            if (!is_string($name) || preg_match('/^[a-z0-9_-]+\z/', $name) !== 1) {
                 throw new \LogicException('"providers" lists ' . json_encode($name, JSON_UNESCAPED_UNICODE) . '; a provider name is lowercase letters, digits, - and _.');
             }
             if (in_array($name, EmbedProviders::BUILT_IN, true)) {
                 throw new \LogicException("\"providers\" lists \"{$name}\", which is always offered; list only the providers your site adds.");
+            }
+            if ($providers !== null && !$providers->has($name)) {
+                throw new \LogicException("\"providers\" lists \"{$name}\", but no EmbedProvider of that name is registered: bind the site's providers in a service provider's register(), \$container->singleton(\\Preflow\\Fields\\EmbedProviders::class, fn () => new \\Preflow\\Fields\\EmbedProviders(new YourProvider())), or remove \"{$name}\".");
             }
         }
     }

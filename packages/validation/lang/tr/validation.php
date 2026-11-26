@@ -38,6 +38,7 @@ return [
     'daterange_order' => 'Bitiş (:end) başlangıçtan (:start) önce. :start tarihinde veya sonrasında bir bitiş seçin.',
     'embed' => ':providers üzerindeki bir videonun adresi olmalıdır, örneğin https://www.youtube.com/watch?v=aqz-KE-bpKQ.',
     'embed_provider' => ':host videoları buraya yerleştirilemez; :providers üzerindeki bir videonun adresini yapıştırın.',
+    'embed_unregistered' => '":provider" videoları burada kaydedilemez: sitede bu adda bir video sağlayıcısı yok. Onu bir service provider içinde kaydedin veya alanın "providers" listesinden kaldırın.',
     'embed_poster' => 'Kapak görseli medya kütüphanesinden bir görsel olmalıdır; birini seçin ya da kaldırın.',
     'table' => 'Bir tablo olmalıdır: isteğe bağlı bir başlık satırı ve metin hücrelerinden oluşan satırlar.',
     'table_columns' => 'Bu tabloda :count sütun var; en fazla :max sütuna izin verilir. Bir sütunu kaldırın.',

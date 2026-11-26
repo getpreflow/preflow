@@ -60,7 +60,7 @@ final readonly class Location
     /** A `geo:` address of the place (RFC 5870), which phones open in their map app. */
     public function geoHref(): string
     {
-        return 'geo:' . self::text($this->lat) . ',' . self::text($this->lng);
+        return 'geo:' . self::coordinate($this->lat) . ',' . self::coordinate($this->lng);
     }
 
     /** A coordinate as a number: a number, or a number as text ("47.3769", "-8.5"); null for anything else. */
@@ -86,8 +86,8 @@ final readonly class Location
         return $lng >= -180.0 && $lng <= 180.0;
     }
 
-    /** A coordinate as written in an address: no exponent, no trailing zeros. */
-    private static function text(float $value): string
+    /** A coordinate as people write it (in an address, an input, a list): up to 7 decimals, no exponent, no trailing zeros. */
+    public static function coordinate(float $value): string
     {
         $text = rtrim(rtrim(sprintf('%.7F', $value), '0'), '.');
 

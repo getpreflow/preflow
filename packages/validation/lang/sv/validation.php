@@ -38,6 +38,7 @@ return [
     'daterange_order' => 'Slutet (:end) ligger före starten (:start). Välj ett slut på eller efter :start.',
     'embed' => 'Måste vara adressen till en video på :providers, till exempel https://www.youtube.com/watch?v=aqz-KE-bpKQ.',
     'embed_provider' => 'Videor från :host kan inte bäddas in här; klistra in adressen till en video på :providers.',
+    'embed_unregistered' => 'Videor från ":provider" kan inte sparas här: webbplatsen har ingen videoleverantör med det namnet. Registrera den i en service provider eller ta bort den från fältets "providers".',
     'embed_poster' => 'Affischbilden måste vara en bild från mediebiblioteket; välj en eller ta bort den.',
     'table' => 'Måste vara en tabell: en valfri rubrikrad och rader med textceller.',
     'table_columns' => 'Den här tabellen har :count kolumner; högst :max är tillåtna. Ta bort en kolumn.',

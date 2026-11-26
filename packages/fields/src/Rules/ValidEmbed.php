@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Fields\Rules;
 
+use Preflow\Fields\AssetImages;
 use Preflow\Fields\EmbedOptions;
 use Preflow\Fields\EmbedProvider;
 use Preflow\Fields\EmbedProviders;
@@ -16,8 +17,10 @@ use Preflow\Validation\ValidationRule;
  * An embed field's value (Embed's stored object, JSON text of it, or a plain address) is a video
  * of a provider the field offers (YouTube, Vimeo, and those of its "providers"); a stored provider
  * and id are the ones its address gives (so the page never plays another video than the address
- * says); a poster is an asset id. An address of another host is refused naming the host and the
- * providers to use instead. An empty value passes ("required" decides).
+ * says); a poster is an asset id, and with AssetImages (Folio's: the media library) an image that
+ * exists. An address of another host is refused naming the host and the providers to use instead;
+ * a listed provider the site never registered is named in a refusal (never an error page). An
+ * empty value passes ("required" decides).
  *
  * Registered for every "embed" field (FieldKinds::rules()).
  *
@@ -28,13 +31,17 @@ final class ValidEmbed implements ValidationRule
     public function __construct(
         private readonly EmbedOptions $options,
         private readonly EmbedProviders $providers,
+        private readonly ?AssetImages $images = null,
     ) {}
 
-    /** @throws \LogicException when the field lists a provider the site never added */
     public function validate(mixed $value, ValidationContext $context): true|Message
     {
         if ($value === null || $value === '' || $value === []) {
             return true;
+        }
+        $missing = $this->providers->missing($this->options->providers);
+        if ($missing !== []) {
+            return new Message('validation.embed_unregistered', ['provider' => $missing[0]]);
         }
         $offered = $this->providers->offered($this->options->providers);
         $names = implode(', ', array_map(static fn (EmbedProvider $p): string => $p->label(), $offered));
@@ -65,7 +72,7 @@ final class ValidEmbed implements ValidationRule
                 return new Message('validation.embed', ['providers' => $names]);
             }
         }
-        if ($poster !== null && $poster !== '' && (!is_string($poster) || trim($poster) === '')) {
+        if ($poster !== null && $poster !== '' && (!is_string($poster) || trim($poster) === '' || $this->images?->isImage($poster) === false)) {
             return new Message('validation.embed_poster');
         }
 

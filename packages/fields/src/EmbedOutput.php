@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Fields;
 
 use Preflow\Fields\Values\Embed;
+use Preflow\Fields\Values\Link;
 use Preflow\View\AssetCollector;
 use Preflow\View\JsPosition;
 
@@ -14,7 +15,9 @@ use Preflow\View\JsPosition;
  *
  * html() asks the bound EmbedPlayer for the markup and adds the player's script and layout rules
  * (assets/embed-player.js and .css) to the page's assets, once per page: they print with the
- * page's CSP nonce like every collected asset. The poster's address comes from the bound
+ * page's CSP nonce like every collected asset. Without an asset collector (no preflow/view page
+ * pipeline) html() gives a plain link to the video instead of a player whose button would do
+ * nothing. The poster's address comes from the bound
  * RecordAddresses when it also is an AssetAddresses (Folio's is); without one, no poster shows.
  *
  * @since 0.91.0
@@ -45,10 +48,18 @@ final class EmbedOutput
             return '';
         }
         $assets = ($this->assets)();
-        if ($assets !== null) {
-            $assets->addCss($this->file('embed-player.css'), 'preflow-embed');
-            $assets->addJs($this->file('embed-player.js'), JsPosition::Body, 'preflow-embed');
+        if ($assets === null) {
+            // No asset collector: the player's script could not reach the page and its button would
+            // do nothing, so the page gets a plain link to the video instead.
+            if (!Link::isSiteOrWebAddress($view->embed->url)) {
+                return '';
+            }
+            $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5, 'UTF-8');
+
+            return '<a class="preflow-embed-link" href="' . $e($view->embed->url) . '" rel="noopener noreferrer">' . $e($view->title) . '</a>';
         }
+        $assets->addCss($this->file('embed-player.css'), 'preflow-embed');
+        $assets->addJs($this->file('embed-player.js'), JsPosition::Body, 'preflow-embed');
 
         return ($this->player)()->html($view);
     }

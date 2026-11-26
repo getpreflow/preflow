@@ -38,7 +38,7 @@ final class YouTube implements EmbedProvider
         $host = strtolower($parts['host'] ?? '');
         $path = $parts['path'] ?? '';
         if ($host === 'youtu.be') {
-            return preg_match('~^/(' . self::ID . ')/?$~', $path, $m) === 1 ? $m[1] : null;
+            return preg_match('~^/(' . self::ID . ')/?\z~', $path, $m) === 1 ? $m[1] : null;
         }
         if (!in_array($host, self::HOSTS, true)) {
             return null;
@@ -47,10 +47,10 @@ final class YouTube implements EmbedProvider
             parse_str($parts['query'] ?? '', $query);
             $id = $query['v'] ?? null;
 
-            return is_string($id) && preg_match('~^' . self::ID . '$~', $id) === 1 ? $id : null;
+            return is_string($id) && preg_match('~^' . self::ID . '\z~', $id) === 1 ? $id : null;
         }
 
-        return preg_match('~^/(?:shorts|embed|live|v)/(' . self::ID . ')/?$~', $path, $m) === 1 ? $m[1] : null;
+        return preg_match('~^/(?:shorts|embed|live|v)/(' . self::ID . ')/?\z~', $path, $m) === 1 ? $m[1] : null;
     }
 
     public function playerUrl(string $id): string

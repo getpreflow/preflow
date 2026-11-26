@@ -127,6 +127,18 @@ final class EmbedTableLocationStoredTest extends TestCase
         $this->assertSame('kT2pQx', Embed::fromStored($dm->findType('venue', 'p1')?->get('clip'), $this->providers())?->id);
     }
 
+    #[DataProvider('storages')]
+    public function test_a_field_listing_a_provider_the_site_never_registered_refuses_the_save_without_an_error(string $storage): void
+    {
+        $dm = $this->dm($storage, registered: false);
+        try {
+            $dm->saveType(DynamicRecord::fromArray($dm->getTypeRegistry()->get('venue'), ['uuid' => 'p2', 'name' => 'x', 'clip' => 'https://youtu.be/aqz-KE-bpKQ']));
+            $this->fail('saved');
+        } catch (ValidationException $e) {
+            $this->assertSame(['clip' => ['Videos from "example" cannot be saved here: the site has no video provider of that name. Register it in a service provider, or remove it from the field\'s "providers".']], $e->errors());
+        }
+    }
+
     public function test_columns(): void
     {
         $dm = $this->dm('json');
@@ -165,7 +177,7 @@ final class EmbedTableLocationStoredTest extends TestCase
         return $providers;
     }
 
-    private function dm(string $storage): DataManager
+    private function dm(string $storage, bool $registered = true): DataManager
     {
         file_put_contents($this->dir . '/models/venue.json', (string) json_encode([
             'key' => 'venue', 'table' => 'venue', 'storage' => $storage, 'id_field' => 'uuid',
@@ -184,7 +196,7 @@ final class EmbedTableLocationStoredTest extends TestCase
         };
         $this->mysql = $storage === 'mysql';
         $dm = new DataManager([$storage => $driver], $storage, new TypeRegistry($this->dir . '/models'), validatorFactory: new ValidatorFactory(new RuleFactory()));
-        $providers = $this->providers();
+        $providers = $registered ? $this->providers() : new EmbedProviders();
         FieldsServiceProvider::registerKinds($dm->fieldKinds(), static fn (): EmbedProviders => $providers);
         if ($storage !== 'json') {
             (new RecordTableSync($dm))->sync($dm->getTypeRegistry()->get('venue'));

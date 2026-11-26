@@ -111,7 +111,9 @@ final class FolioServiceProvider extends ServiceProvider
         $container->instance(TypeRegistry::class, $types);
 
         // Built on the registry: a model file whose key a model class defines lists that class.
-        $catalog = new TypeCatalog($modelsPath, $app->bootManifest(), $types);
+        // The video hosts (preflow/fields, bound in its register(); a site binds its own there): an
+        // embed field listing one that is not registered stops the boot (0.91).
+        $catalog = new TypeCatalog($modelsPath, $app->bootManifest(), $types, static fn (): ?\Preflow\Fields\EmbedProviders => $container->bound(\Preflow\Fields\EmbedProviders::class) ? $container->get(\Preflow\Fields\EmbedProviders::class) : null);
         $container->instance(TypeCatalog::class, $catalog);
 
         // Record user providers named in config/auth.php get their user type from Folio's catalog.
@@ -271,6 +273,8 @@ final class FolioServiceProvider extends ServiceProvider
         ));
         $container->singleton(\Preflow\Folio\Assets\AssetReferences::class, fn (Container $c) => new \Preflow\Folio\Assets\AssetReferences(
             $c->get(BlockRegistry::class),
+            // Which field types hold asset ids (ReferencesAssets, 0.91): asked on use, not at boot.
+            static fn (): FieldTypeRegistry => $c->get(FieldTypeRegistry::class),
         ));
         $container->singleton(\Preflow\Folio\Media\FolioRecordReferences::class, fn (Container $c) => new \Preflow\Folio\Media\FolioRecordReferences(
             $c->get(\Preflow\Folio\Assets\AssetReferences::class),
@@ -636,6 +640,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(\Preflow\Folio\View\FolioEngine::class),
                 $prefix,
                 $this->dataManager($c, $c->get(Application::class))?->fieldKinds(),
+                static fn (): ?\Preflow\Fields\EmbedProviders => $c->bound(\Preflow\Fields\EmbedProviders::class) ? $c->get(\Preflow\Fields\EmbedProviders::class) : null,
             ));
             // The sanitizer is built on the first sanitize call, not on every request.
             $registry->register(new RichTextFieldType(\Preflow\Folio\Field\LazyHtmlSanitizer::standard()));

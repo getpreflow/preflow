@@ -77,11 +77,8 @@ final class FieldsExtensionProvider implements TemplateExtensionProvider
         ?\Closure $player = null,
         ?\Closure $assets = null,
     ) {
-        $builtIn = null;
         $this->embeds = new EmbedOutput(
-            $providers ?? static function () use (&$builtIn): EmbedProviders {
-                return $builtIn ??= new EmbedProviders();
-            },
+            $providers ?? EmbedProviders::lazyBuiltIn(),
             $player ?? static fn (): EmbedPlayer => new PrivacyEmbedPlayer(),
             $addresses,
             $assets ?? static fn (): ?AssetCollector => null,

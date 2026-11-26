@@ -12,21 +12,28 @@ use Preflow\Folio\Extension\Screen\ScreenRegistry;
 final class TypeCatalog
 {
     /**
-     * Built-in field types whose values hold files: the ones implementing HandlesUpload, plus
-     * blocks (hands uploads to nested types) and matrix (its assets()). Field types a site
-     * registers itself (config/folio.php "field_types") are not known here.
+     * Built-in field types whose values hold files: the ones implementing HandlesUpload or
+     * ReferencesAssets (asset, an embed's poster and a link to a file, since 0.91), plus blocks
+     * (hands uploads to nested types) and matrix (its assets()). The catalog is built before the
+     * field types, so this list names them; a test keeps it equal to the built-in types that
+     * implement those interfaces. Field types a site registers itself (config/folio.php
+     * "field_types") are not known here.
      */
-    public const array FILE_HOLDING_FIELD_TYPES = ['asset', 'blocks', 'matrix'];
+    public const array FILE_HOLDING_FIELD_TYPES = ['asset', 'blocks', 'matrix', 'embed', 'link'];
 
     /**
      * @param \Preflow\Core\Boot\BootManifest|null $manifest the boot manifest the model files' listings come from when it has them
      * @param TypeRegistry|null                   $types    the types; a model file whose key a model class defines is that
      *                                                      class's admin file, listed with the class's schema
      */
+    /**
+     * @param (\Closure(): ?\Preflow\Fields\EmbedProviders)|null $embedProviders the app's video hosts (0.91), asked when the types are read: an embed field listing an unregistered one is a boot error
+     */
     public function __construct(
         private readonly string $modelsPath,
         private readonly ?\Preflow\Core\Boot\BootManifest $manifest = null,
         private readonly ?TypeRegistry $types = null,
+        private readonly ?\Closure $embedProviders = null,
     ) {}
 
     /** @var TypeListing[]|null scanned once per catalog (one request) */
@@ -184,7 +191,7 @@ final class TypeCatalog
                 }
             }
         }
-        self::checkFieldLayout($key, $fields);
+        self::checkFieldLayout($key, $fields, $this->embedProviders !== null ? ($this->embedProviders)() : null);
         $section = $data['section'] ?? $section;
         if (!is_string($section) || preg_match('/^[a-z][a-z0-9_-]*$/', $section) !== 1) {
             throw new FrontendConfigException("Type \"{$key}\": \"section\" must be a lowercase name (a-z, 0-9, _ and -, starting with a letter)");
@@ -234,7 +241,7 @@ final class TypeCatalog
      *
      * @param array<mixed> $fields
      */
-    private static function checkFieldLayout(string $key, array $fields): void
+    private static function checkFieldLayout(string $key, array $fields, ?\Preflow\Fields\EmbedProviders $embedProviders = null): void
     {
         foreach ($fields as $name => $field) {
             if (!is_array($field)) {
@@ -257,7 +264,7 @@ final class TypeCatalog
                     'select' => self::checkSelect($field, (string) $name, $fields),
                     'tags' => \Preflow\Folio\Field\Types\TagsFieldType::checkConfig($field),
                     // The options of the field types of preflow/fields (link, email, phone, color, code, json; 0.91).
-                    default => \Preflow\Fields\FieldOptions::check((string) ($field['type'] ?? 'string'), $field),
+                    default => \Preflow\Fields\FieldOptions::check((string) ($field['type'] ?? 'string'), $field, $embedProviders),
                 };
             } catch (\LogicException $e) {
                 throw new FrontendConfigException("Type \"{$key}\": field \"{$name}\": " . $e->getMessage(), 0, $e);

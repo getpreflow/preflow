@@ -22,9 +22,10 @@ final class FieldOptions
 
     /**
      * @param array<string, mixed> $config the field's config, with its "translatable" as a key
+     * @param EmbedProviders|null $embedProviders the app's video hosts, when the caller has them: an embed field listing an unregistered one is refused
      * @throws \LogicException
      */
-    public static function check(string $type, array $config): void
+    public static function check(string $type, array $config, ?EmbedProviders $embedProviders = null): void
     {
         match ($type) {
             'link' => LinkOptions::check($config),
@@ -32,7 +33,7 @@ final class FieldOptions
             'color' => ColorOptions::check($config),
             'code' => CodeOptions::check($config),
             'datetime', 'time', 'daterange' => DateOptions::check($type, $config),
-            'embed' => EmbedOptions::check($config),
+            'embed' => EmbedOptions::check($config, $embedProviders),
             'table' => TableOptions::check($config),
             'location' => self::checkLocation($config),
             'email', 'json' => self::refuseTranslatable($type, $config),

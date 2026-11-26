@@ -181,7 +181,19 @@ final class LinkFieldAppTest extends TestCase
         $this->assertSame(422, $res->getStatusCode());
         $this->assertStringContainsString('Choose or enter what the link points to.', (string) $res->getBody());
 
+        // The library refuses to delete a file a link holds (0.91, ReferencesAssets); gone another way
+        // (the link set aside, the file deleted, the link back as an import would bring it), it is marked.
+        try {
+            $library->delete($asset->id);
+            $this->fail('deleted a file a link holds');
+        } catch (\Preflow\Media\Usage\AssetInUseException) {
+        }
+        $cta = $teaser->get('cta');
+        $teaser->set('cta', null);
+        $this->dm()->saveType($teaser, validate: false);
         $library->delete($asset->id);
+        $teaser->set('cta', $cta);
+        $this->dm()->saveType($teaser, validate: false);
         $html = (string) $this->get('/folio/teaser/' . $teaser->getId() . '/edit')->getBody();
         $this->assertStringContainsString('<p class="folio-link-broken" role="status">Linked file no longer available.', $html);
         $this->assertSame('', $this->page('{{ link_href(cta) }}', ['cta' => $teaser->get('cta')]), 'the mark and the page agree: no href');

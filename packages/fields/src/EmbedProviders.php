@@ -11,9 +11,10 @@ use Preflow\Fields\Embed\YouTube;
  * The video hosts the site knows: YouTube and Vimeo, offered by every embed field, and those the
  * site adds (add()), offered by a field that lists them in its "providers" option.
  *
- * FieldsServiceProvider binds one for the app; a site adds its own hosts to it in a service
- * provider's boot(). The field's check, the editor and the template functions all ask this one,
- * so a host is added in one place.
+ * FieldsServiceProvider binds one for the app. A site adds its own hosts by binding its own in a
+ * service provider's register() (`new EmbedProviders(new PeerTube())`), so they are known when
+ * the content types are read and a field listing an unknown name is refused at boot. The
+ * field's check, the editor and the template functions all ask this one.
  *
  * @since 0.91.0
  */
@@ -41,7 +42,7 @@ final class EmbedProviders
     public function add(EmbedProvider $provider): void
     {
         $name = $provider->name();
-        if (preg_match('/^[a-z0-9_-]+$/', $name) !== 1) {
+        if (preg_match('/^[a-z0-9_-]+\z/', $name) !== 1) {
             throw new \LogicException('An EmbedProvider\'s name is lowercase letters, digits, - and _; "' . $name . '" is not.');
         }
         if (isset($this->providers[$name])) {
@@ -61,20 +62,49 @@ final class EmbedProviders
     }
 
     /**
-     * The providers a field offers: the built-in ones and those of $listed (its "providers").
+     * The providers a field offers: the built-in ones and those of $listed (its "providers") that
+     * are registered. A listed name no provider has is left out here; missing() names it (the
+     * boot check refuses it, and ValidEmbed says so on save).
      *
      * @param list<string> $listed
      * @return list<EmbedProvider>
-     * @throws \LogicException for a listed name no provider has (the site forgot to add it)
      */
     public function offered(array $listed = []): array
     {
         $offered = [];
         foreach ([...self::BUILT_IN, ...$listed] as $name) {
-            $offered[$name] ??= $this->providers[$name] ?? throw new \LogicException('The embed field lists the provider "' . $name . '", but no EmbedProvider of that name is registered: add it with EmbedProviders::add() in a service provider, or remove it from "providers".');
+            if (isset($this->providers[$name])) {
+                $offered[$name] = $this->providers[$name];
+            }
         }
 
         return array_values($offered);
+    }
+
+    /**
+     * The names of $listed no provider is registered for.
+     *
+     * @param list<string> $listed
+     * @return list<string>
+     */
+    public function missing(array $listed): array
+    {
+        return array_values(array_filter($listed, fn (string $name): bool => !isset($this->providers[$name])));
+    }
+
+    /**
+     * A closure that gives the built-in providers (YouTube, Vimeo), made on its first call and
+     * kept by the closure: the default where no app registry is given.
+     *
+     * @return \Closure(): self
+     */
+    public static function lazyBuiltIn(): \Closure
+    {
+        $providers = null;
+
+        return static function () use (&$providers): self {
+            return $providers ??= new self();
+        };
     }
 
     /**

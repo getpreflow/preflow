@@ -38,6 +38,7 @@ return [
     'daterange_order' => 'Koniec (:end) jest przed początkiem (:start). Wybierz koniec w dniu :start lub później.',
     'embed' => 'Musi być adresem filmu w serwisie :providers, np. https://www.youtube.com/watch?v=aqz-KE-bpKQ.',
     'embed_provider' => 'Filmów z :host nie można tu osadzić; wklej adres filmu z :providers.',
+    'embed_unregistered' => 'Filmów z ":provider" nie można tu zapisać: witryna nie ma dostawcy wideo o tej nazwie. Zarejestruj go w service providerze lub usuń z "providers" pola.',
     'embed_poster' => 'Obraz podglądu musi być obrazem z biblioteki multimediów; wybierz go lub usuń.',
     'table' => 'Musi być tabelą: opcjonalny wiersz nagłówka i wiersze komórek tekstowych.',
     'table_columns' => 'Ta tabela ma :count kolumn; dozwolonych jest najwyżej :max. Usuń kolumnę.',

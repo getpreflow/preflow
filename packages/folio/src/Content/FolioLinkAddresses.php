@@ -18,7 +18,7 @@ use Preflow\Publishing\LiveContent;
  *
  * FolioServiceProvider binds it unless the site bound its own RecordAddresses.
  */
-final class FolioLinkAddresses implements RecordAddresses, AssetAddresses
+final class FolioLinkAddresses implements RecordAddresses, AssetAddresses, \Preflow\Fields\AssetImages
 {
     /** @param (\Closure(): ?MediaLibrary)|null $media the media library, when it has storage */
     public function __construct(
@@ -44,5 +44,17 @@ final class FolioLinkAddresses implements RecordAddresses, AssetAddresses
         $asset = $library?->find($id);
 
         return $asset !== null ? $library->url($asset) : null;
+    }
+
+    /** An embed's poster check: an image of the library; null without library storage (shape only then). */
+    public function isImage(string $id): ?bool
+    {
+        $library = $this->media !== null ? ($this->media)() : null;
+        if ($library === null) {
+            return null;
+        }
+        $asset = $library->find($id);
+
+        return $asset !== null && $asset->kind() === 'image';
     }
 }

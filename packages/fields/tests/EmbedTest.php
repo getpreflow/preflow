@@ -25,6 +25,7 @@ final class EmbedTest extends TestCase
     {
         yield 'watch' => ['https://www.youtube.com/watch?v=aqz-KE-bpKQ', 'youtube', 'aqz-KE-bpKQ'];
         yield 'watch with more parameters' => ['https://youtube.com/watch?feature=share&v=aqz-KE-bpKQ&t=42s', 'youtube', 'aqz-KE-bpKQ'];
+        yield 'watch from a playlist' => ['https://www.youtube.com/watch?v=aqz-KE-bpKQ&list=PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG&index=2', 'youtube', 'aqz-KE-bpKQ'];
         yield 'mobile watch' => ['https://m.youtube.com/watch?v=aqz-KE-bpKQ', 'youtube', 'aqz-KE-bpKQ'];
         yield 'short link' => ['https://youtu.be/aqz-KE-bpKQ?si=abc', 'youtube', 'aqz-KE-bpKQ'];
         yield 'shorts' => ['https://www.youtube.com/shorts/aqz-KE-bpKQ', 'youtube', 'aqz-KE-bpKQ'];
@@ -50,9 +51,15 @@ final class EmbedTest extends TestCase
 
     public function test_other_addresses_are_not_videos(): void
     {
-        foreach (['https://www.youtube.com/', 'https://www.youtube.com/watch?v=short', 'https://youtube.com.example.org/watch?v=aqz-KE-bpKQ', 'https://vimeo.com/about', 'javascript:alert(1)', 'https://example.org/video.mp4', 'youtu.be/aqz-KE-bpKQ', ''] as $url) {
+        foreach (['https://www.youtube.com/watch?v=aqz-KE-bpKQ%0A', 'https://youtu.be/aqz-KE-bpKQ%0A', 'https://www.youtube.com/', 'https://www.youtube.com/watch?v=short', 'https://youtube.com.example.org/watch?v=aqz-KE-bpKQ', 'https://vimeo.com/about', 'javascript:alert(1)', 'https://example.org/video.mp4', 'youtu.be/aqz-KE-bpKQ', ''] as $url) {
             $this->assertNull(Embed::fromUrl($url, new EmbedProviders()), $url);
         }
+    }
+
+    public function test_an_id_never_ends_in_a_line_break(): void
+    {
+        $this->assertSame('76979871', Embed::fromUrl('https://vimeo.com/76979871?h=8272103f6e%0A', new EmbedProviders())?->id, 'a hash with a line break is no hash');
+        $this->assertNull((new \Preflow\Fields\Embed\YouTube())->idOf("https://www.youtube.com/watch?v=aqz-KE-bpKQ%0A"));
     }
 
     public function test_the_player_addresses_make_no_cookies_and_start_on_load(): void
@@ -124,14 +131,72 @@ final class EmbedTest extends TestCase
         $this->assertSame('The poster must be an image of the media library; choose one or remove it.', (string) $poster);
     }
 
-    public function test_a_listed_provider_the_site_never_registered_is_named(): void
+    public function test_a_listed_provider_the_site_never_registered_is_a_refusal_naming_it_not_an_error(): void
     {
         $rule = new ValidEmbed(EmbedOptions::fromConfig(['providers' => ['peertube']]), new EmbedProviders());
 
-        $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('The embed field lists the provider "peertube", but no EmbedProvider of that name is registered: add it with EmbedProviders::add() in a service provider, or remove it from "providers".');
+        $refusal = $rule->validate('https://youtu.be/aqz-KE-bpKQ', new ValidationContext('video', []));
+        $this->assertInstanceOf(Message::class, $refusal);
+        $this->assertSame('validation.embed_unregistered', $refusal->key);
+        $this->assertSame('Videos from "peertube" cannot be saved here: the site has no video provider of that name. Register it in a service provider, or remove it from the field\'s "providers".', (string) $refusal);
+        $this->assertTrue($rule->validate(null, new ValidationContext('video', [])), 'an empty value is not refused');
+        $this->assertNotNull(Embed::fromUrl('https://youtu.be/aqz-KE-bpKQ', new EmbedProviders(), ['peertube']), 'reading never fails on it either');
+    }
 
-        $rule->validate('https://youtu.be/aqz-KE-bpKQ', new ValidationContext('video', []));
+    public function test_an_unregistered_provider_is_a_boot_error_when_the_app_registry_is_given(): void
+    {
+        $providers = new EmbedProviders(self::peerTube());
+        FieldOptions::check('embed', ['providers' => ['peertube']], $providers);
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('"providers" lists "vimeotube", but no EmbedProvider of that name is registered: bind the site\'s providers in a service provider\'s register(), $container->singleton(\Preflow\Fields\EmbedProviders::class, fn () => new \Preflow\Fields\EmbedProviders(new YourProvider())), or remove "vimeotube".');
+        FieldOptions::check('embed', ['providers' => ['vimeotube']], $providers);
+    }
+
+    public function test_a_stored_provider_or_id_that_disagrees_with_its_address_reads_as_no_video(): void
+    {
+        $this->assertNull(Embed::fromStored(['provider' => 'youtube', 'id' => 'xxxxxxxxxxx', 'url' => 'https://youtu.be/aqz-KE-bpKQ', 'poster' => null]));
+        $this->assertNull(Embed::fromStored(['provider' => 'vimeo', 'id' => 'aqz-KE-bpKQ', 'url' => 'https://youtu.be/aqz-KE-bpKQ', 'poster' => null]));
+        $this->assertNull(Embed::fromStored(['provider' => 'youtube', 'id' => 'aqz-KE-bpKQ/', 'url' => 'https://youtu.be/aqz-KE-bpKQ', 'poster' => null]));
+        $this->assertNull(Embed::fromStored(['provider' => 'peertube', 'id' => 'kT2pQx', 'url' => 'https://video.example.org/w/kT2pQx', 'poster' => null]), 'a provider not registered');
+        $this->assertSame('kT2pQx', Embed::fromStored(['provider' => 'peertube', 'id' => 'kT2pQx', 'url' => 'https://video.example.org/w/kT2pQx', 'poster' => null], new EmbedProviders(self::peerTube()))?->id);
+    }
+
+    public function test_the_poster_must_be_an_image_of_the_library_where_the_app_can_tell(): void
+    {
+        $images = new class implements \Preflow\Fields\AssetImages {
+            public function isImage(string $id): ?bool
+            {
+                return ['img' => true, 'pdf' => false][$id] ?? false;
+            }
+        };
+        $rule = new ValidEmbed(new EmbedOptions(), new EmbedProviders(), $images);
+        $ctx = new ValidationContext('video', []);
+        $value = static fn (string $poster): array => ['provider' => 'youtube', 'id' => 'aqz-KE-bpKQ', 'url' => 'https://youtu.be/aqz-KE-bpKQ', 'poster' => $poster];
+
+        $this->assertTrue($rule->validate($value('img'), $ctx));
+        $this->assertSame('The poster must be an image of the media library; choose one or remove it.', (string) $rule->validate($value('pdf'), $ctx), 'a document');
+        $this->assertSame('The poster must be an image of the media library; choose one or remove it.', (string) $rule->validate($value('gone'), $ctx), 'no such file');
+
+        $unknown = new class implements \Preflow\Fields\AssetImages {
+            public function isImage(string $id): ?bool
+            {
+                return null;
+            }
+        };
+        $this->assertTrue((new ValidEmbed(new EmbedOptions(), new EmbedProviders(), $unknown))->validate($value('anything'), $ctx), 'no library storage: the shape only');
+    }
+
+    public function test_without_an_asset_collector_the_page_gets_a_plain_link_instead_of_a_dead_button(): void
+    {
+        $output = new \Preflow\Fields\EmbedOutput(
+            EmbedProviders::lazyBuiltIn(),
+            static fn (): PrivacyEmbedPlayer => new PrivacyEmbedPlayer(),
+            static fn (): null => null,
+            static fn (): null => null,
+        );
+
+        $this->assertSame('<a class="preflow-embed-link" href="https://youtu.be/aqz-KE-bpKQ" rel="noopener noreferrer">Our film</a>', $output->html('https://youtu.be/aqz-KE-bpKQ', 'Our film', 'en'));
     }
 
     public function test_the_options_are_checked_at_boot(): void
@@ -207,7 +272,7 @@ final class EmbedTest extends TestCase
 
             public function idOf(string $url): ?string
             {
-                return preg_match('~^https://video\.example\.org/w/([A-Za-z0-9]+)$~', $url, $m) === 1 ? $m[1] : null;
+                return preg_match('~^https://video\.example\.org/w/([A-Za-z0-9]+)\z~', $url, $m) === 1 ? $m[1] : null;
             }
 
             public function playerUrl(string $id): string

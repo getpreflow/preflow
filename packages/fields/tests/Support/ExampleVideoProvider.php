@@ -21,7 +21,7 @@ final class ExampleVideoProvider implements EmbedProvider
 
     public function idOf(string $url): ?string
     {
-        return preg_match('~^https://video\.example\.org/w/([A-Za-z0-9]+)$~', $url, $m) === 1 ? $m[1] : null;
+        return preg_match('~^https://video\.example\.org/w/([A-Za-z0-9]+)\z~', $url, $m) === 1 ? $m[1] : null;
     }
 
     public function playerUrl(string $id): string

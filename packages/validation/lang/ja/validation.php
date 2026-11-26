@@ -38,6 +38,7 @@ return [
     'daterange_order' => '終了（:end）が開始（:start）より前です。:start 以降の終了を選んでください。',
     'embed' => ':providers の動画のアドレスを入力してください（例: https://www.youtube.com/watch?v=aqz-KE-bpKQ）。',
     'embed_provider' => ':host の動画はここに埋め込めません。:providers の動画のアドレスを貼り付けてください。',
+    'embed_unregistered' => '「:provider」の動画はここに保存できません。サイトにその名前の動画プロバイダーがありません。サービスプロバイダーで登録するか、フィールドの "providers" から削除してください。',
     'embed_poster' => 'ポスター画像はメディアライブラリの画像である必要があります。画像を選ぶか、削除してください。',
     'table' => '表で入力してください: 任意の見出し行と、テキストのセルからなる行。',
     'table_columns' => 'この表には :count 列あります。許可されるのは最大 :max 列です。列を削除してください。',

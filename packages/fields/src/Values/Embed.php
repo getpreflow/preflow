@@ -49,14 +49,16 @@ final readonly class Embed
 
     /**
      * The video a stored value holds: the object toStored() writes, JSON text of it, or a plain
-     * address (read with every provider of $providers, the built-in ones without it). Null for an
-     * empty value and one that is no video; reading never fails.
+     * address, read with every provider of $providers (the built-in ones without it). A stored
+     * provider and id are checked against what the address gives: a value written past the check
+     * (a file edited by hand, an import) that disagrees, or whose address no provider knows, is
+     * null, so nothing is played that its address does not say. Null for an empty value too;
+     * reading never fails.
      */
     public static function fromStored(mixed $stored, ?EmbedProviders $providers = null): ?self
     {
+        $providers ??= new EmbedProviders();
         if (is_string($stored) && !str_starts_with(ltrim($stored), '{')) {
-            $providers ??= new EmbedProviders();
-
             return trim($stored) === '' ? null : self::fromUrl($stored, $providers, $providers->added());
         }
         $data = Link::decode($stored);
@@ -68,6 +70,10 @@ final readonly class Embed
         $id = $text('id');
         $url = $text('url');
         if ($provider === null || $id === null || $url === null) {
+            return null;
+        }
+        $found = $providers->recognize($url, $providers->added());
+        if ($found === null || $found[0]->name() !== $provider || $found[1] !== $id) {
             return null;
         }
 

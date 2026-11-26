@@ -38,6 +38,7 @@ return [
     'daterange_order' => '结束（:end）早于开始（:start）。请选择不早于 :start 的结束。',
     'embed' => '必须是 :providers 上的视频地址，例如 https://www.youtube.com/watch?v=aqz-KE-bpKQ。',
     'embed_provider' => '无法在此嵌入来自 :host 的视频；请粘贴 :providers 上的视频地址。',
+    'embed_unregistered' => '无法在此保存来自“:provider”的视频：网站没有该名称的视频提供者。请在服务提供者中注册它，或将其从字段的 "providers" 中移除。',
     'embed_poster' => '封面必须是媒体库中的图片；请选择一张或将其移除。',
     'table' => '必须是表格：可选的表头行和由文本单元格组成的行。',
     'table_columns' => '此表格有 :count 列；最多允许 :max 列。请删除一列。',

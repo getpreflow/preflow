@@ -35,20 +35,20 @@ final class Vimeo implements EmbedProvider
         $host = strtolower($parts['host'] ?? '');
         $path = $parts['path'] ?? '';
         parse_str($parts['query'] ?? '', $query);
-        $hash = is_string($query['h'] ?? null) && preg_match('~^[0-9a-f]+$~', $query['h']) === 1 ? $query['h'] : null;
+        $hash = is_string($query['h'] ?? null) && preg_match('~^[0-9a-f]+\z~', $query['h']) === 1 ? $query['h'] : null;
         if ($host === 'player.vimeo.com') {
-            return preg_match('~^/video/(\d+)/?$~', $path, $m) === 1 ? $m[1] . ($hash !== null ? ':' . $hash : '') : null;
+            return preg_match('~^/video/(\d+)/?\z~', $path, $m) === 1 ? $m[1] . ($hash !== null ? ':' . $hash : '') : null;
         }
         if (!in_array($host, ['vimeo.com', 'www.vimeo.com'], true)) {
             return null;
         }
-        if (preg_match('~^/(\d+)(?:/([0-9a-f]+))?/?$~', $path, $m) === 1) {
+        if (preg_match('~^/(\d+)(?:/([0-9a-f]+))?/?\z~', $path, $m) === 1) {
             $hash = ($m[2] ?? '') !== '' ? $m[2] : $hash;
 
             return $m[1] . ($hash !== null ? ':' . $hash : '');
         }
 
-        return preg_match('~^/(?:channels/[^/]+|groups/[^/]+/videos|showcase/[^/]+/video)/(\d+)/?$~', $path, $m) === 1 ? $m[1] : null;
+        return preg_match('~^/(?:channels/[^/]+|groups/[^/]+/videos|showcase/[^/]+/video)/(\d+)/?\z~', $path, $m) === 1 ? $m[1] : null;
     }
 
     public function playerUrl(string $id): string

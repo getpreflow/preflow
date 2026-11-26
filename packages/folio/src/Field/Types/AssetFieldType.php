@@ -21,7 +21,7 @@ use Psr\Http\Message\UploadedFileInterface;
  * {prefix}/_uploads); they keep working. Without a library the field writes
  * such paths itself (extension allowlist, randomized names).
  */
-final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\Field\DisplaysInAdmin, \Preflow\Folio\Field\StoresListFor
+final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\Field\DisplaysInAdmin, \Preflow\Folio\Field\StoresListFor, \Preflow\Folio\Field\ReferencesAssets
 {
     private const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
     private const DEFAULT_ALLOWED = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'pdf', 'txt', 'doc', 'docx', 'csv', 'zip'];
@@ -316,6 +316,12 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
     }
 
     /** fields.js: the drop zone (admin.js runs Choose and Remove). */
+    /** Each id (or legacy path) of the value: one, a list, a locale map of those, or JSON text of them (since 0.91). */
+    public function mapAssetIds(mixed $value, array $config, \Closure $fn): mixed
+    {
+        return \Preflow\Folio\Assets\AssetReferences::mapValue($value, $fn);
+    }
+
     public function assets(): array
     {
         return ['fields.js'];

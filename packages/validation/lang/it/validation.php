@@ -38,6 +38,7 @@ return [
     'daterange_order' => 'La fine (:end) è prima dell’inizio (:start). Scegli una fine uguale o successiva a :start.',
     'embed' => 'Deve essere l’indirizzo di un video su :providers, ad esempio https://www.youtube.com/watch?v=aqz-KE-bpKQ.',
     'embed_provider' => 'I video di :host non possono essere incorporati qui; incolla l’indirizzo di un video su :providers.',
+    'embed_unregistered' => 'I video di ":provider" non possono essere salvati qui: il sito non ha un fornitore video con questo nome. Registralo in un service provider o rimuovilo da "providers" del campo.',
     'embed_poster' => 'L’immagine di anteprima deve essere un’immagine della libreria media; scegline una o rimuovila.',
     'table' => 'Deve essere una tabella: una riga di intestazione facoltativa e righe di celle di testo.',
     'table_columns' => 'Questa tabella ha :count colonne; ne sono consentite al massimo :max. Rimuovi una colonna.',

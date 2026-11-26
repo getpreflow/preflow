@@ -38,6 +38,7 @@ return [
     'daterange_order' => '종료(:end)가 시작(:start)보다 앞섭니다. :start 이후의 종료를 선택하세요.',
     'embed' => ':providers 동영상의 주소여야 합니다. 예: https://www.youtube.com/watch?v=aqz-KE-bpKQ.',
     'embed_provider' => ':host 의 동영상은 여기에 삽입할 수 없습니다. :providers 동영상의 주소를 붙여 넣으세요.',
+    'embed_unregistered' => '":provider"의 동영상은 여기에 저장할 수 없습니다. 사이트에 그 이름의 동영상 제공자가 없습니다. 서비스 프로바이더에서 등록하거나 필드의 "providers"에서 제거하세요.',
     'embed_poster' => '포스터는 미디어 라이브러리의 이미지여야 합니다. 이미지를 선택하거나 제거하세요.',
     'table' => '표여야 합니다: 선택 사항인 머리글 행과 텍스트 셀로 된 행.',
     'table_columns' => '이 표에는 열이 :count개 있습니다. 최대 :max개까지 허용됩니다. 열을 하나 제거하세요.',
