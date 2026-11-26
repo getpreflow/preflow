@@ -59,5 +59,12 @@ return [
         'area_max' => 'L\'area ":area" accetta al massimo :max blocchi.',
         'area_min' => 'L\'area ":area" richiede almeno :min blocchi.',
         'area_block' => 'L\'area ":area" non accetta blocchi ":block". Spostalo in un\'altra area o rimuovilo.',
+        'none' => 'Il tipo ":type" non ha layout; ometti "layout" e "areas".',
+        'key' => 'Deve essere la chiave di un layout, come "standard", oppure null per quello predefinito del tipo.',
+        'areas' => 'Deve essere un oggetto di nomi di area, ciascuno con un elenco di blocchi, come {"main": [{"_block": "text"}]}.',
+        'block' => 'Deve essere un blocco: un oggetto il cui "_block" è la chiave del suo tipo di blocco, come {"_block": "text"}.',
+        'unknown_block' => 'Nessun blocco ha la chiave ":block". Usa la chiave di uno dei blocchi del sito: :blocks.',
+        'unknown_area' => 'Il layout ":layout" non ha l\'area ":name". Usa una di: :areas.',
+        'uid_twice' => 'L\'uid ":uid" è assegnato a più di un blocco. Dai a ogni blocco il suo "_uid", oppure omettilo per uno nuovo.',
     ],
 ];

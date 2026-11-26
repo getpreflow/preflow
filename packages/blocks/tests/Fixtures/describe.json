@@ -1,0 +1,316 @@
+{
+    "version": 1,
+    "blocks": {
+        "banner": {
+            "label": "Banner",
+            "group": "Sections",
+            "description": null,
+            "icon": "flag",
+            "family": null,
+            "renders": true,
+            "fields": {
+                "title": {
+                    "type": "string",
+                    "label": null,
+                    "help": null,
+                    "translatable": true,
+                    "required": false,
+                    "list": false,
+                    "config": {}
+                },
+                "body": {
+                    "type": "text",
+                    "label": null,
+                    "help": null,
+                    "translatable": false,
+                    "required": false,
+                    "list": false,
+                    "config": {}
+                },
+                "quotes": {
+                    "type": "blocks",
+                    "label": null,
+                    "help": null,
+                    "translatable": false,
+                    "required": false,
+                    "list": false,
+                    "config": {
+                        "allowed": [
+                            "quote"
+                        ]
+                    }
+                },
+                "children": {
+                    "type": "blocks",
+                    "label": null,
+                    "help": null,
+                    "translatable": false,
+                    "required": false,
+                    "list": false,
+                    "config": {
+                        "allowed": [
+                            "banner"
+                        ]
+                    }
+                }
+            }
+        },
+        "quote": {
+            "label": "Quote",
+            "group": "Blocks",
+            "description": null,
+            "icon": null,
+            "family": null,
+            "renders": false,
+            "fields": {
+                "text": {
+                    "type": "string",
+                    "label": null,
+                    "help": null,
+                    "translatable": true,
+                    "required": false,
+                    "list": false,
+                    "config": {}
+                }
+            }
+        },
+        "section": {
+            "label": "Section",
+            "group": "Blocks",
+            "description": null,
+            "icon": null,
+            "family": null,
+            "renders": false,
+            "fields": {
+                "title": {
+                    "type": "string",
+                    "label": null,
+                    "help": null,
+                    "translatable": true,
+                    "required": true,
+                    "list": false,
+                    "config": {}
+                },
+                "size": {
+                    "type": "select",
+                    "label": null,
+                    "help": null,
+                    "translatable": false,
+                    "required": false,
+                    "list": false,
+                    "config": {
+                        "options": {
+                            "s": "Small",
+                            "l": "Large"
+                        }
+                    }
+                },
+                "answers": {
+                    "type": "tags",
+                    "label": "Possible answers",
+                    "help": null,
+                    "translatable": false,
+                    "required": false,
+                    "list": true,
+                    "config": {}
+                },
+                "answer": {
+                    "type": "select",
+                    "label": null,
+                    "help": null,
+                    "translatable": false,
+                    "required": false,
+                    "list": false,
+                    "config": {
+                        "options_from": "answers"
+                    }
+                },
+                "website": {
+                    "type": "link",
+                    "label": null,
+                    "help": null,
+                    "translatable": false,
+                    "required": false,
+                    "list": false,
+                    "config": {}
+                },
+                "kind": {
+                    "type": "select",
+                    "label": null,
+                    "help": null,
+                    "translatable": false,
+                    "required": false,
+                    "list": false,
+                    "config": {
+                        "options": {
+                            "text": "Text",
+                            "link": "Link"
+                        }
+                    }
+                },
+                "button_url": {
+                    "type": "string",
+                    "label": null,
+                    "help": null,
+                    "translatable": false,
+                    "required": true,
+                    "list": false,
+                    "config": {
+                        "show_when": {
+                            "field": "kind",
+                            "=": "link"
+                        }
+                    }
+                },
+                "quotes": {
+                    "type": "blocks",
+                    "label": null,
+                    "help": null,
+                    "translatable": false,
+                    "required": false,
+                    "list": false,
+                    "config": {
+                        "allowed": [
+                            "section_quote"
+                        ]
+                    }
+                }
+            }
+        },
+        "section_quote": {
+            "label": "Section quote",
+            "group": "Blocks",
+            "description": null,
+            "icon": null,
+            "family": null,
+            "renders": false,
+            "fields": {
+                "text": {
+                    "type": "text",
+                    "label": null,
+                    "help": null,
+                    "translatable": false,
+                    "required": true,
+                    "list": false,
+                    "config": {}
+                }
+            }
+        }
+    },
+    "layouts": {
+        "landing": {
+            "label": "Landing",
+            "description": null,
+            "areas": {
+                "hero": {
+                    "label": "Hero",
+                    "allowed": [
+                        "hero"
+                    ],
+                    "except": [],
+                    "min": null,
+                    "max": 1
+                },
+                "main": {
+                    "label": "Main",
+                    "allowed": [],
+                    "except": [
+                        "columns"
+                    ],
+                    "min": null,
+                    "max": null
+                }
+            }
+        },
+        "standard": {
+            "label": "Standard",
+            "description": null,
+            "areas": {
+                "main": {
+                    "label": "Main",
+                    "allowed": [],
+                    "except": [],
+                    "min": null,
+                    "max": null
+                }
+            }
+        },
+        "home": {
+            "label": "Home",
+            "description": null,
+            "areas": {
+                "top": {
+                    "label": "Top",
+                    "allowed": [],
+                    "except": [],
+                    "min": 1,
+                    "max": null
+                }
+            }
+        }
+    },
+    "area_layout_sets": {
+        "columns": {
+            "fallback": "full",
+            "layouts": {
+                "full": {
+                    "label": "One column",
+                    "description": null,
+                    "areas": {
+                        "c1": {
+                            "label": "Column 1",
+                            "allowed": [],
+                            "except": [],
+                            "min": null,
+                            "max": null,
+                            "width": 1
+                        }
+                    }
+                },
+                "2-1": {
+                    "label": "Wide and narrow",
+                    "description": "Two thirds, one third",
+                    "areas": {
+                        "c1": {
+                            "label": "Column 1",
+                            "allowed": [],
+                            "except": [],
+                            "min": null,
+                            "max": null,
+                            "width": 2
+                        },
+                        "c2": {
+                            "label": "Column 2",
+                            "allowed": [],
+                            "except": [
+                                "columns"
+                            ],
+                            "min": null,
+                            "max": null,
+                            "width": 1
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "types": {
+        "page": {
+            "layouts": {
+                "allowed": [
+                    "landing",
+                    "standard"
+                ],
+                "default": "standard",
+                "pinned": {
+                    "home": "home"
+                },
+                "slug_field": "path",
+                "values": {
+                    "_layout": "layout_key",
+                    "_areas": "area_map"
+                }
+            }
+        }
+    }
+}

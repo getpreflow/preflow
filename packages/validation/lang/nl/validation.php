@@ -59,5 +59,12 @@ return [
         'area_max' => 'Het gebied ":area" bevat hoogstens :max blokken.',
         'area_min' => 'Het gebied ":area" heeft minstens :min blokken nodig.',
         'area_block' => 'Het gebied ":area" neemt geen blokken ":block" aan. Verplaats het naar een ander gebied of verwijder het.',
+        'none' => 'Het type ":type" heeft geen lay-outs; laat "layout" en "areas" weg.',
+        'key' => 'Moet de sleutel van een lay-out zijn, zoals "standard", of null voor de standaard van het type.',
+        'areas' => 'Moet een object van gebiedsnamen zijn, elk met een lijst blokken, zoals {"main": [{"_block": "text"}]}.',
+        'block' => 'Moet een blok zijn: een object waarvan "_block" de sleutel van zijn bloktype is, zoals {"_block": "text"}.',
+        'unknown_block' => 'Geen blok heeft de sleutel ":block". Gebruik de sleutel van een van de blokken van de site: :blocks.',
+        'unknown_area' => 'De lay-out ":layout" heeft geen gebied ":name". Gebruik een van: :areas.',
+        'uid_twice' => 'De uid ":uid" is aan meer dan één blok gegeven. Geef elk blok een eigen "_uid", of laat hem weg voor een nieuw blok.',
     ],
 ];

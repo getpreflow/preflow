@@ -59,5 +59,12 @@ return [
         'area_max' => 'Obszar ":area" mieści najwyżej :max bloków.',
         'area_min' => 'Obszar ":area" wymaga co najmniej :min bloków.',
         'area_block' => 'Obszar ":area" nie przyjmuje bloków ":block". Przenieś go do innego obszaru lub usuń.',
+        'none' => 'Typ ":type" nie ma układów; pomiń "layout" i "areas".',
+        'key' => 'Musi być kluczem układu, np. "standard", lub null dla domyślnego układu typu.',
+        'areas' => 'Musi być obiektem nazw obszarów, każdy z listą bloków, np. {"main": [{"_block": "text"}]}.',
+        'block' => 'Musi być blokiem: obiektem, którego "_block" jest kluczem jego typu bloku, np. {"_block": "text"}.',
+        'unknown_block' => 'Żaden blok nie ma klucza ":block". Użyj klucza jednego z bloków witryny: :blocks.',
+        'unknown_area' => 'Układ ":layout" nie ma obszaru ":name". Użyj jednego z: :areas.',
+        'uid_twice' => 'Uid ":uid" jest nadany więcej niż jednemu blokowi. Nadaj każdemu blokowi własny "_uid" albo pomiń go dla nowego bloku.',
     ],
 ];

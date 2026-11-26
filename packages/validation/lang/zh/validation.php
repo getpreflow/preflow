@@ -59,5 +59,12 @@ return [
         'area_max' => '区域 ":area" 最多可放 :max 个区块。',
         'area_min' => '区域 ":area" 至少需要 :min 个区块。',
         'area_block' => '区域 ":area" 不接受 ":block" 区块。请将其移到其他区域或删除。',
+        'none' => '类型 ":type" 没有布局；请省略 "layout" 和 "areas"。',
+        'key' => '必须是布局的键，例如 "standard"，或用 null 表示该类型的默认布局。',
+        'areas' => '必须是以区域名为键、每个区域带一个区块列表的对象，例如 {"main": [{"_block": "text"}]}。',
+        'block' => '必须是区块：一个 "_block" 为其区块类型键的对象，例如 {"_block": "text"}。',
+        'unknown_block' => '没有键为 ":block" 的区块。请使用网站区块的键之一：:blocks。',
+        'unknown_area' => '布局 ":layout" 没有区域 ":name"。请使用以下之一：:areas。',
+        'uid_twice' => 'uid ":uid" 被用于多个区块。请为每个区块设置各自的 "_uid"，新区块则省略它。',
     ],
 ];

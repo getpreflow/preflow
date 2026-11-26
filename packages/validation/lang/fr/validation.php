@@ -63,5 +63,12 @@ return [
         'area_max' => 'La zone « :area » accepte au plus :max blocs.',
         'area_min' => 'La zone « :area » demande au moins :min blocs.',
         'area_block' => 'La zone « :area » n\'accepte pas les blocs « :block ». Déplacez-le dans une autre zone ou supprimez-le.',
+        'none' => 'Le type « :type » n\'a pas de mises en page ; omettez « layout » et « areas ».',
+        'key' => 'Doit être la clé d\'une mise en page, p. ex. « standard », ou null pour celle par défaut du type.',
+        'areas' => 'Doit être un objet de noms de zones, chacune avec une liste de blocs, p. ex. {"main": [{"_block": "text"}]}.',
+        'block' => 'Doit être un bloc : un objet dont « _block » est la clé de son type de bloc, p. ex. {"_block": "text"}.',
+        'unknown_block' => 'Aucun bloc n\'a la clé « :block ». Utilisez la clé d\'un des blocs du site : :blocks.',
+        'unknown_area' => 'La mise en page « :layout » n\'a pas de zone « :name ». Utilisez l\'une de : :areas.',
+        'uid_twice' => 'L\'uid « :uid » est donné à plus d\'un bloc. Donnez à chaque bloc son propre « _uid », ou omettez-le pour un nouveau bloc.',
     ],
 ];

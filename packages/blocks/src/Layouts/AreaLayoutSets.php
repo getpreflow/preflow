@@ -32,6 +32,16 @@ final class AreaLayoutSets
         return isset($this->factories[$name]);
     }
 
+    /**
+     * The registered names, in registration order (ContentDescription lists their sets).
+     *
+     * @return list<string>
+     */
+    public function names(): array
+    {
+        return array_map('strval', array_keys($this->factories));
+    }
+
     public function get(string $name): AreaLayoutSet
     {
         if (!isset($this->factories[$name])) {

@@ -11,10 +11,13 @@ use Preflow\Core\Cache\CacheRegistry;
 use Preflow\Core\Cache\FileCache;
 use Preflow\Core\Composer\InstalledPackages;
 use Preflow\Core\Container\Container;
+use Preflow\Blocks\Describe\ContentDescription;
 use Preflow\Blocks\Layouts\AreaLayoutSets;
 use Preflow\Blocks\Layouts\Layout;
 use Preflow\Blocks\Layouts\LayoutConfigException;
+use Preflow\Blocks\Layouts\LayoutInput;
 use Preflow\Blocks\Layouts\LayoutRegistry;
+use Preflow\Blocks\Layouts\LayoutResource;
 use Preflow\Blocks\Layouts\PageLayouts;
 use Preflow\Blocks\Layouts\Rules\AreaContents;
 use Preflow\Blocks\Layouts\Rules\LayoutChoice;
@@ -22,6 +25,7 @@ use Preflow\Blocks\Layouts\Rules\PinnedSlug;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\FieldKinds;
 use Preflow\Data\Locales;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeRegistry;
@@ -46,6 +50,10 @@ use Preflow\View\TemplateFunctionDefinition;
  * boot (kept in the boot manifest), and with a DataManager the layout rules on every validated
  * save of their records (RecordRules): the layout choice, a pinned page's slug (drafts too) and
  * what the areas hold.
+ *
+ * For APIs (since 0.92): ContentDescription (blocks, layouts, area layout sets and type layouts as
+ * data for a schema builder) and, with page layouts, LayoutResource and LayoutInput — a page's
+ * layout and areas read and written as JSON under the same core rules as Folio's form.
  *
  * Block values (since 0.92): with a DataManager, BlockValueChecks runs on every validated write of
  * a typed record (a RecordRules check), so a seed, an import or a REST save is refused for a block
@@ -135,6 +143,7 @@ final class BlocksServiceProvider extends ServiceProvider
         }
 
         self::bootPageLayouts($container);
+        self::bindApi($container);
 
         // In boot: the cache file follows config that a provider registered after this one may set.
         $container->get(CacheRegistry::class)->register(new FileCache('blocks', 'Blocks', $container->get(BlocksConfig::class)->cacheFile));
@@ -236,6 +245,35 @@ final class BlocksServiceProvider extends ServiceProvider
 
             return $type === null || $type->pinned === [] ? [] : [$type->slugField => [new PinnedSlug($layouts, $data, $def)]];
         }, drafts: true);
+    }
+
+    /**
+     * What an API controller calls (since 0.92): ContentDescription always, and with page layouts
+     * LayoutResource (a page's layout and areas as JSON) and LayoutInput (a body merged under the
+     * core rules). In boot: PageLayouts is bound in boot.
+     */
+    private static function bindApi(Container $container): void
+    {
+        $container->singleton(ContentDescription::class, static fn (Container $c): ContentDescription => new ContentDescription(
+            $c->get(BlockRegistry::class),
+            $c->get(LayoutRegistry::class),
+            $c->get(AreaLayoutSets::class),
+            $c->bound(DataManager::class) ? $c->get(DataManager::class)->fieldKinds() : new FieldKinds(),
+            $c->bound(PageLayouts::class) ? $c->get(PageLayouts::class) : null,
+            $c->bound(TypeRegistry::class) ? $c->get(TypeRegistry::class) : ($c->bound(DataManager::class) ? $c->get(DataManager::class)->getTypeRegistry() : null),
+        ));
+        if (!$container->bound(PageLayouts::class)) {
+            return;
+        }
+        $container->singleton(LayoutResource::class, static fn (Container $c): LayoutResource => new LayoutResource(
+            $c->get(PageLayouts::class),
+            $c->get(BlockRegistry::class),
+        ));
+        $container->singleton(LayoutInput::class, static fn (Container $c): LayoutInput => new LayoutInput(
+            $c->get(PageLayouts::class),
+            $c->get(BlockRegistry::class),
+            $c->bound(ValidatorFactory::class) ? $c->get(ValidatorFactory::class) : new ValidatorFactory(new RuleFactory()),
+        ));
     }
 
     /**

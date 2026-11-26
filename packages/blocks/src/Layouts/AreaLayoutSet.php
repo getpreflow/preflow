@@ -15,8 +15,11 @@ final class AreaLayoutSet
     /** @var array<string, AreaLayout> */
     private array $byKey = [];
 
-    /** @param list<AreaLayout> $layouts */
-    public function __construct(public readonly string $name, array $layouts, private readonly ?string $fallback = null)
+    /**
+     * @param list<AreaLayout> $layouts
+     * @param string|null      $fallback the key resolve() takes when nothing else fits
+     */
+    public function __construct(public readonly string $name, array $layouts, public readonly ?string $fallback = null)
     {
         foreach ($layouts as $layout) {
             $this->byKey[$layout->key] = $layout;

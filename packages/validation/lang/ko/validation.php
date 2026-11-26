@@ -59,5 +59,12 @@ return [
         'area_max' => '영역 ":area"에는 블록을 최대 :max개까지 넣을 수 있습니다.',
         'area_min' => '영역 ":area"에는 블록이 최소 :min개 필요합니다.',
         'area_block' => '영역 ":area"에는 ":block" 블록을 넣을 수 없습니다. 다른 영역으로 옮기거나 삭제하세요.',
+        'none' => '유형 ":type"에는 레이아웃이 없습니다. "layout"과 "areas"를 빼세요.',
+        'key' => '"standard"와 같은 레이아웃 키이거나, 유형의 기본값에는 null이어야 합니다.',
+        'areas' => '영역 이름마다 블록 목록을 가진 객체여야 합니다. 예: {"main": [{"_block": "text"}]}.',
+        'block' => '블록이어야 합니다: "_block"이 블록 유형의 키인 객체입니다. 예: {"_block": "text"}.',
+        'unknown_block' => '키가 ":block"인 블록이 없습니다. 사이트 블록의 키 중 하나를 쓰세요: :blocks.',
+        'unknown_area' => '레이아웃 ":layout"에는 영역 ":name"이 없습니다. 다음 중 하나를 쓰세요: :areas.',
+        'uid_twice' => 'uid ":uid"가 둘 이상의 블록에 쓰였습니다. 블록마다 고유한 "_uid"를 주거나, 새 블록에서는 빼세요.',
     ],
 ];

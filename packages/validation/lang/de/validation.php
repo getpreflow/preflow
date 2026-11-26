@@ -63,5 +63,12 @@ return [
         'area_max' => 'Der Bereich ":area" nimmt höchstens :max Blöcke auf.',
         'area_min' => 'Der Bereich ":area" braucht mindestens :min Blöcke.',
         'area_block' => 'Der Bereich ":area" nimmt keine Blöcke vom Typ ":block" auf. Verschiebe ihn in einen anderen Bereich oder entferne ihn.',
+        'none' => 'Der Typ ":type" hat keine Layouts; lass "layout" und "areas" weg.',
+        'key' => 'Muss der Schlüssel eines Layouts sein, etwa "standard", oder null für das Standardlayout des Typs.',
+        'areas' => 'Muss ein Objekt aus Bereichsnamen sein, jeder mit einer Liste von Blöcken, etwa {"main": [{"_block": "text"}]}.',
+        'block' => 'Muss ein Block sein: ein Objekt, dessen "_block" der Schlüssel seines Blocktyps ist, etwa {"_block": "text"}.',
+        'unknown_block' => 'Kein Block hat den Schlüssel ":block". Verwende den Schlüssel eines Blocks der Website: :blocks.',
+        'unknown_area' => 'Das Layout ":layout" hat keinen Bereich ":name". Verwende einen von: :areas.',
+        'uid_twice' => 'Die uid ":uid" ist mehr als einem Block gegeben. Gib jedem Block seine eigene "_uid", oder lass sie für einen neuen Block weg.',
     ],
 ];
