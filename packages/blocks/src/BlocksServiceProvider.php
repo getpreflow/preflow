@@ -15,8 +15,15 @@ use Preflow\Blocks\Layouts\AreaLayoutSets;
 use Preflow\Blocks\Layouts\Layout;
 use Preflow\Blocks\Layouts\LayoutConfigException;
 use Preflow\Blocks\Layouts\LayoutRegistry;
+use Preflow\Blocks\Layouts\PageLayouts;
+use Preflow\Blocks\Layouts\Rules\AreaContents;
+use Preflow\Blocks\Layouts\Rules\LayoutChoice;
+use Preflow\Blocks\Layouts\Rules\PinnedSlug;
 use Preflow\Core\Container\ServiceProvider;
+use Preflow\Data\DataManager;
 use Preflow\Data\Locales;
+use Preflow\Data\TypeDefinition;
+use Preflow\Data\TypeRegistry;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\View\TemplateFunctionDefinition;
 
@@ -30,6 +37,12 @@ use Preflow\View\TemplateFunctionDefinition;
  * blocks.cache when debug is off (Settings → Cache and cache:clear list it). The renderer
  * asks BlockLocale, BlockTextCleaner and BlockPreviewMarks: a provider (the app's, Folio)
  * binds its own in register(), and boot() binds the plain defaults for the rest.
+ *
+ * Page layouts (since 0.92): the layout classes (LayoutRegistry, found and cached like blocks)
+ * and, with a type registry, PageLayouts for the types with "layouts" — their option checked at
+ * boot (kept in the boot manifest), and with a DataManager the layout rules on every validated
+ * save of their records (RecordRules): the layout choice, a pinned page's slug (drafts too) and
+ * what the areas hold.
  *
  * Listed in config/providers.php by a site without Folio; Folio registers it itself.
  */
@@ -111,6 +124,8 @@ final class BlocksServiceProvider extends ServiceProvider
             $container->singleton(BlockPreviewMarks::class, static fn (): BlockPreviewMarks => new DefaultBlockPreviewMarks());
         }
 
+        self::bootPageLayouts($container);
+
         // In boot: the cache file follows config that a provider registered after this one may set.
         $container->get(CacheRegistry::class)->register(new FileCache('blocks', 'Blocks', $container->get(BlocksConfig::class)->cacheFile));
         $container->get(CacheRegistry::class)->register(new FileCache('layouts', 'Page layouts', $container->get(BlocksConfig::class)->layoutsCacheFile));
@@ -162,6 +177,55 @@ final class BlocksServiceProvider extends ServiceProvider
         }
 
         return $classes;
+    }
+
+    /**
+     * PageLayouts with the app's type registry (the one Folio binds, else the DataManager's), the
+     * boot check of every type's "layouts" and the layout rules with the data package. In boot:
+     * Folio binds its registry in its register().
+     */
+    private static function bootPageLayouts(Container $container): void
+    {
+        $data = $container->bound(DataManager::class) ? $container->get(DataManager::class) : null;
+        $types = $container->bound(TypeRegistry::class) ? $container->get(TypeRegistry::class) : $data?->getTypeRegistry();
+        if ($types === null) {
+            return;
+        }
+        $container->singleton(PageLayouts::class, static fn (Container $c): PageLayouts => new PageLayouts(
+            $c->get(LayoutRegistry::class),
+            $types,
+            $c->get(BlockRegistry::class),
+        ));
+
+        // A "layouts" option that cannot work stops the boot, with or without Folio: checked when the
+        // boot manifest is built (and live while none is loaded), as the data package's own checks.
+        $manifest = $container->get(Application::class)->bootManifest();
+        $manifest->remember('blocks.type_layouts', static function () use ($container, $types): bool {
+            (new PageLayouts($container->get(LayoutRegistry::class), $types))->assertTypes();
+
+            return true;
+        }, $manifest->isRecording() ? $types->sources() : []);
+
+        if ($data === null) {
+            return;
+        }
+        $data->recordRules()->add(static function (TypeDefinition $def) use ($container, $data): array {
+            $layouts = $container->get(PageLayouts::class);
+            if ($layouts->forType($def->key) === null) {
+                return [];
+            }
+
+            return [
+                PageLayouts::LAYOUT => [new LayoutChoice($layouts, $data, $def)],
+                PageLayouts::AREAS => [AreaContents::forPage($layouts, $def, $container->get(BlockRegistry::class))],
+            ];
+        });
+        $data->recordRules()->add(static function (TypeDefinition $def) use ($container, $data): array {
+            $layouts = $container->get(PageLayouts::class);
+            $type = $layouts->forType($def->key);
+
+            return $type === null || $type->pinned === [] ? [] : [$type->slugField => [new PinnedSlug($layouts, $data, $def)]];
+        }, drafts: true);
     }
 
     /** A warning for the site's log (its PSR logger, error_log() without one). */

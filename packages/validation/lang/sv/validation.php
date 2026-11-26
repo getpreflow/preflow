@@ -52,4 +52,11 @@ return [
         'type' => 'Den här länken kan inte peka på en post av typen :refused; välj en av: :types.',
         'url' => 'Måste vara en webbadress som börjar med https:// eller http://, eller en sökväg på den här webbplatsen som börjar med /.',
     ],
+    'layout' => [
+        'choice' => 'Layouten ":key" är inte en av de layouter som den här typen tillåter (:allowed). Välj en av dem.',
+        'pinned' => 'Den här sidan är fäst vid layouten ":layout" genom posten ":slug" i "layouts.pinned" för typen ":type". Ändra eller ta bort den posten först och byt sedan namn på sidan.',
+        'area_max' => 'Området ":area" rymmer högst :max block.',
+        'area_min' => 'Området ":area" behöver minst :min block.',
+        'area_block' => 'Området ":area" tar inte emot ":block"-block. Flytta det till ett annat område eller ta bort det.',
+    ],
 ];

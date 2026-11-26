@@ -8,6 +8,9 @@
 // language, then English.
 // :min, :max, :step are the rule's numbers; :values the allowed values, comma-separated; :kinds and
 // :types (a link's) the allowed link kinds and record types, comma-separated; :refused the refused type; :values (a colour's palette) the colours offered; :value and :zone (a date-time that does not exist in a zone), :example (a date range), :start and :end (a range's ends); :providers the video hosts offered and :host the refused one (an embed's); :count and :max (a table's columns or rows).
+// Page layouts' ("layout"): :key the refused layout key and :allowed the keys allowed, comma-separated;
+// :layout, :slug and :type a pin's layout, page slug and type; :area an area's name, :min and :max its
+// limits, :block the refused block key.
 return [
     'required' => 'This field is required.',
     'email' => 'Must be a valid email address.',
@@ -57,5 +60,12 @@ return [
         'target' => 'Choose or enter what the link points to.',
         'type' => 'This link cannot point to a record of type ":refused"; choose one of: :types.',
         'url' => 'Must be a web address starting with https:// or http://, or a path on this site starting with /.',
+    ],
+    'layout' => [
+        'choice' => 'The layout ":key" is not one of the layouts this type allows (:allowed). Choose one of them.',
+        'pinned' => 'This page is pinned to the layout ":layout" by the entry ":slug" of "layouts.pinned" in the type ":type". Change or remove that entry first, then rename the page.',
+        'area_max' => 'The area ":area" takes at most :max blocks.',
+        'area_min' => 'The area ":area" takes at least :min blocks.',
+        'area_block' => 'The area ":area" does not take ":block" blocks. Move it to another area or remove it.',
     ],
 ];

@@ -52,4 +52,11 @@ return [
         'type' => 'Deze link kan niet naar een item van het type :refused verwijzen; kies een van: :types.',
         'url' => 'Moet een webadres zijn dat begint met https:// of http://, of een pad op deze site dat begint met /.',
     ],
+    'layout' => [
+        'choice' => 'De lay-out ":key" hoort niet bij de lay-outs die dit type toestaat (:allowed). Kies er een van.',
+        'pinned' => 'Deze pagina is vastgezet op de lay-out ":layout" door de vermelding ":slug" van "layouts.pinned" in het type ":type". Wijzig of verwijder eerst die vermelding en hernoem dan de pagina.',
+        'area_max' => 'Het gebied ":area" bevat hoogstens :max blokken.',
+        'area_min' => 'Het gebied ":area" heeft minstens :min blokken nodig.',
+        'area_block' => 'Het gebied ":area" neemt geen blokken ":block" aan. Verplaats het naar een ander gebied of verwijder het.',
+    ],
 ];

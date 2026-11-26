@@ -52,4 +52,11 @@ return [
         'type' => '此链接不能指向 :refused 类型的记录；请从以下类型中选择：:types。',
         'url' => '必须是以 https:// 或 http:// 开头的网址，或以 / 开头的本站路径。',
     ],
+    'layout' => [
+        'choice' => '布局 ":key" 不在此类型允许的布局中（:allowed）。请从中选择一个。',
+        'pinned' => '此页面通过类型 ":type" 的 "layouts.pinned" 中的条目 ":slug" 固定为布局 ":layout"。请先修改或删除该条目，然后再重命名页面。',
+        'area_max' => '区域 ":area" 最多可放 :max 个区块。',
+        'area_min' => '区域 ":area" 至少需要 :min 个区块。',
+        'area_block' => '区域 ":area" 不接受 ":block" 区块。请将其移到其他区域或删除。',
+    ],
 ];

@@ -52,4 +52,11 @@ return [
         'type' => 'Bu bağlantı :refused türünde bir kayda işaret edemez; şunlardan birini seçin: :types.',
         'url' => 'https:// veya http:// ile başlayan bir web adresi ya da bu sitede / ile başlayan bir yol olmalıdır.',
     ],
+    'layout' => [
+        'choice' => '":key" düzeni bu türün izin verdiği düzenlerden biri değil (:allowed). Bunlardan birini seçin.',
+        'pinned' => 'Bu sayfa, ":type" türündeki "layouts.pinned" içindeki ":slug" girdisiyle ":layout" düzenine sabitlenmiştir. Önce bu girdiyi değiştirin veya kaldırın, sonra sayfayı yeniden adlandırın.',
+        'area_max' => '":area" alanı en fazla :max blok alır.',
+        'area_min' => '":area" alanı en az :min blok gerektirir.',
+        'area_block' => '":area" alanı ":block" bloklarını almaz. Bloğu başka bir alana taşıyın veya kaldırın.',
+    ],
 ];

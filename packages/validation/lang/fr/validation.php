@@ -56,4 +56,11 @@ return [
         'type' => 'Ce lien ne peut pas pointer vers une entrée de type :refused ; choisissez parmi : :types.',
         'url' => 'Doit être une adresse web commençant par https:// ou http://, ou un chemin de ce site commençant par /.',
     ],
+    'layout' => [
+        'choice' => 'La mise en page « :key » ne fait pas partie de celles que ce type autorise (:allowed). Choisissez-en une.',
+        'pinned' => 'Cette page est liée à la mise en page « :layout » par l\'entrée « :slug » de « layouts.pinned » dans le type « :type ». Modifiez ou supprimez d\'abord cette entrée, puis renommez la page.',
+        'area_max' => 'La zone « :area » accepte au plus :max blocs.',
+        'area_min' => 'La zone « :area » demande au moins :min blocs.',
+        'area_block' => 'La zone « :area » n\'accepte pas les blocs « :block ». Déplacez-le dans une autre zone ou supprimez-le.',
+    ],
 ];

@@ -52,4 +52,11 @@ return [
         'type' => 'Este link não pode apontar para um registro do tipo :refused; escolha um de: :types.',
         'url' => 'Deve ser um endereço web que comece com https:// ou http://, ou um caminho deste site que comece com /.',
     ],
+    'layout' => [
+        'choice' => 'O layout ":key" não é um dos layouts que este tipo permite (:allowed). Escolha um deles.',
+        'pinned' => 'Esta página está fixada ao layout ":layout" pela entrada ":slug" de "layouts.pinned" no tipo ":type". Altere ou remova essa entrada primeiro e depois renomeie a página.',
+        'area_max' => 'A área ":area" aceita no máximo :max blocos.',
+        'area_min' => 'A área ":area" precisa de pelo menos :min blocos.',
+        'area_block' => 'A área ":area" não aceita blocos ":block". Mova-o para outra área ou remova-o.',
+    ],
 ];

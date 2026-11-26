@@ -53,6 +53,8 @@ final class DataManager
 
     private ?FieldKinds $fieldKinds = null;
 
+    private ?RecordRules $recordRules = null;
+
     private ?DataObserver $observer = null;
 
     private ?VersionFields $versionFields = null;
@@ -503,6 +505,17 @@ final class DataManager
     public function fieldKinds(): FieldKinds
     {
         return $this->fieldKinds ??= new FieldKinds();
+    }
+
+    /**
+     * The rules packages add for the records of some types (preflow/blocks' page layout rules):
+     * run by every validation of a typed record, and those added for drafts by validateStorable().
+     *
+     * @since 0.92.0
+     */
+    public function recordRules(): RecordRules
+    {
+        return $this->recordRules ??= new RecordRules();
     }
 
     /**
@@ -2438,9 +2451,11 @@ final class DataManager
      * Check what the storage itself would refuse, for a save that skips the other rules (a
      * draft, a restored revision): a bounded string column (a unique or indexed string, a unique
      * field's scope) longer than its length, and a unique value another record has. A length is
-     * measured as text, also for a number-like value. Runs without a validator factory too.
+     * measured as text, also for a number-like value. Since 0.92 also the rules added for drafts
+     * (RecordRules::add(…, drafts: true): a pinned page's slug), each given the record's values
+     * and the record. Runs without a validator factory too.
      *
-     * @throws ValidationException with validation.max.string or validation.unique on each field
+     * @throws ValidationException with validation.max.string, validation.unique or a draft rule's message on each field
      */
     public function validateStorable(DynamicRecord $record): void
     {
@@ -2456,6 +2471,22 @@ final class DataManager
         $checks = array_diff_key($this->uniqueChecks($def, $data, $record->getId(), $def->uniqueFields()), $failures);
         foreach ($this->takenFields($checks) as $key) {
             $failures[$key] = new Message('validation.unique');
+        }
+        // The rules added for drafts, run directly: a draft is saved without a validator.
+        $ruleFactory = null;
+        foreach ($this->recordRules()->of($def, drafts: true) as $name => $fieldRules) {
+            if (isset($failures[$name])) {
+                continue;
+            }
+            $context = new ValidationContext($name, $data, $record);
+            foreach ($fieldRules as $rule) {
+                $rule = $rule instanceof ValidationRule ? $rule : ($ruleFactory ??= new \Preflow\Validation\RuleFactory())->resolve($rule);
+                $result = $rule->validate($data[$name] ?? null, $context);
+                if ($result !== true) {
+                    $failures[$name] = $result;
+                    break;
+                }
+            }
         }
         if ($failures !== []) {
             throw $this->failure($failures);
@@ -2523,6 +2554,12 @@ final class DataManager
         // A field type's own checks (FieldKinds::rules(), 0.91: the link field's), after the field's own.
         foreach ($typeDef->fields as $name => $field) {
             foreach ($this->fieldKinds()->rulesOf($field) as $rule) {
+                $rules[$name][] = $rule;
+            }
+        }
+        // The rules packages add for this type's records (RecordRules, 0.92: the page layout rules), after those.
+        foreach ($this->recordRules()->of($typeDef) as $name => $fieldRules) {
+            foreach ($fieldRules as $rule) {
                 $rules[$name][] = $rule;
             }
         }
@@ -2640,19 +2677,19 @@ final class DataManager
      * A ValidationException with one message per field, in the validator's language when there
      * is one.
      *
-     * @param non-empty-array<string, Message> $messages
+     * @param non-empty-array<string, Message|string> $messages
      */
     private function failure(array $messages): ValidationException
     {
         if ($this->validatorFactory === null) {
-            return new ValidationException(new ValidationResult(array_map(static fn (Message $m): array => [$m->english()], $messages)));
+            return new ValidationException(new ValidationResult(array_map(static fn (Message|string $m): array => [$m instanceof Message ? $m->english() : $m], $messages)));
         }
         $rules = [];
         foreach ($messages as $field => $message) {
             $rules[$field] = [new class ($message) implements ValidationRule {
-                public function __construct(private readonly Message $message) {}
+                public function __construct(private readonly Message|string $message) {}
 
-                public function validate(mixed $value, ValidationContext $context): Message
+                public function validate(mixed $value, ValidationContext $context): Message|string
                 {
                     return $this->message;
                 }

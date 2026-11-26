@@ -52,4 +52,11 @@ return [
         'type' => 'Ten link nie może prowadzić do wpisu typu :refused; wybierz jeden z: :types.',
         'url' => 'Musi być adresem internetowym zaczynającym się od https:// lub http:// albo ścieżką tej witryny zaczynającą się od /.',
     ],
+    'layout' => [
+        'choice' => 'Układ ":key" nie należy do układów dozwolonych dla tego typu (:allowed). Wybierz jeden z nich.',
+        'pinned' => 'Ta strona jest przypięta do układu ":layout" przez wpis ":slug" w "layouts.pinned" typu ":type". Najpierw zmień lub usuń ten wpis, a potem zmień nazwę strony.',
+        'area_max' => 'Obszar ":area" mieści najwyżej :max bloków.',
+        'area_min' => 'Obszar ":area" wymaga co najmniej :min bloków.',
+        'area_block' => 'Obszar ":area" nie przyjmuje bloków ":block". Przenieś go do innego obszaru lub usuń.',
+    ],
 ];
