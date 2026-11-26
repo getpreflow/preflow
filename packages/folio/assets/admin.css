@@ -4456,3 +4456,20 @@ code.folio-redirect-to { color: var(--c-accent-text); }
   font-family: var(--font-mono); font-size: 11px; line-height: 1.4;
   color: var(--c-text-subtle); overflow-wrap: anywhere; user-select: text;
 }
+
+/* The colour field (0.91): the picker, the hex text, the palette as swatches (inline SVG, the colour is its fill). */
+.folio-color-row { display: flex; align-items: center; gap: 8px; }
+.folio-color-row .folio-color-picker { width: 40px; height: 36px; padding: 2px; flex: none; }
+.folio-color-row input[type="text"] { flex: 1; min-width: 0; max-width: 14ch; }
+.folio-color-swatches, .folio-color-choices { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.folio-swatch { display: inline-block; width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--c-border-strong); vertical-align: middle; flex: none; }
+.folio-swatch-none { background: repeating-linear-gradient(45deg, transparent 0 4px, var(--c-border-strong) 4px 5px); }
+.folio-swatch-inline { width: 14px; height: 14px; border-radius: 4px; margin-right: 6px; }
+.folio-swatch-button { display: inline-flex; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 6px; }
+.folio-swatch-button:focus-visible, .folio-swatch-choice input:focus-visible + .folio-swatch { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+.folio-swatch-choice { display: inline-flex; align-items: center; gap: 6px; font-weight: normal; }
+.folio-swatch-choice input:checked + .folio-swatch { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+.folio-code { display: grid; gap: 10px; }
+.folio-code > legend { margin-bottom: 4px; }
+.folio-code .form-group { margin: 0; }
+.folio-code textarea { width: 100%; white-space: pre; overflow: auto; }

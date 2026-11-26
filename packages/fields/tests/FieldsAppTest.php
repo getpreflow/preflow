@@ -29,6 +29,8 @@ final class FieldsAppTest extends TestCase
 
     private ?Application $app = null;
 
+    private int $renders = 0;
+
     protected function setUp(): void
     {
         $this->dir = sys_get_temp_dir() . '/fields_app_' . bin2hex(random_bytes(4));
@@ -94,6 +96,26 @@ final class FieldsAppTest extends TestCase
         $this->assertSame('<a href="https://example.org/?a=1&amp;b=&quot;2&quot;">&lt;b&gt;Hi&lt;/b&gt;</a>', $this->render('<a{{ link_attrs(cta) }}>{{ link_label(cta) }}</a>', ['cta' => $cta]));
     }
 
+    public function test_template_functions_for_email_phone_code_and_json(): void
+    {
+        $values = [
+            'email' => 'a?bcc=x@example.org',
+            'phone' => ['as_typed' => '044 123 45 67', 'e164' => '+41441234567'],
+            'code' => ['code' => '<script>alert("x")</script>', 'language' => 'html'],
+            'settings' => '{"limit": 3, "tags": ["a"]}',
+            'none' => null,
+        ];
+        $template = '{{ mailto_href(email) }}|{{ tel_href(phone) }}|{{ tel_href("+41 44 123 45 67") }}|{{ code_html(code) }}|{{ json_data(settings).limit }}|{{ json_data(settings).tags[0] }}'
+            . '|[{{ mailto_href(none) }}][{{ tel_href(none) }}][{{ code_html(none) }}][{{ json_data(none) }}]';
+
+        $this->assertSame(
+            'mailto:a%3Fbcc%3Dx@example.org|tel:+41441234567|tel:+41441234567|<pre><code class="language-html">&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;</code></pre>|3|a|[][][][]',
+            $this->render($template, $values),
+        );
+        $this->assertSame('<pre><code class="language-html">&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;</code></pre>', $this->render('{{ code_html(code) }}', $values), 'safe markup, escaped inside');
+        $this->assertSame('tel:+41441234567', $this->render('{{ tel_href(phone) }}', ['phone' => json_encode($values['phone'])]), 'JSON text as SQL storage gives it');
+    }
+
     private function write(string $rel, string $content): void
     {
         $path = $this->dir . '/' . $rel;
@@ -114,12 +136,13 @@ final class FieldsAppTest extends TestCase
     /** @param array<string, mixed> $context */
     private function render(string $template, array $context, string $locale = 'en'): string
     {
-        $this->write('page.twig', $template);
+        $name = 'page' . ++$this->renders . '.twig'; // the engine caches a template by its name
+        $this->write($name, $template);
         $app = $this->app();
 
         return Contexts::run(
             RenderContext::fromRequest(new ServerRequest('GET', '/'), $app->site(), new SystemClock())->in($locale),
-            static fn (): string => $app->container()->get(TemplateEngineInterface::class)->render('page.twig', $context),
+            static fn (): string => $app->container()->get(TemplateEngineInterface::class)->render($name, $context),
         );
     }
 }

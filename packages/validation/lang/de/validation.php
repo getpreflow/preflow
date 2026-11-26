@@ -31,6 +31,11 @@ return [
     'confirmed' => 'Die Bestätigung stimmt nicht überein.',
     'unique' => 'Dieser Wert ist bereits vergeben.',
     'phone' => 'Muss eine Telefonnummer sein: Ziffern, wahlweise mit + am Anfang und Leerzeichen, z. B. +41 44 123 45 67.',
+    'color' => 'Muss eine Farbe in Hex-Schreibweise sein, z. B. #1a2b3c (oder #1a2b3c80 mit Transparenz).',
+    'color_palette' => 'Wähle eine der angebotenen Farben: :values.',
+    'json' => 'Muss gültiges JSON sein, z. B. {"name": "wert"} oder [1, 2, 3].',
+    'phone_region' => 'Das Land dieser Nummer ist nicht erkennbar: Beginne sie mit + und der Landesvorwahl, z. B. +41 44 123 45 67.',
+    'code_language' => 'Die Sprache muss ein kurzer Name wie php oder javascript sein (Buchstaben, Ziffern und + # . _ -).',
     'link' => [
         'kind' => 'Wähle, worauf der Link zeigt: :kinds.',
         'target' => 'Wähle oder gib ein, worauf der Link zeigt.',

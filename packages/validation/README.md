@@ -6,7 +6,7 @@ Rules for validating arrays and records. A rule is written as a string alias wit
 ## Built-in rules
 
 `required`, `nullable`, `email`, `url`, `numeric`, `integer`, `min:n`, `max:n`, `between:min,max`,
-`step:n`, `in:a,b`, `regex:/pattern/`, `confirmed`, `slug`, `slug:path`, `phone`.
+`step:n`, `in:a,b`, `regex:/pattern/`, `confirmed`, `slug`, `slug:path`, `phone`, `color`, `json`.
 
 - `step:n` (since 0.46): the value must be a whole multiple of `n` counted from 0 (`step:0.5` accepts
   `2.5`, refuses `2.3`). The check uses the decimal digits of the value and the step, not floats, so
@@ -25,8 +25,15 @@ Rules for validating arrays and records. A rule is written as a string alias wit
   int has lost its leading zero). Empty values pass. The message is `validation.phone`.
   `Phone::dialable('+41 44 123 45 67')` gives `+41441234567`, the number for a `tel:` link (null
   when it is no phone number).
+- `color` (since 0.91): a colour as hex text, `#rrggbb` or `#rrggbbaa` (either case). `new Color([...])`
+  takes a palette: only those colours pass (compared as colours, so `#C00000` matches `#c00000`).
+  Empty values pass. The messages are `validation.color` and `validation.color_palette` (`:values`,
+  the palette).
+- `json` (since 0.91): text that is valid JSON (`json_validate()`; any JSON value). Empty values
+  pass. The message is `validation.json`.
 
-The messages `validation.link.kind`, `.target`, `.type` and `.url` (since 0.91) belong to
+The messages `validation.phone_region` and `validation.code_language` belong to preflow/fields' phone
+and code checks and live here for the same reason. The messages `validation.link.kind`, `.target`, `.type` and `.url` (since 0.91) belong to
 preflow/fields' link check (`ValidLink`); they live here so a validator without a translator has
 their English text, as for every rule's.
 

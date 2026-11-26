@@ -104,6 +104,50 @@ test('the date hint follows the date (with the zone of a date and time); clear e
     assert.equal(p.doc.activeElement, p.input, 'the focus goes back to the date');
 });
 
+// ---- Colour ------------------------------------------------------------------------------------
+
+function colour(value = '#c00000') {
+    return page(({ el, form }) => {
+        const root = el(form, 'div', { 'data-folio-color': '' }, 'folio-color');
+        const picker = el(root, 'input', { type: 'color', 'data-folio-color-picker': '', value: '#000000' });
+        const text = el(root, 'input', { type: 'text', name: 'brand', 'data-folio-color-text': '', value });
+        const clear = el(root, 'button', { type: 'button', 'data-folio-color-clear': '' });
+        const red = el(root, 'button', { type: 'button', 'data-folio-swatch': '#c00000' });
+        const blue = el(root, 'button', { type: 'button', 'data-folio-swatch': '#0a5ca8' });
+        return { picker, text, clear, red, blue };
+    });
+}
+
+test('the colour picker starts at the stored colour and follows what is typed', () => {
+    const p = colour('#C0000080');
+    assert.equal(p.picker.value, '#c00000', 'the colour without its alpha');
+
+    type(p.w, p.text, '#0a5ca8');
+    assert.equal(p.picker.value, '#0a5ca8');
+    type(p.w, p.text, '#0a5');
+    assert.equal(p.picker.value, '#0a5ca8', 'half typed: the picker keeps the last whole colour');
+});
+
+test('a picked colour, a swatch and clear write into the text and announce the edit', () => {
+    const p = colour('');
+    const seen = [];
+    p.form.addEventListener('input', () => seen.push('input'));
+    p.form.addEventListener('change', () => seen.push('change'));
+
+    p.picker.value = '#1A2B3C';
+    p.picker.dispatchEvent(new p.w.Event('input', { bubbles: true }));
+    assert.equal(p.text.value, '#1a2b3c');
+
+    p.blue.click();
+    assert.equal(p.text.value, '#0a5ca8');
+    assert.equal(p.picker.value, '#0a5ca8');
+
+    p.clear.click();
+    assert.equal(p.text.value, '');
+    assert.ok(seen.includes('input') && seen.includes('change'), 'autosave and the guard hear it');
+    assert.equal(p.doc.activeElement, p.text);
+});
+
 // ---- String: address copy, URL open ------------------------------------------------------------
 
 function affix(extra = {}) {

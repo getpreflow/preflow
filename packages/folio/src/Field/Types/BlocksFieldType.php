@@ -720,9 +720,9 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                 $name,
             ));
         }
-        if ($type instanceof LinkFieldType) {
+        if (in_array($type->key(), \Preflow\Fields\FieldOptions::TYPES, true)) {
             try {
-                \Preflow\Fields\LinkOptions::check(['translatable' => $field->translatable] + $field->config);
+                \Preflow\Fields\FieldOptions::check($type->key(), ['translatable' => $field->translatable] + $field->config);
             } catch (\LogicException $e) {
                 throw new \Preflow\Folio\Content\FrontendConfigException(sprintf('Block "%s": field "%s": %s', $definition->key, $name, $e->getMessage()), 0, $e);
             }

@@ -6,7 +6,11 @@ namespace Preflow\Fields;
 
 use Preflow\Core\Context\Contexts;
 use Preflow\Data\Locales;
+use Preflow\Fields\Values\Code;
+use Preflow\Fields\Values\Email;
+use Preflow\Fields\Values\JsonText;
 use Preflow\Fields\Values\Link;
+use Preflow\Fields\Values\Phone;
 use Preflow\View\TemplateExtensionProvider;
 use Preflow\View\TemplateFunctionDefinition;
 
@@ -18,6 +22,11 @@ use Preflow\View\TemplateFunctionDefinition;
  *   ` target="_blank" rel="noopener noreferrer"` for a new tab, escaped; '' without an href;
  * - link_label(value, locale = null): its label in the locale (Link::label(), along the
  *   content locales' fallback chain), or null.
+ *
+ * - mailto_href(value): an email field's `mailto:` address (Email::href()), or null;
+ * - tel_href(value): a phone field's `tel:` address (Phone::href(): the E.164 form, else the digits), or null;
+ * - code_html(value): a code field as `<pre><code class="language-…">` with the code escaped (Code::html()), '' for none;
+ * - json_data(value): a json field decoded (array, text, number), null when empty or invalid.
  *
  * value is the field's value as a template gets it (the stored object, or JSON text of it). The
  * locale is the render's (Contexts::current()->locale) unless given. A record link resolves
@@ -48,6 +57,23 @@ final class FieldsExtensionProvider implements TemplateExtensionProvider
             new TemplateFunctionDefinition(
                 name: 'link_label',
                 callable: fn (mixed $value, ?string $locale = null): ?string => Link::fromStored($value)?->label($this->locale($locale), $this->locales),
+            ),
+            new TemplateFunctionDefinition(
+                name: 'mailto_href',
+                callable: static fn (mixed $value): ?string => Email::fromStored($value)?->href(),
+            ),
+            new TemplateFunctionDefinition(
+                name: 'tel_href',
+                callable: static fn (mixed $value): ?string => Phone::fromStored($value)?->href(),
+            ),
+            new TemplateFunctionDefinition(
+                name: 'code_html',
+                callable: static fn (mixed $value): string => Code::fromStored($value)?->html() ?? '',
+                isSafe: true,
+            ),
+            new TemplateFunctionDefinition(
+                name: 'json_data',
+                callable: static fn (mixed $value): mixed => JsonText::decode($value),
             ),
         ];
     }

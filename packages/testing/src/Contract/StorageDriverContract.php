@@ -102,7 +102,9 @@ use Preflow\Testing\PlainDriver;
  * - save() of an existing id updates the fields it is given and keeps the others; a field given as
  *   null is stored as null (@since 0.78). delete() of a missing id does nothing.
  * - Field value shapes (@since 0.91.0): the objects preflow/fields' field types store (a link's
- *   {kind, target, label, new_tab}) read back from a `json` field as saved (fieldValueShapes()).
+ *   {kind, target, label, new_tab}, a phone's {as_typed, e164}, a code's {code, language}) read back
+ *   from a `json` field as saved (fieldValueShapes()); the texts of the text-valued types (an
+ *   email, a colour, JSON text) read back from a text column byte for byte (textValueShapes()).
  * - A driver with InsertsNew (@since 0.79.0) writes a record only while no record has its id, and says
  *   which: true when written, false when the id exists (the stored record stays as it is). A
  *   given int id is written as it is, and a store that generates ids gives the next record
@@ -442,6 +444,37 @@ abstract class StorageDriverContract extends TestCase
             'link to an email address' => [['kind' => 'email', 'target' => 'team@example.org', 'label' => null, 'new_tab' => false]],
             'link to a phone number' => [['kind' => 'phone', 'target' => '+41 44 123 45 67', 'label' => ['en' => 'Call us'], 'new_tab' => false]],
             'link to a file' => [['kind' => 'asset', 'target' => 'a0f3', 'label' => 'Price list (PDF)', 'new_tab' => true]],
+            'phone number' => [['as_typed' => '044 123 45 67', 'e164' => '+41441234567']],
+            'phone number without an E.164 form' => [['as_typed' => '112', 'e164' => null]],
+            'code' => [['code' => "<?php\necho \"ä € 😀\"; // 'quoted' & <tag>", 'language' => 'php']],
+            'code without a language' => [['code' => 'plain', 'language' => null]],
+        ];
+    }
+
+    /**
+     * The texts of preflow/fields' text-valued types (@since 0.91.0: email, colour, JSON text) come
+     * back exactly as saved from a text column, byte for byte: case, spaces, line breaks, quotes
+     * and umlauts untouched. A new text-valued type adds its values to textValueShapes().
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('textValueShapes')]
+    public function test_a_field_types_stored_text_round_trips(string $text): void
+    {
+        $this->createRecords();
+        $this->driver->save('records', 'r1', ['uuid' => 'r1', 'label' => $text]);
+
+        $this->assertSame($text, $this->record('r1')['label'] ?? null);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function textValueShapes(): array
+    {
+        return [
+            'email' => ['team@example.org'],
+            'email with a plus and an umlaut' => ['jürg+news@example.org'],
+            'colour' => ['#c00000'],
+            'colour with alpha' => ['#c0000080'],
+            'JSON object as written' => ["{\n  \"b\": 1,\n  \"a\": [\"ä\", null]\n}"],
+            'JSON text' => ['"text with \\"quotes\\""'],
         ];
     }
 

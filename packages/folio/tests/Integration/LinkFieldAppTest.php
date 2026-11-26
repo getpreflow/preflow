@@ -188,6 +188,42 @@ final class LinkFieldAppTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_file_link_in_a_block_posts_its_picker_names_nested_and_saves(): void
+    {
+        $app = $this->app();
+        $image = imagecreatetruecolor(40, 30);
+        ob_start();
+        imagepng($image);
+        $png = (string) ob_get_clean();
+        $f = new \Nyholm\Psr7\Factory\Psr17Factory();
+        $library = $app->container()->get(\Preflow\Media\MediaLibrary::class);
+        $asset = $library->upload($f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'prices.png'), null);
+        $uid = 'cccccccccccccccc';
+        $this->dm()->saveType(DynamicRecord::fromArray($this->dm()->getTypeRegistry()->get('teaser'), ['uuid' => 't1', 'title' => 'T', 'sections' => [
+            ['_uid' => $uid, '_block' => 'call_to_action', 'heading' => 'Go', 'button' => null, 'download' => null],
+        ]]), validate: false);
+
+        // The editor names the picker's fields inside the block: sections[uid][download][asset_ids][].
+        $html = (string) $this->get('/folio/teaser/t1/edit')->getBody();
+        $this->assertStringContainsString('name="sections[' . $uid . '][download][kind]"', $html);
+        $this->assertStringContainsString('data-selection-name="sections[' . $uid . '][download][asset_ids][]"', $html);
+
+        $posted = ['title' => 'T', 'sections' => ['_order' => [$uid], $uid => ['_block' => 'call_to_action', 'heading' => 'Go', 'download' => ['kind' => 'asset', 'asset_ids' => ['', $asset->id], 'label' => 'Prices']]]];
+        $res = $this->post('/folio/teaser/t1', $posted);
+        $this->assertSame(302, $res->getStatusCode(), (string) $res->getBody());
+        $download = $this->stored('teaser', 't1')->get('sections')[0]['download'];
+        $this->assertEquals(Link::toAsset($asset->id, ['en' => 'Prices']), Link::fromStored($download));
+        $this->assertSame($library->url($library->find($asset->id)), $this->page('{{ link_href(download) }}', ['download' => $download]));
+
+        // The picked file shows again in the block's editor; a posted id that is no file is refused.
+        $this->assertStringContainsString('<input type="hidden" name="sections[' . $uid . '][download][asset_ids][]" value="' . $asset->id . '">', (string) $this->get('/folio/teaser/t1/edit')->getBody());
+        $posted['sections'][$uid]['download']['asset_ids'] = ['', 'nope'];
+        $res = $this->post('/folio/teaser/t1', $posted);
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('Choose or enter what the link points to.', (string) $res->getBody());
+    }
+
+    #[RunInSeparateProcess]
     public function test_a_core_registered_rule_applies_in_folio_without_the_field_type_returning_it(): void
     {
         // A field type's checks registered with the data package alone (FieldKinds::rules()), as

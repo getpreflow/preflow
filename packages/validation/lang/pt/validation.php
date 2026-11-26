@@ -27,6 +27,11 @@ return [
     'confirmed' => 'A confirmação não corresponde.',
     'unique' => 'Este valor já está em uso.',
     'phone' => 'Deve ser um número de telefone: dígitos, opcionalmente com + no início e espaços, p. ex. +41 44 123 45 67.',
+    'color' => 'Deve ser uma cor em notação hexadecimal, p. ex. #1a2b3c (ou #1a2b3c80 com transparência).',
+    'color_palette' => 'Escolha uma das cores oferecidas: :values.',
+    'json' => 'Deve ser JSON válido, p. ex. {"nome": "valor"} ou [1, 2, 3].',
+    'phone_region' => 'Não é possível saber a que país pertence este número: comece-o com + e o indicativo do país, p. ex. +41 44 123 45 67.',
+    'code_language' => 'A linguagem deve ser um nome curto como php ou javascript (letras, dígitos e + # . _ -).',
     'link' => [
         'kind' => 'Escolha para onde o link aponta: :kinds.',
         'target' => 'Escolha ou digite para onde o link aponta.',

@@ -11,7 +11,12 @@ use Preflow\Data\DataManager;
 use Preflow\Data\FieldKinds;
 use Preflow\Data\Locales;
 use Preflow\Data\Schema\ColumnKind;
+use Preflow\Fields\Rules\ValidCode;
 use Preflow\Fields\Rules\ValidLink;
+use Preflow\Fields\Rules\ValidPhone;
+use Preflow\Validation\Rules\Color;
+use Preflow\Validation\Rules\Email;
+use Preflow\Validation\Rules\Json;
 use Preflow\View\TemplateEngineInterface;
 
 /**
@@ -63,5 +68,30 @@ final class FieldsServiceProvider extends ServiceProvider
         // link: an object ({kind, target, label, new_tab}), JSON text in an SQL column.
         $kinds->column('link', ColumnKind::Text);
         $kinds->rules('link', static fn (array $config): array => [new ValidLink(LinkOptions::fromConfig($config))]);
+
+        // email: text (loose search covers it), checked as an email address.
+        $kinds->column('email', ColumnKind::Short);
+        $kinds->text('email');
+        $kinds->rules('email', static fn (array $config): array => [new Email()]);
+
+        // phone: an object ({as_typed, e164}), JSON text in an SQL column; not searchable, like a link.
+        $kinds->column('phone', ColumnKind::Text);
+        $kinds->rules('phone', static fn (array $config): array => [new ValidPhone(PhoneOptions::fromConfig($config))]);
+
+        // color: "#rrggbb" or "#rrggbbaa" text; with "palette_only" only the palette's colours.
+        $kinds->column('color', ColumnKind::Short);
+        $kinds->rules('color', static function (array $config): array {
+            $options = ColorOptions::fromConfig($config);
+
+            return [new Color($options->paletteOnly ? $options->values() : null)];
+        });
+
+        // code: an object ({code, language}), JSON text in an SQL column; not searchable, like a link.
+        $kinds->column('code', ColumnKind::Text);
+        $kinds->rules('code', static fn (array $config): array => [new ValidCode(CodeOptions::fromConfig($config))]);
+
+        // json: JSON as text, as the editor wrote it; not searchable.
+        $kinds->column('json', ColumnKind::Text);
+        $kinds->rules('json', static fn (array $config): array => [new Json()]);
     }
 }

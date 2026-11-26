@@ -12,6 +12,7 @@
  * - Rows with a grip (relation, matrix): the arrow keys and drag move them.
  * - Asset: a file dropped on the field goes to the library's upload route and is chosen.
  * - Tags: chips and an "Add…" input (Enter, comma, paste, Backspace, ✕), announced (0.77).
+ * - Colour: the browser's picker, the palette's swatches and the clear button fill the hex text (0.91).
  *
  * Every change a script makes is announced as a change event on a control of the record form, so the
  * autosave, the preview and the unsaved-changes guard hear it. Search boxes carry data-folio-no-edit.
@@ -162,6 +163,47 @@
         if (!input || input.disabled || input.readOnly) { return; }
         if (typeof input.focus === 'function') { input.focus(); }
         try { if (typeof input.showPicker === 'function') { input.showPicker(); } } catch (err) { /* not allowed here: typing still works */ }
+    }
+
+    // ---- Colour: the picker, the swatches and the clear button fill the hex text ---------------------
+    // The text input is the field (it posts); everything else only writes into it, so a save without
+    // script works the same. Alpha (#rrggbbaa) is typed; the browser's picker has none.
+    var HEX_COLOR = /^#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?$/;
+
+    function colorText(root) { return root ? root.querySelector('[data-folio-color-text]') : null; }
+
+    function syncColorPicker(root) {
+        var text = colorText(root);
+        var picker = root ? root.querySelector('[data-folio-color-picker]') : null;
+        if (!text || !picker) { return; }
+        var value = String(text.value || '').trim();
+        if (HEX_COLOR.test(value)) { picker.value = value.slice(0, 7).toLowerCase(); }
+    }
+
+    function onColorInput(e) {
+        var target = e.target;
+        var root = closest(target, '[data-folio-color]');
+        if (!root || !target.hasAttribute) { return; }
+        if (target.hasAttribute('data-folio-color-picker')) {
+            var text = colorText(root);
+            if (text) { text.value = String(target.value || '').toLowerCase(); edited(text); }
+        } else if (target.hasAttribute('data-folio-color-text')) {
+            syncColorPicker(root);
+        }
+    }
+
+    function onColorClick(e) {
+        var swatch = closest(e.target, '[data-folio-swatch]');
+        var clear = swatch ? null : closest(e.target, '[data-folio-color-clear]');
+        var button = swatch || clear;
+        var root = closest(button, '[data-folio-color]');
+        var text = colorText(root);
+        if (!button || !text) { return; }
+        e.preventDefault();
+        text.value = swatch ? String(swatch.getAttribute('data-folio-swatch') || '') : '';
+        syncColorPicker(root);
+        edited(text);
+        if (typeof text.focus === 'function') { text.focus(); }
     }
 
     // ---- String: copy the address, open a URL ------------------------------------------------------
@@ -1185,6 +1227,7 @@
         root.querySelectorAll('[data-folio-affix] input').forEach(syncOpenUrl);
         root.querySelectorAll('textarea[aria-describedby]').forEach(syncCounter);
         root.querySelectorAll('[data-folio-tags]').forEach(initTags);
+        root.querySelectorAll('[data-folio-color]').forEach(syncColorPicker);
     }
     // Folio.initFields(root): the hints, counters and steppers under root follow their controls again
     // (admin.js calls it after Cancel put a form's controls back).
@@ -1223,6 +1266,9 @@
         document.addEventListener('click', onDateClear);
         document.addEventListener('click', onDateIcon);
         document.addEventListener('click', onCopyAddress);
+        document.addEventListener('click', onColorClick);
+        document.addEventListener('input', onColorInput);
+        document.addEventListener('change', onColorInput);
         document.addEventListener('click', onStep);
         document.addEventListener('click', onRelationClick);
         document.addEventListener('input', onRelationInput);

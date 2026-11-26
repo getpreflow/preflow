@@ -229,8 +229,8 @@ final class TypeCatalog
      * The editor layout keys of the type's fields ("panel", "width"; since 0.75): a value outside
      * FIELD_PANELS / FIELD_WIDTHS is a boot error, so a typo never moves a field silently. So is
      * an invalid editor option of a built-in field type ("unit", "display", a tags field's limits
-     * and options, a translatable tags field, a select's "options_from" since 0.89, a link field's
-     * "link" options or "translatable" since 0.91).
+     * and options, a translatable tags field, a select's "options_from" since 0.89, a link, phone,
+     * colour or code field's options, or "translatable" on any of the 0.91 field types).
      *
      * @param array<mixed> $fields
      */
@@ -256,8 +256,8 @@ final class TypeCatalog
                     'boolean' => \Preflow\Folio\Field\Types\BooleanFieldType::display($field),
                     'select' => self::checkSelect($field, (string) $name, $fields),
                     'tags' => \Preflow\Folio\Field\Types\TagsFieldType::checkConfig($field),
-                    'link' => \Preflow\Fields\LinkOptions::check($field),
-                    default => null,
+                    // The options of the field types of preflow/fields (link, email, phone, color, code, json; 0.91).
+                    default => \Preflow\Fields\FieldOptions::check((string) ($field['type'] ?? 'string'), $field),
                 };
             } catch (\LogicException $e) {
                 throw new FrontendConfigException("Type \"{$key}\": field \"{$name}\": " . $e->getMessage(), 0, $e);

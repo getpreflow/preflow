@@ -994,8 +994,9 @@ A value that is not a list of section names is ignored (every section starts ope
 
 `string`, `text` (`"monospace": true` gives a code-style editor), `number`, `boolean`,
 `date` (`"time": true` for date and time), `select` (`"options"` as a map or a list;
-`"display": "radio"`), `richtext`, `asset`, `relation`, `matrix`, `tags` (since 0.77) and `link`
-(since 0.91; its value, checks and storage are preflow/fields', see its README).
+`"display": "radio"`), `richtext`, `asset`, `relation`, `matrix`, `tags` (since 0.77) and `link`,
+`email`, `phone`, `color`, `code` and `json` (all since 0.91; their values, checks and storage are
+preflow/fields', see its README).
 
 How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` runs the controls):
 
@@ -1071,6 +1072,18 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   address in the language, the media library's address of a file) unless the site bound its own.
   The link text counts in the translation status and goes to machine translation like a translatable
   field.
+- `email`, `phone`, `color`, `code`, `json` (0.91): `email` is a one-line input with the email keyboard,
+  found by loose search; `phone` takes the number as people type it and stores it as typed plus its
+  E.164 form, using the field's `"default_region": "CH"` for a number without `+` (the editor says
+  "Dialled as +41441234567."); `color` is a hex text with the browser's picker and the site's
+  `"palette"` as swatches to click, or with `"palette_only": true` a choice of the palette's colours;
+  `code` is a monospace textarea with the language (a select of `"languages"`, starting with
+  `"default_language"`, or a text input); `json` is a monospace textarea. Their checks are the
+  core's and apply in blocks too, so a Folio input returns none of its own. A boot error names the
+  field when an option is wrong or `"translatable"` is set (none of them is translatable). In a
+  block, the options go in the field's `config` (`config: ['default_region' => 'CH']`). List cells
+  show the number as typed, the colour with a swatch, code on one line with its language, and
+  JSON's first characters.
 - `asset`: each chosen file is a card (a 16:10 thumbnail with the focal point, the name, kind and
   size, "No alt text yet" for an image without one); an empty field is a dashed drop zone. A file
   dropped anywhere on the field, or chosen with its Upload button, is uploaded to the media library

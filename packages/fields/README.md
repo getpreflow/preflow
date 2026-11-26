@@ -4,8 +4,9 @@ Field types as core values. A field type here is more than an input: it says wha
 like, how it is checked, how it is stored and what a template does with it. All of that works
 without Folio. Folio only adds the editor input for each type.
 
-The first type is `link`. More follow in the same package (email, phone, colour, dates, embeds,
-tables, locations); each is built the same way (see [Adding a field type](#adding-a-field-type)).
+The types so far are `link`, `email`, `phone`, `color`, `code` and `json`. More follow in the same
+package (dates, embeds, tables, locations); each is built the same way (see
+[Adding a field type](#adding-a-field-type)).
 
 ## Install
 
@@ -153,6 +154,62 @@ public ?array $button = null;
 With `show_when` it behaves as every conditional field: hidden, it reads as empty (`null`) on the
 page and its stored value is kept.
 
+## Email, phone, colour, code and JSON
+
+All five are registered by `FieldsServiceProvider` (their column, their check, the template
+functions), so a site without Folio stores and checks them the same way. None of them is
+`translatable` (a boot error says so: the value is the same in every language).
+
+| type | stored | check | page |
+|---|---|---|---|
+| `email` | the address, text | the `email` rule | `mailto_href(value)` |
+| `phone` | `{"as_typed": "044 123 45 67", "e164": "+41441234567"}` | `ValidPhone` | `tel_href(value)` |
+| `color` | `"#rrggbb"` or `"#rrggbbaa"`, lowercase | the `color` rule | the text itself |
+| `code` | `{"code": "…", "language": "php"}` | `ValidCode` | `code_html(value)` |
+| `json` | JSON text, as written | the `json` rule | `json_data(value)` |
+
+An empty value is `null` and passes (`"validate": ["required"]` makes it required).
+
+### Phone and its E.164 form
+
+The number is kept as typed and gets an E.164 form (`+` and the digits with the country code) for
+`tel:` links and for matching. There is no library; `Values\Phone::e164()` does it in four steps:
+
+1. A number with a leading `+` keeps its digits; a leading `00` means `+`.
+2. Any other number is national. It gets the calling code of the field's `"default_region"`
+   (`"phone": {"type": "phone", "default_region": "CH"}`), after dropping the one leading `0` of
+   regions that write a trunk prefix. The regions are in `Phone::REGIONS`: CH, LI, DE, AT, FR, IT,
+   ES, PT, NL, BE, LU, GB, IE, DK, SE, NO, FI, PL, CZ, US, CA. For any other country numbers are
+   typed with `+`.
+3. A short number (up to 5 digits: 112, 1414) is a service number: no E.164 form, dialled as typed.
+4. A longer national number that cannot be completed (no `default_region`, or longer than 15
+   digits with the code) is refused: "Cannot tell which country this number belongs to: start it
+   with + and the country code, e.g. +41 44 123 45 67."
+
+`Phone::of($typed, $region)->toStored()` builds the stored value in code (a seed, an import).
+Without Folio, a plain text number is accepted by the check and read as `as_typed`.
+
+### Colour
+
+`"palette"` lists the site's colours (`["#c00000", "#0a5ca8"]`, or names to colours:
+`{"Brand red": "#c00000"}`); Folio shows them as swatches. `"palette_only": true` refuses every
+other colour, with or without Folio. `Values\Color::parse()` reads what people type (`C00`,
+`#C00000`) and gives the lowercase stored text.
+
+### Code
+
+`"languages": ["php", "javascript"]` limits the language (a select in Folio) and
+`"default_language"` starts a new value with one. Without `"languages"` any short name passes
+(letters, digits and `+ # . _ -`). `code_html(value)` outputs
+`<pre><code class="language-php">…</code></pre>`; the code is always escaped.
+
+### Search and transfer
+
+`email` is text: loose search finds it. `phone`, `code` and a link are stored as objects and, like a
+blocks field, are not searched in 0.91 (the code's text is in the object and reachable by reading
+it, not by search); `json` is not searched either. Transfer and export carry every stored value as
+it is.
+
 ## Adding a field type
 
 Each type of this package is built from the same parts. The link field shows each one:
@@ -174,6 +231,6 @@ Each type of this package is built from the same parts. The link field shows eac
    `FieldKinds::rulesOf()` for every field. Its option check goes in
    `TypeCatalog::checkFieldLayout()` (and `BlocksFieldType::assertLeaf()` for blocks); its texts in
    Folio's `lang/{en,de,fr}`.
-6. **A stored-shape case** in preflow/testing's `StorageDriverContract::fieldValueShapes()`, so
-   every storage driver proves it gives the shape back, plus a round trip through the type's own
+6. **A stored-shape case** in preflow/testing's `StorageDriverContract::fieldValueShapes()` (an
+   object) or `textValueShapes()` (text), so every storage driver proves it gives the value back, plus a round trip through the type's own
    `fromStored()` on JSON, SQLite and MySQL in this package's tests.

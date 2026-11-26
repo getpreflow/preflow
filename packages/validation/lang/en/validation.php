@@ -7,7 +7,7 @@
 // lang/{locale}/validation.php. A language without a text falls back to the site's fallback
 // language, then English.
 // :min, :max, :step are the rule's numbers; :values the allowed values, comma-separated; :kinds and
-// :types (a link's) the allowed link kinds and record types, comma-separated; :refused the refused type.
+// :types (a link's) the allowed link kinds and record types, comma-separated; :refused the refused type; :values (a colour's palette) the colours offered.
 return [
     'required' => 'This field is required.',
     'email' => 'Must be a valid email address.',
@@ -33,6 +33,11 @@ return [
     'confirmed' => 'Confirmation does not match.',
     'unique' => 'This value is already taken.',
     'phone' => 'Must be a phone number: digits, optionally with a leading + and spaces, e.g. +41 44 123 45 67.',
+    'color' => 'Must be a colour in hex form, such as #1a2b3c (or #1a2b3c80 with transparency).',
+    'color_palette' => 'Choose one of the colours offered: :values.',
+    'json' => 'Must be valid JSON, such as {"name": "value"} or [1, 2, 3].',
+    'phone_region' => 'Cannot tell which country this number belongs to: start it with + and the country code, e.g. +41 44 123 45 67.',
+    'code_language' => 'The language must be a short name such as php or javascript (letters, digits and + # . _ -).',
     'link' => [
         'kind' => 'Choose what the link points to: :kinds.',
         'target' => 'Choose or enter what the link points to.',

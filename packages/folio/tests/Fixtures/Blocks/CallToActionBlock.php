@@ -17,4 +17,8 @@ final class CallToActionBlock
     /** @var array<string, mixed>|null */
     #[BlockField(type: 'link', label: 'Button', config: ['link' => ['kinds' => ['record', 'url'], 'types' => ['post']]])]
     public ?array $button = null;
+
+    /** @var array<string, mixed>|null a file to download: the picker's field names nest in the block */
+    #[BlockField(type: 'link', label: 'Download', config: ['link' => ['kinds' => ['asset']]])]
+    public ?array $download = null;
 }
