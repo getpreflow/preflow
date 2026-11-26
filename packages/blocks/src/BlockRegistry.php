@@ -404,6 +404,19 @@ final class BlockRegistry
     /** @return list<class-string> data-only block classes under app/Blocks (App\Blocks\…) */
     private static function scanBlocksDir(string $dir): array
     {
+        return self::scanClasses($dir, 'App\\Blocks\\');
+    }
+
+    /**
+     * The classes of the PHP files under a directory, named from their path below it (PSR-4 under
+     * $namespace). Layouts use it for app/Layouts, as blocks do for app/Blocks.
+     *
+     * @param string $namespace with its trailing backslash
+     * @return list<class-string>
+     * @since 0.92.0
+     */
+    public static function scanClasses(string $dir, string $namespace): array
+    {
         if (!is_dir($dir)) {
             return [];
         }
@@ -414,7 +427,7 @@ final class BlockRegistry
                 continue;
             }
             $relative = substr($file->getPathname(), strlen(rtrim($dir, '/')) + 1, -4);
-            $classes[] = 'App\\Blocks\\' . str_replace('/', '\\', $relative);
+            $classes[] = $namespace . str_replace('/', '\\', $relative);
         }
         sort($classes);
 

@@ -11,6 +11,10 @@ use Preflow\Core\Cache\CacheRegistry;
 use Preflow\Core\Cache\FileCache;
 use Preflow\Core\Composer\InstalledPackages;
 use Preflow\Core\Container\Container;
+use Preflow\Blocks\Layouts\AreaLayoutSets;
+use Preflow\Blocks\Layouts\Layout;
+use Preflow\Blocks\Layouts\LayoutConfigException;
+use Preflow\Blocks\Layouts\LayoutRegistry;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Data\Locales;
 use Preflow\View\TemplateEngineInterface;
@@ -64,6 +68,23 @@ final class BlocksServiceProvider extends ServiceProvider
             $app->container()->get(BlockRegistry::class);
         });
 
+        // Page layouts (since 0.92): found and cached like blocks.
+        $container->singleton(LayoutRegistry::class, static function (Container $c) use ($app): LayoutRegistry {
+            $config = $c->get(BlocksConfig::class);
+
+            return LayoutRegistry::fromArray($app->bootManifest()->remember('blocks.layouts', static fn (): array => LayoutRegistry::discover(
+                $app->basePath('app/Layouts'),
+                [...self::packageClasses($app, 'layouts'), ...$config->layouts],
+                $config->layoutsCacheFile,
+                useCache: !$app->config()->get('app.debug', false),
+            )->toArray(), [$app->basePath('app/Layouts')]));
+        });
+        $app->bootManifest()->whenBuilding(static function (Application $app): void {
+            $app->container()->get(LayoutRegistry::class);
+        });
+        // The area layout sets packages register (the columns block's column layouts), by name.
+        $container->singleton(AreaLayoutSets::class, static fn (): AreaLayoutSets => new AreaLayoutSets());
+
         // One renderer per app, so nested blocks() calls see the preview state and the depth.
         $container->singleton(BlockRenderer::class, static fn (Container $c): BlockRenderer => new BlockRenderer(
             $c->get(BlockRegistry::class),
@@ -92,6 +113,7 @@ final class BlocksServiceProvider extends ServiceProvider
 
         // In boot: the cache file follows config that a provider registered after this one may set.
         $container->get(CacheRegistry::class)->register(new FileCache('blocks', 'Blocks', $container->get(BlocksConfig::class)->cacheFile));
+        $container->get(CacheRegistry::class)->register(new FileCache('layouts', 'Page layouts', $container->get(BlocksConfig::class)->layoutsCacheFile));
 
         if ($container->has(TemplateEngineInterface::class)) {
             // blocks(items, preview = false): a blocks field rendered through its blocks' components.
@@ -104,31 +126,36 @@ final class BlocksServiceProvider extends ServiceProvider
     }
 
     /**
-     * Block classes installed packages list in composer.json extra.preflow.blocks (read from
-     * vendor/composer/installed.json through the boot manifest). Installing the package is enough.
+     * Classes installed packages list in composer.json extra.preflow.blocks (or, with $kind
+     * "layouts", extra.preflow.layouts; read from vendor/composer/installed.json through the boot
+     * manifest). Installing the package is enough.
      *
+     * @param 'blocks'|'layouts' $kind
      * @return list<class-string>
      */
-    public static function packageClasses(Application $app): array
+    public static function packageClasses(Application $app, string $kind = 'blocks'): array
     {
+        $layouts = $kind === 'layouts';
+        $attribute = $layouts ? Layout::class : Block::class;
         $classes = [];
         foreach ($app->installedPackages() as $package) {
-            $declared = InstalledPackages::extra($package, 'preflow.blocks');
+            $declared = InstalledPackages::extra($package, 'preflow.' . $kind);
             if ($declared === null) {
                 continue;
             }
-            $what = 'extra.preflow.blocks';
+            $what = 'extra.preflow.' . $kind;
             $name = (string) ($package['name'] ?? '?');
+            $refuse = static fn (string $message): \RuntimeException => $layouts ? new LayoutConfigException($message) : new BlockConfigException($message);
             if (!is_array($declared)) {
-                throw new BlockConfigException("Package {$name}: {$what} must be a list of class names.");
+                throw $refuse("Package {$name}: {$what} must be a list of class names.");
             }
             foreach ($declared as $class) {
                 $class = is_string($class) ? ltrim($class, '\\') : '';
                 if ($class === '' || !class_exists($class)) {
-                    throw new BlockConfigException("Package {$name}: {$what} lists " . ($class !== '' ? "{$class}, which is not a class" : 'a value that is not a class name') . '.');
+                    throw $refuse("Package {$name}: {$what} lists " . ($class !== '' ? "{$class}, which is not a class" : 'a value that is not a class name') . '.');
                 }
-                if ((new \ReflectionClass($class))->getAttributes(Block::class, \ReflectionAttribute::IS_INSTANCEOF) === []) {
-                    throw new BlockConfigException("Package {$name}: {$what} lists {$class}, which has no #[" . Block::class . '].');
+                if ((new \ReflectionClass($class))->getAttributes($attribute, \ReflectionAttribute::IS_INSTANCEOF) === []) {
+                    throw $refuse("Package {$name}: {$what} lists {$class}, which has no #[" . $attribute . '].');
                 }
                 $classes[] = $class;
             }
