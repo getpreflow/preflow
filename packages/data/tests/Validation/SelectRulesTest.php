@@ -97,12 +97,43 @@ final class SelectRulesTest extends TestCase
         $this->assertEquals([new WhenFilled(new InList(['Red', 'Blue']))], SelectRules::of($field, []), 'outside every render: English');
     }
 
+    public function test_a_label_missing_the_admins_language_falls_back_to_the_sites_fallback_before_english(): void
+    {
+        // Fallback "de", labels without "en", admin language "fr": the form offers (and posts) the German label.
+        $labels = new class implements \Preflow\Data\FieldLabels {
+            public function fieldLabel(TypeFieldDefinition $field, string $locale, ?\Preflow\Data\TypeDefinition $type = null): string
+            {
+                return $field->name;
+            }
+
+            public function fallbackLocale(): string
+            {
+                return 'de';
+            }
+        };
+        $options = [['it' => 'Rosso', 'de' => 'Rot'], ['it' => 'Blu', 'de' => 'Blau']];
+        $posted = \Preflow\I18n\Labels::pick($options[0], 'fr', 'de'); // as Folio's form picks the option's label
+        $field = new TypeFieldDefinition('colour', 'select', config: ['options' => $options]);
+        $rules = \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->admin('fr'), static fn (): array => SelectRules::of($field, [], null, $labels));
+        $check = static fn (string $value): array => (new ValidatorFactory(new RuleFactory()))->make(['colour' => $rules], ['colour' => $value])->validate()->errors();
+
+        $this->assertSame('Rot', $posted);
+        $this->assertSame([], $check($posted), 'the editor\'s own choice saves');
+        $this->assertNotSame([], $check('Rosso'), 'another language\'s label is no option');
+        $this->assertEquals([new WhenFilled(new InList(['Rot', 'Blau']))], $rules);
+    }
+
     public function test_the_source_is_named_by_the_field_labels_when_given(): void
     {
         $labels = new class implements \Preflow\Data\FieldLabels {
             public function fieldLabel(TypeFieldDefinition $field, string $locale, ?\Preflow\Data\TypeDefinition $type = null): string
             {
                 return $field->name . '@' . $locale . ($type === null ? ' (block)' : ' (' . $type->key . ')');
+            }
+
+            public function fallbackLocale(): string
+            {
+                return 'en';
             }
         };
         $answers = new TypeFieldDefinition('answers', 'tags', label: 'Possible answers', labels: ['en' => 'Possible answers', 'de' => 'Mögliche Antworten']);

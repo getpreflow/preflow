@@ -49,11 +49,11 @@ final class SelectRules
 
             return [new OptionsFrom(
                 $source,
-                $sourceDef === null ? null : ($labels?->fieldLabel($sourceDef, $locale, $type) ?? self::labelOf($sourceDef, $locale, $type)),
+                $sourceDef === null ? null : ($labels?->fieldLabel($sourceDef, $locale, $type) ?? self::labelOf($sourceDef, $locale, $type, $labels?->fallbackLocale())),
                 $sourceDef !== null && $kinds !== null && $kinds->holdsList($sourceDef),
             )];
         }
-        $values = self::values($field->config['options'] ?? null, $locale);
+        $values = self::values($field->config['options'] ?? null, $locale, $labels?->fallbackLocale());
 
         // An empty choice passes, as Folio's form gives it ("required" judges that).
         return $values === [] ? [] : [new WhenFilled(new InList($values))];
@@ -72,17 +72,18 @@ final class SelectRules
     }
 
     /**
-     * The text of a label given as text or as a map per language: the locale's entry, else
+     * The text of a label given as text or as a map per language, as the admin's forms pick it: the
+     * locale's entry, else the fallback locale's (FieldLabels::fallbackLocale(), the site's), else
      * English's, else the first.
      *
      * @param string|array<array-key, mixed>|null $label
      */
-    public static function pick(string|array|null $label, string $locale): ?string
+    public static function pick(string|array|null $label, string $locale, ?string $fallback = null): ?string
     {
         if ($label === null || is_string($label)) {
             return $label;
         }
-        foreach ([$locale, 'en'] as $candidate) {
+        foreach ([$locale, $fallback ?? 'en', 'en'] as $candidate) {
             if (is_string($label[$candidate] ?? null)) {
                 return $label[$candidate];
             }
@@ -97,9 +98,9 @@ final class SelectRules
     }
 
     /** Without FieldLabels: a record field's label (its map per language), a block field's label, else its name humanized. */
-    private static function labelOf(TypeFieldDefinition $field, string $locale, ?TypeDefinition $type): string
+    private static function labelOf(TypeFieldDefinition $field, string $locale, ?TypeDefinition $type, ?string $fallback): string
     {
-        $label = $type !== null ? self::pick($field->labels ?: $field->label, $locale) : $field->label;
+        $label = $type !== null ? self::pick($field->labels ?: $field->label, $locale, $fallback) : $field->label;
 
         return $label ?? self::humanize($field->name);
     }
@@ -109,7 +110,7 @@ final class SelectRules
      *
      * @return list<string>
      */
-    private static function values(mixed $options, string $locale): array
+    private static function values(mixed $options, string $locale, ?string $fallback): array
     {
         if (!is_array($options)) {
             return [];
@@ -120,7 +121,7 @@ final class SelectRules
         $values = [];
         foreach ($options as $option) {
             $label = ModelLabelKeys::isDescribedOption($option) ? $option['label'] : $option;
-            $text = is_array($label) ? self::pick($label, $locale) : (is_scalar($label) ? (string) $label : null);
+            $text = is_array($label) ? self::pick($label, $locale, $fallback) : (is_scalar($label) ? (string) $label : null);
             if ($text !== null) {
                 $values[] = $text;
             }

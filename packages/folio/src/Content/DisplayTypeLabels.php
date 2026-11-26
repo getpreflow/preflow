@@ -31,6 +31,11 @@ final class DisplayTypeLabels implements TypeLabels, FieldLabels
         return $this->labels->typeIn($type, $locale, ($this->translator)());
     }
 
+    public function fallbackLocale(): string
+    {
+        return ($this->translator)()->getFallbackLocale();
+    }
+
     public function fieldLabel(TypeFieldDefinition $field, string $locale, ?TypeDefinition $type = null): string
     {
         $translator = ($this->translator)();
