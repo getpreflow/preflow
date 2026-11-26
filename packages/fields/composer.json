@@ -14,7 +14,11 @@
         "phpunit/phpunit": "^11.0",
         "preflow/testing": "^0.91.0 || @dev"
     },
+    "suggest": {
+        "preflow/blocks": "The options of these field types in block fields are checked when the block registry is built"
+    },
     "conflict": {
+        "preflow/blocks": "<0.91.0",
         "preflow/core": "<0.84.0",
         "preflow/data": "<0.91.0",
         "preflow/validation": "<0.91.0",

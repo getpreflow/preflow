@@ -13,7 +13,8 @@ use PHPUnit\Framework\TestCase;
  * field's check runs on every write of a typed record); validation 0.91.0 (Rules\Phone and the
  * validation.phone and validation.link.* messages); view 0.91.0 (raised with the release; the
  * template functions are TemplateFunctionDefinitions); core 0.84.0 (Context\Contexts::peek(), the
- * render's locale the template functions read; the floor data 0.91 needs).
+ * render's locale the template functions read; the floor data 0.91 needs). Blocks (optional, suggested) 0.91.0:
+ * BlockFieldChecks, through which block fields' options are checked.
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -22,12 +23,16 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame([
+            'preflow/blocks' => '<0.91.0',
             'preflow/core' => '<0.84.0',
             'preflow/data' => '<0.91.0',
             'preflow/validation' => '<0.91.0',
             'preflow/view' => '<0.91.0',
         ], $composer['conflict'] ?? null);
         foreach ($composer['conflict'] as $package => $below) {
+            if (isset($composer['suggest'][$package])) {
+                continue; // optional: not required, only kept off releases before the API it calls
+            }
             $this->assertSame('^' . substr($below, 1) . ' || @dev', $composer['require'][$package] ?? null, $package);
         }
     }

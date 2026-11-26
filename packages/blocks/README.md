@@ -204,3 +204,21 @@ Without Folio, rich-text values are rendered as stored: the default cleaner chan
 ```php
 $container->singleton(Preflow\Blocks\BlockTextCleaner::class, fn () => new App\Content\MarkdownBlocks());
 ```
+
+**Checks of block fields (0.91).** A package adds its own check of each block's fields to
+`BlockFieldChecks` in its provider's `register()`; it runs once, when the registry is built (not
+for a registry read from the boot manifest or `blocks.cache`), and a `\LogicException` it throws
+(`field "starts": …`) stops the build as a `BlockConfigException` with the block in front
+(`Block "event": field "starts": …`). preflow/fields checks its field types' options this way.
+
+Your provider may register before BlocksServiceProvider, so bind the instance when it is not bound
+yet (BlocksServiceProvider does the same):
+
+```php
+if (!$container->bound(Preflow\Blocks\BlockFieldChecks::class)) {
+    $container->instance(Preflow\Blocks\BlockFieldChecks::class, new Preflow\Blocks\BlockFieldChecks());
+}
+$container->get(Preflow\Blocks\BlockFieldChecks::class)->add(static function (array $fields): void {
+    // $fields: field name => Preflow\Data\TypeFieldDefinition
+});
+```

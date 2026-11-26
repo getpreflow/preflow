@@ -640,7 +640,6 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(\Preflow\Folio\View\FolioEngine::class),
                 $prefix,
                 $this->dataManager($c, $c->get(Application::class))?->fieldKinds(),
-                static fn (): ?\Preflow\Fields\EmbedProviders => $c->bound(\Preflow\Fields\EmbedProviders::class) ? $c->get(\Preflow\Fields\EmbedProviders::class) : null,
             ));
             // The sanitizer is built on the first sanitize call, not on every request.
             $registry->register(new RichTextFieldType(\Preflow\Folio\Field\LazyHtmlSanitizer::standard()));

@@ -6,7 +6,6 @@ namespace Preflow\Folio\Tests\Field;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use Preflow\Data\Schema\ColumnKind;
 use Preflow\Folio\Content\FrontendConfigException;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\DisplaysInAdmin;
@@ -38,8 +37,9 @@ final class BreadthFieldTypesTest extends TestCase
             $this->assertSame([], $type->rules(['default_region' => 'CH', 'palette_only' => true]), $type->key() . ': the core\'s check applies in Folio, this adds none');
             $this->assertNotInstanceOf(StructuredFieldType::class, $type, 'the posted value is the whole value: no merge with the stored one');
         }
-        $this->assertSame(ColumnKind::Short, (new EmailFieldType())->columnKind([]));
-        $this->assertSame(ColumnKind::Short, (new ColorFieldType())->columnKind([]));
+        foreach ([new EmailFieldType(), new ColorFieldType()] as $type) {
+            $this->assertNotInstanceOf(HasColumnKind::class, $type, $type->key() . ': the core registration owns the column kind');
+        }
         $this->assertSame(['email', 'phone', 'color', 'code', 'json'], array_map(static fn ($t): string => $t->key(), [new EmailFieldType(), new PhoneFieldType(), new ColorFieldType(), new CodeFieldType(), new JsonFieldType()]));
     }
 

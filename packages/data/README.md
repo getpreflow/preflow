@@ -2018,6 +2018,14 @@ On/off: `true`, `1` (also `1.0`), `"1"`, `"true"` and `"on"` are on; anything el
 off. A field whose rule names a hidden field is hidden too: if `kind` hides `button_url`, a
 `button_label` with `{"field": "button_url", "filled": true}` hides with it.
 
+A rule that names a field of a structured type of preflow/fields (`link`, `phone`, `table`,
+`daterange`, `embed`, `location`) or a `datetime` or `time` field takes only `empty` and `filled`:
+any other operator stops the boot, naming the type or block, the field and the source, and saying
+that `empty` and `filled` work (the browser and the server cannot compare such a value the same
+way; `FieldOptions::checkFields()` in preflow/fields). A structured source is read from its stored
+value, in the editor as on the server, until the record is saved: the dependent field does not show
+or hide live while you edit the source, only after a save.
+
 What is still checked for a hidden field: the column length of a unique or indexed string
 (the storage would refuse a longer value) and uniqueness. `DynamicRecord::get()` returns the
 stored value as before.
@@ -2077,7 +2085,8 @@ Type "page": field "button_url": show_when names "kind", which is not a field of
 for one rule, `hiddenFields($fields, $values)` for a record's fields (`hiddenFieldsOf($type,
 $values)` parses a type's rules once per definition, for lists), `visibleValues($type, $values)`
 for output, `keepStored($type, $submitted, $stored)` for writes, and `assertRules()` for the boot
-check. Folio's editor runs a copy of `holds()` in the browser (`show-when-core.js`), tested
+check; `comparisons()` lists a rule's `[field, operator]` pairs, for a field type package's own
+boot check. Folio's editor runs a copy of `holds()` in the browser (`show-when-core.js`), tested
 against the same cases. The cases the browser and the server
 must agree on are in `tests/Fixtures/show-when-cases.json`.
 

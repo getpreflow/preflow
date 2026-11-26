@@ -189,6 +189,26 @@ final class FieldVisibility
     }
 
     /**
+     * Each comparison of the rule as [field, operator], in the order the rule names them (all and
+     * any give their rules' comparisons). A field type package refuses at boot an operator its
+     * values cannot be compared with the same way in the browser and on the server.
+     *
+     * @return list<array{0: string, 1: string}>
+     */
+    public function comparisons(): array
+    {
+        if ($this->rules === []) {
+            return [[$this->field, $this->operator]];
+        }
+        $comparisons = [];
+        foreach ($this->rules as $rule) {
+            $comparisons = [...$comparisons, ...$rule->comparisons()];
+        }
+
+        return $comparisons;
+    }
+
+    /**
      * The show_when rule of each field that has one, from type field definitions
      * (TypeFieldDefinition::$config['show_when']) or from field config arrays as a model file or
      * a block field writes them (['show_when' => …]).

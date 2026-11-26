@@ -28,7 +28,7 @@ final class Color implements ValidationRule
         if ($value === null || $value === '') {
             return true;
         }
-        if (!is_string($value) || preg_match('/^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/', $value) !== 1) {
+        if (!is_string($value) || preg_match('/^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/D', $value) !== 1) {
             return new Message('validation.color');
         }
         if ($this->palette !== null && !in_array(strtolower($value), array_map('strtolower', $this->palette), true)) {

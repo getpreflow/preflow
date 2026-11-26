@@ -200,21 +200,13 @@ final class EmbedTableLocationFieldTypesTest extends TestCase
 
     public function test_a_block_embed_field_listing_an_unregistered_provider_is_refused_naming_the_block(): void
     {
-        $fields = new \Preflow\Folio\Field\FieldTypeRegistry();
-        $fields->register(new EmbedFieldType());
-        $blocks = new \Preflow\Folio\Field\Types\BlocksFieldType(
-            new \Preflow\Blocks\BlockRegistry([\Preflow\Folio\Tests\Fixtures\Blocks\ClipBlock::class]),
-            $fields,
-            4,
-            new \Preflow\Validation\ValidatorFactory(new \Preflow\Validation\RuleFactory()),
-            embedProviders: static fn (): EmbedProviders => new EmbedProviders(),
-        );
-        $fields->register($blocks);
-        $uid = str_repeat('a', 16);
-
-        $this->expectException(FrontendConfigException::class);
+        // Checked once when the block registry is built (FieldsServiceProvider adds this check), not on every build and render.
+        $this->expectException(\Preflow\Blocks\BlockConfigException::class);
         $this->expectExceptionMessage('Block "clip": field "clip": "providers" lists "peertube", but no EmbedProvider of that name is registered');
-        $blocks->buildValue(['_order' => [$uid], $uid => ['_block' => 'clip', 'clip' => ['url' => 'https://youtu.be/aqz-KE-bpKQ']]], null, [], new BuildContext(Locales::single('en'), 'en', false));
+        new \Preflow\Blocks\BlockRegistry(
+            [\Preflow\Folio\Tests\Fixtures\Blocks\ClipBlock::class],
+            [static fn (array $fields) => \Preflow\Fields\FieldOptions::checkFields($fields, new EmbedProviders())],
+        );
     }
 
     /** @param array<string, mixed> $field */

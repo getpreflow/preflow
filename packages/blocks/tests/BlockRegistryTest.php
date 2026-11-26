@@ -148,6 +148,46 @@ final class BlockRegistryTest extends TestCase
         $this->assertEquals($registry->all(), $copy->all());
     }
 
+    public function test_a_package_s_field_check_runs_when_the_registry_is_built_naming_the_block(): void
+    {
+        $seen = [];
+        $check = static function (array $fields) use (&$seen): void {
+            $seen[] = array_keys($fields);
+        };
+        $registry = new BlockRegistry([ConfigCard::class], [$check]);
+        $this->assertSame([['heading', 'style']], $seen, 'once per block, with its field definitions');
+        $this->assertInstanceOf(\Preflow\Data\TypeFieldDefinition::class, $registry->get('config_card')?->fields['style']);
+
+        $refuse = static function (array $fields): void {
+            throw new \LogicException('field "style": "palette" lists "red"; write each colour as #rrggbb.');
+        };
+        try {
+            new BlockRegistry([ConfigCard::class], [$refuse]);
+            $this->fail('the check did not stop the build');
+        } catch (BlockConfigException $e) {
+            $this->assertSame('Block "config_card": field "style": "palette" lists "red"; write each colour as #rrggbb.', $e->getMessage());
+        }
+    }
+
+    public function test_a_field_check_runs_once_not_for_a_cached_or_manifest_registry(): void
+    {
+        $cache = sys_get_temp_dir() . '/blocks_checks_' . bin2hex(random_bytes(4)) . '/blocks.cache';
+        $runs = 0;
+        $check = static function (array $fields) use (&$runs): void {
+            ++$runs;
+        };
+        try {
+            $built = BlockRegistry::discover([], __DIR__ . '/Fixtures/missing', [ConfigCard::class], $cache, useCache: true, checks: [$check]);
+            $this->assertSame(1, $runs, 'run when the registry is built');
+            BlockRegistry::discover([], __DIR__ . '/Fixtures/missing', [ConfigCard::class], $cache, useCache: true, checks: [$check]);
+            BlockRegistry::fromArray($built->toArray());
+            $this->assertSame(1, $runs, 'a registry read from blocks.cache or the boot manifest was checked when that was written');
+        } finally {
+            @unlink($cache);
+            @rmdir(dirname($cache));
+        }
+    }
+
     public function test_attributes_under_an_alias_count(): void
     {
         if (!class_exists('Legacy\\Blocks\\Block', false)) {

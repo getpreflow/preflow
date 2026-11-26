@@ -21,13 +21,22 @@ At a glance (each type's section below has the options, the checks and the templ
 | `datetime` | UTC ISO text | no |
 | `time` | `HH:MM` text | no |
 | `daterange` | an object: start and end | no |
-| `embed` | an object: provider, id, address, poster | no |
+| `embed` | an object: provider, id, url, poster | no |
 | `table` | an object: head and rows | no |
 | `location` | an object: lat, lng, address | no |
 
 A field in a model file, a block or a model class (`#[Field(type: 'link')]`) uses these keys the
 same way. Every value is checked in the core, so a seed, an import and the REST write path refuse the
 same values Folio's form refuses.
+
+Where the options go follows one convention: a type that references records nests its options
+under its own key (`relation`, `asset` and `link`: `"link": {"kinds": [...]}`); a simple type takes
+them at the field's top level, next to `"type"` (`"palette"`, `"zone"`, `"max_rows"`).
+
+The options are checked at boot, with or without Folio: `FieldsServiceProvider` checks every type's
+fields when the app boots (kept in the boot manifest, so a site with `preflow optimize` reads no
+model file for it), and every block's fields once, when the block registry is built. A mistake
+stops the boot with a message naming the type or block, the field and what to write instead.
 
 ## Install
 
@@ -41,7 +50,26 @@ composer require preflow/fields
   template engine.
 - Upgrading: the twelve type keys above now belong to this package. A site or package that has its
   own Folio field type under one of them (or `FieldKinds` registrations under that key) gets this
-  package's core checks and boot checks for it; rename yours before upgrading.
+  package's core checks and boot checks for it; rename yours before upgrading. A model field that
+  was already written with one of these types (`"type": "email"`, `"datetime"`, `"color"`, …) was a
+  plain text field before 0.91 and is now that typed field: it gets the type's checks, editor,
+  column kind and (for `datetime` and `time`) a default list column, so check its stored values
+  first, or write `"type": "string"` to keep it as it was.
+
+### Template function names
+
+The provider adds these functions to the app's template engine:
+
+`link_href`, `link_attrs`, `link_label`, `mailto_href`, `tel_href`, `code_html`, `datetime_local`,
+`time_format`, `daterange_start`, `daterange_end`, `embed_player`, `embed_data`, `table_html`,
+`table_data`, `location_data`, `geo_href`, `json_data`.
+
+They are not prefixed. When the site (or another package) adds a function of the same name, the
+order of registration decides: with Twig the one added first stays and the second stops the boot
+(`Function "time_format" is already registered.`), so the clash shows at once; with Blade the one
+added last wins without a word. `FieldsServiceProvider` adds its functions in its `boot()`, at its
+place in `config/providers.php` (with Folio, just before Folio's). Rename your own function to keep
+both.
 
 ## The link field
 
@@ -83,9 +111,9 @@ Under `"link"` in the field:
 - `"types"`: the record types a record link may point to, e.g. `["page", "post"]`. Without it, any
   type. (Folio then offers the types that have a public address.)
 
-A mistake in these options stops the boot with a message naming the type, the field and what to
-write instead (`"link.kinds" lists "ftp"; use record, url, email, phone or asset.`). So does
-`"translatable": true` on a link field.
+A mistake in these options stops the boot (with or without Folio) with a message naming the type,
+the field and what to write instead (`"link.kinds" lists "ftp"; use record, url, email, phone or
+asset.`). So does `"translatable": true` on a link field.
 
 ### Checks
 
@@ -173,7 +201,10 @@ public ?array $button = null;
 ```
 
 With `show_when` it behaves as every conditional field: hidden, it reads as empty (`null`) on the
-page and its stored value is kept.
+page and its stored value is kept. As the field another field's `show_when` names, a link (like a
+`phone`, `datetime`, `time`, `daterange`, `embed`, `table` or `location` field) takes only
+`"empty": true` or `"filled": true`; any other operator stops the boot, naming the field and the
+two that work.
 
 ## Email, phone, colour, code and JSON
 
@@ -379,12 +410,13 @@ $container->singleton(\Preflow\Fields\EmbedProviders::class, fn () => new \Prefl
 ```
 
 YouTube and Vimeo are always offered; `"providers"` lists only added ones (listing `youtube` or
-`vimeo` is a boot error). With Folio, a field (or a block's field) that lists a name no provider is
-registered for stops the boot, naming the field and how to register one. Where no such check
-runs (a site without Folio has no content-type catalog), the save is refused on the field instead:
-"Videos from "peertube" cannot be saved here: the site has no video provider of that name. …";
-it never becomes an error page. `EmbedProviders::add()` works too, as long as it runs before the
-types are read (Folio reads them in its `boot()`): `register()` is the safe place. Anchor an
+`vimeo` is a boot error). A field (or a block's field) that lists a name no provider is registered
+for stops the boot, with or without Folio, naming the field and how to register one. A value from
+a host no provider is registered for (an import, or a provider removed later) is refused on save,
+on the field: "Videos from "peertube"
+cannot be saved here: the site has no video provider of that name. …"; it never becomes an error
+page. `EmbedProviders::add()` works too, as long as it runs before the types are checked
+(`FieldsServiceProvider` and Folio check them in their `boot()`): `register()` is the safe place. Anchor an
 `idOf()` pattern with `\z`, not `$` (which also matches before a final line break).
 
 **On the page.** `{{ embed_player(page.video, "Our film") }}` prints the built-in player
@@ -523,11 +555,15 @@ Each type of this package is built from the same parts. The link field shows eac
    (`$kinds->rules('link', fn (array $config) => [...])`).
 4. **Its template functions** as `Preflow\View\TemplateFunctionDefinition`s in
    `FieldsExtensionProvider`, never engine-only code.
-5. **Folio's input**: a `Preflow\Folio\Field\Types\…FieldType` in Folio that draws the editor. Its
+5. **Its boot check**: the type's entry in `FieldOptions::check()` (and `FieldOptions::TYPES`).
+   `FieldsServiceProvider` runs it over every type's fields at boot and over every block's fields
+   when the block registry is built (`BlockFieldChecks`), with or without Folio. A structured
+   value, or one the browser and the server read differently, goes in
+   `FieldOptions::PRESENCE_ONLY`, so a show_when may test it only with `empty` or `filled`.
+6. **Folio's input**: a `Preflow\Folio\Field\Types\…FieldType` in Folio that draws the editor. Its
    `rules()` does not repeat the core checks: Folio's record and block validation add
-   `FieldKinds::rulesOf()` for every field. Its option check goes in
-   `TypeCatalog::checkFieldLayout()` (and `BlocksFieldType::assertLeaf()` for blocks); its texts in
-   Folio's `lang/{en,de,fr}`.
-6. **A stored-shape case** in preflow/testing's `StorageDriverContract::fieldValueShapes()` (an
+   `FieldKinds::rulesOf()` for every field. It sets no column kind (`HasColumnKind`): the core
+   registration owns storage. Its texts go in Folio's `lang/{en,de,fr}`.
+7. **A stored-shape case** in preflow/testing's `StorageDriverContract::fieldValueShapes()` (an
    object) or `textValueShapes()` (text), so every storage driver proves it gives the value back, plus a round trip through the type's own
    `fromStored()` on JSON, SQLite and MySQL in this package's tests.

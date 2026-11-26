@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Field\Types;
 
-use Preflow\Data\Schema\ColumnKind;
 use Preflow\Fields\ColorOptions;
 use Preflow\Fields\Values\Color;
 use Preflow\Folio\Field\DisplaysInAdmin;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldType;
-use Preflow\Folio\Field\HasColumnKind;
 use Preflow\Folio\FolioText;
 
 /**
@@ -27,16 +25,11 @@ use Preflow\Folio\FolioText;
  * What a person types is read leniently: "C00", "#C00000" and "c00000" are "#cc0000" and "#c00000";
  * anything that is no colour is kept as typed so the check can say so.
  */
-final class ColorFieldType implements FieldType, DisplaysInAdmin, HasColumnKind
+final class ColorFieldType implements FieldType, DisplaysInAdmin
 {
     public function key(): string
     {
         return 'color';
-    }
-
-    public function columnKind(array $config): ColumnKind
-    {
-        return ColumnKind::Short;
     }
 
     public function renderEditor(FieldContext $ctx): string

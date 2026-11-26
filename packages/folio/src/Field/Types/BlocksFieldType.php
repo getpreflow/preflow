@@ -40,8 +40,6 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         private readonly string $adminPrefix = '/folio',
         /** The data package's field kinds: a field type's core checks (FieldKinds::rules(), 0.91) apply inside blocks too. */
         private readonly ?\Preflow\Data\FieldKinds $kinds = null,
-        /** The app's video hosts (0.91): a block's embed field listing an unregistered one is refused. @var (\Closure(): ?\Preflow\Fields\EmbedProviders)|null */
-        private readonly ?\Closure $embedProviders = null,
     ) {}
 
     public function key(): string
@@ -710,6 +708,8 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
     /**
      * A block field the editor cannot hold: a translatable tags field (one list serves every
      * language, as on a type; TypeCatalog refuses it there at boot). @since 0.77
+     * The options of preflow/fields' types are checked once, when the block registry is built
+     * (FieldsServiceProvider adds them to BlockFieldChecks, 0.91), not here on every build and render.
      *
      * @throws \Preflow\Folio\Content\FrontendConfigException
      */
@@ -721,13 +721,6 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                 $definition->key,
                 $name,
             ));
-        }
-        if (in_array($type->key(), \Preflow\Fields\FieldOptions::TYPES, true)) {
-            try {
-                \Preflow\Fields\FieldOptions::check($type->key(), ['translatable' => $field->translatable] + $field->config, $this->embedProviders !== null ? ($this->embedProviders)() : null);
-            } catch (\LogicException $e) {
-                throw new \Preflow\Folio\Content\FrontendConfigException(sprintf('Block "%s": field "%s": %s', $definition->key, $name, $e->getMessage()), 0, $e);
-            }
         }
     }
 

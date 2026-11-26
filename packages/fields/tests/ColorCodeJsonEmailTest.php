@@ -54,6 +54,7 @@ final class ColorCodeJsonEmailTest extends TestCase
     {
         yield 'palette as text' => [['palette' => 'red'], '"palette" must be a list of colours such as ["#c00000", "#0a5ca8"] or a map such as {"Brand red": "#c00000"}.'];
         yield 'a palette colour' => [['palette' => ['#c00000', 'red']], '"palette" lists "red"; write each colour as #rrggbb (or #rrggbbaa).'];
+        yield 'a palette colour with a newline' => [['palette' => ["#c00000\n"]], '"palette" lists "#c00000\\n"; write each colour as #rrggbb (or #rrggbbaa).'];
         yield 'palette_only text' => [['palette' => ['#c00000'], 'palette_only' => 'yes'], '"palette_only" must be true or false.'];
         yield 'palette_only alone' => [['palette_only' => true], '"palette_only" needs a "palette" naming the colours that are allowed.'];
     }

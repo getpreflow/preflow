@@ -441,6 +441,15 @@ final class FieldVisibilityTest extends TestCase
         FieldVisibility::assertRules('Block "hero"', ['url' => ['show_when' => ['field' => 'kind', '=' => 'link']]], static fn (string $field): bool => false, 'block');
     }
 
+    public function test_comparisons_list_each_field_and_operator_of_a_rule(): void
+    {
+        $this->assertSame([['kind', '=']], FieldVisibility::fromConfig(['field' => 'kind', '=' => 'video'])->comparisons());
+        $this->assertSame(
+            [['kind', 'in'], ['starts', 'filled'], ['kind', '!=']],
+            FieldVisibility::fromConfig(['all' => [['field' => 'kind', 'in' => ['a']], ['any' => [['field' => 'starts', 'filled' => true], ['field' => 'kind', '!=' => 'b']]]]])->comparisons(),
+        );
+    }
+
     /** @param array<string, array<string, mixed>> $fields */
     private function writeType(string $key, array $fields): void
     {

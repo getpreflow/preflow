@@ -64,7 +64,7 @@ final readonly class ColorOptions
                 throw new \LogicException('"palette" must be a list of colours such as ["#c00000", "#0a5ca8"] or a map such as {"Brand red": "#c00000"}.');
             }
             foreach ($palette as $hex) {
-                if (!is_string($hex) || preg_match('/^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/', $hex) !== 1) {
+                if (!is_string($hex) || preg_match('/^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/D', $hex) !== 1) {
                     throw new \LogicException('"palette" lists ' . json_encode($hex) . '; write each colour as #rrggbb (or #rrggbbaa).');
                 }
             }

@@ -4,14 +4,12 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Field\Types;
 
-use Preflow\Data\Schema\ColumnKind;
 use Preflow\Fields\DateOptions;
 use Preflow\Fields\Values\DateRange;
 use Preflow\Fields\Values\DateTimeValue;
 use Preflow\Folio\Field\DisplaysInAdmin;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldType;
-use Preflow\Folio\Field\HasColumnKind;
 use Preflow\Folio\FolioText;
 use Preflow\Folio\Http\AdminFormat;
 use Preflow\Folio\View\InlineIcon;
@@ -25,16 +23,11 @@ use Preflow\Folio\View\InlineIcon;
  *
  * Not sortable by value (the list sorts the stored text).
  */
-final class DateRangeFieldType implements FieldType, DisplaysInAdmin, HasColumnKind
+final class DateRangeFieldType implements FieldType, DisplaysInAdmin
 {
     public function key(): string
     {
         return 'daterange';
-    }
-
-    public function columnKind(array $config): ColumnKind
-    {
-        return ColumnKind::Text;
     }
 
     public function renderEditor(FieldContext $ctx): string

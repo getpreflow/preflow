@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Field\Types;
 
-use Preflow\Data\Schema\ColumnKind;
 use Preflow\Fields\Values\TimeOfDay;
 use Preflow\Folio\Field\DisplaysInAdmin;
-use Preflow\Folio\Field\HasColumnKind;
 
 /**
  * A time of day (0.91; the value and check are preflow/fields': Values\TimeOfDay, ValidTime): a
@@ -15,16 +13,11 @@ use Preflow\Folio\Field\HasColumnKind;
  * "9:05" and "09:05:30" are read as "09:05". Anything else stays as typed for the check to
  * refuse. Empty is null.
  */
-final class TimeFieldType extends AbstractScalarFieldType implements DisplaysInAdmin, HasColumnKind
+final class TimeFieldType extends AbstractScalarFieldType implements DisplaysInAdmin
 {
     public function key(): string
     {
         return 'time';
-    }
-
-    public function columnKind(array $config): ColumnKind
-    {
-        return ColumnKind::Short;
     }
 
     protected function inputType(): string

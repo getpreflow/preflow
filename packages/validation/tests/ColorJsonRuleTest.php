@@ -24,7 +24,7 @@ final class ColorJsonRuleTest extends TestCase
         foreach (['#1a2b3c', '#1A2B3C', '#1a2b3c80', '#000000'] as $value) {
             $this->assertTrue($this->check(new Color(), $value), $value);
         }
-        foreach (['1a2b3c', '#abc', '#1a2b3', '#1a2b3c8', '#1a2b3cdd0', '#gggggg', 'red', ' #1a2b3c', 123456, ['#1a2b3c']] as $value) {
+        foreach (['1a2b3c', '#abc', '#1a2b3', '#1a2b3c8', '#1a2b3cdd0', '#gggggg', 'red', ' #1a2b3c', "#c00000\n", 123456, ['#1a2b3c']] as $value) {
             $message = $this->check(new Color(), $value);
             $this->assertInstanceOf(Message::class, $message, json_encode($value) ?: '');
             $this->assertSame('validation.color', $message->key);

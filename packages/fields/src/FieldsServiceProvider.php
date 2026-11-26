@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Fields;
 
+use Preflow\Blocks\BlockFieldChecks;
 use Preflow\Core\Application;
 use Preflow\Core\Container\Container;
 use Preflow\Core\Container\ServiceProvider;
@@ -11,6 +12,7 @@ use Preflow\Data\DataManager;
 use Preflow\Data\FieldKinds;
 use Preflow\Data\Locales;
 use Preflow\Data\Schema\ColumnKind;
+use Preflow\Data\TypeRegistry;
 use Preflow\Fields\Rules\ValidDateRange;
 use Preflow\Fields\Rules\ValidDateTime;
 use Preflow\Fields\Rules\ValidEmbed;
@@ -38,6 +40,10 @@ use Preflow\View\TemplateEngineInterface;
  * (the embed's markup) and LocationPicker (a map in an editor) are the site's to bind, both
  * optional.
  *
+ * Its boot also checks the options of these types in every type's fields (kept in the boot
+ * manifest), and with preflow/blocks it adds the same check for block fields (BlockFieldChecks),
+ * so a misspelt option stops the boot with or without Folio.
+ *
  * Listed in config/providers.php by a site without Folio; Folio registers it itself.
  *
  * @since 0.91.0
@@ -49,15 +55,27 @@ final class FieldsServiceProvider extends ServiceProvider
         if (!$container->bound(EmbedProviders::class)) {
             $container->singleton(EmbedProviders::class, static fn (): EmbedProviders => new EmbedProviders());
         }
+        // With preflow/blocks: every block's fields are checked once, when the block registry is
+        // built (the video hosts are asked then, so a site's own register() has bound them).
+        if (class_exists(BlockFieldChecks::class)) {
+            if (!$container->bound(BlockFieldChecks::class)) {
+                $container->instance(BlockFieldChecks::class, new BlockFieldChecks());
+            }
+            $container->get(BlockFieldChecks::class)->add(static function (array $fields) use ($container): void {
+                FieldOptions::checkFields($fields, $container->get(EmbedProviders::class));
+            });
+        }
     }
 
     public function boot(Container $container): void
     {
         // Without config/data.php there is no storage to register with. With it, an error building
         // the DataManager is the site's to see, so it is not caught here.
-        if ($container->get(Application::class)->hasConfigFile('data')) {
+        $app = $container->get(Application::class);
+        if ($app->hasConfigFile('data')) {
+            $data = $container->get(DataManager::class);
             self::registerKinds(
-                $container->get(DataManager::class)->fieldKinds(),
+                $data->fieldKinds(),
                 static fn (): EmbedProviders => $container->get(EmbedProviders::class),
                 // A poster is checked against the library when the bound RecordAddresses can tell (Folio's can).
                 static function () use ($container): ?AssetImages {
@@ -66,6 +84,17 @@ final class FieldsServiceProvider extends ServiceProvider
                     return $addresses instanceof AssetImages ? $addresses : null;
                 },
             );
+            $types = $data->getTypeRegistry();
+            if ($types !== null) {
+                // The options of every type's fields, with or without Folio: checked when the boot
+                // manifest is built (and live while none is loaded), as the data package's own checks.
+                $manifest = $app->bootManifest();
+                $manifest->remember('fields.options', static function () use ($types, $container): bool {
+                    self::checkTypes($types, $container->get(EmbedProviders::class));
+
+                    return true;
+                }, $manifest->isRecording() ? $types->sources() : []);
+            }
         }
 
         if ($container->has(TemplateEngineInterface::class)) {
@@ -79,6 +108,27 @@ final class FieldsServiceProvider extends ServiceProvider
             );
             foreach ($provider->getTemplateFunctions() as $function) {
                 $engine->addFunction($function);
+            }
+        }
+    }
+
+    /**
+     * Refuses at boot a field option of this package's types that cannot work, in every type of
+     * the registry (FieldOptions::checkFields()), the message naming the type and the field. Types
+     * a provider defines at runtime after this boot are not seen here (Folio's type catalog checks
+     * the ones it shows).
+     *
+     * @throws \LogicException
+     */
+    public static function checkTypes(TypeRegistry $types, ?EmbedProviders $embedProviders = null): void
+    {
+        foreach ($types->keys() as $key) {
+            $schema = $types->schema($key);
+            $fields = array_filter(is_array($schema['fields'] ?? null) ? $schema['fields'] : [], 'is_array');
+            try {
+                FieldOptions::checkFields($fields, $embedProviders);
+            } catch (\LogicException $e) {
+                throw new \LogicException("Type \"{$key}\": " . $e->getMessage(), 0, $e);
             }
         }
     }

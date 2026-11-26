@@ -4,12 +4,10 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Field\Types;
 
-use Preflow\Data\Schema\ColumnKind;
 use Preflow\Fields\DateOptions;
 use Preflow\Fields\Values\DateTimeValue;
 use Preflow\Folio\Field\DisplaysInAdmin;
 use Preflow\Folio\Field\FieldContext;
-use Preflow\Folio\Field\HasColumnKind;
 use Preflow\Folio\FolioText;
 use Preflow\Folio\Http\AdminFormat;
 use Preflow\Folio\View\InlineIcon;
@@ -25,16 +23,11 @@ use Preflow\Folio\View\InlineIcon;
  *
  * The check is the core's: rules() adds none.
  */
-final class DateTimeFieldType extends AbstractScalarFieldType implements DisplaysInAdmin, HasColumnKind
+final class DateTimeFieldType extends AbstractScalarFieldType implements DisplaysInAdmin
 {
     public function key(): string
     {
         return 'datetime';
-    }
-
-    public function columnKind(array $config): ColumnKind
-    {
-        return ColumnKind::Date;
     }
 
     protected function inputType(): string

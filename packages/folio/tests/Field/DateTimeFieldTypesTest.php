@@ -6,7 +6,6 @@ namespace Preflow\Folio\Tests\Field;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use Preflow\Data\Schema\ColumnKind;
 use Preflow\Folio\Content\FrontendConfigException;
 use Preflow\Folio\Content\ListQuery;
 use Preflow\Folio\Content\TypeCatalog;
@@ -45,11 +44,8 @@ final class DateTimeFieldTypesTest extends TestCase
             $this->assertSame([], $type->rules(['with_time' => true]), $type->key() . ': the core\'s check applies in Folio, this adds none');
             $this->assertNotInstanceOf(StructuredFieldType::class, $type);
             $this->assertNotInstanceOf(SearchableText::class, $type);
-            $this->assertInstanceOf(HasColumnKind::class, $type);
+            $this->assertNotInstanceOf(HasColumnKind::class, $type, $type->key() . ': the core registration owns the column kind');
         }
-        $this->assertSame(ColumnKind::Date, (new DateTimeFieldType())->columnKind([]), 'sortable as a date column');
-        $this->assertSame(ColumnKind::Short, (new TimeFieldType())->columnKind([]));
-        $this->assertSame(ColumnKind::Text, (new DateRangeFieldType())->columnKind([]));
         $this->assertContains('datetime', ListQuery::LIST_TYPES);
         $this->assertContains('time', ListQuery::LIST_TYPES);
     }

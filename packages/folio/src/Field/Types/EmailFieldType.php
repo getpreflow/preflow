@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Field\Types;
 
-use Preflow\Data\Schema\ColumnKind;
 use Preflow\Fields\Values\Email;
 use Preflow\Folio\Field\FieldContext;
-use Preflow\Folio\Field\HasColumnKind;
 use Preflow\Folio\Field\SearchableText;
 
 /**
@@ -18,16 +16,11 @@ use Preflow\Folio\Field\SearchableText;
  *
  * The check is the core's: rules() adds none.
  */
-final class EmailFieldType extends AbstractScalarFieldType implements SearchableText, HasColumnKind
+final class EmailFieldType extends AbstractScalarFieldType implements SearchableText
 {
     public function key(): string
     {
         return 'email';
-    }
-
-    public function columnKind(array $config): ColumnKind
-    {
-        return ColumnKind::Short;
     }
 
     protected function inputType(): string
