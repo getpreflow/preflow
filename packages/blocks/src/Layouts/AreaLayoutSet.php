@@ -29,17 +29,16 @@ final class AreaLayoutSet
     }
 
     /**
-     * The layout for a stored key: that layout; else the first with the same number of areas (a key
-     * of numbers joined by "-", such as "2-1", names its count); else the fallback; else the first.
+     * The layout for a stored key: that layout; else the first with $count areas (the number of
+     * areas the stored value has, when the caller knows it); else the fallback; else the first.
      * Null only for an empty set.
      */
-    public function resolve(?string $key): ?AreaLayout
+    public function resolve(?string $key, ?int $count = null): ?AreaLayout
     {
         $found = $this->get($key);
         if ($found !== null) {
             return $found;
         }
-        $count = self::countOf($key);
         if ($count !== null) {
             foreach ($this->byKey as $layout) {
                 if (count($layout->areas) === $count) {
@@ -55,10 +54,5 @@ final class AreaLayoutSet
     public function all(): array
     {
         return array_values($this->byKey);
-    }
-
-    private static function countOf(?string $key): ?int
-    {
-        return $key !== null && preg_match('/^\d+(-\d+)*$/', $key) === 1 ? substr_count($key, '-') + 1 : null;
     }
 }

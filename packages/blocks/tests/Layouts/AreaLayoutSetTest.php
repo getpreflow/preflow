@@ -28,15 +28,17 @@ final class AreaLayoutSetTest extends TestCase
         $set = new AreaLayoutSet('columns', [$this->layout('1-1', 2), $this->layout('full', 1), $this->layout('1-2', 2)], 'full');
 
         $this->assertSame('1-2', $set->resolve('1-2')->key, 'a known key');
-        $this->assertSame('1-1', $set->resolve('2-1')->key, 'the first with the same count');
-        $this->assertSame('full', $set->resolve('1-1-1-1')->key, 'no such count: the fallback');
+        $this->assertSame('1-1', $set->resolve('2-1', 2)->key, 'the first with the same count');
+        $this->assertSame('1-1', $set->resolve('sidebar-left', 2)->key, 'a key of any shape');
+        $this->assertSame('full', $set->resolve('1-1-1-1', 4)->key, 'no such count: the fallback');
+        $this->assertSame('full', $set->resolve('2-1')->key, 'no count given: the key says nothing');
         $this->assertSame('full', $set->resolve('gone')->key);
         $this->assertSame('full', $set->resolve(null)->key);
         $this->assertNull($set->get('2-1'));
         $this->assertCount(3, $set->all());
 
         $this->assertSame('1-1', (new AreaLayoutSet('c', [$this->layout('1-1', 2), $this->layout('full', 1)]))->resolve('gone')->key, 'no fallback: the first');
-        $this->assertNull((new AreaLayoutSet('c', []))->resolve('x'));
+        $this->assertNull((new AreaLayoutSet('c', []))->resolve('x', 2));
     }
 
     public function test_sets_are_registered_once_and_built_on_first_use(): void
