@@ -54,6 +54,11 @@ final class ListCells
      */
     public static function hidden(TypeDefinition $def, string $name, DynamicRecord $record): bool
     {
+        // Only a field with a rule of its own can hide (a field naming a hidden one has a rule too).
+        if (!isset($def->fields[$name]->config['show_when'])) {
+            return false;
+        }
+
         return in_array($name, FieldVisibility::hiddenFieldsOf($def, $record->toArray()), true);
     }
 

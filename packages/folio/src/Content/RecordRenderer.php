@@ -31,7 +31,8 @@ final class RecordRenderer
     {
         $typeDef = $record->getType();
         $localized = $record->localized($locale ?? $this->locale($record));
-        $hidden = array_flip(FieldVisibility::hiddenFieldsOf($typeDef, $record->toArray()));
+        // A type without show_when hides nothing: no values to read for it.
+        $hidden = FieldVisibility::rulesOf($typeDef->fields) === [] ? [] : array_flip(FieldVisibility::hiddenFieldsOf($typeDef, $record->toArray()));
         $map = [];
         foreach ($typeDef->fields as $name => $fieldDef) {
             if (isset($hidden[$name])) {

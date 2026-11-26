@@ -23,7 +23,10 @@ use Preflow\Data\TypeDefinition;
  *
  * Text a field's show_when hides is not searched (since 0.91.0): a record the term finds only
  * through a hidden field is no hit, on every storage (withoutHidden()). The search reads what is
- * stored now, so a field that becomes hidden on a save stops matching with that save.
+ * stored now, so a field that becomes hidden on a save stops matching with that save. For a type
+ * with show_when, the first CANDIDATES loose-search hits are checked (as on the ranked path): when
+ * most of them match only through hidden text, fewer than $perType hits come back although later
+ * records would match.
  *
  * It reads working copies and checks no permission: the caller passes only the types the
  * person may read.
@@ -123,6 +126,9 @@ final class RecordSearch
      */
     private function withoutHidden(TypeDefinition $def, string $term, array $records): array
     {
+        if (FieldVisibility::rulesOf($def->fields) === []) {
+            return $records; // nothing can hide: no values to read
+        }
         $groups = []; // hidden fields joined => [hidden fields, ids]
         foreach ($records as $record) {
             $hidden = FieldVisibility::hiddenFieldsOf($def, $record->toArray());

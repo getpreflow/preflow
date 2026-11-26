@@ -65,7 +65,9 @@ final class TranslationStatus
      */
     public function texts(TypeDefinition $def, DynamicRecord $record): array
     {
-        return $this->textsOf($def, $record, FieldVisibility::hiddenFieldsOf($def, $record->toArray()));
+        $hidden = FieldVisibility::rulesOf($def->fields) === [] ? [] : FieldVisibility::hiddenFieldsOf($def, $record->toArray());
+
+        return $this->textsOf($def, $record, $hidden);
     }
 
     /**
