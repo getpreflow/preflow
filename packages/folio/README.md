@@ -1148,6 +1148,25 @@ Any other value of either key stops the boot with a `FrontendConfigException` na
 the field. The fields the type's frontend address is built from (its route's parameters, such as
 `slug`) always sit in the side panel's **Address** section.
 
+**Conditional fields** (since 0.91). A field with `show_when` (the rule is preflow/data's, see its
+README, "Conditional fields") shows in the editor only while its rule holds:
+
+```json
+"kind":       {"type": "select", "options": {"text": "Text", "link": "Link"}},
+"button_url": {"type": "string", "validate": ["required"], "show_when": {"field": "kind", "=": "link"}}
+```
+
+Pick "Link" and the address field appears at once, without asking the server; pick "Text" and it
+goes again. A hidden field is not in the page's reading order or tab order (`hidden`, with
+`aria-hidden`), and its inputs are disabled, so it does not post. It is not validated, so its
+`required` does not apply. Its value is not lost: a save keeps the stored value of a hidden field,
+whatever is posted for it (`FieldVisibility::keepStored()`), so switching `kind` back to "Link"
+shows the old address again. The editor loads the rule's script (`show-when-core.js`, which
+decides as the server does) only on a form with a rule. Inside a block the rule names a field of
+the same block (`#[BlockField(config: ['show_when' => ['field' => 'kind', '=' => 'link']])]`),
+and each card decides on its own values; a hidden block field is not validated either, keeps its
+stored value on save and is left out of the block's translation status.
+
 The admin display (read-only fields and list cells) is the field type's `renderAdmin()` when
 it implements `Preflow\Folio\Field\DisplaysInAdmin`, otherwise its frontend output. A custom
 field type can implement it to show a friendlier value in the admin than it stores. The

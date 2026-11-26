@@ -991,9 +991,157 @@
     }
     Folio.placeFocal = placeFocal;
 
+    // ---- Conditional fields (show_when, 0.91) --------------------------------------------------------
+    // A field with a rule is wrapped in [data-folio-show-when] (the record form's field wrap, or a wrap in a
+    // block card): {rule, types, values, prefix}. Its sources are read as the form would post them (a
+    // block's source is "<prefix>[<field>]"); a source without a control (read-only) reads the value the
+    // server gave. FolioShowWhenCore (show-when-core.js, loaded only where a rule exists) decides as the
+    // server does. A hidden field gets hidden and aria-hidden, and every control in it is disabled (it
+    // does not post; the server keeps the stored value anyway); a field naming a hidden one hides too.
+    // Pages without a rule do nothing here.
+    var SHOW = '[data-folio-show-when]';
+    var OFF = 'data-folio-show-off';
+    var CONTROLS = 'input, select, textarea, button';
+
+    function showConfig(box) {
+        if (!box._folioShowWhen) {
+            try { box._folioShowWhen = JSON.parse(box.getAttribute('data-folio-show-when') || '{}'); } catch (e) { box._folioShowWhen = {}; }
+        }
+        return box._folioShowWhen;
+    }
+
+    function isHiddenBox(box) {
+        return box.hidden === true || box.getAttribute('hidden') !== null;
+    }
+
+    // Inside a hidden show_when wrap (its own or one around it).
+    function insideHidden(el) {
+        for (var up = el; up && up.getAttribute; up = up.parentNode) {
+            if (up.getAttribute('data-folio-show-when') !== null && isHiddenBox(up)) { return true; }
+        }
+        return false;
+    }
+
+    function controlName(el) {
+        return (el.getAttribute && el.getAttribute('name')) || el.name || '';
+    }
+
+    // name => its controls in page order (only the names a rule reads).
+    function controlsByName(wanted) {
+        var map = {};
+        document.querySelectorAll(CONTROLS).forEach(function (el) {
+            var name = controlName(el);
+            if (name && wanted[name]) { (map[name] = map[name] || []).push(el); }
+        });
+        return map;
+    }
+
+    // The value the form posts for a source: a list name (name[]) collects, a plain name takes the last
+    // control; an unchecked box or radio posts nothing. hidden: one of its controls is in a hidden field.
+    function readSource(map, name) {
+        var list = map[name + '[]'];
+        var plain = map[name];
+        if (!list && !plain) { return { found: false }; }
+        var hidden = false;
+        var posts = function (el) {
+            if (insideHidden(el)) { hidden = true; return false; }
+            return !((el.type === 'checkbox' || el.type === 'radio') && !el.checked);
+        };
+        if (list) {
+            var values = [];
+            list.forEach(function (el) { if (posts(el)) { values.push(el.value); } });
+            return { found: true, hidden: hidden, value: values };
+        }
+        var value = null;
+        plain.forEach(function (el) {
+            if (!posts(el)) { return; }
+            if (el.tagName === 'SELECT' && el.multiple && el.selectedOptions) {
+                value = Array.prototype.map.call(el.selectedOptions, function (o) { return o.value; });
+            } else {
+                value = el.value;
+            }
+        });
+        return { found: true, hidden: hidden, value: value };
+    }
+
+    function sourceName(config, field) {
+        return config.prefix ? config.prefix + '[' + field + ']' : field;
+    }
+
+    function setBox(box, show) {
+        if (show === !isHiddenBox(box)) { return false; }
+        box.hidden = !show;
+        if (show) {
+            box.removeAttribute('hidden');
+            box.removeAttribute('aria-hidden');
+        } else {
+            box.setAttribute('hidden', '');
+            box.setAttribute('aria-hidden', 'true');
+        }
+        return true;
+    }
+
+    function refreshShowWhen() {
+        var core = window.FolioShowWhenCore;
+        var boxes = Array.prototype.slice.call(document.querySelectorAll(SHOW));
+        if (!core || boxes.length === 0) { return; }
+        var wanted = {};
+        boxes.forEach(function (box) {
+            var config = showConfig(box);
+            core.sources(config.rule).forEach(function (field) {
+                var name = sourceName(config, field);
+                wanted[name] = true;
+                wanted[name + '[]'] = true;
+            });
+        });
+        var map = controlsByName(wanted);
+        // Showing or hiding a field can show or hide another (a chain): repeat until nothing changes.
+        for (var round = 0; round <= boxes.length; round++) {
+            var changed = false;
+            boxes.forEach(function (box) {
+                var config = showConfig(box);
+                var values = {};
+                var sourceHidden = false;
+                core.sources(config.rule).forEach(function (field) {
+                    var read = readSource(map, sourceName(config, field));
+                    if (read.found) {
+                        if (read.hidden) { sourceHidden = true; }
+                        values[field] = read.value;
+                    } else if (config.values && Object.prototype.hasOwnProperty.call(config.values, field)) {
+                        values[field] = config.values[field];
+                    }
+                });
+                if (setBox(box, !sourceHidden && core.holds(config.rule, values, config.types || {}))) { changed = true; }
+            });
+            if (!changed) { break; }
+        }
+        // A control in a hidden field is disabled and marked, so showing it enables only what this disabled.
+        boxes.forEach(function (box) {
+            box.querySelectorAll(CONTROLS).forEach(function (el) {
+                var off = insideHidden(el);
+                if (off && !el.disabled) {
+                    el.disabled = true;
+                    el.setAttribute(OFF, '');
+                } else if (!off && el.getAttribute(OFF) !== null) {
+                    el.disabled = false;
+                    el.removeAttribute(OFF);
+                }
+            });
+        });
+    }
+    // Folio.refreshShowWhen(): decide every conditional field again (after a script changed a source).
+    Folio.refreshShowWhen = refreshShowWhen;
+
+    function onShowWhenChange(e) {
+        var target = e.target;
+        if (!target || !target.getAttribute || !controlName(target) || !document.querySelector(SHOW)) { return; }
+        refreshShowWhen();
+    }
+
     // ---- Wiring ----------------------------------------------------------------------------------
     function init(root) {
         if (!root || !root.querySelectorAll) { return; }
+        if ((root.matches && root.matches(SHOW)) || root.querySelector(SHOW)) { refreshShowWhen(); }
         root.querySelectorAll('.folio-asset-focal[data-focal]').forEach(placeFocal);
         root.querySelectorAll('[data-folio-date]').forEach(syncDate);
         root.querySelectorAll('[data-folio-stepper]').forEach(syncStepper);
@@ -1032,6 +1180,8 @@
         document.addEventListener('change', onAssetFileChange);
         document.addEventListener('input', onInput);
         document.addEventListener('change', onInput);
+        document.addEventListener('input', onShowWhenChange);
+        document.addEventListener('change', onShowWhenChange);
         document.addEventListener('trix-change', onTrixChange);
         document.addEventListener('click', onDateClear);
         document.addEventListener('click', onDateIcon);

@@ -20,6 +20,7 @@ final class RecordRenderer
         private readonly FieldTypeRegistry $fieldTypes,
         private readonly TemplateEngineInterface $engine,
         private readonly ?ContentLocale $contentLocale = null,
+        private readonly ?\Preflow\Blocks\BlockRegistry $blocks = null,
     ) {}
 
     /**
@@ -50,14 +51,17 @@ final class RecordRenderer
 
     /**
      * The record's values in $locale as a template reads them: a field its show_when hides is
-     * null (FieldVisibility::visibleValues(); the stored value stays in the record).
+     * null (FieldVisibility::visibleValues(); the stored value stays in the record), also inside its
+     * blocks fields (BlockRegistry::visibleBlocksIn()).
      *
      * @return array<string, mixed>
      * @since 0.91.0
      */
     public function values(DynamicRecord $record, string $locale): array
     {
-        return FieldVisibility::visibleValues($record->getType(), $record->localized($locale)->toArray());
+        $values = FieldVisibility::visibleValues($record->getType(), $record->localized($locale)->toArray());
+
+        return $this->blocks?->visibleBlocksIn($values, $record->getType()->fields) ?? $values;
     }
 
     /** The request's content locale, or the record's default locale. */

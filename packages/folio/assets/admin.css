@@ -4034,6 +4034,8 @@ th.folio-cache-num { font-family: inherit; font-size: inherit; }
 .folio-editor { margin-inline: auto; }
 .folio-field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); column-gap: 16px; }
 .folio-field-row > .folio-field-wrap { min-width: 0; }
+/* A conditional field its show_when hides (fields.js toggles hidden; 0.91): never shown by a layout rule. */
+[data-folio-show-when][hidden] { display: none !important; }
 
 /* Content · SEO & sharing. Without JS both panels show, the second under its own heading. */
 .folio-editor-tabs > .folio-tabs { margin: 0 0 24px; }

@@ -212,6 +212,36 @@ final class FieldVisibilityTest extends TestCase
         $this->assertSame(['kind' => 'x', 'other' => 1], FieldVisibility::visibleValues($plain, ['kind' => 'x', 'other' => 1]));
     }
 
+    public function test_keep_stored_gives_a_hidden_field_its_stored_value(): void
+    {
+        $fields = [
+            'kind' => new TypeFieldDefinition('kind'),
+            'url' => new TypeFieldDefinition('url', config: ['show_when' => ['field' => 'kind', '=' => 'link']]),
+            'label' => new TypeFieldDefinition('label', config: ['show_when' => ['field' => 'url', 'filled' => true]]),
+        ];
+        $type = new \Preflow\Data\TypeDefinition('page', 'page', 'default', $fields);
+        $stored = ['uuid' => 'p1', 'kind' => 'link', 'url' => '/a', 'label' => 'Go'];
+
+        // Hidden by the submitted kind: the posted values are ignored, the stored ones kept (a chain too).
+        $kept = ['uuid' => 'p1', 'kind' => 'video', 'url' => '/a', 'label' => 'Go'];
+        $this->assertSame($kept, FieldVisibility::keepStored($type, ['uuid' => 'p1', 'kind' => 'video', 'url' => '/evil', 'label' => 'Posted'], $stored));
+        $this->assertSame($kept, FieldVisibility::keepStored($type, ['uuid' => 'p1', 'kind' => 'video'], $stored), 'a hidden input does not post');
+        // Shown: as submitted.
+        $shown = ['kind' => 'link', 'url' => '/b', 'label' => 'New'];
+        $this->assertSame($shown, FieldVisibility::keepStored($type, $shown, $stored));
+        // Nothing stored (a new record): the hidden field is left out.
+        $this->assertSame(['kind' => 'video'], FieldVisibility::keepStored($type, ['kind' => 'video', 'url' => '/evil'], []));
+        // Field config arrays (a block's fields) decide the same way.
+        $this->assertSame($kept, FieldVisibility::keepStored(
+            ['kind' => ['type' => 'string'], 'url' => ['show_when' => ['field' => 'kind', '=' => 'link']], 'label' => ['show_when' => ['field' => 'url', 'filled' => true]]],
+            ['uuid' => 'p1', 'kind' => 'video', 'url' => '/evil'],
+            $stored,
+        ));
+        // A type without show_when: unchanged.
+        $plain = new \Preflow\Data\TypeDefinition('plain', 'plain', 'default', ['kind' => new TypeFieldDefinition('kind')]);
+        $this->assertSame(['kind' => 'x', 'url' => '/b'], FieldVisibility::keepStored($plain, ['kind' => 'x', 'url' => '/b'], ['url' => '/a']));
+    }
+
     public function test_sources_lists_every_named_field_once(): void
     {
         $rule = FieldVisibility::fromConfig(['any' => [['field' => 'a', '=' => 'x'], ['all' => [['field' => 'b', 'filled' => true], ['field' => 'a', 'in' => ['y']]]]]]);

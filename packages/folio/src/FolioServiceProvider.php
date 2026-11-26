@@ -647,7 +647,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(TypeCatalog::class),
                 $c->get(TypeRegistry::class),
                 $c->get(\Preflow\Data\DataManager::class),
-                new RecordRenderer($registry, $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class)),
+                new RecordRenderer($registry, $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class), $c->get(BlockRegistry::class)),
                 new RecordLabeler(),
                 $prefix,
                 $c->get(\Preflow\Publishing\LiveContent::class),
@@ -789,7 +789,7 @@ final class FolioServiceProvider extends ServiceProvider
         $container->bind(FrontendController::class, fn (Container $c) => new FrontendController(
             $c->get(FrontendResolver::class),
             $c->get(\Preflow\Folio\View\FolioEngine::class),
-            new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class)),
+            new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class), $c->get(BlockRegistry::class)),
             $c->get(DataManager::class),
             $c->get(\Preflow\Publishing\PreviewLinks::class),
             $c->get(\Preflow\View\AssetCollector::class),
@@ -815,7 +815,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TypeRegistry::class),
             $c->get(DataManager::class),
             $c->get(FieldTypeRegistry::class),
-            new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class)),
+            new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class), $c->get(BlockRegistry::class)),
             $c->get(\Preflow\Folio\View\FolioEngine::class),
             $c->get(FrontendResolver::class),
             $c->get(DraftRecordFactory::class),
@@ -858,6 +858,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(ContentLocale::class),
             $c->get(\Preflow\Publishing\LiveContent::class),
             $c->get(\Preflow\Folio\Content\SafeRichText::class),
+            $c->get(BlockRegistry::class),
         ));
         $container->singleton(ExtensionSettings::class, fn (Container $c) => new ExtensionSettings(
             $c->get(ExtensionRegistry::class),
@@ -874,6 +875,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(ContentLocale::class),
             $c->get(\Preflow\Folio\Content\SafeRichText::class),
             $c->get(\Preflow\Folio\Content\FrontendGate::class),
+            $c->get(BlockRegistry::class),
         ));
         $container->singleton(\Preflow\Folio\Content\SafeRichText::class, fn (Container $c) => new \Preflow\Folio\Content\SafeRichText(
             $c->get(FieldTypeRegistry::class),
@@ -2405,6 +2407,8 @@ final class FolioServiceProvider extends ServiceProvider
             'blocks.js' => 'blocks.js',
             // The field controls (0.75): copy, counter, stepper, date hint, relation rows, asset drop.
             'fields.js' => 'fields.js',
+            // Conditional fields (show_when, 0.91): the rule evaluator fields.js uses, only on forms with a rule.
+            'show-when-core.js' => 'show-when-core.js',
             // The ⌘K palette and the g-chords (every admin page, after admin.js).
             'command.js' => 'command.js',
             'icons.svg' => 'icons.svg',

@@ -262,6 +262,38 @@ final class FieldVisibility
     }
 
     /**
+     * Submitted values as a write keeps them: a field its show_when hides takes its stored value
+     * (switching the source back brings it back), whatever was submitted for it; one with nothing
+     * stored is left out. Every other key stays as submitted. Which fields are hidden is decided on
+     * the submitted values (the new source values). Folio's editor saves through it (a hidden input
+     * is disabled and does not post, but the server does not rely on that); an app's own write
+     * path, such as an API that saves posted values, calls it the same way before saving.
+     * Without show_when, $submitted comes back unchanged.
+     *
+     * @param TypeDefinition|array<string, TypeFieldDefinition|array<string, mixed>> $fields a type, or
+     *        field definitions or config arrays (a block's fields)
+     * @param array<string, mixed> $submitted the values about to be saved
+     * @param array<string, mixed> $stored    the stored values ([] for a new record or block)
+     * @return array<string, mixed>
+     * @since 0.91.0
+     */
+    public static function keepStored(TypeDefinition|array $fields, array $submitted, array $stored): array
+    {
+        $hidden = $fields instanceof TypeDefinition
+            ? self::hiddenFieldsOf($fields, $submitted)
+            : self::hiddenFields($fields, $submitted);
+        foreach ($hidden as $name) {
+            if (array_key_exists($name, $stored)) {
+                $submitted[$name] = $stored[$name];
+            } else {
+                unset($submitted[$name]);
+            }
+        }
+
+        return $submitted;
+    }
+
+    /**
      * @param array<string, TypeFieldDefinition|array<string, mixed>> $fields
      * @return array<string, self>
      */

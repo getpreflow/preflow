@@ -8,6 +8,7 @@ use Nyholm\Psr7\Response;
 use Preflow\Core\Context\Contexts;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\FieldVisibility;
 use Preflow\Data\LocaleValue;
 use Preflow\Data\TypeRegistry;
 use Preflow\Data\TypeDefinition;
@@ -23,6 +24,7 @@ use Preflow\Folio\Content\RecordId;
 use Preflow\Folio\Content\RecordLabeler;
 use Preflow\Folio\Content\RelationLabels;
 use Preflow\Folio\Content\DraftRecordFactory;
+use Preflow\Folio\Field\ShowWhenMarkup;
 use Preflow\Publishing\PublishState;
 use Preflow\Publishing\Publisher;
 use Preflow\Publishing\VersionConflict;
@@ -1541,9 +1543,18 @@ final class AdminController
             }
         }
 
+        // Conditional fields (show_when, 0.91): the field's wrap carries its rule for fields.js, which shows
+        // or hides it as the source changes; one hidden now is rendered hidden. A type without one: nothing.
+        $rules = FieldVisibility::rulesOf($typeDef->fields);
+        $hiddenNow = $rules === [] ? [] : array_flip(FieldVisibility::hiddenFieldsOf($typeDef, $values));
+        if ($rules !== []) {
+            $editorAssets['show-when-core.js'] = true;
+        }
         foreach ($fields as &$entry) {
             $entry['outdated'] = $outdated[$entry['name']] ?? null;
             $entry['unchecked'] = $unchecked[$entry['name']] ?? null;
+            $rule = $rules[$entry['name']] ?? null;
+            $entry['show_when'] = is_array($rule) ? ShowWhenMarkup::attributes($rule, $typeDef->fields, $read, '', isset($hiddenNow[$entry['name']])) : '';
         }
         unset($entry);
 

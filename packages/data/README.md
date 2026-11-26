@@ -2037,6 +2037,19 @@ return Json::response($values);
 `visibleValues()` adds a `null` for a hidden field the values lack and changes nothing for a
 type without `show_when`.
 
+**Writing a hidden field.** `DataManager` saves what it is given, so the stored value is kept only if
+the values you save carry it. Folio's editor does this for you. Your own write path, such as an API
+endpoint that saves posted values, calls `keepStored()` before it saves: a hidden field takes its
+stored value, whatever was posted (one with nothing stored is left out); every other value stays as
+posted. Which fields are hidden is decided on the posted values.
+
+```php
+$values = FieldVisibility::keepStored($type, $posted, $record?->toArray() ?? []);
+$dm->saveType(DynamicRecord::fromArray($type, $values));
+```
+
+It takes a block's fields as well (`keepStored($definition->fields, $block, $storedBlock)`).
+
 When the registry is built (at boot, or when `preflow optimize` builds the boot manifest), a
 rule that cannot work is refused with a `ShowWhenException` naming the type and the field: a
 malformed rule (show_when is an object such as `{"field": "kind", "=": "video"}`), a value
@@ -2052,7 +2065,9 @@ Type "page": field "button_url": show_when names "kind", which is not a field of
 `Preflow\Data\FieldVisibility` is the one class that decides: `fromConfig($showWhen)->holds($values)`
 for one rule, `hiddenFields($fields, $values)` for a record's fields (`hiddenFieldsOf($type,
 $values)` parses a type's rules once per definition, for lists), `visibleValues($type, $values)`
-for output, and `assertRules()` for the boot check. The cases the browser and the server
+for output, `keepStored($type, $submitted, $stored)` for writes, and `assertRules()` for the boot
+check. Folio's editor runs a copy of `holds()` in the browser (`show-when-core.js`), tested
+against the same cases. The cases the browser and the server
 must agree on are in `tests/Fixtures/show-when-cases.json`.
 
 ## Model classes as types

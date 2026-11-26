@@ -17,7 +17,8 @@ use Preflow\Publishing\LiveContent;
  * returns the record whatever its languages. Memoized per render frame and context
  * (ContentMemo: by type and RenderContext::memoKey()); not memoized outside every render. A type
  * gated by frontend.permission lists nothing for visitors without it (FrontendGate). A field its
- * show_when hides reads as null (FieldVisibility::visibleValues(); since 0.91.0).
+ * show_when hides reads as null (FieldVisibility::visibleValues(); since 0.91.0), also inside its
+ * blocks fields (BlockRegistry::visibleBlocksIn()).
  */
 final class Collections
 {
@@ -27,6 +28,7 @@ final class Collections
         private readonly ContentLocale $locale,
         private readonly ?SafeRichText $richText = null,
         private readonly ?FrontendGate $gate = null,
+        private readonly ?\Preflow\Blocks\BlockRegistry $blocks = null,
     ) {}
 
     /** @return list<array<string, mixed>> */
@@ -95,6 +97,7 @@ final class Collections
     {
         $def = $this->live->definition($type);
         $values = FieldVisibility::visibleValues($def, $values); // a field its show_when hides reads as null
+        $values = $this->blocks?->visibleBlocksIn($values, $def->fields) ?? $values; // inside blocks too
 
         return $this->richText?->fields($values, $def->fields) ?? $values;
     }

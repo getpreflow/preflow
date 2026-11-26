@@ -6,6 +6,7 @@ namespace Preflow\Folio\Content;
 
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\FieldVisibility;
 use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\BlocksFieldType;
@@ -31,9 +32,11 @@ final class RecordValidator
     {
         $typeDef = $record->getType();
         $errors = [];
+        // A blocks field its show_when hides is not validated (0.91), as DataManager skips a hidden field's rules.
+        $hidden = array_flip(FieldVisibility::hiddenFieldsOf($typeDef, $record->toArray()));
         foreach ($typeDef->fields as $name => $fieldDef) {
             $fieldType = $this->fieldTypes->get($fieldDef->type);
-            if (!$fieldType instanceof BlocksFieldType || self::readonly($fieldDef->config)) {
+            if (!$fieldType instanceof BlocksFieldType || self::readonly($fieldDef->config) || isset($hidden[$name])) {
                 continue;
             }
             foreach ($fieldType->validateBlocks($record->get($name), $fieldDef->config, $typeDef->locales) as $key => $messages) {

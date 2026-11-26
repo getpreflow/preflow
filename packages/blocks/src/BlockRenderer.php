@@ -97,8 +97,9 @@ final class BlockRenderer
             ));
         }
 
-        // Values reach the block's template cleaned (rich text sanitized), nested blocks included.
-        $block = $this->cleaner->block($block);
+        // Values reach the block's template cleaned (rich text sanitized) and with a field its show_when
+        // hides read as null (since 0.91.0), nested blocks included; the stored block is unchanged.
+        $block = $this->cleaner->block($this->blocks->visibleBlock($block));
 
         try {
             $component = $this->container->make($definition->class);

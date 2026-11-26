@@ -71,6 +71,14 @@ final class Banner extends BlockComponent
   field as the source (it holds entries, not values), the select itself, both
   `options` and `options_from`, `display: cards`, or `options_from` on a field that is not a
   select fail when the registry is built, naming the block (`Block "poll": field "answer": …`).
+  A field may show only while a rule on another field **of the same block** holds (since 0.91;
+  the rule is preflow/data's `show_when`, see its README):
+  `#[BlockField(type: 'string', config: ['show_when' => ['field' => 'kind', '=' => 'link']])]`.
+  Each block decides on its own values, so two blocks of one type can show different fields. A
+  rule that cannot work (malformed, naming a field the block does not have, the field itself, a
+  translatable field, or a cycle) fails when the registry is built, naming the block and the
+  field: `Block "offer": field "button_url": show_when names "style", which is not a field of
+  the block. Name a field of the same block.`
 - **`BlockComponent`** fills each `#[BlockField]` property from the block's data before
   `resolveState()`, cast to the property's type. The block's id is `$this->_uid`. Everything else
   is an ordinary component: constructor injection, `resolveState()`, actions, CSS next to it.
@@ -135,7 +143,14 @@ through its component, in order:
   `data-block="<uid>"` and `data-block-label`, nested blocks included, so an editor can find
   them on the page.
 
-Values reach the template as stored. Escape them as usual (`{{ title }}`).
+Values reach the template as stored. Escape them as usual (`{{ title }}`). One exception (since
+0.91): a field its `show_when` hides reaches the template as `null`, in the block and in every
+block nested in it (a data-only child its parent prints too), each deciding on its own values.
+The stored block keeps the value. For values you read yourself, ask the registry:
+`$blocks->visibleBlock($block)` (one block and its nested ones),
+`$blocks->visibleBlocksIn($values, $type->fields)` (a record's blocks fields; Folio's `folio_get`,
+`folio_list`, `folio_find` and a page's `record` use it) and `$blocks->hiddenFieldsOf($key, $values)`.
+Without any `show_when`, they return what they are given.
 
 In PHP, the same renderer: `$container->get(Preflow\Blocks\BlockRenderer::class)->render($items)`.
 The registry of all block types is `Preflow\Blocks\BlockRegistry` (`all()`, `get($key)`,

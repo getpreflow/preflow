@@ -72,6 +72,25 @@ final class BlocksAppTest extends BlocksAppTestCase
         $this->assertStringNotContainsString('data-block', $html);
     }
 
+    public function test_a_hidden_block_field_renders_empty_each_block_deciding_on_its_own(): void
+    {
+        $this->write('config/blocks.php', "<?php\nreturn ['classes' => [\\Preflow\\Blocks\\Tests\\Fixtures\\ShowWhen\\Offer::class, \\Preflow\\Blocks\\Tests\\Fixtures\\ShowWhen\\OfferLine::class]];\n");
+        $page = [
+            ['_uid' => 'o1', '_block' => 'offer', 'kind' => 'link', 'button_url' => '/a', 'lines' => [
+                ['_uid' => 'l1', '_block' => 'offer_line', 'featured' => true, 'note' => 'Shown'],
+                ['_uid' => 'l2', '_block' => 'offer_line', 'featured' => false, 'note' => 'Stored only'],
+            ]],
+            ['_uid' => 'o2', '_block' => 'offer', 'kind' => 'text', 'button_url' => '/stored-only', 'lines' => []],
+        ];
+
+        $html = $this->render('{{ blocks(page) }}', ['page' => $page]);
+
+        $this->assertStringContainsString('[link|/a]<i>Shown</i><i>null</i>', $html, 'the data-only line its parent prints decides by its own source');
+        $this->assertStringContainsString('[text|]', $html, 'the second offer hides its address');
+        $this->assertStringNotContainsString('stored-only', $html);
+        $this->assertStringNotContainsString('Stored only', $html);
+    }
+
     public function test_blocks_takes_stored_json_too(): void
     {
         $this->assertSame(

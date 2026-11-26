@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Content;
 
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\FieldVisibility;
 use Preflow\Data\LocaleValue;
 use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Field\BuildContext;
@@ -32,6 +33,9 @@ use Psr\Http\Message\UploadedFileInterface;
  * Hidden and read-only fields ("hidden": true, "readonly": true) are never taken from
  * the form: the stored value is kept (a new record starts without one, unless a
  * BeforeSave hook sets it).
+ *
+ * A field its show_when hides (0.91) keeps its stored value too, whatever was posted for it
+ * (FieldVisibility::keepStored(); the editor disables its input, but a post can carry one).
  */
 final class DraftRecordFactory
 {
@@ -159,6 +163,7 @@ final class DraftRecordFactory
             $data['_locales'] = $this->locales($typeDef, $submitted, $existing);
         }
 
+        $data = FieldVisibility::keepStored($typeDef, $data, $existing);
         $data[$typeDef->idField] = $existing[$typeDef->idField] ?? null;
 
         // A translation saved here records the default text it was made from (outdated marks).
