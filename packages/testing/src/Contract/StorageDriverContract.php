@@ -101,6 +101,12 @@ use Preflow\Testing\PlainDriver;
  *   OR in SQL. `total()` counts every match, ignoring limit and offset.
  * - save() of an existing id updates the fields it is given and keeps the others; a field given as
  *   null is stored as null (@since 0.78). delete() of a missing id does nothing.
+ * - Field value shapes (@since 0.91.0): the objects preflow/fields' field types store (a link's
+ *   {kind, target, label, new_tab}, a phone's {as_typed, e164}, a date range's {start, end}, a video
+ *   embed's {provider, id, url, poster}, a table's {head, rows} with a text per language in a cell,
+ *   a location's {lat, lng, address} with its decimals) read back
+ *   from a `json` field as saved (fieldValueShapes()); the texts of the text-valued types (an
+ *   email, a colour, code, JSON text, a UTC date and time, a time of day) read back from a text column byte for byte (textValueShapes()).
  * - A driver with InsertsNew (@since 0.79.0) writes a record only while no record has its id, and says
  *   which: true when written, false when the id exists (the stored record stays as it is). A
  *   given int id is written as it is, and a store that generates ids gives the next record
@@ -406,6 +412,82 @@ abstract class StorageDriverContract extends TestCase
         $stored = $this->record('r1')['meta'] ?? null;
         $decoded = is_string($stored) ? json_decode($stored, true) : $stored;
         $this->assertSame(self::keysSorted($meta), is_array($decoded) ? self::keysSorted($decoded) : $decoded, 'a json field reads back as the saved array, or as JSON text of it (object key order may differ)');
+    }
+
+    /**
+     * The stored shapes of preflow/fields' field types (@since 0.91.0) round-trip in a `json` field:
+     * each reads back as saved (as the object or JSON text of it, keys in any order), with its
+     * nulls, booleans, nested objects and umlauts as they are. A new field type adds its shapes to
+     * fieldValueShapes().
+     *
+     * @param array<string, mixed> $shape
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('fieldValueShapes')]
+    public function test_a_field_types_stored_shape_round_trips(array $shape): void
+    {
+        $this->createRecords();
+        $this->driver->save('records', 'r1', ['uuid' => 'r1', 'meta' => $shape]);
+
+        $stored = $this->record('r1')['meta'] ?? null;
+        $decoded = is_string($stored) ? json_decode($stored, true) : $stored;
+        $this->assertSame(self::keysSorted($shape), is_array($decoded) ? self::keysSorted($decoded) : $decoded);
+    }
+
+    /**
+     * Each field type's stored shapes (preflow/fields): a link of every kind.
+     *
+     * @return array<string, array{array<string, mixed>}>
+     */
+    public static function fieldValueShapes(): array
+    {
+        return [
+            'link to a record' => [['kind' => 'record', 'target' => ['type' => 'page', 'id' => 'p1'], 'label' => ['en' => 'About us', 'de' => 'Über uns'], 'new_tab' => false]],
+            'link to a web address' => [['kind' => 'url', 'target' => 'https://example.org/a?b=1&c=ä', 'label' => 'Example', 'new_tab' => true]],
+            'link to an email address' => [['kind' => 'email', 'target' => 'team@example.org', 'label' => null, 'new_tab' => false]],
+            'link to a phone number' => [['kind' => 'phone', 'target' => '+41 44 123 45 67', 'label' => ['en' => 'Call us'], 'new_tab' => false]],
+            'link to a file' => [['kind' => 'asset', 'target' => 'a0f3', 'label' => 'Price list (PDF)', 'new_tab' => true]],
+            'phone number' => [['as_typed' => '044 123 45 67', 'e164' => '+41441234567']],
+            'phone number without an E.164 form' => [['as_typed' => '112', 'e164' => null]],
+            'date range' => [['start' => '2026-03-01', 'end' => '2026-03-07']],
+            'date range with times' => [['start' => '2026-03-29T00:30:00Z', 'end' => '2026-03-29T17:00:00Z']],
+            'video embed' => [['provider' => 'youtube', 'id' => 'aqz-KE-bpKQ', 'url' => 'https://www.youtube.com/watch?v=aqz-KE-bpKQ&t=42s', 'poster' => 'a0f3']],
+            'video embed without a poster' => [['provider' => 'vimeo', 'id' => '76979871:8272103f6e', 'url' => 'https://vimeo.com/76979871/8272103f6e', 'poster' => null]],
+            'table' => [['head' => ['Size', 'Price'], 'rows' => [['S', 'CHF 10.–'], ['M "medium"', '']]]],
+            'table with a text per language' => [['head' => null, 'rows' => [[['en' => 'Small', 'de' => 'Klein'], "two\nlines"]]]],
+            'location' => [['lat' => 47.3769, 'lng' => -8.5417, 'address' => 'Bahnhofplatz 1, 8001 Zürich']],
+            'location without an address' => [['lat' => -33.8568, 'lng' => 151.2153, 'address' => null]],
+        ];
+    }
+
+    /**
+     * The texts of preflow/fields' text-valued types (@since 0.91.0: email, colour, JSON text) come
+     * back exactly as saved from a text column, byte for byte: case, spaces, line breaks, quotes
+     * and umlauts untouched. A new text-valued type adds its values to textValueShapes().
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('textValueShapes')]
+    public function test_a_field_types_stored_text_round_trips(string $text): void
+    {
+        $this->createRecords();
+        $this->driver->save('records', 'r1', ['uuid' => 'r1', 'label' => $text]);
+
+        $this->assertSame($text, $this->record('r1')['label'] ?? null);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function textValueShapes(): array
+    {
+        return [
+            'email' => ['team@example.org'],
+            'email with a plus and an umlaut' => ['jürg+news@example.org'],
+            'colour' => ['#c00000'],
+            'colour with alpha' => ['#c0000080'],
+            'JSON object as written' => ["{\n  \"b\": 1,\n  \"a\": [\"ä\", null]\n}"],
+            'code with line breaks, quotes and umlauts' => ["<?php\necho \"ä € 😀\"; // 'q' & <t>\n\treturn;"],
+            'code that starts with a brace' => ['{ "a": 1 }'],
+            'date and time (UTC)' => ['2026-03-29T00:30:00Z'],
+            'time of day' => ['09:05'],
+            'JSON text' => ['"text with \\"quotes\\""'],
+        ];
     }
 
     /**

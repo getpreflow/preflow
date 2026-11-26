@@ -1855,6 +1855,14 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 /* Relation: the linked records as rows, the search row and its results in one box. */
 .folio-relation-box { border: 1px solid var(--c-border-strong); border-radius: 10px; background: var(--c-surface); overflow: hidden; }
 .has-error .folio-relation-box { border-color: var(--c-danger); }
+/* The link field (0.91): "Links to", the chosen kind's part (a record picker or an address), the text, a new tab. */
+.folio-link { display: grid; gap: 10px; }
+.folio-link > legend { margin-bottom: 4px; }
+.folio-link .form-group { margin: 0; }
+.folio-link-part[hidden] { display: none; }
+.folio-link-part .folio-relation { margin: 0; }
+.folio-link-tab label { display: inline-flex; align-items: center; gap: 8px; font-weight: normal; }
+.folio-link-broken { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--c-warning-soft); color: var(--c-warning); }
 .folio-relation-rows { list-style: none; margin: 0; padding: 0; }
 .folio-relation-row { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 10px; border-bottom: 1px solid var(--c-border); background: var(--c-surface); }
 .folio-relation-row.is-dragging { opacity: .5; }
@@ -4034,6 +4042,8 @@ th.folio-cache-num { font-family: inherit; font-size: inherit; }
 .folio-editor { margin-inline: auto; }
 .folio-field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); column-gap: 16px; }
 .folio-field-row > .folio-field-wrap { min-width: 0; }
+/* A conditional field its show_when hides (fields.js toggles hidden; 0.91): never shown by a layout rule. */
+[data-folio-show-when][hidden] { display: none !important; }
 
 /* Content · SEO & sharing. Without JS both panels show, the second under its own heading. */
 .folio-editor-tabs > .folio-tabs { margin: 0 0 24px; }
@@ -4446,3 +4456,32 @@ code.folio-redirect-to { color: var(--c-accent-text); }
   font-family: var(--font-mono); font-size: 11px; line-height: 1.4;
   color: var(--c-text-subtle); overflow-wrap: anywhere; user-select: text;
 }
+
+/* The date range field (0.91): the two ends side by side, stacked on a narrow screen. */
+.folio-daterange-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 12px; }
+.folio-daterange .folio-date-hint { margin-top: 6px; }
+
+/* The table field (0.91): a grid of text inputs, the header row first; it scrolls sideways when wide. */
+.folio-table-scroll { overflow-x: auto; }
+.folio-table-grid { border-collapse: separate; border-spacing: 4px; margin: 0 -4px; }
+.folio-table-grid th { padding: 0 6px 0 0; font-size: 12px; font-weight: 500; color: var(--c-text-muted); text-align: right; white-space: nowrap; }
+.folio-table-grid td { padding: 0; min-width: 8rem; }
+.folio-table-grid input { width: 100%; }
+.folio-table-head input { font-weight: 600; }
+
+/* The location field (0.91): latitude and longitude side by side, stacked on a narrow screen. */
+.folio-location-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 12px; }
+.folio-location-picker { margin-top: 8px; }
+
+/* The colour field (0.91): the picker, the hex text, the palette as swatches (inline SVG, the colour is its fill). */
+.folio-color-row { display: flex; align-items: center; gap: 8px; }
+.folio-color-row .folio-color-picker { width: 40px; height: 36px; padding: 2px; flex: none; }
+.folio-color-row input[type="text"] { flex: 1; min-width: 0; max-width: 14ch; }
+.folio-color-swatches, .folio-color-choices { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.folio-swatch { display: inline-block; width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--c-border-strong); vertical-align: middle; flex: none; }
+.folio-swatch-none { background: repeating-linear-gradient(45deg, transparent 0 4px, var(--c-border-strong) 4px 5px); }
+.folio-swatch-button { display: inline-flex; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 6px; }
+.folio-swatch-button:focus-visible, .folio-swatch-choice input:focus-visible + .folio-swatch { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+.folio-swatch-choice { display: inline-flex; align-items: center; gap: 6px; font-weight: normal; }
+.folio-swatch-choice input:checked + .folio-swatch { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+.folio-code-language { font-family: var(--font-mono); font-size: .8em; padding: 1px 6px; border-radius: 4px; background: var(--c-accent-soft); color: var(--c-accent-text); }

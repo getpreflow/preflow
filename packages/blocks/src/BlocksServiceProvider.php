@@ -36,6 +36,10 @@ final class BlocksServiceProvider extends ServiceProvider
         $app = $container->get(Application::class);
 
         $container->singleton(BlocksConfig::class, static fn (): BlocksConfig => BlocksConfig::fromApp($app));
+        // Packages add their checks of block fields in register() (preflow/fields does); one instance, whoever registers first.
+        if (!$container->bound(BlockFieldChecks::class)) {
+            $container->instance(BlockFieldChecks::class, new BlockFieldChecks());
+        }
 
         // Built once per request (discovery reflects over every component); conflicting keys fail when it is built.
         $container->singleton(BlockRegistry::class, static function (Container $c) use ($app): BlockRegistry {
@@ -53,6 +57,7 @@ final class BlocksServiceProvider extends ServiceProvider
                 [...self::packageClasses($app), ...$config->classes],
                 $config->cacheFile,
                 useCache: !$app->config()->get('app.debug', false),
+                checks: $c->get(BlockFieldChecks::class)->all(),
             )->toArray(), [$app->basePath('app/Blocks'), $app->basePath('app/Components')]));
         });
         $app->bootManifest()->whenBuilding(static function (Application $app): void {

@@ -5,14 +5,17 @@ declare(strict_types=1);
 namespace Preflow\Validation;
 
 use Preflow\Validation\Rules\Between;
+use Preflow\Validation\Rules\Color;
 use Preflow\Validation\Rules\Confirmed;
 use Preflow\Validation\Rules\Email;
 use Preflow\Validation\Rules\InList;
 use Preflow\Validation\Rules\IsInteger;
+use Preflow\Validation\Rules\Json;
 use Preflow\Validation\Rules\MaxLength;
 use Preflow\Validation\Rules\MinLength;
 use Preflow\Validation\Rules\Nullable;
 use Preflow\Validation\Rules\Numeric;
+use Preflow\Validation\Rules\Phone;
 use Preflow\Validation\Rules\Regex;
 use Preflow\Validation\Rules\Required;
 use Preflow\Validation\Rules\Slug;
@@ -39,6 +42,9 @@ final class RuleFactory
         'regex' => Regex::class,
         'confirmed' => Confirmed::class,
         'slug' => Slug::class,
+        'phone' => Phone::class, // since 0.91.0
+        'color' => Color::class, // since 0.91.0
+        'json' => Json::class, // since 0.91.0
     ];
 
     /**

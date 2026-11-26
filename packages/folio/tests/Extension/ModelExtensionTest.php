@@ -274,6 +274,24 @@ final class ModelExtensionTest extends TestCase
         $this->app();
     }
 
+    /** An extension model is defined after FieldsServiceProvider's boot check; Folio's catalog refuses the rule (0.91). */
+    #[RunInSeparateProcess]
+    public function test_an_extension_model_comparing_a_datetime_in_show_when_fails_at_boot(): void
+    {
+        $this->members();
+        $member = self::MEMBER;
+        unset($member['users'], $member['list']);
+        $member['fields'] += [
+            'joined' => ['type' => 'datetime'],
+            'note' => ['type' => 'string', 'show_when' => ['field' => 'joined', '=' => '2026-01-01T00:00:00Z']],
+        ];
+        $this->write('app/Folio/Members/models/member.json', (string) json_encode($member));
+
+        $this->expectException(ExtensionException::class);
+        $this->expectExceptionMessage('Extension model "member": Type "member": field "note": show_when compares "joined" with "=", but "joined" is a datetime field, which show_when can only test with "empty" or "filled"');
+        $this->app();
+    }
+
     #[RunInSeparateProcess]
     public function test_site_file_redefining_a_field_fails_at_boot(): void
     {

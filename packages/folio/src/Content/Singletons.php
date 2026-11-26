@@ -7,6 +7,7 @@ namespace Preflow\Folio\Content;
 use Preflow\Core\Context\Contexts;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\FieldVisibility;
 use Preflow\Publishing\LiveContent;
 
 /**
@@ -14,7 +15,9 @@ use Preflow\Publishing\LiveContent;
  * record whose id is the type key. Values come back localized in the
  * render's content locale and are memoized per render frame and context (ContentMemo: by type
  * and RenderContext::memoKey(), which holds the read mode and the locale); not memoized
- * outside every render.
+ * outside every render. A field its show_when hides reads as null (FieldVisibility::visibleValues();
+ * since 0.91.0), also inside its blocks fields (BlockRegistry::visibleBlocksIn()); record() gives the
+ * stored record.
  */
 final class Singletons
 {
@@ -24,6 +27,7 @@ final class Singletons
         private readonly ContentLocale $contentLocale,
         private readonly ?LiveContent $live = null,
         private readonly ?SafeRichText $richText = null,
+        private readonly ?\Preflow\Blocks\BlockRegistry $blocks = null,
     ) {}
 
     /** @return array<string, mixed>|null the localized values; null before the first save */
@@ -31,7 +35,10 @@ final class Singletons
     {
         $record = $this->record($type); // reports its read on every call, memoised or not
         $values = function () use ($record): ?array {
-            $values = $record?->localized($this->contentLocale->get())->toArray();
+            $values = $record === null ? null : FieldVisibility::visibleValues($record->getType(), $record->localized($this->contentLocale->get())->toArray());
+            if ($values !== null && $this->blocks !== null) {
+                $values = $this->blocks->visibleBlocksIn($values, $record->getType()->fields);
+            }
 
             return $values !== null && $this->richText !== null
                 ? $this->richText->fields($values, $record->getType()->fields)

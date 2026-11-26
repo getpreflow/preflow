@@ -7,17 +7,37 @@ namespace Preflow\Folio\Assets;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Blocks\BlockRegistry;
+use Preflow\Folio\Field\FieldTypeRegistry;
+use Preflow\Folio\Field\ReferencesAssets;
 
 /**
- * Walks the asset values of a record: top-level "asset" fields and, inside
- * "blocks" fields, each known block's asset fields, recursively. Unknown blocks
- * are left untouched. One walker serves the usage scan and the legacy import.
+ * Walks the asset values of a record: the fields whose type implements ReferencesAssets
+ * (asset, embed's poster, a link to a file, a site's own types; since 0.91) and, inside
+ * "blocks" fields, each known block's fields the same way, recursively. Unknown blocks are left
+ * untouched. Without a field type registry only "asset" fields are read (as before 0.91). One
+ * walker serves the usage scan and the legacy import.
  */
 final class AssetReferences
 {
+    /** @param (\Closure(): FieldTypeRegistry)|null $fieldTypes the field types, asked which of them hold asset ids */
     public function __construct(
         private readonly BlockRegistry $blocks,
+        private readonly ?\Closure $fieldTypes = null,
     ) {}
+
+    /** Whether a field holds asset ids itself (its type implements ReferencesAssets, or is "asset") or holds blocks that may. */
+    public function holdsAssets(TypeFieldDefinition $field): bool
+    {
+        return $field->type === 'blocks' || $this->referencing($field->type) !== null || $field->type === 'asset';
+    }
+
+    private function referencing(string $type): ?ReferencesAssets
+    {
+        $registry = $this->fieldTypes !== null ? ($this->fieldTypes)() : null;
+        $fieldType = $registry !== null && $registry->has($type) ? $registry->get($type) : null;
+
+        return $fieldType instanceof ReferencesAssets ? $fieldType : null;
+    }
 
     /**
      * Apply $fn to every asset value (each item of a list) and return the data
@@ -58,10 +78,12 @@ final class AssetReferences
             if (!array_key_exists($name, $data)) {
                 continue;
             }
-            if ($field->type === 'asset') {
-                $data[$name] = self::mapValue($data[$name], $fn);
-            } elseif ($field->type === 'blocks') {
+            if ($field->type === 'blocks') {
                 $data[$name] = $this->mapBlocks($data[$name], $fn);
+            } elseif (($type = $this->referencing($field->type)) !== null) {
+                $data[$name] = $type->mapAssetIds($data[$name], $field->config, $fn);
+            } elseif ($field->type === 'asset') {
+                $data[$name] = self::mapValue($data[$name], $fn);
             }
         }
 
@@ -86,12 +108,12 @@ final class AssetReferences
     }
 
     /**
-     * A path/id, a JSON list of them, a JSON object (the locale map SQL storage
+     * An asset field's value (AssetFieldType::mapAssetIds()): a path/id, a JSON list of them, a JSON object (the locale map SQL storage
      * keeps for a translatable field, values being ids or lists), a PHP list or
      * array, or a locale map of those. JSON text stays JSON text of the same
      * shape; invalid JSON is left untouched.
      */
-    private static function mapValue(mixed $value, \Closure $fn): mixed
+    public static function mapValue(mixed $value, \Closure $fn): mixed
     {
         if (is_string($value)) {
             if (str_starts_with($value, '[')) {

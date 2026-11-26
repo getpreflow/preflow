@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Seo;
 
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\FieldVisibility;
 use Preflow\Folio\Content\Singletons;
 use Preflow\Media\MediaLibrary;
 use Preflow\View\Seo\PageMeta;
@@ -84,7 +85,7 @@ final class FolioPageMeta
             modified: PageMeta::time($record->get('_published_at')),
         );
 
-        return $meta->with(['schemas' => $this->schemas->nodesFor($type, $record->localized($locale)->toArray(), $locale, $meta)]);
+        return $meta->with(['schemas' => $this->schemas->nodesFor($type, FieldVisibility::visibleValues($record->getType(), $record->localized($locale)->toArray()), $locale, $meta)]);
     }
 
     /**
@@ -169,11 +170,11 @@ final class FolioPageMeta
      */
     private static function fieldValues(DynamicRecord $record, string $locale, array $fields): array
     {
-        $values = $record->localized($locale);
+        $values = FieldVisibility::visibleValues($record->getType(), $record->localized($locale)->toArray()); // hidden: null
         $known = $record->getType()->fields;
 
         return array_values(array_map(
-            static fn (string $field): mixed => $values->get($field),
+            static fn (string $field): mixed => $values[$field] ?? null,
             array_filter($fields, static fn (string $field): bool => isset($known[$field])),
         ));
     }

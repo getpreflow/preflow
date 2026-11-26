@@ -81,6 +81,10 @@ final class FolioServiceProvider extends ServiceProvider
         if (!$container->hasProvider(\Preflow\Blocks\BlocksServiceProvider::class)) {
             $container->registerProvider(new \Preflow\Blocks\BlocksServiceProvider());
         }
+        // The field values (0.91: the link field): their checks and storage are the core's, Folio draws the inputs.
+        if (!$container->hasProvider(\Preflow\Fields\FieldsServiceProvider::class)) {
+            $container->registerProvider(new \Preflow\Fields\FieldsServiceProvider());
+        }
         // The publishing core: Folio binds its rules (which types publish, validation, languages,
         // the review index, redirects and page-cache tags) below and keeps the screens.
         if (!$container->hasProvider(\Preflow\Publishing\PublishingServiceProvider::class)) {
@@ -107,7 +111,9 @@ final class FolioServiceProvider extends ServiceProvider
         $container->instance(TypeRegistry::class, $types);
 
         // Built on the registry: a model file whose key a model class defines lists that class.
-        $catalog = new TypeCatalog($modelsPath, $app->bootManifest(), $types);
+        // The video hosts (preflow/fields, bound in its register(); a site binds its own there): an
+        // embed field listing one that is not registered stops the boot (0.91).
+        $catalog = new TypeCatalog($modelsPath, $app->bootManifest(), $types, static fn (): ?\Preflow\Fields\EmbedProviders => $container->bound(\Preflow\Fields\EmbedProviders::class) ? $container->get(\Preflow\Fields\EmbedProviders::class) : null);
         $container->instance(TypeCatalog::class, $catalog);
 
         // Record user providers named in config/auth.php get their user type from Folio's catalog.
@@ -224,8 +230,12 @@ final class FolioServiceProvider extends ServiceProvider
             );
         }
         if ($geo?->enabled() && $container->bound(\Preflow\View\Geo\GeoEntries::class)) {
-            $container->get(\Preflow\View\Geo\GeoEntries::class)->site(static fn (string $locale): array => $container->get(\Preflow\Folio\Content\Singletons::class)
-                ->record('site')?->localized($locale)->toArray() ?? []);
+            // A field its show_when hides reads as null (FieldVisibility::visibleValues()).
+            $container->get(\Preflow\View\Geo\GeoEntries::class)->site(static function (string $locale) use ($container): array {
+                $site = $container->get(\Preflow\Folio\Content\Singletons::class)->record('site');
+
+                return $site === null ? [] : \Preflow\Data\FieldVisibility::visibleValues($site->getType(), $site->localized($locale)->toArray());
+            });
         }
         if ($seo?->enabled() && $container->bound(\Preflow\View\Seo\SeoSite::class)) {
             $container->singleton(\Preflow\Folio\Seo\FolioPageMeta::class, static fn (Container $c) => new \Preflow\Folio\Seo\FolioPageMeta(
@@ -263,6 +273,8 @@ final class FolioServiceProvider extends ServiceProvider
         ));
         $container->singleton(\Preflow\Folio\Assets\AssetReferences::class, fn (Container $c) => new \Preflow\Folio\Assets\AssetReferences(
             $c->get(BlockRegistry::class),
+            // Which field types hold asset ids (ReferencesAssets, 0.91): asked on use, not at boot.
+            static fn (): FieldTypeRegistry => $c->get(FieldTypeRegistry::class),
         ));
         $container->singleton(\Preflow\Folio\Media\FolioRecordReferences::class, fn (Container $c) => new \Preflow\Folio\Media\FolioRecordReferences(
             $c->get(\Preflow\Folio\Assets\AssetReferences::class),
@@ -595,6 +607,18 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Publishing\LiveContent::class),
         ));
 
+        // Where a link field's record or file lives (preflow/fields, 0.91): a record's public URL in
+        // the locale, read as the render reads (published for a visitor), a file's library URL.
+        // A site that bound its own keeps it.
+        if (!$container->bound(\Preflow\Fields\RecordAddresses::class)) {
+            $container->singleton(\Preflow\Fields\RecordAddresses::class, static fn (Container $c): \Preflow\Fields\RecordAddresses => new \Preflow\Folio\Content\FolioLinkAddresses(
+                $c->get(FrontendResolver::class),
+                $c->get(\Preflow\Publishing\LiveContent::class),
+                $c->get(TypeRegistry::class),
+                static fn (): ?\Preflow\Media\MediaLibrary => $c->get(\Preflow\Folio\Media\MediaAvailability::class)->usable() ? $c->get(\Preflow\Media\MediaLibrary::class) : null,
+            ));
+        }
+
         $uploadsDir = $this->uploadsDir($app);
         $uploadUrlPrefix = rtrim($this->prefix($app), '/') . '/_uploads';
         $folioConfig = $this->folioConfig($app);
@@ -615,6 +639,7 @@ final class FolioServiceProvider extends ServiceProvider
                 self::validatorFactory($c),
                 $c->get(\Preflow\Folio\View\FolioEngine::class),
                 $prefix,
+                $this->dataManager($c, $c->get(Application::class))?->fieldKinds(),
             ));
             // The sanitizer is built on the first sanitize call, not on every request.
             $registry->register(new RichTextFieldType(\Preflow\Folio\Field\LazyHtmlSanitizer::standard()));
@@ -643,11 +668,51 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(TypeCatalog::class),
                 $c->get(TypeRegistry::class),
                 $c->get(\Preflow\Data\DataManager::class),
-                new RecordRenderer($registry, $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class)),
+                new RecordRenderer($registry, $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class), $c->get(BlockRegistry::class)),
                 new RecordLabeler(),
                 $prefix,
                 $c->get(\Preflow\Publishing\LiveContent::class),
                 $can,
+            ));
+            // The link field (0.91): its value, checks and storage are preflow/fields'; this draws the input.
+            $registry->register(new \Preflow\Folio\Field\Types\LinkFieldType(
+                $registry,
+                // Without "link.types": the types with a public address the user may see.
+                static function () use ($c, $can): array {
+                    $frontend = $c->get(FrontendResolver::class);
+
+                    return array_values(array_filter(
+                        $c->get(TypeRegistry::class)->keys(),
+                        static fn (string $type): bool => $frontend->routeFor($type) !== null && $can($type . '.view'),
+                    ));
+                },
+                static fn (string $type): string => $c->get(\Preflow\Folio\Content\DisplayLabels::class)->one($type),
+                // The href on the page and the editor's broken mark (no href for a visitor: marked).
+                static fn (): ?\Preflow\Fields\RecordAddresses => $c->bound(\Preflow\Fields\RecordAddresses::class) ? $c->get(\Preflow\Fields\RecordAddresses::class) : null,
+                static fn (): ?\Preflow\Data\Locales => $c->bound(\Preflow\Data\Locales::class) ? $c->get(\Preflow\Data\Locales::class) : null,
+            ));
+            // email, phone, colour, code and JSON (0.91): their values, checks and storage are preflow/fields'; these draw the inputs.
+            foreach ([\Preflow\Folio\Field\Types\EmailFieldType::class, \Preflow\Folio\Field\Types\PhoneFieldType::class, \Preflow\Folio\Field\Types\ColorFieldType::class, \Preflow\Folio\Field\Types\CodeFieldType::class, \Preflow\Folio\Field\Types\JsonFieldType::class, \Preflow\Folio\Field\Types\DateTimeFieldType::class, \Preflow\Folio\Field\Types\TimeFieldType::class, \Preflow\Folio\Field\Types\DateRangeFieldType::class] as $class) {
+                $registry->register(new $class());
+            }
+            // video embed, table and location (0.91): their values, checks, storage and page output
+            // are preflow/fields'; these draw the inputs. The poster uses the asset picker; the
+            // player, the video hosts and a site's LocationPicker come from the container.
+            $registry->register(new \Preflow\Folio\Field\Types\EmbedFieldType(
+                $registry,
+                static fn (): \Preflow\Fields\EmbedProviders => $c->get(\Preflow\Fields\EmbedProviders::class),
+                new \Preflow\Fields\EmbedOutput(
+                    static fn (): \Preflow\Fields\EmbedProviders => $c->get(\Preflow\Fields\EmbedProviders::class),
+                    static fn (): \Preflow\Fields\EmbedPlayer => $c->bound(\Preflow\Fields\EmbedPlayer::class) ? $c->get(\Preflow\Fields\EmbedPlayer::class) : new \Preflow\Fields\PrivacyEmbedPlayer(),
+                    static fn (): ?\Preflow\Fields\RecordAddresses => $c->bound(\Preflow\Fields\RecordAddresses::class) ? $c->get(\Preflow\Fields\RecordAddresses::class) : null,
+                    static fn (): ?\Preflow\View\AssetCollector => $c->has(\Preflow\View\AssetCollector::class) ? $c->get(\Preflow\View\AssetCollector::class) : null,
+                ),
+            ));
+            $registry->register(new \Preflow\Folio\Field\Types\TableFieldType(
+                static fn (): ?\Preflow\Data\Locales => $c->bound(\Preflow\Data\Locales::class) ? $c->get(\Preflow\Data\Locales::class) : null,
+            ));
+            $registry->register(new \Preflow\Folio\Field\Types\LocationFieldType(
+                static fn (): ?\Preflow\Fields\LocationPicker => $c->bound(\Preflow\Fields\LocationPicker::class) ? $c->get(\Preflow\Fields\LocationPicker::class) : null,
             ));
             $registry->alias('int', 'number');
             $registry->alias('integer', 'number');
@@ -785,7 +850,7 @@ final class FolioServiceProvider extends ServiceProvider
         $container->bind(FrontendController::class, fn (Container $c) => new FrontendController(
             $c->get(FrontendResolver::class),
             $c->get(\Preflow\Folio\View\FolioEngine::class),
-            new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class)),
+            new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class), $c->get(BlockRegistry::class)),
             $c->get(DataManager::class),
             $c->get(\Preflow\Publishing\PreviewLinks::class),
             $c->get(\Preflow\View\AssetCollector::class),
@@ -811,7 +876,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TypeRegistry::class),
             $c->get(DataManager::class),
             $c->get(FieldTypeRegistry::class),
-            new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class)),
+            new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class), $c->get(BlockRegistry::class)),
             $c->get(\Preflow\Folio\View\FolioEngine::class),
             $c->get(FrontendResolver::class),
             $c->get(DraftRecordFactory::class),
@@ -854,6 +919,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(ContentLocale::class),
             $c->get(\Preflow\Publishing\LiveContent::class),
             $c->get(\Preflow\Folio\Content\SafeRichText::class),
+            $c->get(BlockRegistry::class),
         ));
         $container->singleton(ExtensionSettings::class, fn (Container $c) => new ExtensionSettings(
             $c->get(ExtensionRegistry::class),
@@ -870,6 +936,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(ContentLocale::class),
             $c->get(\Preflow\Folio\Content\SafeRichText::class),
             $c->get(\Preflow\Folio\Content\FrontendGate::class),
+            $c->get(BlockRegistry::class),
         ));
         $container->singleton(\Preflow\Folio\Content\SafeRichText::class, fn (Container $c) => new \Preflow\Folio\Content\SafeRichText(
             $c->get(FieldTypeRegistry::class),
@@ -2401,6 +2468,8 @@ final class FolioServiceProvider extends ServiceProvider
             'blocks.js' => 'blocks.js',
             // The field controls (0.75): copy, counter, stepper, date hint, relation rows, asset drop.
             'fields.js' => 'fields.js',
+            // Conditional fields (show_when, 0.91): the rule evaluator fields.js uses, only on forms with a rule.
+            'show-when-core.js' => 'show-when-core.js',
             // The ⌘K palette and the g-chords (every admin page, after admin.js).
             'command.js' => 'command.js',
             'icons.svg' => 'icons.svg',

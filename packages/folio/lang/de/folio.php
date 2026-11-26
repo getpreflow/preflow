@@ -573,6 +573,71 @@ return [
         'no_results' => 'Nichts gefunden.',
         'type' => 'Typ',
         'entry' => 'Eintrag',
+        // The link field (0.91; preflow/fields' Link).
+        'link' => [
+            'kind' => 'Verlinkt auf',
+            'none' => 'Kein Link',
+            'kinds' => [
+                'record' => 'Eine Seite oder ein Eintrag',
+                'url' => 'Webadresse',
+                'email' => 'E-Mail-Adresse',
+                'phone' => 'Telefonnummer',
+                'asset' => 'Datei',
+            ],
+            'record_type' => 'Typ',
+            'no_types' => 'Kein Typ zum Verlinken: Nenne die Typen in "link.types" des Felds oder gib einem Typ eine öffentliche Adresse.',
+            'url' => 'Webadresse',
+            'url_placeholder' => 'https://… oder /pfad',
+            'email' => 'E-Mail-Adresse',
+            'phone' => 'Telefonnummer',
+            'asset' => 'Datei',
+            'text' => 'Linktext',
+            'new_tab' => 'In neuem Tab öffnen',
+            'broken_asset' => 'Verlinkte Datei nicht mehr verfügbar.',
+            'broken' => 'Verlinkte Seite nicht mehr verfügbar.',
+            'broken_hint' => 'Wähle eine andere oder entferne den Link.',
+        ],
+        // Die Felder Telefon und Farbe (0.91; Phone und Color aus preflow/fields).
+        'phone' => [
+            'dialled' => 'Gewählt wird :number.',
+        ],
+        // The date range field (0.91).
+        'daterange' => [
+            'from' => 'Von',
+            'to' => 'Bis',
+        ],
+        // Video, Tabelle und Ort (0.91; Embed, Table, Location von preflow/fields).
+        'embed' => [
+            'url' => 'Video-Adresse',
+            'hint' => 'Füge die Adresse eines Videos auf :providers ein, wie sie der Browser zeigt.',
+            'plays_from' => 'Wird von :provider abgespielt (Video :id). Von :provider wird erst etwas geladen, wenn jemand das Video startet.',
+            'poster' => 'Vorschaubild',
+            'poster_help' => 'Wird gezeigt, bevor das Video läuft. Ohne Vorschaubild zeigt die Seite nur eine Abspieltaste (nie ein Bild des Video-Anbieters).',
+        ],
+        'table' => [
+            'header' => 'Kopfzeile',
+            'header_cell' => 'Kopfzeile, Spalte :column',
+            'cell' => 'Zeile :row, Spalte :column',
+            'hint' => 'In die leere Zeile oder Spalte tippen fügt eine hinzu. Alle Zellen einer Zeile oder Spalte leeren entfernt sie. Kopfzeile leer lassen für eine Tabelle ohne Kopfzeile.',
+            'hint_translate' => 'Zeilen und Spalten folgen der Tabelle in :language; hier übersetzt du jede Zelle.',
+            'size' => ':rows Zeilen × :columns Spalten',
+        ],
+        'location' => [
+            'lat' => 'Breitengrad',
+            'lng' => 'Längengrad',
+            'lat_placeholder' => '47.3769',
+            'lng_placeholder' => '8.5417',
+            'address' => 'Adresse',
+            'hint' => 'Breiten- und Längengrad in Grad, Norden und Osten positiv (aus einer Karten-App kopieren).',
+        ],
+        'color' => [
+            'pick' => 'Farbe wählen',
+            'placeholder' => '#rrggbb',
+            'clear' => 'Farbe entfernen',
+            'palette' => 'Farben der Palette',
+            'none' => 'Keine Farbe',
+            'outside' => ':color (nicht in der Palette)',
+        ],
         'view' => 'Ansicht',
         // Das Tag-Feld (0.77).
         'tag_remove' => ':tag entfernen',

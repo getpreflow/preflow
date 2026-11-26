@@ -6,6 +6,7 @@ namespace Preflow\Folio\Content;
 
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\FieldVisibility;
 use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\BlocksFieldType;
@@ -14,7 +15,8 @@ use Preflow\Validation\ValidationResult;
 
 /**
  * Full validation of a record: rules inside blocks fields first (keyed
- * "<field>.<uid>.<leaf>"), then the type's rules plus each field type's own.
+ * "<field>.<uid>.<leaf>"), then the type's rules plus each field type's own and, since 0.91, the
+ * core checks its type registered (FieldKinds::rules()), inside blocks too.
  * With a frontend resolver, the fields a type's public address is built from
  * also get "slug" ("slug:path" for a catch-all): no umlauts, capitals or spaces.
  */
@@ -31,9 +33,11 @@ final class RecordValidator
     {
         $typeDef = $record->getType();
         $errors = [];
+        // A blocks field its show_when hides is not validated (0.91), as DataManager skips a hidden field's rules.
+        $hidden = array_flip(FieldVisibility::hiddenFieldsOf($typeDef, $record->toArray()));
         foreach ($typeDef->fields as $name => $fieldDef) {
             $fieldType = $this->fieldTypes->get($fieldDef->type);
-            if (!$fieldType instanceof BlocksFieldType || self::readonly($fieldDef->config)) {
+            if (!$fieldType instanceof BlocksFieldType || self::readonly($fieldDef->config) || isset($hidden[$name])) {
                 continue;
             }
             foreach ($fieldType->validateBlocks($record->get($name), $fieldDef->config, $typeDef->locales) as $key => $messages) {
@@ -77,6 +81,9 @@ final class RecordValidator
                 $fieldType instanceof \Preflow\Folio\Field\HasRecordRules
                     ? $fieldType->recordRules($fieldDef->config, $typeDef, $this->fieldTypes)
                     : $fieldType->rules($fieldDef->config),
+                // The type's core checks (FieldKinds::rules(), 0.91): these rules replace the data
+                // layer's for the field, so they are added here; a Folio field type never repeats them.
+                $this->dm->fieldKinds()->rulesOf($fieldDef),
             );
             if (isset($lengthRules[$name])) {
                 $merged[] = $lengthRules[$name];

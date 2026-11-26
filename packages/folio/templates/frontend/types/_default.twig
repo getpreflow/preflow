@@ -1,5 +1,7 @@
 <article class="folio-type folio-type-{{ type }}">
     {% for name, html in rendered %}
+        {% if html is not null %}
         <div class="folio-field folio-field-{{ name }}">{{ html|raw }}</div>
+        {% endif %}
     {% endfor %}
 </article>

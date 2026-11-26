@@ -951,6 +951,13 @@ final class Job extends Model { … }
   (behind `Schema::convertColumn()`). A grammar of your own (`Grammars::register()`) must add it.
 - Custom field types tell the data package their column with `Preflow\Folio\Field\HasColumnKind`
   (`columnKind(array $config): ColumnKind`) or `FieldKinds::column($type, ColumnKind|Closure)`.
+- A field type's own checks (since 0.91): `FieldKinds::rules($type, fn (array $config): array => [...])`
+  gives rule names or `ValidationRule` objects for a field's config. Every validation of a typed
+  record runs them after the field's `validate` (`validate()`, `saveType()`), so the admin, the REST
+  API, imports and seeds check the same values; a field its `show_when` hides is not checked, and
+  rules a caller gives for a field (`validate($record, ['field' => [...]])`) replace them, as they
+  replace `validate`. preflow/fields registers its link field's check this way. `rulesOf($field)`
+  reads them.
 
 ## Slugs
 
@@ -1975,6 +1982,113 @@ $dm->queryType('page')->locale('de')->where('slug', 'ueber-uns')->first();
   `default` and `resolveTree` (nested data).
 - **Validation:** `required` binds the default locale; other rules run for every locale
   with a value, keyed `field.locale`.
+
+## Conditional fields: `show_when` (0.91)
+
+A field can show only when another field of the same record has a certain value. Say a page
+has a `kind` select and a `button_url` that only makes sense for links:
+
+```json
+"fields": {
+    "kind": {"type": "select", "options": ["text", "link", "video"]},
+    "button_url": {"type": "string", "validate": ["required", "url"], "show_when": {"field": "kind", "=": "link"}}
+}
+```
+
+While `kind` is not `link`, `button_url` is hidden: Folio does not show its input, and
+`DataManager` does not validate it, so its `required` does not apply. This happens in the
+core write path (`validate()`, `saveType()` and the class-backed saves), so Folio, the REST
+API, imports and seeds behave alike. The stored value of a hidden field is kept: switch `kind`
+back to `link` and the old address is there again. A model class writes the rule in the
+field's config: `#[Field(config: ['show_when' => ['field' => 'kind', '=' => 'link']])]`.
+
+The rules:
+
+| Rule | Holds when |
+|---|---|
+| `{"field": "kind", "=": "link"}` | `kind` is `link` (text compares exactly; a number field as whole numbers; `true`/`false` as on/off) |
+| `{"field": "kind", "!=": "link"}` | `=` does not hold (an empty `kind` is not `link`) |
+| `{"field": "kind", "in": ["link", "video"]}` | `kind` is one of the list |
+| `{"field": "kind", "not_in": ["link", "video"]}` | `kind` is none of the list |
+| `{"field": "note", "empty": true}` | `note` has no value: no key, `null`, `""` or an empty list (`"0"`, `0` and `false` are values) |
+| `{"field": "note", "filled": true}` | `note` has a value |
+| `{"all": [rule, …]}` / `{"any": [rule, …]}` | every rule holds / one rule holds (they nest) |
+
+On/off: `true`, `1` (also `1.0`), `"1"`, `"true"` and `"on"` are on; anything else, an empty field too, is
+off. A field whose rule names a hidden field is hidden too: if `kind` hides `button_url`, a
+`button_label` with `{"field": "button_url", "filled": true}` hides with it.
+
+A rule that names a field of a structured type of preflow/fields (`link`, `phone`, `table`,
+`daterange`, `embed`, `location`) or a `datetime` or `time` field takes only `empty` and `filled`:
+any other operator stops the boot, naming the type or block, the field and the source, and saying
+that `empty` and `filled` work (the browser and the server cannot compare such a value the same
+way; `FieldOptions::checkFields()` in preflow/fields). A structured source is read from its stored
+value, in the editor as on the server, until the record is saved: the dependent field does not show
+or hide live while you edit the source, only after a save.
+
+What is still checked for a hidden field: the column length of a unique or indexed string
+(the storage would refuse a longer value) and uniqueness. `DynamicRecord::get()` returns the
+stored value as before.
+
+**Reading a hidden field.** What a record holds and what it shows are two things. The record
+keeps the stored value: `DynamicRecord::get()`, `toArray()`, Folio's transfer export and the
+uniqueness check read it unchanged. What it shows reads a hidden field as empty (`null`):
+Folio's rendered values (`rendered`), the page template's `record`, `folio_get`, `folio_list`
+and `folio_find`, list cells (and the list's Excel export), share texts and JSON-LD, search
+(`RecordSearch` gives no hit for text only a hidden field holds; it reads what is stored now,
+so a field that becomes hidden stops matching with the save that hides it), and Folio's
+translation status and machine translation (a hidden text counts as neither missing nor
+outdated, and is never sent to a model). Your own output, such as an API resource, asks for the
+same view in one call:
+
+```php
+use Preflow\Data\FieldVisibility;
+
+$values = FieldVisibility::visibleValues($record->getType(), $record->localized($locale)->toArray());
+// ['kind' => 'video', 'button_url' => null, …]: hidden fields are null, everything else as given
+return Json::response($values);
+```
+
+`visibleValues()` adds a `null` for a hidden field the values lack and changes nothing for a
+type without `show_when`.
+
+**Writing a hidden field.** `DataManager` saves what it is given, so the stored value is kept only if
+the values you save carry it. Folio's editor does this for you. Your own write path, such as an API
+endpoint that saves posted values, calls `keepStored()` before it saves: a hidden field takes its
+stored value, whatever was posted (one with nothing stored is left out); every other value stays as
+posted. Which fields are hidden is decided on the values you pass, so pass the whole record: for a
+partial update (a PATCH that sends only `button_url`), merge the posted values over the stored ones
+first. Otherwise a missing `kind` reads as empty, `button_url` counts as hidden, and the value the
+client sent is replaced by the stored one without a word.
+
+```php
+$stored = $record?->toArray() ?? [];
+$values = FieldVisibility::keepStored($type, array_replace($stored, $posted), $stored);
+$dm->saveType(DynamicRecord::fromArray($type, $values));
+```
+
+It takes a block's fields as well (`keepStored($definition->fields, $block, $storedBlock)`).
+
+When the registry is built (at boot, or when `preflow optimize` builds the boot manifest), a
+rule that cannot work is refused with a `ShowWhenException` naming the type and the field: a
+malformed rule (show_when is an object such as `{"field": "kind", "=": "video"}`), a value
+on a number field that is not a whole number (`"many"` would read as 0), a rule naming a field
+the type does not have, the field itself, a translatable field (a field shown in one language
+and hidden in another would split its checks and storage), or a field that depends on this one
+again (a cycle). For example:
+
+```
+Type "page": field "button_url": show_when names "kind", which is not a field of the type. Name a field of the same type.
+```
+
+`Preflow\Data\FieldVisibility` is the one class that decides: `fromConfig($showWhen)->holds($values)`
+for one rule, `hiddenFields($fields, $values)` for a record's fields (`hiddenFieldsOf($type,
+$values)` parses a type's rules once per definition, for lists), `visibleValues($type, $values)`
+for output, `keepStored($type, $submitted, $stored)` for writes, and `assertRules()` for the boot
+check; `comparisons()` lists a rule's `[field, operator]` pairs, for a field type package's own
+boot check. Folio's editor runs a copy of `holds()` in the browser (`show-when-core.js`), tested
+against the same cases. The cases the browser and the server
+must agree on are in `tests/Fixtures/show-when-cases.json`.
 
 ## Model classes as types
 

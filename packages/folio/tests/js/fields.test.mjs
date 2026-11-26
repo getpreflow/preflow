@@ -56,12 +56,43 @@ const localDate = (days) => {
     d.setDate(d.getDate() + days);
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
+/** The wall time in a zone (default Europe/Zurich) of now + ms, as a datetime-local value: independent of the process TZ. */
+const zoneDateTime = (ms, zone = 'Europe/Zurich') => {
+    const p = {};
+    new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+        .formatToParts(new Date(Date.now() + ms)).forEach((part) => { p[part.type] = part.value; });
+    return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+};
 const localDateTime = (ms) => {
     const d = new Date(Date.now() + ms);
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
 // ---- Relative time and the date field ----------------------------------------------------------
+
+test('Folio.relativeTime reads a date and time in the field\'s zone, whatever the browser\'s zone', () => {
+    const w = page(() => {}).w;
+    const before = process.env.TZ;
+    const now = new Date('2026-03-10T10:00:00Z');
+    try {
+        for (const browser of ['America/New_York', 'Asia/Tokyo', 'Europe/Zurich']) {
+            process.env.TZ = browser;
+            // 14:00 in Zurich (CET, +01:00 on 10 March) is 13:00Z: three hours from now.
+            assert.equal(w.Folio.relativeTime('2026-03-10T14:00', now, 'Europe/Zurich'), 'In 3 hours', 'browser ' + browser);
+            assert.equal(w.Folio.relativeTime('2026-03-10T08:00', now, 'Europe/Zurich'), '3 hours ago', 'browser ' + browser);
+        }
+        // Calendar days are Zurich's: 23:30Z on the 10th is already the 11th there.
+        process.env.TZ = 'America/New_York';
+        assert.equal(w.Folio.relativeTime('2026-03-12T01:00', new Date('2026-03-10T23:30:00Z'), 'Europe/Zurich'), 'Tomorrow');
+        // After the clocks go forward (Zurich 29 March: +02:00): 12:00 there is 10:00Z.
+        assert.equal(w.Folio.relativeTime('2026-03-29T12:00', new Date('2026-03-29T07:00:00Z'), 'Europe/Zurich'), 'In 3 hours');
+        // An unknown zone reads as the browser's.
+        process.env.TZ = 'UTC';
+        assert.equal(w.Folio.relativeTime('2026-03-10T13:00', now, 'Not/AZone'), 'In 3 hours');
+    } finally {
+        if (before === undefined) { delete process.env.TZ; } else { process.env.TZ = before; }
+    }
+});
 
 test('Folio.relativeTime says how far a date is, in the admin language, capitalised', () => {
     const { w } = page(() => {});
@@ -89,7 +120,7 @@ test('the date hint follows the date (with the zone of a date and time); clear e
     });
     assert.equal(p.hint.textContent, 'Europe/Zurich', 'empty: the zone only');
 
-    type(p.w, p.input, localDateTime(2 * 86400 * 1000 + 60000));
+    type(p.w, p.input, zoneDateTime(2 * 86400 * 1000 + 60000)); // the field's zone (Zurich), not the browser's
     assert.equal(p.hint.textContent, 'In 2 days · Europe/Zurich');
     assert.equal(p.clear.hidden, false);
 
@@ -102,6 +133,50 @@ test('the date hint follows the date (with the zone of a date and time); clear e
     assert.equal(p.hint.textContent, 'Europe/Zurich');
     assert.equal(p.clear.hidden, true);
     assert.equal(p.doc.activeElement, p.input, 'the focus goes back to the date');
+});
+
+// ---- Colour ------------------------------------------------------------------------------------
+
+function colour(value = '#c00000') {
+    return page(({ el, form }) => {
+        const root = el(form, 'div', { 'data-folio-color': '' }, 'folio-color');
+        const picker = el(root, 'input', { type: 'color', 'data-folio-color-picker': '', value: '#000000' });
+        const text = el(root, 'input', { type: 'text', name: 'brand', 'data-folio-color-text': '', value });
+        const clear = el(root, 'button', { type: 'button', 'data-folio-color-clear': '' });
+        const red = el(root, 'button', { type: 'button', 'data-folio-swatch': '#c00000' });
+        const blue = el(root, 'button', { type: 'button', 'data-folio-swatch': '#0a5ca8' });
+        return { picker, text, clear, red, blue };
+    });
+}
+
+test('the colour picker starts at the stored colour and follows what is typed', () => {
+    const p = colour('#C0000080');
+    assert.equal(p.picker.value, '#c00000', 'the colour without its alpha');
+
+    type(p.w, p.text, '#0a5ca8');
+    assert.equal(p.picker.value, '#0a5ca8');
+    type(p.w, p.text, '#0a5');
+    assert.equal(p.picker.value, '#0a5ca8', 'half typed: the picker keeps the last whole colour');
+});
+
+test('a picked colour, a swatch and clear write into the text and announce the edit', () => {
+    const p = colour('');
+    const seen = [];
+    p.form.addEventListener('input', () => seen.push('input'));
+    p.form.addEventListener('change', () => seen.push('change'));
+
+    p.picker.value = '#1A2B3C';
+    p.picker.dispatchEvent(new p.w.Event('input', { bubbles: true }));
+    assert.equal(p.text.value, '#1a2b3c');
+
+    p.blue.click();
+    assert.equal(p.text.value, '#0a5ca8');
+    assert.equal(p.picker.value, '#0a5ca8');
+
+    p.clear.click();
+    assert.equal(p.text.value, '');
+    assert.ok(seen.includes('input') && seen.includes('change'), 'autosave and the guard hear it');
+    assert.equal(p.doc.activeElement, p.text);
 });
 
 // ---- String: address copy, URL open ------------------------------------------------------------

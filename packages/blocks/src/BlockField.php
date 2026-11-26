@@ -7,7 +7,8 @@ namespace Preflow\Blocks;
 /**
  * A block field: same types and options as a JSON type field. "allowed",
  * "min" and "max" configure nested "blocks" fields; "config" carries any other
- * field option (e.g. select "options").
+ * field option (e.g. select "options", or "show_when": the field shows only while a rule on
+ * another field of the same block holds, since 0.91).
  */
 #[\Attribute(\Attribute::TARGET_PROPERTY)]
 final class BlockField

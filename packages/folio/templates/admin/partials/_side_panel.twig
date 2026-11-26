@@ -123,7 +123,7 @@
             <summary><h2 class="folio-side-title">{{ t('folio.form.system_fields') }}</h2><svg class="folio-icon folio-side-marker" aria-hidden="true"><use href="{{ icons }}#ui-chevron"></use></svg></summary>
             <dl class="folio-system-list">
                 {% for field in system_fields %}
-                    <div><dt>{{ field.label }}{% if field.help %} <span class="folio-system-help" title="{{ field.help }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-info"></use></svg><span class="folio-sr">{{ field.help }}</span></span>{% endif %}</dt><dd>{{ field.html|raw }}</dd></div>
+                    <div{{ field.show_when|default('')|raw }}><dt>{{ field.label }}{% if field.help %} <span class="folio-system-help" title="{{ field.help }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-info"></use></svg><span class="folio-sr">{{ field.help }}</span></span>{% endif %}</dt><dd>{{ field.html|raw }}</dd></div>
                 {% endfor %}
                 {% if system_id|default(null) %}
                     <div><dt>{{ t('folio.form.record_id') }}</dt><dd class="folio-system-id"><span class="folio-mono" title="{{ system_id }}">{{ system_id|length > 10 ? system_id|slice(0, 8) ~ '…' : system_id }}</span><button type="button" class="btn btn-ghost btn-icon btn-sm" data-copy="{{ system_id }}" aria-label="{{ t('folio.common.copy') }} {{ t('folio.form.record_id') }}" title="{{ t('folio.common.copy') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-copy"></use></svg></button></dd></div>

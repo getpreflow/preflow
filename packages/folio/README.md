@@ -994,7 +994,9 @@ A value that is not a list of section names is ignored (every section starts ope
 
 `string`, `text` (`"monospace": true` gives a code-style editor), `number`, `boolean`,
 `date` (`"time": true` for date and time), `select` (`"options"` as a map or a list;
-`"display": "radio"`), `richtext`, `asset`, `relation`, `matrix` and `tags` (since 0.77).
+`"display": "radio"`), `richtext`, `asset`, `relation`, `matrix`, `tags` (since 0.77) and `link`,
+`email`, `phone`, `color`, `code`, `json`, `datetime`, `time`, `daterange`, `embed`, `table` and
+`location` (all since 0.91; their values, checks and storage are preflow/fields', see its [README](../fields/README.md)).
 
 How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` runs the controls):
 
@@ -1053,6 +1055,63 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   "options_from" names "answer_list", which is not a field of this block; …`). A field type whose
   rules need the other fields of its block implements `HasBlockRules`.
 - `relation`: see [Blocks, matrix or relation?](#blocks-matrix-or-relation).
+- `link` (0.91): "Links to" picks what the link points to. A page or record is found with the
+  relation picker (the record's rows and a search; a type with many records searches
+  `GET {prefix}/_relation/{type}`); `"link": {"types": ["page", "post"]}` names the types offered
+  (with several, a Type select comes first; without it, the types with a public address the user
+  may see). A file is chosen with the asset field's picker (its card with the name and thumbnail,
+  Choose from the library, Upload). A web address, email address or phone number is typed in. The
+  parts of the other kinds hide as conditional fields do, without a round trip. Then the link text,
+  in the language being edited, and "Open in a new tab". A record or file link that a visitor's page
+  renders without an `href` (the record is deleted, no longer published or not in that language; the
+  file is gone) shows "Linked page no longer available." ("Linked file no longer available.") in the
+  editor: the same href decides, read as a visitor reads. List cells show no mark (it would cost a
+  lookup per row). The link's checks are preflow/fields' (registered with `FieldKinds::rules()`);
+  Folio's record and block validation add every field type's core checks, so a Folio field type's
+  `rules()` never repeats them. Folio binds preflow/fields' `RecordAddresses` (the record's public
+  address in the language, the media library's address of a file) unless the site bound its own.
+  The link text counts in the translation status and goes to machine translation like a translatable
+  field.
+- `email`, `phone`, `color`, `code`, `json` (0.91): `email` is a one-line input with the email keyboard,
+  found by loose search; `phone` takes the number as people type it and stores it as typed plus its
+  E.164 form, using the field's `"default_region": "CH"` for a number without `+` (the editor says
+  "Dialled as +41441234567."); `color` is a hex text with the browser's picker and the site's
+  `"palette"` as swatches to click, or with `"palette_only": true` a choice of the palette's colours;
+  `code` is a monospace textarea, stored as plain text (found by loose search), with the field's
+  `"language": "php"` shown beside the label; `json` is a monospace textarea. Their checks are the
+  core's and apply in blocks too, so a Folio input returns none of its own. A boot error names the
+  field when an option is wrong or `"translatable"` is set (none of them is translatable). In a
+  block, the options go in the field's `config` (`config: ['default_region' => 'CH']`). List cells
+  show the number as typed, the colour as hex text (list cells are plain text: no swatch), code on
+  one line, and JSON's first characters.
+- `datetime`, `time`, `daterange` (0.91): `datetime` is the browser's date-and-time input in the date
+  box, typed and shown in the field's `"zone"` (else the site's, `timezone` in `config/app.php`; the
+  zone is written under the input) and stored as UTC (`2026-03-29T12:30:00Z`), so the list sorts by
+  the instant. A time the clocks skip (spring forward) is kept as typed and refused with a message
+  naming the time and the zone; a time that happens twice (fall back) is the earlier instant: both
+  rules are in preflow/fields' README. `time` is the time input, stored as `HH:MM` with no zone.
+  `daterange` is two inputs ("From", "To") stored as `{start, end}`: dates, or with
+  `"with_time": true` date-times in UTC typed in the zone; the end may not be before the start, and
+  both are needed. Their checks are the core's (blocks too). List cells show the date and time in
+  the interface language in the field's zone, `HH:MM`, and "start – end". `datetime` and `time`
+  columns are part of the default list; a range is not, and a range column in `list.columns` has no sort header (it is an object; `sort` for it is ignored). The relative hint under a date-and-time input ("In 3 hours") is computed in the field's zone, whatever the editor's browser zone.
+- `embed`, `table`, `location` (0.91): `embed` takes the address of a video as the browser shows it
+  (YouTube, Vimeo, and the hosts the site added and the field lists in `"providers"`); under it the
+  editor names the providers it takes, and for a saved video "Plays from YouTube (video …). Nothing
+  loads from YouTube until a visitor starts it."; a poster image is chosen with the asset field's
+  picker (one image; a poster or a link to a file counts as used in the library, so it is not deleted or cleaned up while shown). An address of another host is refused on the field, naming the host; a field listing a provider the site never registered stops the boot. The
+  page's `rendered.<field>` is preflow/fields' privacy player (nothing from the video's host before a
+  click; the site's `frame-src` must allow the player hosts, see preflow/fields' README). `table` is a
+  grid of text inputs, the header row first: in the default language one empty row and column more
+  (within `"max_rows"` / `"max_columns"`; a new table starts two by two) to type into, and emptying all
+  cells of a row or column removes it on save, with its translations; in another language the rows
+  and columns stay and each input shows the default text as placeholder. No script. Each cell counts
+  in the translation status and goes to machine translation (`prices.rows.0.1`), like a link's text.
+  `location` is two number inputs (latitude, longitude; a decimal comma is read as a point) and an
+  address line; a site that binds a `Preflow\Fields\LocationPicker` gets its markup (a map) below
+  them and its files on the form, without one there is no map and no third-party request. Their checks
+  are the core's (blocks too). List cells show "YouTube · aqz-KE-bpKQ", "3 rows × 2 columns" and
+  "47.3769, 8.5417 · address"; they have no sort header (objects; `sort` is ignored), like a range, a link and a phone number.
 - `asset`: each chosen file is a card (a 16:10 thumbnail with the focal point, the name, kind and
   size, "No alt text yet" for an image without one); an empty field is a dashed drop zone. A file
   dropped anywhere on the field, or chosen with its Upload button, is uploaded to the media library
@@ -1148,6 +1207,25 @@ Any other value of either key stops the boot with a `FrontendConfigException` na
 the field. The fields the type's frontend address is built from (its route's parameters, such as
 `slug`) always sit in the side panel's **Address** section.
 
+**Conditional fields** (since 0.91). A field with `show_when` (the rule is preflow/data's, see its
+README, "Conditional fields") shows in the editor only while its rule holds:
+
+```json
+"kind":       {"type": "select", "options": {"text": "Text", "link": "Link"}},
+"button_url": {"type": "string", "validate": ["required"], "show_when": {"field": "kind", "=": "link"}}
+```
+
+Pick "Link" and the address field appears at once, without asking the server; pick "Text" and it
+goes again. A hidden field is not in the page's reading order or tab order (`hidden`, with
+`aria-hidden`), and its inputs are disabled, so it does not post. It is not validated, so its
+`required` does not apply. Its value is not lost: a save keeps the stored value of a hidden field,
+whatever is posted for it (`FieldVisibility::keepStored()`), so switching `kind` back to "Link"
+shows the old address again. The editor loads the rule's script (`show-when-core.js`, which
+decides as the server does) only on a form with a rule. Inside a block the rule names a field of
+the same block (`#[BlockField(config: ['show_when' => ['field' => 'kind', '=' => 'link']])]`),
+and each card decides on its own values; a hidden block field is not validated either, keeps its
+stored value on save and is left out of the block's translation status.
+
 The admin display (read-only fields and list cells) is the field type's `renderAdmin()` when
 it implements `Preflow\Folio\Field\DisplaysInAdmin`, otherwise its frontend output. A custom
 field type can implement it to show a friendlier value in the admin than it stores. The
@@ -1200,6 +1278,13 @@ The order is built-ins, then packages' types, then `config/folio.php`'s: a later
 already taken replaces the earlier one, so the app's config wins. A listed class that is no field
 type stops the boot naming the package. A type a provider registers itself later
 (`$container->get(FieldTypeRegistry::class)->register(…)` in `boot()`) gets its field kinds too.
+
+A field type whose value holds ids of media library files implements
+`Preflow\Folio\Field\ReferencesAssets` (`mapAssetIds($value, $config, $fn)`: the value with each id
+replaced by `$fn(id)`, same shape) (since 0.91). Folio's asset walker asks it, so those files
+count as used: the library refuses to delete them while a record (or a block in it) holds them,
+and cleanup never bins them. `asset`, `embed` (its poster) and `link` (a link to a file)
+implement it; a type that holds ids without it has its files treated as unused.
 
 A field type's `assets()` names the `.css` and `.js` files its editor needs; Folio loads
 them only on forms that render the field, from `{prefix}/_assets/{file}`. A package

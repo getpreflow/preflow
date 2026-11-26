@@ -106,7 +106,8 @@ final class TypedArrayFieldsTest extends TestCase
 
         $after = $this->dm->driver('default')->findOne('gallery', 'g1');
         $this->assertSame('New', $after['title']);
-        unset($before['title'], $after['title']);
+        // The change date is the time of each save: it moves when a second ticks between them.
+        unset($before['title'], $after['title'], $before['_updated_at'], $after['_updated_at']);
         $this->assertSame($before, $after, 'the stored array fields stay byte-identical');
     }
 

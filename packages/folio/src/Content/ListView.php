@@ -109,7 +109,7 @@ final class ListView
         $headers = [];
         foreach ($columns as $name => $label) {
             $dir = $query->sort === $name ? ($query->desc ? 'desc' : 'asc') : null;
-            $sortable = $def->fields[$name]->type !== 'relation';
+            $sortable = ListQuery::sortable($def->fields[$name]->type);
             $next = $params;
             unset($next['sort']);
             if ($dir === null) {

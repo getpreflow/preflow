@@ -76,6 +76,25 @@ final class PackageFieldTypesTest extends TestCase
         $this->assertNotNull($c->get(BlockRegistry::class)->get('hero'), 'config/folio.php blocks stay');
     }
 
+    /** The twelve types of preflow/fields take their column kinds from the core registration alone (0.91), in Folio as without it. */
+    #[RunInSeparateProcess]
+    public function test_the_fields_types_keep_the_core_s_column_kinds_in_folio(): void
+    {
+        $c = $this->booted()->container();
+        $kinds = $c->get(DataManager::class)->fieldKinds();
+        $expected = [
+            'link' => ColumnKind::Text, 'email' => ColumnKind::Short, 'phone' => ColumnKind::Text, 'color' => ColumnKind::Short,
+            'code' => ColumnKind::Text, 'json' => ColumnKind::Text, 'datetime' => ColumnKind::Date, 'time' => ColumnKind::Short,
+            'daterange' => ColumnKind::Text, 'embed' => ColumnKind::Text, 'table' => ColumnKind::Text, 'location' => ColumnKind::Text,
+        ];
+        $registry = $c->get(FieldTypeRegistry::class);
+        foreach ($expected as $type => $kind) {
+            $this->assertNotInstanceOf(HasColumnKind::class, $registry->get($type), "{$type}: Folio's input sets no column kind");
+            // Indexed, so a Short kind stays short (an unindexed short field is stored as text).
+            $this->assertSame($kind, $kinds->columnKindOf((new \Preflow\Data\TypeFieldDefinition('f', $type))->withIndex()), $type);
+        }
+    }
+
     #[RunInSeparateProcess]
     public function test_the_app_s_config_wins_over_a_package_for_the_same_key(): void
     {

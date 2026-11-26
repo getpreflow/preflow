@@ -27,6 +27,7 @@
         "preflow/core": "@dev",
         "preflow/data": "@dev",
         "preflow/devtools": "@dev",
+        "preflow/fields": "@dev",
         "preflow/folio": "@dev",
         "preflow/form": "@dev",
         "preflow/htmx": "@dev",
@@ -159,6 +160,11 @@
         },
         {
             "type": "path",
+            "url": "packages/fields",
+            "options": { "symlink": true }
+        },
+        {
+            "type": "path",
             "url": "packages/media",
             "options": { "symlink": true }
         },
@@ -184,6 +190,7 @@
             "Preflow\\Blocks\\Tests\\": "packages/blocks/tests/",
             "Preflow\\DevTools\\Tests\\": "packages/devtools/tests/",
             "Preflow\\Codes\\Tests\\": "packages/codes/tests/",
+            "Preflow\\Fields\\Tests\\": "packages/fields/tests/",
             "Preflow\\Folio\\Tests\\": "packages/folio/tests/",
             "Preflow\\Form\\Tests\\": "packages/form/tests/",
             "Preflow\\I18n\\Tests\\": "packages/i18n/tests/",

@@ -34,14 +34,15 @@ final class AdminFormat
      * nothing or something that is not a date.
      *
      * @param 'date'|'datetime' $style
+     * @param \DateTimeZone|null $zone the zone to show it in (a field's own "zone", since 0.91); default: the app's
      */
-    public function date(mixed $value, string $style = 'date'): string
+    public function date(mixed $value, string $style = 'date', ?\DateTimeZone $zone = null): string
     {
         $date = self::toDate($value);
         if ($date === null) {
             return '';
         }
-        $date = $date->setTimezone(new \DateTimeZone(date_default_timezone_get()));
+        $date = $date->setTimezone($zone ?? new \DateTimeZone(date_default_timezone_get()));
         $pattern = $this->text($style === 'datetime' ? 'folio.format.datetime' : 'folio.format.date');
 
         if ($this->intl) {

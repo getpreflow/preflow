@@ -7,6 +7,9 @@ namespace Preflow\Blocks\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.91.0: data 0.91.0 (FieldVisibility, with which the registry checks a block field's show_when and
+ * visibleBlock() reads a hidden one as empty); folio 0.91.0 (Folio before 0.91 validates a hidden block field, so
+ * a required field a block hides would block every save, and its editor would show it).
  * Since 0.90.0: data 0.90.0 (SelectOptionsFrom, which checks a block select's "options_from" when the
  * registry is built).
  * Since 0.81.0: core 0.81.0 (Context\Contexts, RenderContext and Deprecations: blocks render in the render
@@ -31,13 +34,13 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame('^0.90.0 || @dev', $composer['require']['preflow/data'] ?? null);
+        $this->assertSame('^0.91.0 || @dev', $composer['require']['preflow/data'] ?? null);
         $this->assertSame('^0.81.0 || @dev', $composer['require']['preflow/core'] ?? null);
         $this->assertSame([
             'preflow/components' => '<0.70',
             'preflow/core' => '<0.81.0',
-            'preflow/data' => '<0.90.0',
-            'preflow/folio' => '<0.90.0',
+            'preflow/data' => '<0.91.0',
+            'preflow/folio' => '<0.91.0',
             'preflow/view' => '<0.70',
         ], $composer['conflict'] ?? null);
     }

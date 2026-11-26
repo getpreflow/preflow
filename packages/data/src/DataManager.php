@@ -2520,6 +2520,13 @@ final class DataManager
             }
         }
 
+        // A field type's own checks (FieldKinds::rules(), 0.91: the link field's), after the field's own.
+        foreach ($typeDef->fields as $name => $field) {
+            foreach ($this->fieldKinds()->rulesOf($field) as $rule) {
+                $rules[$name][] = $rule;
+            }
+        }
+
         // A unique or indexed string, and a unique field's scope, is a bounded column: it may not outgrow it.
         foreach ($this->fieldKinds()->lengthRules($typeDef) as $name => $lengthRule) {
             $rules[$name] = [...($rules[$name] ?? []), $lengthRule];
@@ -2527,6 +2534,18 @@ final class DataManager
 
         if ($extraRules !== []) {
             $rules = array_merge($rules, $extraRules);
+        }
+
+        // A field its show_when hides is not validated: its type's, own and given rules drop out
+        // (its stored value is kept). What the storage refuses stays checked: the bounded-column
+        // length here, the unique check below.
+        foreach (FieldVisibility::hiddenFieldsOf($typeDef, $record->toArray()) as $hidden) {
+            $kept = array_values(array_filter($rules[$hidden] ?? [], static fn (mixed $rule): bool => $rule instanceof Validation\MaxChars));
+            if ($kept === []) {
+                unset($rules[$hidden]);
+            } else {
+                $rules[$hidden] = $kept;
+            }
         }
 
         [$rules, $data] = $this->localizedValidation($typeDef, $rules, $record->toArray());

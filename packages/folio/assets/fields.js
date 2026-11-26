@@ -12,6 +12,7 @@
  * - Rows with a grip (relation, matrix): the arrow keys and drag move them.
  * - Asset: a file dropped on the field goes to the library's upload route and is chosen.
  * - Tags: chips and an "Add…" input (Enter, comma, paste, Backspace, ✕), announced (0.77).
+ * - Colour: the browser's picker, the palette's swatches and the clear button fill the hex text (0.91).
  *
  * Every change a script makes is announced as a change event on a control of the record form, so the
  * autosave, the preview and the unsaved-changes guard hear it. Search boxes carry data-folio-no-edit.
@@ -71,11 +72,39 @@
     // A date ("2026-11-14", midnight in the browser's zone, counted in calendar days) or a date and
     // time ("2026-11-14T08:00") as the admin language says how far it is from now ("In 2 days",
     // "Tomorrow", "3 hours ago"). '' for anything else.
-    function parseWhen(value) {
+    // With a zone (a time zone name such as "Europe/Zurich"), a date and time is the wall time in that
+    // zone, not the browser's: it is turned into the real instant with Intl, and days are counted in
+    // that zone. Without Intl time zone support the browser's zone is used.
+    function zoneParts(date, zone) {
+        var parts = {};
+        new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' })
+            .formatToParts(date).forEach(function (p) { parts[p.type] = +p.value; });
+        return parts;
+    }
+
+    function zoneInstant(y, mo, d, h, mi, s, zone) {
+        var wall = Date.UTC(y, mo - 1, d, h, mi, s);
+        var guess = wall;
+        for (var i = 0; i < 3; i++) {
+            var p = zoneParts(new Date(guess), zone);
+            var shown = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+            guess += wall - shown;
+        }
+        return new Date(guess);
+    }
+
+    function validZone(zone) {
+        if (!zone) { return null; }
+        try { new Intl.DateTimeFormat('en-US', { timeZone: zone }); return zone; } catch (e) { return null; }
+    }
+
+    function parseWhen(value, zone) {
         var text = String(value || '').trim();
+        zone = validZone(zone);
         var day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
         if (day) { return { date: new Date(+day[1], +day[2] - 1, +day[3]), dateOnly: true }; }
         var at = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(text);
+        if (at && zone) { return { date: zoneInstant(+at[1], +at[2], +at[3], +at[4], +at[5], +(at[6] || 0), zone), dateOnly: false, zone: zone }; }
         if (at) { return { date: new Date(+at[1], +at[2] - 1, +at[3], +at[4], +at[5], +(at[6] || 0)), dateOnly: false }; }
         var other = text ? new Date(text) : null;
         return other && !isNaN(other.getTime()) ? { date: other, dateOnly: false } : null;
@@ -83,12 +112,16 @@
 
     // Under a day: hours, minutes, seconds. From a day on, calendar days (Friday 08:00 seen on
     // Wednesday 23:00 is "In 2 days", not "Tomorrow"), then weeks, months and years.
+    // The calendar day of an instant (as UTC midnight of its y-m-d) in a zone, else in the browser's.
+    function dayNumber(date, zone) {
+        if (zone) { var p = zoneParts(date, zone); return Date.UTC(p.year, p.month - 1, p.day); }
+        return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+    }
+
     function relativeParts(when, now) {
         var seconds = Math.round((when.date.getTime() - now.getTime()) / 1000);
         if (when.dateOnly || Math.abs(seconds) >= 86400) {
-            var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-            var day = new Date(when.date.getFullYear(), when.date.getMonth(), when.date.getDate());
-            var days = Math.round((day.getTime() - today.getTime()) / 86400000);
+            var days = Math.round((dayNumber(when.date, when.zone) - dayNumber(now, when.zone)) / 86400000);
             if (Math.abs(days) >= 365) { return [Math.round(days / 365), 'year']; }
             if (Math.abs(days) >= 30) { return [Math.round(days / 30), 'month']; }
             if (Math.abs(days) >= 7 && days % 7 === 0) { return [days / 7, 'week']; }
@@ -106,8 +139,8 @@
         return text.charAt(0).toLocaleUpperCase(lang) + text.slice(1);
     }
 
-    function relativeTime(value, now) {
-        var when = parseWhen(value);
+    function relativeTime(value, now, zone) {
+        var when = parseWhen(value, zone);
         if (!when) { return ''; }
         var parts = relativeParts(when, now || new Date());
         var lang = adminLanguage();
@@ -138,7 +171,7 @@
         var hint = box.hasAttribute('data-folio-date') ? dateHint(box) : null;
         if (!hint) { return; }
         var zone = hint.getAttribute('data-zone') || '';
-        var when = String(input.value || '') !== '' ? relativeTime(input.value) : '';
+        var when = String(input.value || '') !== '' ? relativeTime(input.value, null, input.type === 'datetime-local' ? zone : null) : '';
         hint.textContent = [when, zone].filter(function (part) { return part !== ''; }).join(' · ');
     }
 
@@ -162,6 +195,47 @@
         if (!input || input.disabled || input.readOnly) { return; }
         if (typeof input.focus === 'function') { input.focus(); }
         try { if (typeof input.showPicker === 'function') { input.showPicker(); } } catch (err) { /* not allowed here: typing still works */ }
+    }
+
+    // ---- Colour: the picker, the swatches and the clear button fill the hex text ---------------------
+    // The text input is the field (it posts); everything else only writes into it, so a save without
+    // script works the same. Alpha (#rrggbbaa) is typed; the browser's picker has none.
+    var HEX_COLOR = /^#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?$/;
+
+    function colorText(root) { return root ? root.querySelector('[data-folio-color-text]') : null; }
+
+    function syncColorPicker(root) {
+        var text = colorText(root);
+        var picker = root ? root.querySelector('[data-folio-color-picker]') : null;
+        if (!text || !picker) { return; }
+        var value = String(text.value || '').trim();
+        if (HEX_COLOR.test(value)) { picker.value = value.slice(0, 7).toLowerCase(); }
+    }
+
+    function onColorInput(e) {
+        var target = e.target;
+        var root = closest(target, '[data-folio-color]');
+        if (!root || !target.hasAttribute) { return; }
+        if (target.hasAttribute('data-folio-color-picker')) {
+            var text = colorText(root);
+            if (text) { text.value = String(target.value || '').toLowerCase(); edited(text); }
+        } else if (target.hasAttribute('data-folio-color-text')) {
+            syncColorPicker(root);
+        }
+    }
+
+    function onColorClick(e) {
+        var swatch = closest(e.target, '[data-folio-swatch]');
+        var clear = swatch ? null : closest(e.target, '[data-folio-color-clear]');
+        var button = swatch || clear;
+        var root = closest(button, '[data-folio-color]');
+        var text = colorText(root);
+        if (!button || !text) { return; }
+        e.preventDefault();
+        text.value = swatch ? String(swatch.getAttribute('data-folio-swatch') || '') : '';
+        syncColorPicker(root);
+        edited(text);
+        if (typeof text.focus === 'function') { text.focus(); }
     }
 
     // ---- String: copy the address, open a URL ------------------------------------------------------
@@ -991,15 +1065,201 @@
     }
     Folio.placeFocal = placeFocal;
 
+    // ---- Conditional fields (show_when, 0.91) --------------------------------------------------------
+    // A field with a rule is wrapped in [data-folio-show-when] (the record form's field wrap, a System field
+    // row, or a wrap in a block card): {rule, types, values, prefix}. Its sources are read as the record
+    // form would post them, from that form's controls only (a block's source is "<prefix>[<field>]"); a
+    // source without a control (read-only) reads the value the server gave. FolioShowWhenCore
+    // (show-when-core.js, loaded only where a rule exists) decides as the server does. A hidden field gets
+    // hidden (out of the reading and tab order) and every control in it is disabled (it does not post; the
+    // server keeps the stored value anyway); a field naming a hidden one hides too. Each source control
+    // names the fields it shows or hides in aria-controls. Pages without a rule do nothing here, and a
+    // change of a control no rule reads decides nothing.
+    var SHOW = '[data-folio-show-when]';
+    var OFF = 'data-folio-show-off';
+    var CONTROLS = 'input, select, textarea, button';
+    var ID_PREFIX = 'folio-show-when-';
+    var showIds = 0;
+    // The control names some rule reads (name and name[]), from the last refresh.
+    var sourceNames = {};
+
+    function showConfig(box) {
+        if (!box._folioShowWhen) {
+            try { box._folioShowWhen = JSON.parse(box.getAttribute('data-folio-show-when') || '{}'); } catch (e) { box._folioShowWhen = {}; }
+        }
+        return box._folioShowWhen;
+    }
+
+    function isHiddenBox(box) {
+        return box.hidden === true || box.getAttribute('hidden') !== null;
+    }
+
+    // Inside a hidden show_when wrap (its own or one around it).
+    function insideHidden(el) {
+        for (var up = el; up && up.getAttribute; up = up.parentNode) {
+            if (up.getAttribute('data-folio-show-when') !== null && isHiddenBox(up)) { return true; }
+        }
+        return false;
+    }
+
+    function controlName(el) {
+        return (el.getAttribute && el.getAttribute('name')) || el.name || '';
+    }
+
+    // The form whose values decide a wrap: the form around it, the form its controls name (a side
+    // panel field, form="folio-record"), else the record form (a read-only System field row).
+    function ownerOf(box) {
+        var around = box.closest ? box.closest('form') : null;
+        if (around) { return around; }
+        var named = box.querySelector(CONTROLS);
+        return (named && named.form) || document.getElementById('folio-record') || null;
+    }
+
+    // name => the owner form's controls of that name, in page order (only the names a rule reads).
+    function controlsByName(owner, wanted) {
+        var map = {};
+        document.querySelectorAll(CONTROLS).forEach(function (el) {
+            var name = controlName(el);
+            if (name && wanted[name] && (owner === null || el.form === owner)) { (map[name] = map[name] || []).push(el); }
+        });
+        return map;
+    }
+
+    // The value the form posts for a source: a list name (name[]) collects, a plain name takes the last
+    // control; an unchecked box or radio posts nothing. hidden: one of its controls is in a hidden field.
+    function readSource(map, name) {
+        var list = map[name + '[]'];
+        var plain = map[name];
+        if (!list && !plain) { return { found: false, controls: [] }; }
+        var hidden = false;
+        var posts = function (el) {
+            if (insideHidden(el)) { hidden = true; return false; }
+            return !((el.type === 'checkbox' || el.type === 'radio') && !el.checked);
+        };
+        if (list) {
+            var values = [];
+            list.forEach(function (el) { if (posts(el)) { values.push(el.value); } });
+            return { found: true, hidden: hidden, value: values, controls: list };
+        }
+        var value = null;
+        plain.forEach(function (el) {
+            if (!posts(el)) { return; }
+            if (el.tagName === 'SELECT' && el.multiple && el.selectedOptions) {
+                value = Array.prototype.map.call(el.selectedOptions, function (o) { return o.value; });
+            } else {
+                value = el.value;
+            }
+        });
+        return { found: true, hidden: hidden, value: value, controls: plain };
+    }
+
+    function sourceName(config, field) {
+        return config.prefix ? config.prefix + '[' + field + ']' : field;
+    }
+
+    function setBox(box, show) {
+        if (show === !isHiddenBox(box)) { return false; }
+        box.hidden = !show;
+        if (show) { box.removeAttribute('hidden'); } else { box.setAttribute('hidden', ''); }
+        return true;
+    }
+
+    // aria-controls on each source control: the wraps it shows or hides (other ids it names stay).
+    function linkControls(controlled) {
+        controlled.forEach(function (entry) {
+            var el = entry.control;
+            if (el.type === 'hidden') { return; }
+            var own = (el.getAttribute('aria-controls') || '').split(/\s+/).filter(function (id) { return id && id.indexOf(ID_PREFIX) !== 0; });
+            var ids = own.concat(entry.ids);
+            if (ids.length) { el.setAttribute('aria-controls', ids.join(' ')); } else { el.removeAttribute('aria-controls'); }
+        });
+    }
+
+    function refreshShowWhen() {
+        var core = window.FolioShowWhenCore;
+        var boxes = Array.prototype.slice.call(document.querySelectorAll(SHOW));
+        sourceNames = {};
+        if (!core || boxes.length === 0) { return; }
+        var owners = [];
+        var wanted = [];
+        boxes.forEach(function (box) {
+            var config = showConfig(box);
+            if (!box.id) { box.id = ID_PREFIX + (++showIds); }
+            var owner = ownerOf(box);
+            var at = owners.indexOf(owner);
+            if (at < 0) { owners.push(owner); wanted.push({}); at = owners.length - 1; }
+            box._folioShowOwner = at;
+            core.sources(config.rule).forEach(function (field) {
+                var name = sourceName(config, field);
+                wanted[at][name] = wanted[at][name + '[]'] = true;
+                sourceNames[name] = sourceNames[name + '[]'] = true;
+            });
+        });
+        var maps = owners.map(function (owner, i) { return controlsByName(owner, wanted[i]); });
+        var controlled = [];
+        // Showing or hiding a field can show or hide another (a chain): repeat until nothing changes.
+        for (var round = 0; round <= boxes.length; round++) {
+            var changed = false;
+            boxes.forEach(function (box) {
+                var config = showConfig(box);
+                var values = {};
+                var sourceHidden = false;
+                core.sources(config.rule).forEach(function (field) {
+                    var read = readSource(maps[box._folioShowOwner], sourceName(config, field));
+                    if (read.found) {
+                        if (read.hidden) { sourceHidden = true; }
+                        values[field] = read.value;
+                        if (round === 0) {
+                            read.controls.forEach(function (control) {
+                                var entry = controlled.filter(function (c) { return c.control === control; })[0];
+                                if (!entry) { entry = { control: control, ids: [] }; controlled.push(entry); }
+                                if (entry.ids.indexOf(box.id) < 0) { entry.ids.push(box.id); }
+                            });
+                        }
+                    } else if (config.values && Object.prototype.hasOwnProperty.call(config.values, field)) {
+                        values[field] = config.values[field];
+                    }
+                });
+                if (setBox(box, !sourceHidden && core.holds(config.rule, values, config.types || {}))) { changed = true; }
+            });
+            if (!changed) { break; }
+        }
+        linkControls(controlled);
+        // A control in a hidden field is disabled and marked, so showing it enables only what this disabled.
+        boxes.forEach(function (box) {
+            box.querySelectorAll(CONTROLS).forEach(function (el) {
+                var off = insideHidden(el);
+                if (off && !el.disabled) {
+                    el.disabled = true;
+                    el.setAttribute(OFF, '');
+                } else if (!off && el.getAttribute(OFF) !== null) {
+                    el.disabled = false;
+                    el.removeAttribute(OFF);
+                }
+            });
+        });
+    }
+    // Folio.refreshShowWhen(): decide every conditional field again (after a script changed a source).
+    Folio.refreshShowWhen = refreshShowWhen;
+
+    function onShowWhenChange(e) {
+        var target = e.target;
+        var name = target && target.getAttribute ? controlName(target) : '';
+        if (!name || !sourceNames[name]) { return; } // no rule reads it (or the page has none)
+        refreshShowWhen();
+    }
+
     // ---- Wiring ----------------------------------------------------------------------------------
     function init(root) {
         if (!root || !root.querySelectorAll) { return; }
+        if ((root.matches && root.matches(SHOW)) || root.querySelector(SHOW)) { refreshShowWhen(); }
         root.querySelectorAll('.folio-asset-focal[data-focal]').forEach(placeFocal);
         root.querySelectorAll('[data-folio-date]').forEach(syncDate);
         root.querySelectorAll('[data-folio-stepper]').forEach(syncStepper);
         root.querySelectorAll('[data-folio-affix] input').forEach(syncOpenUrl);
         root.querySelectorAll('textarea[aria-describedby]').forEach(syncCounter);
         root.querySelectorAll('[data-folio-tags]').forEach(initTags);
+        root.querySelectorAll('[data-folio-color]').forEach(syncColorPicker);
     }
     // Folio.initFields(root): the hints, counters and steppers under root follow their controls again
     // (admin.js calls it after Cancel put a form's controls back).
@@ -1032,10 +1292,15 @@
         document.addEventListener('change', onAssetFileChange);
         document.addEventListener('input', onInput);
         document.addEventListener('change', onInput);
+        document.addEventListener('input', onShowWhenChange);
+        document.addEventListener('change', onShowWhenChange);
         document.addEventListener('trix-change', onTrixChange);
         document.addEventListener('click', onDateClear);
         document.addEventListener('click', onDateIcon);
         document.addEventListener('click', onCopyAddress);
+        document.addEventListener('click', onColorClick);
+        document.addEventListener('input', onColorInput);
+        document.addEventListener('change', onColorInput);
         document.addEventListener('click', onStep);
         document.addEventListener('click', onRelationClick);
         document.addEventListener('input', onRelationInput);

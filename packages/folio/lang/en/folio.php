@@ -590,6 +590,71 @@ return [
         'no_results' => 'Nothing found.',
         'type' => 'Type',
         'entry' => 'Entry',
+        // The link field (0.91; preflow/fields' Link).
+        'link' => [
+            'kind' => 'Links to',
+            'none' => 'No link',
+            'kinds' => [
+                'record' => 'A page or record',
+                'url' => 'Web address',
+                'email' => 'Email address',
+                'phone' => 'Phone number',
+                'asset' => 'File',
+            ],
+            'record_type' => 'Type',
+            'no_types' => 'No type to link to: name the types in the field’s "link.types", or give a type a public address.',
+            'url' => 'Web address',
+            'url_placeholder' => 'https://… or /path',
+            'email' => 'Email address',
+            'phone' => 'Phone number',
+            'asset' => 'File',
+            'text' => 'Link text',
+            'new_tab' => 'Open in a new tab',
+            'broken_asset' => 'Linked file no longer available.',
+            'broken' => 'Linked page no longer available.',
+            'broken_hint' => 'Choose another one or remove the link.',
+        ],
+        // The phone and colour fields (0.91; preflow/fields' Phone and Color).
+        'phone' => [
+            'dialled' => 'Dialled as :number.',
+        ],
+        // The date range field (0.91).
+        'daterange' => [
+            'from' => 'From',
+            'to' => 'To',
+        ],
+        // The video embed, table and location fields (0.91; preflow/fields' Embed, Table, Location).
+        'embed' => [
+            'url' => 'Video address',
+            'hint' => 'Paste the address of a video on :providers, as the browser shows it.',
+            'plays_from' => 'Plays from :provider (video :id). Nothing loads from :provider until a visitor starts it.',
+            'poster' => 'Poster image',
+            'poster_help' => 'Shown before the video plays. Without one the page shows a play button only (never an image from the video\'s host).',
+        ],
+        'table' => [
+            'header' => 'Header',
+            'header_cell' => 'Header, column :column',
+            'cell' => 'Row :row, column :column',
+            'hint' => 'Type into the empty row or column to add one. Empty all cells of a row or column to remove it. Leave the header empty for a table without one.',
+            'hint_translate' => 'Rows and columns follow the :language table; translate each cell here.',
+            'size' => ':rows rows × :columns columns',
+        ],
+        'location' => [
+            'lat' => 'Latitude',
+            'lng' => 'Longitude',
+            'lat_placeholder' => '47.3769',
+            'lng_placeholder' => '8.5417',
+            'address' => 'Address',
+            'hint' => 'Latitude and longitude in degrees, north and east positive (copy them from a map app).',
+        ],
+        'color' => [
+            'pick' => 'Pick a colour',
+            'placeholder' => '#rrggbb',
+            'clear' => 'Clear the colour',
+            'palette' => 'Colours of the palette',
+            'none' => 'No colour',
+            'outside' => ':color (not in the palette)',
+        ],
         'view' => 'View',
         // The tag field (0.77).
         'tag_remove' => 'Remove :tag',

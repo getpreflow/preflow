@@ -38,6 +38,8 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         private readonly ?ValidatorFactory $validators = null,
         private readonly ?TemplateEngineInterface $engine = null,
         private readonly string $adminPrefix = '/folio',
+        /** The data package's field kinds: a field type's core checks (FieldKinds::rules(), 0.91) apply inside blocks too. */
+        private readonly ?\Preflow\Data\FieldKinds $kinds = null,
     ) {}
 
     public function key(): string
@@ -98,9 +100,18 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
 
             $block = ['_uid' => $uid, '_block' => $key];
             $blockFiles = is_array($files[$uid] ?? null) ? $files[$uid] : [];
+            // A field its show_when hides (0.91), decided on the posted sources before anything is
+            // built or uploaded: it keeps its stored value, and a file posted for it is never written.
+            $hidden = $this->blocks->hasShowWhen() ? array_flip($this->blocks->hiddenFieldsOf($key, $this->sourceValues($definition, $data, $previous))) : [];
             foreach ($definition->fields as $name => $field) {
                 $type = $this->fieldTypes->get($field->type);
-                self::assertLeaf($definition, $name, $field, $type);
+                $this->assertLeaf($definition, $name, $field, $type);
+                if (isset($hidden[$name])) {
+                    if (array_key_exists($name, $previous)) {
+                        $block[$name] = $previous[$name];
+                    }
+                    continue;
+                }
 
                 if ($type instanceof StructuredFieldType) {
                     $block[$name] = $ctx->depth + 1 >= $this->maxDepth
@@ -144,7 +155,9 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                 }
                 $block[$name] = $value;
             }
-            $out[] = $block;
+            // A field its show_when hides keeps its stored value, whatever was posted (0.91; its input
+            // is disabled in the editor and does not post).
+            $out[] = $this->blocks->hasShowWhen() ? \Preflow\Data\FieldVisibility::keepStored($definition->fields, $block, $previous) : $block;
         }
 
         return $out;
@@ -153,7 +166,8 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
     /**
      * The translatable leaves of every known block, walked like validateBlocks():
      * "<uid>.<field>", nested "<uid>.<child>.<cuid>.<field>", labelled
-     * "Hero › Headline". Unknown blocks are skipped.
+     * "Hero › Headline". Unknown blocks are skipped, and so are the fields a block's show_when
+     * hides (0.91): a hidden text is neither missing nor outdated, and is not sent to a translator.
      */
     public function translatableTexts(mixed $value, array $config, Locales $locales): array
     {
@@ -169,7 +183,11 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
             }
             $prefix = $block['_uid'];
             $blockLabel = \Preflow\Folio\FolioText::label($definition->label);
+            $hidden = array_flip($this->blocks->hiddenFieldsOf($definition->key, $block));
             foreach ($definition->fields as $name => $field) {
+                if (isset($hidden[$name])) {
+                    continue;
+                }
                 $type = $this->fieldTypes->get($field->type);
                 $label = $blockLabel . ' › ' . self::fieldLabel($field->label, $name);
                 if ($type instanceof ReportsTranslatableTexts) {
@@ -268,6 +286,8 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                 continue;
             }
             $uid = $block['_uid'];
+            // A field its show_when hides is not validated (0.91), a nested blocks field included.
+            $hidden = array_flip($this->blocks->hiddenFieldsOf($definition->key, $block));
             $rules = [];
             // The whole block is the data (in the default language), so a rule may read another field
             // of it (a select's "options_from", 0.90); only the ruled fields are checked.
@@ -275,6 +295,9 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
             foreach ($definition->fields as $name => $field) {
                 $type = $this->fieldTypes->get($field->type);
                 if ($type instanceof self) {
+                    if (isset($hidden[$name])) {
+                        continue;
+                    }
                     $errors += $type->validateBlocks($block[$name] ?? [], $field->config, $locales, $prefix . $uid . '.' . $name . '.');
                     continue;
                 }
@@ -286,8 +309,10 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                     $type instanceof \Preflow\Folio\Field\HasBlockRules
                         ? $type->blockRules($field->config, $definition, $this->fieldTypes)
                         : $type->rules($field->config),
+                    // The type's core checks (FieldKinds::rules(), 0.91), as a record's save runs them.
+                    $this->kinds?->rulesOf($field) ?? [],
                 );
-                if ($fieldRules !== []) {
+                if ($fieldRules !== [] && !isset($hidden[$name])) {
                     $rules[$name] = $fieldRules;
                 }
             }
@@ -506,14 +531,24 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         // The block's values for every field's editor (FieldContext::$values, 0.90): a select's "options_from"
         // reads them, and so may any field type. Decoding only, no read.
         $values = $this->blockValues($definition, $block, $locales);
+        // A field with show_when (0.91) sits in an element fields.js shows or hides as its source in this
+        // card changes; hidden now, it is rendered hidden. Blocks without one render as before.
+        $hidden = array_flip($this->blocks->hiddenFieldsOf($definition->key, $block));
+        $conditional = function (string $field, string $html) use ($definition, $values, $base, $hidden): string {
+            $rule = $definition->fields[$field]->config['show_when'] ?? null;
+
+            return is_array($rule)
+                ? \Preflow\Folio\Field\ShowWhenMarkup::wrap($html, $rule, $definition->fields, $values, $base, isset($hidden[$field]))
+                : $html;
+        };
 
         foreach ($definition->fields as $field => $def) {
             $type = $this->fieldTypes->get($def->type);
-            self::assertLeaf($definition, $field, $def, $type);
+            $this->assertLeaf($definition, $field, $def, $type);
             $raw = $block[$field] ?? null;
 
             if ($type instanceof self) {
-                $fields[] = $type->renderField(
+                $fields[] = $conditional($field, $type->renderField(
                     $base . '[' . $field . ']',
                     self::fieldLabel($def->label, $field),
                     $def->help !== null ? \Preflow\Folio\FolioText::label($def->help) : null,
@@ -525,7 +560,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                     $locale,
                     $depth + 1,
                     $record,
-                );
+                ));
                 continue;
             }
 
@@ -545,7 +580,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                 $config['options_from_label'] = self::fieldLabel($definition->fields[$source]->label ?? null, $source);
             }
 
-            $fields[] = $type->renderEditor(new FieldContext(
+            $fields[] = $conditional($field, $type->renderEditor(new FieldContext(
                 name: $base . '[' . $field . ']',
                 label: self::fieldLabel($def->label, $field),
                 help: $def->help !== null ? \Preflow\Folio\FolioText::label($def->help) : null,
@@ -558,7 +593,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                 locales: $locales,
                 validate: $def->validate,
                 values: $values,
-            ));
+            )));
         }
 
         // An invalid block shows its first message where the summary was ("Headline: This field is required.").
@@ -595,6 +630,31 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                 'id' => $record['id'] ?? '',
             ], '', '&', PHP_QUERY_RFC3986),
         ]);
+    }
+
+    /**
+     * The stored block with each show_when source as posted (normalized as buildValue() stores it);
+     * a source posted as files or nested blocks counts with its stored value.
+     *
+     * @param array<string, mixed> $data the posted block
+     * @param array<string, mixed> $previous the stored block ([] for a new one)
+     * @return array<string, mixed>
+     */
+    private function sourceValues(\Preflow\Blocks\BlockDefinition $definition, array $data, array $previous): array
+    {
+        foreach (\Preflow\Data\FieldVisibility::sourcesOf($definition->fields) as $source) {
+            $field = $definition->fields[$source] ?? null;
+            if ($field === null) {
+                continue;
+            }
+            $type = $this->fieldTypes->get($field->type);
+            if ($type instanceof StructuredFieldType || $type instanceof AssetFieldType || $type instanceof HandlesUpload) {
+                continue;
+            }
+            $previous[$source] = $type->toStorage($type->normalizeInput($data[$source] ?? null, $field->config));
+        }
+
+        return $previous;
     }
 
     /**
@@ -648,10 +708,12 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
     /**
      * A block field the editor cannot hold: a translatable tags field (one list serves every
      * language, as on a type; TypeCatalog refuses it there at boot). @since 0.77
+     * The options of preflow/fields' types are checked once, when the block registry is built
+     * (FieldsServiceProvider adds them to BlockFieldChecks, 0.91), not here on every build and render.
      *
      * @throws \Preflow\Folio\Content\FrontendConfigException
      */
-    private static function assertLeaf(\Preflow\Blocks\BlockDefinition $definition, string $name, \Preflow\Data\TypeFieldDefinition $field, \Preflow\Folio\Field\FieldType $type): void
+    private function assertLeaf(\Preflow\Blocks\BlockDefinition $definition, string $name, \Preflow\Data\TypeFieldDefinition $field, \Preflow\Folio\Field\FieldType $type): void
     {
         if ($type instanceof TagsFieldType && $field->translatable) {
             throw new \Preflow\Folio\Content\FrontendConfigException(sprintf(
@@ -733,6 +795,9 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         // the picker's popover, the cards' menus, Collapse all. Plus whatever the fields inside any
         // block need (Trix for rich text…), since cards can be added after the page loaded.
         $assets = ['htmx.js', 'admin.js', 'blocks.js'];
+        if ($this->blocks->hasShowWhen()) {
+            $assets[] = 'show-when-core.js'; // before fields.js, which the editor loads last
+        }
         foreach ($this->blocks->all() as $definition) {
             foreach ($definition->fields as $field) {
                 if ($field->type !== $this->key() && $this->fieldTypes->has($field->type)) {

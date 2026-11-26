@@ -78,6 +78,67 @@ final class BlockRegistryTest extends TestCase
         new BlockRegistry([$class]);
     }
 
+    /** @return iterable<string, array{class-string, string}> */
+    public static function badShowWhen(): iterable
+    {
+        yield 'a name that is not a field of the block' => [\Preflow\Blocks\Tests\Fixtures\ShowWhenUnknown::class,
+            'Block "show_when_unknown": field "url": show_when names "style", which is not a field of the block. Name a field of the same block.'];
+        yield 'the field itself' => [\Preflow\Blocks\Tests\Fixtures\ShowWhenItself::class,
+            'Block "show_when_itself": field "url": show_when names the field itself. Name another field of the same block.'];
+        yield 'a translatable source' => [\Preflow\Blocks\Tests\Fixtures\ShowWhenTranslatable::class,
+            'Block "show_when_translatable": field "url": show_when names "kind", which is translatable. Name a field that is not translatable (one value in every language).'];
+        yield 'a malformed rule' => [\Preflow\Blocks\Tests\Fixtures\ShowWhenMalformed::class,
+            'Block "show_when_malformed": field "url": show_when {"field":"kind",">":3} has the operator ">", which show_when does not know; use one of =, !=, in, not_in, empty, filled.'];
+        yield 'a cycle' => [\Preflow\Blocks\Tests\Fixtures\ShowWhenCycle::class,
+            'Block "show_when_cycle": field "kind": show_when names "url", which depends on "kind" again (kind → url → kind). Break the cycle: let one of these fields show without depending on the others.'];
+    }
+
+    /** @param class-string $class */
+    #[\PHPUnit\Framework\Attributes\DataProvider('badShowWhen')]
+    public function test_a_show_when_that_cannot_work_fails_when_the_blocks_load_naming_the_block(string $class, string $message): void
+    {
+        $this->expectException(BlockConfigException::class);
+        $this->expectExceptionMessage($message);
+        new BlockRegistry([$class]);
+    }
+
+    public function test_visible_block_reads_a_hidden_field_as_null_in_each_block_on_its_own(): void
+    {
+        $registry = new BlockRegistry([\Preflow\Blocks\Tests\Fixtures\ShowWhen\Offer::class, \Preflow\Blocks\Tests\Fixtures\ShowWhen\OfferLine::class]);
+        $this->assertTrue($registry->hasShowWhen());
+
+        $link = ['_uid' => 'o1', '_block' => 'offer', 'kind' => 'link', 'button_url' => '/a', 'lines' => [
+            ['_uid' => 'l1', '_block' => 'offer_line', 'featured' => true, 'note' => 'Shown'],
+            ['_uid' => 'l2', '_block' => 'offer_line', 'featured' => false, 'note' => 'Kept, not shown'],
+        ]];
+        $text = ['_uid' => 'o2', '_block' => 'offer', 'kind' => 'text', 'button_url' => '/b', 'lines' => []];
+
+        $visible = $registry->visibleBlock($link);
+        $this->assertSame('/a', $visible['button_url']);
+        $this->assertSame('Shown', $visible['lines'][0]['note']);
+        $this->assertNull($visible['lines'][1]['note'], 'a nested block decides by its own source');
+        $this->assertNull($registry->visibleBlock($text)['button_url']);
+        $this->assertSame(['button_url'], $registry->hiddenFieldsOf('offer', $text));
+
+        // A record's blocks fields (folio_get, templates reading blocks directly).
+        $fields = ['body' => new \Preflow\Data\TypeFieldDefinition('body', 'blocks'), 'title' => new \Preflow\Data\TypeFieldDefinition('title')];
+        $values = $registry->visibleBlocksIn(['title' => 'T', 'body' => [$link, $text]], $fields);
+        $this->assertSame('/a', $values['body'][0]['button_url']);
+        $this->assertNull($values['body'][1]['button_url']);
+        $this->assertSame('T', $values['title']);
+    }
+
+    public function test_blocks_without_show_when_come_back_unchanged(): void
+    {
+        $registry = new BlockRegistry([ConfigCard::class]);
+        $block = ['_uid' => 'c1', '_block' => 'config_card', 'heading' => 'H'];
+
+        $this->assertFalse($registry->hasShowWhen());
+        $this->assertSame($block, $registry->visibleBlock($block));
+        $this->assertSame([], $registry->hiddenFieldsOf('config_card', $block));
+        $this->assertSame(['body' => [$block]], $registry->visibleBlocksIn(['body' => [$block]], ['body' => new \Preflow\Data\TypeFieldDefinition('body', 'blocks')]));
+    }
+
     public function test_discover_scans_app_blocks_and_round_trips_through_plain_data(): void
     {
         $registry = BlockRegistry::discover([], __DIR__ . '/Fixtures/app/app/Blocks', [ConfigCard::class]);
@@ -85,6 +146,46 @@ final class BlockRegistryTest extends TestCase
 
         $this->assertSame(['quote', 'config_card'], array_keys($registry->all()));
         $this->assertEquals($registry->all(), $copy->all());
+    }
+
+    public function test_a_package_s_field_check_runs_when_the_registry_is_built_naming_the_block(): void
+    {
+        $seen = [];
+        $check = static function (array $fields) use (&$seen): void {
+            $seen[] = array_keys($fields);
+        };
+        $registry = new BlockRegistry([ConfigCard::class], [$check]);
+        $this->assertSame([['heading', 'style']], $seen, 'once per block, with its field definitions');
+        $this->assertInstanceOf(\Preflow\Data\TypeFieldDefinition::class, $registry->get('config_card')?->fields['style']);
+
+        $refuse = static function (array $fields): void {
+            throw new \LogicException('field "style": "palette" lists "red"; write each colour as #rrggbb.');
+        };
+        try {
+            new BlockRegistry([ConfigCard::class], [$refuse]);
+            $this->fail('the check did not stop the build');
+        } catch (BlockConfigException $e) {
+            $this->assertSame('Block "config_card": field "style": "palette" lists "red"; write each colour as #rrggbb.', $e->getMessage());
+        }
+    }
+
+    public function test_a_field_check_runs_once_not_for_a_cached_or_manifest_registry(): void
+    {
+        $cache = sys_get_temp_dir() . '/blocks_checks_' . bin2hex(random_bytes(4)) . '/blocks.cache';
+        $runs = 0;
+        $check = static function (array $fields) use (&$runs): void {
+            ++$runs;
+        };
+        try {
+            $built = BlockRegistry::discover([], __DIR__ . '/Fixtures/missing', [ConfigCard::class], $cache, useCache: true, checks: [$check]);
+            $this->assertSame(1, $runs, 'run when the registry is built');
+            BlockRegistry::discover([], __DIR__ . '/Fixtures/missing', [ConfigCard::class], $cache, useCache: true, checks: [$check]);
+            BlockRegistry::fromArray($built->toArray());
+            $this->assertSame(1, $runs, 'a registry read from blocks.cache or the boot manifest was checked when that was written');
+        } finally {
+            @unlink($cache);
+            @rmdir(dirname($cache));
+        }
     }
 
     public function test_attributes_under_an_alias_count(): void

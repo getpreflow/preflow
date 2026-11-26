@@ -29,12 +29,13 @@ use Preflow\Media\Usage\CountsAssetUsage;
  * sharing", on routed types and the site singleton) counts like an asset
  * field. Each record is listed once. A revision does not block a delete: the
  * asset goes into the bin, and cleanup and emptying the bin keep it while a
- * revision needs it. Poster use is the media core's own source
- * (PosterReferences).
+ * revision needs it. A video asset's own poster is the media core's source
+ * (PosterReferences); an embed field's poster is counted here, as a field value.
  *
  * Runs on every delete, so it reads only what can hold a reference: types
- * without an asset or blocks field or a share image are skipped, and only rows
- * whose asset, blocks or `_seo` columns (a revision's "data") contain the id
+ * without a field that holds asset ids (asset, blocks, and since 0.91 every type
+ * implementing ReferencesAssets: an embed's poster, a link to a file) or a share
+ * image are skipped, and only rows whose such columns or `_seo` (a revision's "data") contain the id
  * (CONTAINS, the same on every storage) are walked. A library page counts the
  * usages of all its assets at once (usageCounts(): one query per type and source for the page's ids, the
  * revisions left out unless asked: they hold no usage that blocks a delete).
@@ -99,10 +100,10 @@ final class FolioRecordReferences implements AssetReferenceSource, CountsAssetUs
         $shared = $this->sharedTypes();
         foreach ($this->catalog->all() as $listing) {
             $def = $this->registry->get($listing->key);
-            $columns = self::referenceFields($def);
+            $columns = $this->referenceFields($def);
             $seo = isset($shared[$listing->key]);
             if ($columns === [] && !$seo) {
-                continue; // AssetReferences reads only asset and blocks fields
+                continue; // no field that holds asset ids (AssetReferences::holdsAssets())
             }
             $sources = ['working' => $def];
             if ($listing->publishing) {
@@ -197,17 +198,14 @@ final class FolioRecordReferences implements AssetReferenceSource, CountsAssetUs
             : $this->prefix . '/' . $listing->key . '/' . rawurlencode($id) . '/edit';
     }
 
-    /** @return list<string> the fields AssetReferences::collect() reads */
-    private static function referenceFields(TypeDefinition $def): array
+    /** @return list<string> the fields AssetReferences::collect() reads: asset, blocks and every ReferencesAssets type's (since 0.91) */
+    private function referenceFields(TypeDefinition $def): array
     {
-        return array_keys(array_filter(
-            $def->fields,
-            static fn (TypeFieldDefinition $f): bool => $f->type === 'asset' || $f->type === 'blocks',
-        ));
+        return array_keys(array_filter($def->fields, $this->references->holdsAssets(...)));
     }
 
     /**
-     * The rows that may reference one of the assets: those whose asset or blocks columns (and
+     * The rows that may reference one of the assets: those whose columns of file-holding fields (asset, blocks, ReferencesAssets types; and
      * `_seo` with $seo) contain one of the ids (CONTAINS on the stored value, every locale of a
      * translatable field; a reference always holds the id verbatim, in a list, a locale map or
      * block JSON too): the same rows on every driver; JSON reads every file either way. Only

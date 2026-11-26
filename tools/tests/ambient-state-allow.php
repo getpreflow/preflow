@@ -280,6 +280,11 @@ return [
             'private static int $savepoints = 0;' => 'a counter that names savepoints uniquely in the process',
         ],
     ],
+    'data/src/FieldVisibility.php' => [
+        'static-state' => [
+            'private static ?\WeakMap $parsedByType = null;' => 'each type definition\'s parsed show_when rules (a WeakMap keyed by the definition): they depend on the definition alone and go with it, the same for every render',
+        ],
+    ],
     'data/src/Migration/Grammar/Grammars.php' => [
         'static-state' => [
             'private static array $registered = [];' => 'schema grammars registered by dialect name',

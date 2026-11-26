@@ -29,6 +29,7 @@ final class TypeRegistry
             $this->assertOneDefinitionPerKey();
             $this->assertTitleFields();
             $this->assertActions();
+            $this->assertShowWhen();
         } else {
             // Checked when the manifest is built (and live while none is loaded); a loaded one skips the scans.
             $sources = $this->manifest->isRecording() ? $this->sources() : [];
@@ -44,6 +45,11 @@ final class TypeRegistry
             }, $sources);
             $this->manifest->remember('data.type_actions', function (): bool {
                 $this->assertActions();
+
+                return true;
+            }, $sources);
+            $this->manifest->remember('data.show_when', function (): bool {
+                $this->assertShowWhen();
 
                 return true;
             }, $sources);
@@ -82,8 +88,7 @@ final class TypeRegistry
     {
         foreach ($this->classes as $key => $class) {
             $path = $this->modelsPath . '/' . $key . '.json';
-            $file = is_file($path) ? \Preflow\Core\Config\ParsedJsonFiles::read($path) : null;
-            $file = is_array($file) && ($file['extends'] ?? false) !== true ? $file : [];
+            $file = $this->adminFile((string) $key);
             $entity = (new \ReflectionClass($class))->getAttributes(Attributes\Entity::class);
             $attribute = $entity === [] ? null : $entity[0]->newInstance()->titleField;
             if ($attribute === null && !array_key_exists('titleField', $file)) {
@@ -93,13 +98,8 @@ final class TypeRegistry
             $titleField = ModelSchema::titleField($schema, $file, $path, $class);
             self::assertTitleField((string) $key, self::titleField($titleField, (string) $key), $schema['fields']);
         }
-        foreach (glob($this->modelsPath . '/*.json') ?: [] as $path) {
-            $key = basename($path, '.json');
-            if (isset($this->classes[$key])) {
-                continue;
-            }
-            $file = \Preflow\Core\Config\ParsedJsonFiles::read($path);
-            if (!is_array($file) || ($file['extends'] ?? false) === true || !array_key_exists('titleField', $file)) {
+        foreach ($this->ownModelFiles() as $key => $file) {
+            if (isset($this->classes[$key]) || !array_key_exists('titleField', $file)) {
                 continue;
             }
             $type = is_string($file['key'] ?? null) ? $file['key'] : $key;
@@ -116,14 +116,104 @@ final class TypeRegistry
      */
     private function assertActions(): void
     {
-        foreach (glob($this->modelsPath . '/*.json') ?: [] as $path) {
-            $file = \Preflow\Core\Config\ParsedJsonFiles::read($path);
-            if (!is_array($file) || ($file['extends'] ?? false) === true
-                || (!array_key_exists('readonly', $file) && !array_key_exists('creatable', $file))) {
+        foreach ($this->ownModelFiles() as $key => $file) {
+            if (!array_key_exists('readonly', $file) && !array_key_exists('creatable', $file)) {
                 continue;
             }
-            self::actions($file, is_string($file['key'] ?? null) ? $file['key'] : basename($path, '.json'));
+            self::actions($file, is_string($file['key'] ?? null) ? $file['key'] : $key);
         }
+    }
+
+    /**
+     * Each model file that is a schema of its own, by its file name's key: decoded (once per
+     * process, ParsedJsonFiles), an object, and not an "extends" file (that patches a runtime
+     * type, which define() checks). The boot checks over model files read them through this.
+     *
+     * @return \Generator<string, array<string, mixed>>
+     */
+    private function ownModelFiles(): \Generator
+    {
+        foreach (glob($this->modelsPath . '/*.json') ?: [] as $path) {
+            $file = \Preflow\Core\Config\ParsedJsonFiles::read($path);
+            if (is_array($file) && ($file['extends'] ?? false) !== true) {
+                yield basename($path, '.json') => $file;
+            }
+        }
+    }
+
+    /**
+     * The admin file of a class-backed type: its model file, or [] when it has none or the file
+     * is an "extends" patch of a runtime type (not this class's).
+     *
+     * @return array<string, mixed>
+     */
+    private function adminFile(string $key): array
+    {
+        $path = $this->modelsPath . '/' . $key . '.json';
+        $file = is_file($path) ? \Preflow\Core\Config\ParsedJsonFiles::read($path) : null;
+
+        return is_array($file) && ($file['extends'] ?? false) !== true ? $file : [];
+    }
+
+    /**
+     * A field's show_when that cannot work (malformed, or naming an unknown field, the field
+     * itself, a translatable field or a field that depends on it again) is an error when the
+     * registry is built (at boot), naming the type and the field (FieldVisibility::assertRules()).
+     * As the titleField check, run when a boot manifest is built and skipped when one is loaded.
+     * A model file is checked as written; a class-backed type only when its fields' config or its
+     * admin file holds a show_when, then as its schema (the class with its admin file over it).
+     * A runtime type is checked by define().
+     */
+    private function assertShowWhen(): void
+    {
+        foreach ($this->classes as $key => $class) {
+            if (self::fileHasShowWhen($this->adminFile((string) $key)) || self::classHasShowWhen($class)) {
+                self::assertShowWhenRules((string) $key, $this->schema((string) $key));
+            }
+        }
+        foreach ($this->ownModelFiles() as $key => $file) {
+            if (isset($this->classes[$key]) || !self::fileHasShowWhen($file)) {
+                continue;
+            }
+            self::assertShowWhenRules(is_string($file['key'] ?? null) ? $file['key'] : $key, $file);
+        }
+    }
+
+    /** @param array<string, mixed> $file */
+    private static function fileHasShowWhen(array $file): bool
+    {
+        foreach (is_array($file['fields'] ?? null) ? $file['fields'] : [] as $field) {
+            if (is_array($field) && array_key_exists('show_when', $field)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @param class-string $class */
+    private static function classHasShowWhen(string $class): bool
+    {
+        foreach ((new \ReflectionClass($class))->getProperties(\ReflectionProperty::IS_PUBLIC) as $property) {
+            foreach ($property->getAttributes(Attributes\Field::class) as $attribute) {
+                if (array_key_exists('show_when', $attribute->newInstance()->config)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /** @param array<string, mixed> $schema */
+    private static function assertShowWhenRules(string $key, array $schema): void
+    {
+        $fields = array_filter(is_array($schema['fields'] ?? null) ? $schema['fields'] : [], 'is_array');
+        FieldVisibility::assertRules(
+            "Type \"{$key}\"",
+            $fields,
+            static fn (string $field): bool => (bool) ($fields[$field]['translatable'] ?? false),
+        );
     }
 
     /** @param array<string, mixed> $fields */
@@ -146,8 +236,8 @@ final class TypeRegistry
     {
         foreach ($this->classes as $key => $class) {
             $path = $this->modelsPath . '/' . $key . '.json';
-            $file = is_file($path) ? \Preflow\Core\Config\ParsedJsonFiles::read($path) : null;
-            if (is_array($file) && ($file['extends'] ?? false) !== true) {
+            $file = $this->adminFile((string) $key);
+            if ($file !== []) { // an empty admin file holds nothing to disagree with
                 ModelSchema::assertAdminOnly($file, $path, $key, $class);
                 ModelSchema::assertActionsAgree($file, $path, (string) $key, $class);
             }
@@ -242,6 +332,7 @@ final class TypeRegistry
             throw new \RuntimeException("Type \"{$key}\" already exists (as a model file or an earlier definition)");
         }
 
+        self::assertShowWhenRules($key, $schema);
         $this->schemas[$key] = $schema;
 
         return $this->cache[$key] = $this->parse($schema);

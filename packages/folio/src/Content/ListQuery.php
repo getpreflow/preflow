@@ -23,7 +23,7 @@ final readonly class ListQuery
     public const int PER_PAGE = 50;
 
     /** Field types the admin list shows when "list.columns" is not set. */
-    public const array LIST_TYPES = ['string', 'number', 'int', 'integer', 'float', 'select', 'boolean', 'date'];
+    public const array LIST_TYPES = ['string', 'number', 'int', 'integer', 'float', 'select', 'boolean', 'date', 'datetime', 'time'];
 
     /** Upper bound for the requested page, so (page - 1) * PER_PAGE can never overflow an int. */
     private const int MAX_PAGE = 1_000_000;
@@ -129,7 +129,7 @@ final readonly class ListQuery
             $field = ltrim($rawSort, '-');
             if (
                 $field === $changedSort
-                || (in_array($field, self::columns($def, $listConfig), true) && !self::isRelation($def->fields[$field]->type))
+                || (in_array($field, self::columns($def, $listConfig), true) && self::sortable($def->fields[$field]->type))
             ) {
                 $sort = $field;
                 $desc = str_starts_with($rawSort, '-');
@@ -327,6 +327,15 @@ final readonly class ListQuery
         }
 
         return $query;
+    }
+
+    /** Field types whose value is an object, so sorting by its stored text means nothing (since 0.91). */
+    private const array UNSORTABLE = ['daterange', 'embed', 'table', 'location', 'link', 'phone'];
+
+    /** Whether a list column of this type sorts: not a relation (ids) and not an object (a date range, an embed, a table, a location, a link, a phone number: no header, "sort" is ignored; since 0.91). */
+    public static function sortable(string $type): bool
+    {
+        return !self::isRelation($type) && !in_array($type, self::UNSORTABLE, true);
     }
 
     private static function isRelation(string $type): bool

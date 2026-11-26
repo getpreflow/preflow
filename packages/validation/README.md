@@ -6,7 +6,7 @@ Rules for validating arrays and records. A rule is written as a string alias wit
 ## Built-in rules
 
 `required`, `nullable`, `email`, `url`, `numeric`, `integer`, `min:n`, `max:n`, `between:min,max`,
-`step:n`, `in:a,b`, `regex:/pattern/`, `confirmed`, `slug`, `slug:path`.
+`step:n`, `in:a,b`, `regex:/pattern/`, `confirmed`, `slug`, `slug:path`, `phone`, `color`, `json`.
 
 - `step:n` (since 0.46): the value must be a whole multiple of `n` counted from 0 (`step:0.5` accepts
   `2.5`, refuses `2.3`). The check uses the decimal digits of the value and the step, not floats, so
@@ -20,6 +20,21 @@ Rules for validating arrays and records. A rule is written as a string alias wit
   `Slug::clean($text, path: false)` makes text into a valid value (`Über uns` → `ueber-uns`, `é` → `e`;
   with `path: true` single slashes stay); text with no a-z form gives `''`. Accents are dropped with
   `ext-intl`'s `Normalizer`; without it only the letters ä, ö, ü, ß, æ, œ, ø, đ, ł and þ are converted.
+- `phone` (since 0.91): a phone number as people type it: digits, an optional leading `+`, and
+  spaces (also non-breaking ones), dashes, dots, slashes and parentheses between them; 3 to 15 digits (short service numbers such as 112 count). Only text counts (an
+  int has lost its leading zero). Empty values pass. The message is `validation.phone`.
+  `Phone::dialable('+41 44 123 45 67')` gives `+41441234567`, the number for a `tel:` link (null
+  when it is no phone number).
+- `color` (since 0.91): a colour as hex text, `#rrggbb` or `#rrggbbaa` (either case). `new Color([...])`
+  takes a palette: only those colours pass (compared as colours, so `#C00000` matches `#c00000`).
+  Empty values pass. The messages are `validation.color` and `validation.color_palette` (`:values`,
+  the palette).
+- `json` (since 0.91): text that is valid JSON (`json_validate()`; any JSON value). Empty values
+  pass. The message is `validation.json`.
+
+The message `validation.phone_region` belongs to preflow/fields' phone check and lives here for the same reason. The messages `validation.link.kind`, `.target`, `.type` and `.url` (since 0.91) belong to
+preflow/fields' link check (`ValidLink`); they live here so a validator without a translator has
+their English text, as for every rule's. So do `validation.datetime`, `.datetime_gap` (`:value`, `:zone`), `.time`, `.daterange` (`:example`) and `.daterange_order` (`:start`, `:end`) (since 0.91), the messages of the date-time, time and date range fields. So do `validation.embed` (`:providers`), `.embed_provider` (`:host`, `:providers`), `.embed_unregistered` (`:provider`), `.embed_poster`, `.table`, `.table_columns` and `.table_rows` (`:count`, `:max`), `.location`, `.location_lat` and `.location_lng` (since 0.91), the messages of the video embed, table and location fields.
 
 ## Rules for a filled value only
 
