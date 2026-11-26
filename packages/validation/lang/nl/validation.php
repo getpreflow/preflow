@@ -66,5 +66,6 @@ return [
         'unknown_block' => 'Geen blok heeft de sleutel ":block". Gebruik de sleutel van een van de blokken van de site: :blocks.',
         'unknown_area' => 'De lay-out ":layout" heeft geen gebied ":name". Gebruik een van: :areas.',
         'uid_twice' => 'De uid ":uid" is aan meer dan één blok gegeven. Geef elk blok een eigen "_uid", of laat hem weg voor een nieuw blok.',
+        'uid_format' => 'De uid ":uid" is geen blok-uid: een uid bestaat uit 16 hexadecimale cijfers (0-9, a-f), zoals "3f9a1c2b4d5e6f70". Laat "_uid" weg om een nieuwe te krijgen.',
     ],
 ];

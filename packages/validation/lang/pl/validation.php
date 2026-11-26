@@ -66,5 +66,6 @@ return [
         'unknown_block' => 'Żaden blok nie ma klucza ":block". Użyj klucza jednego z bloków witryny: :blocks.',
         'unknown_area' => 'Układ ":layout" nie ma obszaru ":name". Użyj jednego z: :areas.',
         'uid_twice' => 'Uid ":uid" jest nadany więcej niż jednemu blokowi. Nadaj każdemu blokowi własny "_uid" albo pomiń go dla nowego bloku.',
+        'uid_format' => 'Uid ":uid" nie jest uid bloku: uid to 16 cyfr szesnastkowych (0-9, a-f), np. "3f9a1c2b4d5e6f70". Pomiń "_uid", aby otrzymać nowy.',
     ],
 ];

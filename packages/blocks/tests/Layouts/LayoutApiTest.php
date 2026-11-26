@@ -173,6 +173,31 @@ final class LayoutApiTest extends BlocksAppTestCase
         $this->assertSame(['_areas.main.0._block'], array_keys($unknownBlock->json('errors')));
     }
 
+    public function test_api_write_takes_only_hex_uids(): void
+    {
+        $this->store(['uuid' => 'p1', 'title' => 'About', 'slug' => 'about', '_layout' => 'standard', '_areas' => ['main' => []]]);
+        $message = 'The uid "intro" is not a block uid: a uid is 16 hex digits (0-9, a-f), such as "3f9a1c2b4d5e6f70". Leave "_uid" out to get a fresh one.';
+
+        $refused = $this->json('PATCH', '/api/pages/p1', ['areas' => ['main' => [self::section(self::A), self::section('intro')]]])->assertStatus(422);
+        $this->assertSame(['_areas.main.1._uid' => [$message]], $refused->json('errors'));
+
+        $nested = $this->json('PATCH', '/api/pages/p1', ['areas' => ['main' => [self::section(self::A, ['quotes' => [['_uid' => 'intro', '_block' => 'section_quote', 'text' => 'Hi']]])]]])->assertStatus(422);
+        $this->assertSame(['_areas.main.0.quotes.0._uid' => [$message]], $nested->json('errors'), 'nested blocks too');
+        $this->assertCount(0, $this->areasOf($this->stored('p1'))['main'], 'nothing was saved');
+
+        $this->json('PATCH', '/api/pages/p1', ['areas' => ['main' => [
+            self::section(self::A),
+            ['_block' => 'section', 'title' => ['en' => 'New'], 'quotes' => [['_block' => 'section_quote', 'text' => 'Hi']]],
+            ['_uid' => null] + self::section(self::B),
+        ]]])->assertOk();
+        $main = $this->areasOf($this->stored('p1'))['main'];
+        $this->assertSame(self::A, $main[0]['_uid'], 'a hex uid is kept');
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{16}$/', $main[1]['_uid'], 'an omitted uid gets a fresh one');
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{16}$/', $main[1]['quotes'][0]['_uid'], 'nested too');
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{16}$/', $main[2]['_uid'], 'null is left out');
+        $this->assertNotSame(self::B, $main[2]['_uid']);
+    }
+
     public function test_type_without_layouts_has_no_layout_resource(): void
     {
         $note = DynamicRecord::fromArray($this->types()->get('note'), ['uuid' => 'n1', 'title' => 'Hi']);

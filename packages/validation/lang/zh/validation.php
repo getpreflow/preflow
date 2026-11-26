@@ -66,5 +66,6 @@ return [
         'unknown_block' => '没有键为 ":block" 的区块。请使用网站区块的键之一：:blocks。',
         'unknown_area' => '布局 ":layout" 没有区域 ":name"。请使用以下之一：:areas。',
         'uid_twice' => 'uid ":uid" 被用于多个区块。请为每个区块设置各自的 "_uid"，新区块则省略它。',
+        'uid_format' => 'uid ":uid" 不是区块 uid：uid 由 16 位十六进制数字（0-9、a-f）组成，例如 "3f9a1c2b4d5e6f70"。省略 "_uid" 即可获得新的 uid。',
     ],
 ];

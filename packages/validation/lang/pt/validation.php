@@ -66,5 +66,6 @@ return [
         'unknown_block' => 'Nenhum bloco tem a chave ":block". Use a chave de um dos blocos do site: :blocks.',
         'unknown_area' => 'O layout ":layout" não tem a área ":name". Use uma de: :areas.',
         'uid_twice' => 'O uid ":uid" foi dado a mais de um bloco. Dê a cada bloco o seu próprio "_uid", ou omita-o para um novo.',
+        'uid_format' => 'O uid ":uid" não é um uid de bloco: um uid tem 16 dígitos hexadecimais (0-9, a-f), como "3f9a1c2b4d5e6f70". Omita "_uid" para obter um novo.',
     ],
 ];

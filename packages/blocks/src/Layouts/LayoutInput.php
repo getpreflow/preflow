@@ -23,13 +23,14 @@ use Preflow\Validation\ValidatorFactory;
  * "layout" (optional; a layout key, or null for the type's default) becomes "_layout". "areas"
  * (optional) replaces only the areas it names (a list [] empties one); every area it does not name
  * keeps its stored blocks, unplaced ones included, so a write never loses content it did not touch.
- * A block without "_uid" gets a fresh one (16 hex digits, nested blocks too); a field its show_when
+ * A block without "_uid" (or with null or "") gets a fresh one (16 hex digits, nested blocks too); a field its show_when
  * hides keeps its stored value (FieldVisibility::keepStored(), per block, as Folio's form does).
  * Other keys of the input are the caller's own fields: merge() leaves them alone.
  *
  * Refused here (ValidationException, each key the stored key the core rules use): an area the
- * chosen layout does not have and the page does not store ("_areas.<name>"), a uid given to two
- * blocks ("_areas.<name>.<i>._uid"), a value of the wrong shape, a new block of a key no class
+ * chosen layout does not have and the page does not store ("_areas.<name>"), a uid that is not 16
+ * hex digits or is given to two blocks ("_areas.<name>.<i>._uid", nested
+ * "_areas.<name>.<i>.<field>.<j>._uid"), a value of the wrong shape, a new block of a key no class
  * declares. Save the result with DataManager::saveType(): the core rules decide the rest, as for
  * Folio (the layout choice, a pin, the areas' limits, the block values).
  *
@@ -142,8 +143,11 @@ final readonly class LayoutInput
                     continue;
                 }
                 $uid = $block['_uid'] ?? null;
-                if (!is_string($uid) || $uid === '') {
+                if ($uid === null || $uid === '') {
                     $block['_uid'] = $uid = self::freshUid();
+                } elseif (!self::isUid($uid)) {
+                    $errors[$here . '._uid'] = self::uidFormat($uid);
+                    continue;
                 } elseif (isset($taken[$uid])) {
                     $errors[$here . '._uid'] = new Message('validation.layout.uid_twice', ['uid' => $uid]);
                     continue;
@@ -164,7 +168,7 @@ final readonly class LayoutInput
                     $blocks[] = $block;
                     continue;
                 }
-                $blocks[] = $this->kept($definition, $block, ($was['_block'] ?? null) === $key ? $was : []);
+                $blocks[] = $this->kept($definition, $block, ($was['_block'] ?? null) === $key ? $was : [], $here, $errors);
             }
             $areas[$name] = $blocks;
         }
@@ -177,17 +181,21 @@ final readonly class LayoutInput
      * stored values (here and in nested blocks, matched by uid).
      *
      * @param array<string, mixed> $block
-     * @param array<string, mixed> $previous the stored block with the same uid and key; [] for a new one
+     * @param array<string, mixed>   $previous the stored block with the same uid and key; [] for a new one
+     * @param string                 $at       the block's key in errors ("_areas.<name>.<i>")
+     * @param array<string, Message> $errors
      * @return array<string, mixed>
      */
-    private function kept(BlockDefinition $definition, array $block, array $previous): array
+    private function kept(BlockDefinition $definition, array $block, array $previous, string $at, array &$errors): array
     {
         foreach ($definition->fields as $name => $field) {
             if (!array_key_exists($name, $block) || BlockLists::of($field, null) === []) {
                 continue;
             }
             $before = BlockLists::of($field, $previous[$name] ?? null);
-            $block[$name] = BlockLists::map($field, $block[$name], fn (array $list, string $path): array => $this->keptList($list, $before[$path] ?? []));
+            $block[$name] = BlockLists::map($field, $block[$name], function (array $list, string $path) use ($before, $at, $name, &$errors): array {
+                return $this->keptList($list, $before[$path] ?? [], $at . '.' . $name . ($path === '' ? '' : '.' . $path), $errors);
+            });
         }
 
         return FieldVisibility::keepStored($definition->fields, $block, $previous);
@@ -196,9 +204,11 @@ final readonly class LayoutInput
     /**
      * @param list<array<string, mixed>> $list
      * @param list<array<string, mixed>> $previous the stored list
+     * @param string                     $at       the list's key in errors ("_areas.<name>.<i>.<field>")
+     * @param array<string, Message>     $errors
      * @return list<array<string, mixed>>
      */
-    private function keptList(array $list, array $previous): array
+    private function keptList(array $list, array $previous, string $at, array &$errors): array
     {
         $byUid = [];
         foreach ($previous as $block) {
@@ -207,17 +217,33 @@ final readonly class LayoutInput
             }
         }
         $out = [];
-        foreach ($list as $block) {
+        foreach ($list as $index => $block) {
+            $here = $at . '.' . $index;
             $uid = $block['_uid'] ?? null;
-            if (!is_string($uid) || $uid === '') {
+            if ($uid === null || $uid === '') {
                 $block['_uid'] = $uid = self::freshUid();
+            } elseif (!self::isUid($uid)) {
+                $errors[$here . '._uid'] = self::uidFormat($uid);
+                $out[] = $block;
+                continue;
             }
             $definition = $this->blocks->get((string) ($block['_block'] ?? ''));
             $was = $byUid[$uid] ?? [];
-            $out[] = $definition === null ? $block : $this->kept($definition, $block, ($was['_block'] ?? null) === $definition->key ? $was : []);
+            $out[] = $definition === null ? $block : $this->kept($definition, $block, ($was['_block'] ?? null) === $definition->key ? $was : [], $here, $errors);
         }
 
         return $out;
+    }
+
+    /** Whether $uid is a block uid as the core knows one (BlockLists::uidOf()): 16 hex digits. */
+    private static function isUid(mixed $uid): bool
+    {
+        return is_string($uid) && preg_match('/^[a-f0-9]{16}$/', $uid) === 1;
+    }
+
+    private static function uidFormat(mixed $uid): Message
+    {
+        return new Message('validation.layout.uid_format', ['uid' => is_scalar($uid) ? (string) $uid : (string) json_encode($uid)]);
     }
 
     /** A block uid as Folio's editor makes one. */

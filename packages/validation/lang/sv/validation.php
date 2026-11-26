@@ -66,5 +66,6 @@ return [
         'unknown_block' => 'Inget block har nyckeln ":block". Använd nyckeln till ett av webbplatsens block: :blocks.',
         'unknown_area' => 'Layouten ":layout" har inget område ":name". Använd ett av: :areas.',
         'uid_twice' => 'Uid ":uid" har getts till mer än ett block. Ge varje block ett eget "_uid", eller utelämna det för ett nytt block.',
+        'uid_format' => 'Uid ":uid" är inte ett block-uid: ett uid består av 16 hexadecimala siffror (0-9, a-f), till exempel "3f9a1c2b4d5e6f70". Utelämna "_uid" för att få ett nytt.',
     ],
 ];

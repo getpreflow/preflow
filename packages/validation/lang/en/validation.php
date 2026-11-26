@@ -76,5 +76,6 @@ return [
         'unknown_block' => 'No block has the key ":block". Use the key of one of the site\'s blocks: :blocks.',
         'unknown_area' => 'The layout ":layout" has no area ":name". Use one of: :areas.',
         'uid_twice' => 'The uid ":uid" is given to more than one block. Give each block its own "_uid", or leave it out for a new one.',
+        'uid_format' => 'The uid ":uid" is not a block uid: a uid is 16 hex digits (0-9, a-f), such as "3f9a1c2b4d5e6f70". Leave "_uid" out to get a fresh one.',
     ],
 ];

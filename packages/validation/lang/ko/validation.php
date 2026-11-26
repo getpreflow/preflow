@@ -66,5 +66,6 @@ return [
         'unknown_block' => '키가 ":block"인 블록이 없습니다. 사이트 블록의 키 중 하나를 쓰세요: :blocks.',
         'unknown_area' => '레이아웃 ":layout"에는 영역 ":name"이 없습니다. 다음 중 하나를 쓰세요: :areas.',
         'uid_twice' => 'uid ":uid"가 둘 이상의 블록에 쓰였습니다. 블록마다 고유한 "_uid"를 주거나, 새 블록에서는 빼세요.',
+        'uid_format' => 'uid ":uid"는 블록 uid가 아닙니다. uid는 16자리 16진수(0-9, a-f)입니다. 예: "3f9a1c2b4d5e6f70". 새 uid를 받으려면 "_uid"를 빼세요.',
     ],
 ];

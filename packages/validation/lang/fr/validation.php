@@ -70,5 +70,6 @@ return [
         'unknown_block' => 'Aucun bloc n\'a la clé « :block ». Utilisez la clé d\'un des blocs du site : :blocks.',
         'unknown_area' => 'La mise en page « :layout » n\'a pas de zone « :name ». Utilisez l\'une de : :areas.',
         'uid_twice' => 'L\'uid « :uid » est donné à plus d\'un bloc. Donnez à chaque bloc son propre « _uid », ou omettez-le pour un nouveau bloc.',
+        'uid_format' => 'L\'uid « :uid » n\'est pas un uid de bloc : un uid compte 16 chiffres hexadécimaux (0-9, a-f), p. ex. « 3f9a1c2b4d5e6f70 ». Omettez « _uid » pour en obtenir un nouveau.',
     ],
 ];
