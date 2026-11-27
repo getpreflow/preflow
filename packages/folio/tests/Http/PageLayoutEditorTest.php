@@ -356,7 +356,7 @@ final class PageLayoutEditorTest extends TestCase
         $this->assertSame(422, $response->getStatusCode());
         $html = (string) $response->getBody();
         $areas = $this->after($html, 'data-areas-section');
-        $this->assertStringContainsString('<div class="form-error" role="alert">The area &quot;hero&quot; takes at most 1 blocks.</div>', $areas, 'the area limit, in the areas section');
+        $this->assertStringContainsString('<div class="form-error">The area &quot;hero&quot; takes at most 1 blocks.</div>', $this->between($areas, '<span class="form-label">Hero', 'name="_areas[main][_order][]"'), 'the area limit, beside the hero area');
         $card = $this->after($areas, 'id="block-' . self::OTHER . '"');
         $this->assertStringContainsString('Headline: This field is required.', substr($card, 0, 2000), 'the block\'s error on its card');
         $this->assertStringContainsString('<a href="#block-' . self::OTHER . '">This field is required.</a>', $this->between($areas, '<span class="form-label">Main', 'id="block-' . self::OTHER . '"'), 'and in the area\'s summary');

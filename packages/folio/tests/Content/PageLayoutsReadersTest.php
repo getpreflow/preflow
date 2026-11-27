@@ -104,8 +104,8 @@ final class PageLayoutsReadersTest extends TestCase
             'hero' => [self::hero(self::HERO, 'One'), self::hero($second, 'Two')],
             'main' => [self::hero(self::OTHER, '')],
         ]);
-        $this->assertEqualsCanonicalizing(['_areas', '_areas.main.' . self::OTHER . '.headline'], array_keys($errors), 'the core\'s area limits and block values, keyed as the cards are');
-        $this->assertStringContainsString('"hero" takes at most 1', $errors['_areas'][0]);
+        $this->assertEqualsCanonicalizing(['_areas.hero', '_areas.main.' . self::OTHER . '.headline'], array_keys($errors), 'the core\'s area limits (keyed by the area, 0.92 Task 8) and block values, keyed as the cards are');
+        $this->assertStringContainsString('"hero" takes at most 1', $errors['_areas.hero'][0]);
         $this->assertSame(['This field is required.'], $errors['_areas.main.' . self::OTHER . '.headline']);
     }
 

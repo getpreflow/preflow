@@ -121,7 +121,7 @@ final class LayoutApiTest extends BlocksAppTestCase
         $this->assertStringContainsString('pinned to the layout "home"', $rename->json('errors.slug.0'));
 
         $full = $this->json('PATCH', '/api/pages/p1', ['layout' => 'promo', 'areas' => ['hero' => [$banner(self::B), $banner(self::C)]]])->assertStatus(422);
-        $this->assertSame(['_areas' => ['The area "hero" takes at most 1 blocks.']], $full->json('errors'));
+        $this->assertSame(['_areas.hero' => ['The area "hero" takes at most 1 blocks.']], $full->json('errors'));
 
         $required = $this->json('PATCH', '/api/pages/p1', ['areas' => ['main' => [self::section(self::B, ['title' => ['en' => '']])]]])->assertStatus(422);
         $this->assertSame(['_areas.main.' . self::B . '.title' => ['This field is required.']], $required->json('errors'), 'the key Folio\'s form shows');
@@ -220,6 +220,15 @@ final class LayoutApiTest extends BlocksAppTestCase
             $this->assertSame(['_areas.sidebar' => ['The layout "standard" has no area "sidebar". Use one of: main.']], $e->errors());
         }
         $this->assertSame(['hero', 'main', 'top'], $this->app()->container()->get(PageLayouts::class)->declaredAreas('page'), 'the allowed layouts\' areas, then the pinned one\'s');
+    }
+
+    public function test_area_problems_are_keyed_by_the_area(): void
+    {
+        $this->store(['uuid' => 'p1', 'title' => 'About', 'slug' => 'about', '_layout' => 'promo', '_areas' => ['hero' => [], 'main' => []]]);
+
+        $refused = $this->json('PATCH', '/api/pages/p1', ['areas' => ['hero' => [self::section(self::A)]]])->assertStatus(422);
+
+        $this->assertSame(['_areas.hero' => ['The area "hero" does not take "section" blocks. Move it to another area or remove it.']], $refused->json('errors'), 'an API client sees which area');
     }
 
     public function test_type_without_layouts_has_no_layout_resource(): void

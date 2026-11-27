@@ -31,7 +31,9 @@ use Preflow\Data\Locales;
 use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeRegistry;
+use Preflow\Blocks\Layouts\Rules\MessageRule;
 use Preflow\Validation\RuleFactory;
+use Preflow\Validation\ValidationContext;
 use Preflow\Validation\ValidatorFactory;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\View\TemplateFunctionDefinition;
@@ -243,10 +245,31 @@ final class BlocksServiceProvider extends ServiceProvider
                 return [];
             }
 
-            return [
-                PageLayouts::LAYOUT => [new LayoutChoice($layouts, $data, $def)],
-                PageLayouts::AREAS => [AreaContents::forPage($layouts, $def, $container->get(BlockRegistry::class), $data)],
-            ];
+            return [PageLayouts::LAYOUT => [new LayoutChoice($layouts, $data, $def)]];
+        });
+        // What a page's areas hold (AreaContents), keyed by the area that is wrong ("_areas.<area>"), so
+        // an editor sees it beside the area and an API client knows which one (a record check: a field
+        // rule on "_areas" could only key the whole value). A caller giving "_areas" no rules skips it.
+        $data->recordRules()->check(static function (DynamicRecord $record, array $given) use ($container, $data): array {
+            $def = $record->getType();
+            $layouts = $container->get(PageLayouts::class);
+            if ($layouts->forType($def->key) === null || ($given[PageLayouts::AREAS] ?? null) === []) {
+                return [];
+            }
+            $values = $record->toArray();
+            $problems = AreaContents::forPage($layouts, $def, $container->get(BlockRegistry::class), $data)
+                ->problems($values[PageLayouts::AREAS] ?? null, new ValidationContext(PageLayouts::AREAS, $values));
+            if ($problems === []) {
+                return [];
+            }
+            $rules = [];
+            foreach ($problems as $area => $message) {
+                $rules[PageLayouts::AREAS . '.' . $area] = [new MessageRule($message)];
+            }
+            $validators = $container->bound(ValidatorFactory::class) ? $container->get(ValidatorFactory::class) : new ValidatorFactory(new RuleFactory());
+
+            // Through a validator, so the messages are in its language (the render's), as the rules' are.
+            return $validators->make($rules, [])->validate()->errors();
         });
         $data->recordRules()->add(static function (TypeDefinition $def) use ($container, $data): array {
             $layouts = $container->get(PageLayouts::class);

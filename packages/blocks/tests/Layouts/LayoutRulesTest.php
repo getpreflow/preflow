@@ -91,10 +91,10 @@ final class LayoutRulesTest extends BlocksAppTestCase
         $banner = static fn (string $uid): array => ['_uid' => $uid, '_block' => 'banner'];
         $quote = static fn (string $uid): array => ['_uid' => $uid, '_block' => 'quote'];
 
-        $this->assertSame(['_areas' => ['The area "hero" takes at most 1 blocks.']], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$banner('b1'), $banner('b2')]]]));
-        $this->assertSame(['_areas' => ['The area "hero" does not take "quote" blocks. Move it to another area or remove it.']], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$quote('q1')]]]));
-        $this->assertSame(['_areas' => ['The area "main" does not take "banner" blocks. Move it to another area or remove it.']], $this->errors('page', ['_layout' => 'promo', '_areas' => json_encode(['main' => [$banner('b1')]])]), 'JSON text too');
-        $this->assertSame(['_areas' => ['The area "top" takes at least 1 blocks.']], $this->errors('page', ['slug' => ['en' => 'home'], '_areas' => ['top' => []]]), 'the pinned layout\'s areas');
+        $this->assertSame(['_areas.hero' => ['The area "hero" takes at most 1 blocks.']], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$banner('b1'), $banner('b2')]]]));
+        $this->assertSame(['_areas.hero' => ['The area "hero" does not take "quote" blocks. Move it to another area or remove it.']], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$quote('q1')]]]));
+        $this->assertSame(['_areas.main' => ['The area "main" does not take "banner" blocks. Move it to another area or remove it.']], $this->errors('page', ['_layout' => 'promo', '_areas' => json_encode(['main' => [$banner('b1')]])]), 'JSON text too');
+        $this->assertSame(['_areas.top' => ['The area "top" takes at least 1 blocks.']], $this->errors('page', ['slug' => ['en' => 'home'], '_areas' => ['top' => []]]), 'the pinned layout\'s areas');
         $this->assertSame([], $this->errors('page', ['_layout' => 'standard', '_areas' => ['hero' => [$quote('q1'), $quote('q2')], 'main' => [$banner('b1')]]]), 'an area the layout does not show is not checked');
         $this->assertSame([], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [['_uid' => 'r1', '_block' => 'retired']]]]), 'a block no class declares any more is kept, as in a blocks field');
         $this->assertSame([], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$banner('b1')], 'main' => [$quote('q1')]]]));
@@ -110,8 +110,8 @@ final class LayoutRulesTest extends BlocksAppTestCase
         $this->assertSame([], $this->errors('page', ['title' => 'Edited', '_layout' => 'promo', '_areas' => ['hero' => [], 'main' => [$b1, $q1]]]), 'the area as stored');
         $this->assertSame([], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [], 'main' => [['title' => ['en' => 'New text']] + $b1, $q1]]]), 'its stored banner edited in place');
         $this->assertSame([], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [], 'main' => [$b1]]]), 'another block removed: the stored banner stays');
-        $this->assertSame(['_areas' => ['The area "main" does not take "banner" blocks. Move it to another area or remove it.']], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [], 'main' => [$b1, $q1, ['_uid' => 'b2', '_block' => 'banner']]]]), 'a new one is refused');
-        $this->assertSame(['_areas' => ['The area "hero" does not take "quote" blocks. Move it to another area or remove it.']], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$q1], 'main' => [$b1]]]), 'one moved in is refused');
+        $this->assertSame(['_areas.main' => ['The area "main" does not take "banner" blocks. Move it to another area or remove it.']], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [], 'main' => [$b1, $q1, ['_uid' => 'b2', '_block' => 'banner']]]]), 'a new one is refused');
+        $this->assertSame(['_areas.hero' => ['The area "hero" does not take "quote" blocks. Move it to another area or remove it.']], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$q1], 'main' => [$b1]]]), 'one moved in is refused');
     }
 
     public function test_lowered_max_does_not_block_an_unchanged_area(): void
@@ -123,7 +123,7 @@ final class LayoutRulesTest extends BlocksAppTestCase
 
         $this->assertSame([], $this->errors('page', ['title' => 'Edited', '_layout' => 'promo', '_areas' => ['hero' => [$b1, $b2], 'main' => []]]));
         $this->assertSame([], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [['title' => ['en' => 'Edited']] + $b1, $b2], 'main' => []]]), 'editing a block keeps the list');
-        $this->assertSame(['_areas' => ['The area "hero" takes at most 1 blocks.']], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$b1, $b2, ['_uid' => 'b3', '_block' => 'banner']], 'main' => []]]), 'a changed list is checked');
+        $this->assertSame(['_areas.hero' => ['The area "hero" takes at most 1 blocks.']], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$b1, $b2, ['_uid' => 'b3', '_block' => 'banner']], 'main' => []]]), 'a changed list is checked');
     }
 
     public function test_removing_a_block_from_an_over_full_area_is_allowed(): void
@@ -140,8 +140,8 @@ final class LayoutRulesTest extends BlocksAppTestCase
         $banner = static fn (string $uid): array => ['_uid' => $uid, '_block' => 'banner'];
         $this->store('page', ['uuid' => 'p1', '_layout' => 'promo', '_areas' => ['hero' => [$banner('b1'), $banner('b2')], 'main' => []]]);
 
-        $this->assertSame(['_areas' => ['The area "hero" takes at most 1 blocks.']], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$banner('b1'), $banner('b2'), $banner('b3')], 'main' => []]]));
-        $this->assertSame(['_areas' => ['The area "hero" takes at most 1 blocks.']], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$banner('b1'), $banner('b3'), $banner('b4')], 'main' => []]]), 'swapped and grown past the stored count');
+        $this->assertSame(['_areas.hero' => ['The area "hero" takes at most 1 blocks.']], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$banner('b1'), $banner('b2'), $banner('b3')], 'main' => []]]));
+        $this->assertSame(['_areas.hero' => ['The area "hero" takes at most 1 blocks.']], $this->errors('page', ['_layout' => 'promo', '_areas' => ['hero' => [$banner('b1'), $banner('b3'), $banner('b4')], 'main' => []]]), 'swapped and grown past the stored count');
     }
 
     public function test_a_below_min_area_may_grow_but_not_shrink(): void
@@ -151,7 +151,7 @@ final class LayoutRulesTest extends BlocksAppTestCase
         $this->store('page', ['uuid' => 'p1', 'slug' => ['en' => 'home'], '_layout' => 'home', '_areas' => ['top' => []]]);
 
         $this->assertSame([], $this->errors('page', ['slug' => ['en' => 'home'], '_areas' => ['top' => []]]), 'unchanged');
-        $this->assertSame(['_areas' => ['The area "top" takes at least 1 blocks.']], $this->errors('page', ['uuid' => 'p9', 'slug' => ['en' => 'home'], '_areas' => ['top' => []]]), 'a new record is checked plainly');
+        $this->assertSame(['_areas.top' => ['The area "top" takes at least 1 blocks.']], $this->errors('page', ['uuid' => 'p9', 'slug' => ['en' => 'home'], '_areas' => ['top' => []]]), 'a new record is checked plainly');
         $this->assertSame([], $this->errors('page', ['slug' => ['en' => 'home'], '_areas' => ['top' => [$quote('q1')]]]));
     }
 
@@ -164,9 +164,9 @@ final class LayoutRulesTest extends BlocksAppTestCase
         $this->assertSame([], $this->errors('page', ['title' => 'Welcome', 'slug' => ['en' => 'home']]), 'a title edit, no "_areas" stored or given');
         $this->assertSame([], $this->errors('page', ['title' => 'Welcome', 'slug' => ['en' => 'home'], '_areas' => ['top' => []]]), 'the min area given empty, as it is stored');
         $this->assertSame([], $this->errors('page', ['uuid' => 'p2', 'title' => 'About us', '_layout' => 'promo', '_areas' => ['side' => [['_uid' => 's1', '_block' => 'quote']]]]), '"_areas" lacking the layout\'s areas');
-        $this->assertSame(['_areas' => ['The area "main" does not take "banner" blocks. Move it to another area or remove it.']], $this->errors('page', ['uuid' => 'p2', '_layout' => 'promo', '_areas' => ['main' => [['_uid' => 'b1', '_block' => 'banner']]]]), 'a disallowed block is still refused');
-        $this->assertSame(['_areas' => ['The area "hero" takes at most 1 blocks.']], $this->errors('page', ['uuid' => 'p2', '_layout' => 'promo', '_areas' => ['hero' => [['_uid' => 'b1', '_block' => 'banner'], ['_uid' => 'b2', '_block' => 'banner']]]]), 'max against an empty stored area');
-        $this->assertSame(['_areas' => ['The area "top" takes at least 1 blocks.']], $this->errors('page', ['uuid' => 'p9', 'slug' => ['en' => 'home']]), 'a new record is checked plainly for min');
+        $this->assertSame(['_areas.main' => ['The area "main" does not take "banner" blocks. Move it to another area or remove it.']], $this->errors('page', ['uuid' => 'p2', '_layout' => 'promo', '_areas' => ['main' => [['_uid' => 'b1', '_block' => 'banner']]]]), 'a disallowed block is still refused');
+        $this->assertSame(['_areas.hero' => ['The area "hero" takes at most 1 blocks.']], $this->errors('page', ['uuid' => 'p2', '_layout' => 'promo', '_areas' => ['hero' => [['_uid' => 'b1', '_block' => 'banner'], ['_uid' => 'b2', '_block' => 'banner']]]]), 'max against an empty stored area');
+        $this->assertSame(['_areas.top' => ['The area "top" takes at least 1 blocks.']], $this->errors('page', ['uuid' => 'p9', 'slug' => ['en' => 'home']]), 'a new record is checked plainly for min');
     }
 
     public function test_a_broken_layouts_option_stops_the_boot(): void

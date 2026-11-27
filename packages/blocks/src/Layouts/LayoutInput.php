@@ -10,9 +10,7 @@ use Preflow\Blocks\BlockRegistry;
 use Preflow\Data\FieldVisibility;
 use Preflow\Data\TypeDefinition;
 use Preflow\Validation\Message;
-use Preflow\Validation\ValidationContext;
 use Preflow\Validation\ValidationException;
-use Preflow\Validation\ValidationRule;
 use Preflow\Validation\ValidatorFactory;
 
 /**
@@ -269,14 +267,7 @@ final readonly class LayoutInput
         }
         $rules = [];
         foreach ($errors as $key => $message) {
-            $rules[$key] = [new class ($message) implements ValidationRule {
-                public function __construct(private readonly Message $message) {}
-
-                public function validate(mixed $value, ValidationContext $context): Message
-                {
-                    return $this->message;
-                }
-            }];
+            $rules[$key] = [new Rules\MessageRule($message)];
         }
 
         throw new ValidationException($this->validators->make($rules, [])->validate());
