@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-26 (v0.91.0)
+> Last updated: 2026-11-27 (v0.92.0)
 
 ## Current State
 
-**v0.91.0** — 11346 tests, 28 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.92.0** — 11619 tests, 29 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -525,7 +525,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
-- **Folio breadth, release 2 (v0.92.0):** page layouts with areas, columns, linked records in the preview, and the core's block value checks.
+- **Folio breadth, release 2 (v0.92.0, released 2026-11-27):** page layouts with areas, columns, linked records in the preview, and the core's block value checks.
   - **Added (blocks):** page layouts. A class with `#[Layout(key:, label:, template:)]` and public array properties with `#[Area(label:, allowed:, except:, min:, max:, help:)]` is a layout; the areas are its properties, in order. Classes are found in `app/Layouts`, in `config/blocks.php` `'layouts'` and in a package's `extra.preflow.layouts`, and cached like blocks (`layouts.cache`, the boot manifest). A type opts in with `"layouts": {"allowed": [...], "default": "...", "pinned": {"home": "home"}}` (`"slug_field"` names the slug field, default `slug`). A page stores its layout in `_layout` and its area blocks in `_areas` (`{area: [blocks…]}`, JSON text on SQL). `PageLayouts` resolves the layout a page renders with: its pin, else the stored key, else the type's default, else the first allowed layout that exists, else none. `ResolvedLayout::context()` is what a page template gets: `layout` (key, label, pinned, template) and `areas`, and the template passes `areas.<name>` to `blocks()` itself. A pinned page always uses its layout, and renaming it is refused (also on drafts). A class-backed type opts in through its admin file. Boot errors name the type; an allowed key without a class is no error (such a page renders with the default layout).
   - **Added (blocks):** `Placement`, the one rule for "Not shown in this layout": an area the page stores and the layout lacks is kept and never rendered. A layout switch, a removed layout, a pin or a save without the panel's blocks never drop it; only an explicit Remove does. The columns block and the page areas share it.
   - **Added (blocks):** the `areas` field type (`"layouts": "<set>"`): a layout from a named `AreaLayoutSets` set plus the blocks of each of its areas, stored as `{"layout": "2-1", "areas": {"c1": [...], "c2": [...]}}`. A package registers its set in its service provider. It works in types and in blocks, with the same checks, `show_when`, translation and asset walks as a blocks field.
