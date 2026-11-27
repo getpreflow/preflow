@@ -82,6 +82,7 @@ final class TwoRolesTest extends TestCase
             ['GET /folio/preview/address/page', '/folio/preview/address/page', [], [400, 403, 403]],
             ['GET /folio/_blocks/{key}/new', '/folio/_blocks/nothing/new?name=body', [], [404, 404, 403]],
             ['POST /folio/_blocks/duplicate', '/folio/_blocks/duplicate', [], [400, 400, 403]],
+            ['POST /folio/_areas', '/folio/_areas', [], [400, 400, 403]], // a page's areas after a layout switch (0.92); no name: 400
             ['GET /folio/assets', '/folio/assets', [], [200, 200, 403]],
             ['POST /folio/assets', '/folio/assets', [], [302, 302, 403]], // no file: back to the library with a flash
             ['GET /folio/assets/{id}', '/folio/assets/missing', [], [404, 404, 403]],

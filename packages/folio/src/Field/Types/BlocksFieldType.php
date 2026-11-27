@@ -315,6 +315,28 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
     }
 
     /**
+     * A block list under any form name, rendered as a blocks field is: a page's area
+     * ("_areas[main]", 0.92), and a column of an areas field. $value is the list, $config the
+     * area as a blocks field ("allowed" for its picker, "min", "max"). The list posts an empty
+     * "_order" entry before its cards, so a list without cards empties its area (an area that is
+     * not posted keeps its blocks). $picker false: no "Add block" (the panel "Not shown in this
+     * layout": its blocks are kept, moved or removed, never added to). $move: each card's "Move"
+     * menu, to the areas $move['targets'] names for the block's key, through the switch and move
+     * endpoint at $move['url'] (POST {admin}/_areas, value "<uid>:<area>").
+     *
+     * @param array<string, mixed>        $config
+     * @param list<string>                $errors       the list's own errors
+     * @param array<string, list<string>> $nestedErrors keys "<uid>.<field>…" relative to the list
+     * @param array{type: string, id: ?string}|null $record
+     * @param array{url: string, target: string, targets: \Closure(string): list<array{area: string, label: string}>}|null $move
+     * @since 0.92.0
+     */
+    public function renderList(string $name, string $label, ?string $help, mixed $value, array $config, array $errors, array $nestedErrors, Locales $locales, string $locale, int $depth, ?array $record = null, bool $picker = true, ?array $move = null): string
+    {
+        return $this->renderField($name, $label, $help, $this->fromStorage($value), $config, $errors, $nestedErrors, $locales, $locale, $depth, $record, $picker, $move, emptiable: true);
+    }
+
+    /**
      * A fresh, empty card for the block picker (fragment endpoint).
      * Null when the key is not a known block.
      */
@@ -361,17 +383,28 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
 
     /**
      * The stored block list at a field path such as "sections[<uid>][links]"
-     * inside a record's data, or null.
+     * inside a record's data, or null. A page's area is "_areas[<area>]" (0.92), an areas field's
+     * column "…[<field>][areas][<area>]".
      *
      * @param list<string>         $keys  ["sections", "<uid>", "links", …]
      * @param array<string, mixed> $data  the record's stored data
      */
     public function storedLevel(array $data, array $keys): mixed
     {
-        $value = $data[array_shift($keys)] ?? null;
+        $first = array_shift($keys);
+        $value = $data[$first] ?? null;
+        if ($first === \Preflow\Blocks\Layouts\PageLayouts::AREAS) {
+            $value = \Preflow\Blocks\Layouts\Placement::areasOf($value)[(string) array_shift($keys)] ?? null;
+        }
         while ($keys !== []) {
             $uid = array_shift($keys);
             $field = array_shift($keys);
+            if ($uid === 'areas' && $field !== null) {
+                // An areas value {layout, areas}: one of its areas.
+                $areas = is_string($value) ? json_decode($value, true) : $value;
+                $value = \Preflow\Blocks\Layouts\Placement::areasOf(is_array($areas) ? ($areas['areas'] ?? null) : null)[$field] ?? null;
+                continue;
+            }
             $found = null;
             foreach ($this->fromStorage($value) as $block) {
                 if ($block['_uid'] === $uid) {
@@ -407,8 +440,9 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
      * @param array<string, mixed>        $config
      * @param list<string>                $errors       field-level errors (min/max)
      * @param array<string, list<string>> $nestedErrors keys "<uid>.<field>…" relative to this field
+     * @param array{url: string, target: string, targets: \Closure(string): list<array{area: string, label: string}>}|null $move
      */
-    private function renderField(string $name, string $label, ?string $help, array $blocks, array $config, array $errors, array $nestedErrors, Locales $locales, string $locale, int $depth, ?array $record = null): string
+    private function renderField(string $name, string $label, ?string $help, array $blocks, array $config, array $errors, array $nestedErrors, Locales $locales, string $locale, int $depth, ?array $record = null, bool $picker = true, ?array $move = null, bool $emptiable = false): string
     {
         if ($depth >= $this->maxDepth) {
             return $this->render('@folio/admin/blocks/too_deep.twig', ['label' => $label]);
@@ -428,7 +462,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                     'name' => $name,
                     'raw' => json_encode($block, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 ])
-                : $this->renderCard($definition, $block, $name, self::scoped($nestedErrors, $uid), $locales, $locale, $depth, record: $record);
+                : $this->renderCard($definition, $block, $name, self::scoped($nestedErrors, $uid), $locales, $locale, $depth, record: $record, move: $move);
         }
 
         $summary = [];
@@ -484,14 +518,18 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
             // One popover per field: its id follows the field's name (unique in the form, nested ones too).
             'picker_id' => 'folio-picker-' . hash('xxh3', $name),
             'single' => count($groups) === 1 && count(reset($groups) ?: []) === 1,
+            // A block list of an area (0.92, renderList()): it empties when its last card goes; the panel's has no picker.
+            'emptiable' => $emptiable,
+            'picker' => $picker,
         ]);
     }
 
     /**
      * @param array<string, mixed>        $block
      * @param array<string, list<string>> $errors keys "<field>…" relative to this block
+     * @param array{url: string, target: string, targets: \Closure(string): list<array{area: string, label: string}>}|null $move
      */
-    private function renderCard(\Preflow\Blocks\BlockDefinition $definition, array $block, string $namePrefix, array $errors, Locales $locales, string $locale, int $depth, bool $open = false, ?array $record = null): string
+    private function renderCard(\Preflow\Blocks\BlockDefinition $definition, array $block, string $namePrefix, array $errors, Locales $locales, string $locale, int $depth, bool $open = false, ?array $record = null, ?array $move = null): string
     {
         $uid = (string) $block['_uid'];
         $base = $namePrefix . '[' . $uid . ']';
@@ -590,6 +628,12 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
             'fields' => $fields,
             'open' => $open || $errors !== [],
             'has_errors' => $errors !== [],
+            // The panel "Not shown in this layout" (0.92): the areas of the layout this block may move to.
+            'move' => $move === null ? null : [
+                'url' => $move['url'],
+                'target' => $move['target'],
+                'items' => array_map(static fn (array $to): array => ['value' => $uid . ':' . $to['area'], 'label' => $to['label']], ($move['targets'])($definition->key)),
+            ],
             'duplicate_url' => $this->adminPrefix . '/_blocks/duplicate?' . http_build_query([
                 'name' => $namePrefix,
                 'uid' => $uid,

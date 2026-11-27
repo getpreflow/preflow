@@ -46,13 +46,14 @@ use Psr\Http\Message\UploadedFileInterface;
  * file posted for a hidden field is never written.
  *
  * A type with page layouts (0.92) posts its layout section with the marker "_areas_submitted":
- * "_layout" (the chosen layout; a pinned page posts its pin) and "_areas[<area>]", each area as a
- * blocks field posts its blocks (BlocksFieldType::buildValue(), an "_order" without blocks empties
- * it). The built areas and the layout go to the core's LayoutInput::merge(), as an API's write
+ * "_layout" (the chosen layout; a pinned page posts none: its stored key stays, the pin decides)
+ * and "_areas[<area>]", each area as a blocks field posts its blocks (BlocksFieldType::buildValue(),
+ * an "_order" without blocks empties it; an empty area the page does not store is no write). The built areas and the layout go to the core's LayoutInput::merge(), as an API's write
  * does: areas the form did not post keep their blocks, an area neither the layout has nor the
  * page stores is refused. Without the marker the stored layout and areas stay as they are. What
- * the core refused is in buildErrors(), keyed as the core keys it ("_areas.<area>…"), and the
- * record keeps its stored layout and areas.
+ * the core refused is in buildErrors(), keyed as the core keys it ("_areas.<area>…"); the record
+ * then holds the layout and areas as posted (over the stored ones) for the form to show again, and
+ * must not be saved: every save path checks buildErrors() first.
  */
 final class DraftRecordFactory
 {
@@ -247,12 +248,17 @@ final class DraftRecordFactory
         $areas = [];
         foreach ($posted as $name => $post) {
             // Each area is built as a blocks field: whether it takes a block is the core's to say (AreaContents).
-            $areas[(string) $name] = $blocks->buildValue(
+            $built = $blocks->buildValue(
                 is_array($post) ? $post : [],
                 $stored[(string) $name] ?? [],
                 is_array($uploads[$name] ?? null) ? $uploads[$name] : [],
                 $ctx,
             );
+            // The form posts every area it shows, empty ones too; one the page does not store and that
+            // holds nothing is no write (an area a stored page lacks counts as empty).
+            if ($built !== [] || array_key_exists((string) $name, $stored)) {
+                $areas[(string) $name] = $built;
+            }
         }
         if ($assetType instanceof AssetFieldType && ($errors = $assetType->drainErrors()) !== []) {
             $this->uploadErrors[PageLayouts::AREAS] = $errors; // uploads inside area blocks
@@ -265,6 +271,13 @@ final class DraftRecordFactory
             return $this->layoutInput->merge($typeDef, $data, $input);
         } catch (ValidationException $e) {
             $this->layoutErrors = $e->errors();
+
+            // Refused: nothing of it may be saved (every save checks buildErrors()), but the form shows
+            // the layout and areas as posted, over the stored ones, so the editor's edits stay in it.
+            if (array_key_exists('layout', $input) && (is_string($input['layout']) || $input['layout'] === null)) {
+                $data[PageLayouts::LAYOUT] = $input['layout'];
+            }
+            $data[PageLayouts::AREAS] = array_replace($stored, $areas);
 
             return $data;
         }

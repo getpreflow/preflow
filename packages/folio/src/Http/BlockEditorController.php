@@ -5,25 +5,112 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
+use Preflow\Blocks\Layouts\PageLayouts;
+use Preflow\Blocks\Layouts\Placement;
 use Preflow\Data\Locales;
+use Preflow\Folio\Field\AreasEditor;
+use Preflow\Folio\Field\BuildContext;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\BlocksFieldType;
 use Preflow\Folio\FolioText;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
-/** Server-rendered card fragments for the block picker (fetched by htmx). */
+/**
+ * Server-rendered fragments of the blocks editor (fetched by htmx): a new card, a duplicate, and
+ * (0.92) a page's areas after a layout switch or a move (areas()).
+ */
 final class BlockEditorController
 {
-    /** A field name: "sections" or nested "sections[<uid>][<field>]…". */
-    private const NAME = '/^[A-Za-z_][A-Za-z0-9_]*(\[[a-f0-9]{16}\]\[[A-Za-z_][A-Za-z0-9_]*\])*$/';
+    /**
+     * A block list's name: a field "sections", a page's area "_areas[<area>]" (0.92), then nested
+     * "[<uid>][<field>]" and an areas field's column "[areas][<area>]", in any depth.
+     */
+    private const NAME = '/^(?:_areas\[[A-Za-z_][A-Za-z0-9_]*\]|[A-Za-z_][A-Za-z0-9_]*)(?:\[[a-f0-9]{16}\]\[[A-Za-z_][A-Za-z0-9_]*\]|\[areas\]\[[A-Za-z_][A-Za-z0-9_]*\])*$/';
 
     public function __construct(
         private readonly FieldTypeRegistry $fieldTypes,
         private readonly Locales $locales,
         private readonly ?\Preflow\Data\DataManager $dm = null,
         private readonly ?\Preflow\Folio\Content\TypeCatalog $catalog = null,
+        /** The types' page layouts (0.92; bound in preflow/blocks' boot); without, areas() finds none. */
+        private readonly ?PageLayouts $layouts = null,
+        private readonly ?AreasEditor $areasEditor = null,
     ) {}
+
+    /**
+     * A page's areas after a layout switch or a move (POST {admin}/_areas, 0.92), built from the
+     * posted form; nothing is stored. Query: "name" ("_areas"; an areas field's name with "set" is
+     * the areas field's), "type", "id" (empty for a new page), "locale", "depth". Body: the record
+     * form; "_areas_to", the layout chosen (else the posted "_layout", the picker's own value); or
+     * "_areas_move" = "<uid>:<area>", that block moved to the end of an area of the layout. Each
+     * posted area is built as a blocks field over the stored one (BlocksFieldType::buildValue(), no
+     * file written); areas not posted keep their stored blocks; nothing is dropped: an area the
+     * layout lacks goes to the panel "Not shown in this layout". Answers the areas section
+     * (AreasEditor::SWAP) for htmx to swap in; a switch clears the notice of a layout that is no
+     * longer available, since the editor has chosen one.
+     */
+    public function areas(ServerRequestInterface $request): ResponseInterface
+    {
+        $query = $request->getQueryParams();
+        $name = is_string($query['name'] ?? null) ? $query['name'] : '';
+        if ($name !== PageLayouts::AREAS || isset($query['set'])) {
+            return new Response(400, [], FolioText::get('folio.errors.invalid_field'));
+        }
+        $type = is_string($query['type'] ?? null) ? $query['type'] : '';
+        $blocks = $this->fieldTypes->has('blocks') ? $this->fieldTypes->get('blocks') : null;
+        $typeLayouts = $type !== '' && $this->catalog?->has($type) ? $this->layouts?->forType($type) : null;
+        $registry = $this->dm?->getTypeRegistry();
+        if ($typeLayouts === null || $registry === null || $this->areasEditor === null || !$blocks instanceof BlocksFieldType) {
+            return NotFound::response($request, FolioText::get('folio.errors.unknown_type'));
+        }
+        $def = $registry->get($type);
+        $locale = is_string($query['locale'] ?? null) && $def->locales->has($query['locale']) ? $query['locale'] : $def->locales->default;
+        $id = is_string($query['id'] ?? null) ? $query['id'] : '';
+        $stored = $id !== '' ? ($this->dm->findType($type, $id)?->toArray() ?? []) : [];
+        $body = (array) $request->getParsedBody();
+
+        // The areas as the form holds them: each posted one over the stored one.
+        $areas = Placement::areasOf($stored[PageLayouts::AREAS] ?? null);
+        $posted = is_array($body[PageLayouts::AREAS] ?? null) ? $body[PageLayouts::AREAS] : [];
+        $ctx = new BuildContext($def->locales, $locale, false);
+        foreach ($posted as $area => $post) {
+            if (is_string($area) && preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $area) === 1 && is_array($post)) {
+                $areas[$area] = $blocks->buildValue($post, $areas[$area] ?? [], [], $ctx);
+            }
+        }
+
+        $move = is_string($body['_areas_move'] ?? null) ? explode(':', $body['_areas_move'], 2) : null;
+        // The layout: the one chosen, else the form's (a pinned page posts none: the stored one).
+        $layout = $body['_areas_to'] ?? $body[PageLayouts::LAYOUT] ?? $stored[PageLayouts::LAYOUT] ?? null;
+        $layout = is_string($layout) && $layout !== '' ? $layout : null;
+        $values = $stored;
+        $slugField = $typeLayouts->slugField;
+        if (is_string($body[$slugField] ?? null) && $locale === $def->locales->default) {
+            $values[$slugField] = $body[$slugField]; // a pin follows the slug as typed
+        }
+        if ($move !== null) {
+            // A move keeps the notice of a stored layout that is no longer available while the form
+            // shows its fallback (the picker preselects it): nothing was chosen yet.
+            $was = $this->layouts->resolveValues($def, $values);
+            if ($was !== null && $was->fallback && $was->layout?->key === $layout) {
+                $layout = $was->storedKey;
+            }
+        }
+        $values[PageLayouts::LAYOUT] = $layout;
+        $values[PageLayouts::AREAS] = $areas;
+        if ($move !== null && count($move) === 2) {
+            [$uid, $area] = $move;
+            $current = $this->layouts->resolveValues($def, $values)?->layout;
+            if (preg_match('/^[a-f0-9]{16}$/', $uid) === 1 && isset($current?->areas[$area])) {
+                $values[PageLayouts::AREAS] = Placement::moved($areas, $uid, $area);
+            }
+        }
+
+        $html = $this->areasEditor->renderPage($this->layouts, $def, $values, $locale, [], ['type' => $type, 'id' => $id !== '' ? $id : null], AreasEditor::SWAP);
+
+        return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
+    }
 
     /**
      * A duplicate of one card (POST, the card's inputs + CSRF): the posted values

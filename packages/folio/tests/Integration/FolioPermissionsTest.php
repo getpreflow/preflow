@@ -167,6 +167,7 @@ final class FolioPermissionsTest extends TestCase
             ['POST', '/folio/post/preview'],
             ['GET', '/folio/_blocks/hero/new'],
             ['POST', '/folio/_blocks/duplicate'],
+            ['POST', '/folio/_areas'],
             ['GET', '/folio/assets'],
             ['POST', '/folio/assets'],
             ['GET', '/folio/assets/a1'],

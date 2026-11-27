@@ -2920,6 +2920,8 @@
         if (root.hasAttribute && root.hasAttribute('data-folio-matrix')) { initMatrix(root); }
         root.querySelectorAll('[data-folio-matrix]').forEach(initMatrix);
         if (root.hasAttribute && root.hasAttribute('data-block-card')) { notifyChange(root); }
+        // A page's areas after a layout switch or a move (0.92, POST {admin}/_areas): an edit of the record form.
+        if (root.hasAttribute && root.hasAttribute('data-areas-section')) { notifyChange(root); }
         root.querySelectorAll('[data-folio-focal]').forEach(placeFocalMarker);
         initTabs(root);
         initNeedsChange(root);

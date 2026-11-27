@@ -59,6 +59,9 @@ final class PageLayoutsRenderTest extends TestCase
         foreach (['_layout', '_areas'] as $name) {
             $this->assertStringNotContainsString($name, $form, 'no new form controls');
         }
+        // The whole editor page as 0.91 rendered it for the same site (recorded with v0.91.0; what differs
+        // per request is left out: nonces, the CSRF token, asset versions, revision ids and times).
+        $this->assertSame((string) file_get_contents(dirname(__DIR__) . '/Fixtures/Snapshots/post-editor-0.91.html'), self::editorMarkup($form), 'the form markup of 0.91');
 
         $this->assertSame(['templates/post.twig', '@folio/frontend/post.twig', '@folio/frontend/page.twig'], FrontendRoute::fromConfig('post', ['route' => '/{slug}', 'template' => 'templates/post.twig'])->templates());
     }
@@ -159,6 +162,22 @@ final class PageLayoutsRenderTest extends TestCase
     }
 
     /** @param array<string, mixed> $body */
+    /**
+     * The editor page from <body> to the end of <main> (navigation, topbar, the record form, the
+     * side panel), with what differs per request or per build replaced.
+     */
+    private static function editorMarkup(string $html): string
+    {
+        $start = (int) strpos($html, '<body');
+        $markup = substr($html, $start, (int) strpos($html, '</main>') + strlen('</main>') - $start);
+
+        return (string) preg_replace(
+            ['~nonce="[^"]*"~', '~(name="_csrf_token" value=")[^"]*"~', '~\?v=[0-9a-f]+~', '~/revisions/[0-9a-f]+/~', '~[A-Z][a-z]{2} \d{1,2}, \d{4} \d{1,2}:\d{2}~', '~\b\d{1,2}:\d{2}\b~'],
+            ['nonce="…"', '$1…"', '?v=…', '/revisions/…/', '(date)', '(time)'],
+            $markup,
+        ) . "\n";
+    }
+
     private function previewOf(string $type, string $id, array $body): string
     {
         $request = (new Psr17Factory())->createServerRequest('POST', '/folio/' . $type . '/' . $id . '/preview')

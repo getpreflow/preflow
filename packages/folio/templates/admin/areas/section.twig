@@ -1,0 +1,48 @@
+{% set icons = folio_asset('icons.svg') -%}
+{# The layout editor (AreasEditor, 0.92). part "picker": the layout picker (or "Layout: Home (fixed)") and
+   the notice for a layout that is no longer available, a page form's first control; "areas": each area
+   of the layout as a block list, in its order, then the panel "Not shown in this layout" (the swap
+   target, #id); "swap": the same as the switch answers it, with the notice replaced out of band;
+   "whole": both together (the areas field). A switch posts the form to url (POST {admin}/_areas); the
+   answer is swapped in by htmx and announced as an edit (admin.js). -#}
+{% set notice_attrs %} id="{{ id }}-notice" role="status"{% if not notice %} hidden{% endif %}{% endset %}
+{% set notice_body %}{% if notice %}<p>{{ notice }}</p>{% endif %}{% endset %}
+{% if part != 'areas' and part != 'swap' %}
+{% set picker_html %}
+<div class="form-group folio-layout-picker" data-areas-picker>
+    {% if fixed %}
+        <span class="form-label">{{ t('folio.page_layouts.label') }}</span>
+        <p class="folio-layout-fixed"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-lock"></use></svg><span>{{ fixed }}</span></p>
+        <p class="form-help">{{ t('folio.page_layouts.fixed_help') }}</p>
+    {% else %}
+        <label for="{{ id }}-layout">{{ t('folio.page_layouts.label') }}</label>
+        <select id="{{ id }}-layout" name="{{ layout_name }}"{% if layout_errors is not empty %} aria-invalid="true" aria-describedby="{{ id }}-layout-error"{% endif %}
+                hx-post="{{ url }}" hx-trigger="change" hx-target="#{{ id }}" hx-swap="outerHTML">
+            {% for choice in choices %}<option value="{{ choice.key }}"{% if choice.key == current %} selected{% endif %}>{{ choice.label }}</option>{% endfor %}
+        </select>
+    {% endif %}
+    {% for error in layout_errors %}<div class="form-error" id="{{ id }}-layout-error">{{ error }}</div>{% endfor %}
+    <div class="folio-notice folio-layout-notice"{{ notice_attrs }}>{{ notice_body }}</div>
+</div>
+{% endset %}
+{% endif %}
+{% if part != 'picker' %}
+{% set areas_html %}
+<section class="folio-areas"{% if part != 'whole' %} id="{{ id }}" data-areas-section{% endif %}{% if marker %} aria-labelledby="{{ id }}-title"{% endif %}>
+    {% if marker %}
+        <input type="hidden" name="{{ marker }}" value="1">
+        <h2 class="folio-areas-title" id="{{ id }}-title">{{ t('folio.form.change_areas') }}</h2>
+    {% endif %}
+    {% for error in areas_errors %}<div class="form-error" role="alert">{{ error }}</div>{% endfor %}
+    {% for area in areas %}<div class="folio-area">{{ area|raw }}</div>{% endfor %}
+    {% for empty in emptied|default([]) %}<input type="hidden" name="{{ empty }}" value="">{% endfor %}
+    {% if hidden is not empty %}{% include '@folio/admin/areas/panel.twig' with {id: id, hidden: hidden} only %}{% endif %}
+</section>
+{% endset %}
+{% endif %}
+{% if part == 'picker' %}{{ picker_html }}
+{% elseif part == 'areas' %}{{ areas_html }}
+{% elseif part == 'swap' %}{{ areas_html }}
+<div class="folio-notice folio-layout-notice"{{ notice_attrs }} hx-swap-oob="true">{{ notice_body }}</div>
+{% else %}<div class="folio-areas-editor" id="{{ id }}" data-areas-section>{{ picker_html }}{{ areas_html }}</div>
+{% endif %}

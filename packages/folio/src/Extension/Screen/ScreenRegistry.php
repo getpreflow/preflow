@@ -27,7 +27,7 @@ final class ScreenRegistry
      * type may take one as its key (TypeCatalog). "asset" and "redirect" name the activity log's
      * own subjects and "activity" is All activity's path (since 0.77).
      */
-    public const array RESERVED = ['login', 'logout', '_assets', '_uploads', '_blocks', 'media', 'extensions', 'blocks', 'preview', 'upload', 'assets', 'asset', 'redirect', 'activity'];
+    public const array RESERVED = ['login', 'logout', '_assets', '_uploads', '_blocks', '_areas', 'media', 'extensions', 'blocks', 'preview', 'upload', 'assets', 'asset', 'redirect', 'activity'];
 
     private const string AUTH_MW = 'Preflow\\Folio\\Http\\AdminAuthMiddleware';
     private const string LOCALE_MW = 'Preflow\\Folio\\Http\\AdminLocaleMiddleware';

@@ -105,6 +105,9 @@ final class AdminController
         ?\Preflow\Folio\Content\TypeActions $typeActions = null,
         // The whole-page preview's "View as" choices (since 0.81); null: only the visitor.
         private readonly ?ViewAs $viewAs = null,
+        // A page's layout picker and areas (0.92): the types' page layouts and the editor that draws them.
+        private readonly ?\Preflow\Blocks\Layouts\PageLayouts $pageLayouts = null,
+        private readonly ?\Preflow\Folio\Field\AreasEditor $areasEditor = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
@@ -1556,6 +1559,22 @@ final class AdminController
             }
         }
 
+        // Page layouts (0.92), for a type with "layouts": the layout picker is the form's first control,
+        // the layout's areas (and the panel "Not shown in this layout") follow the type's fields.
+        $pageLayout = null;
+        if ($this->areasEditor !== null && $this->pageLayouts?->forType($type) !== null) {
+            $record = ['type' => $type, 'id' => isset($values[$typeDef->idField]) ? (string) $values[$typeDef->idField] : null];
+            $pageLayout = [
+                'picker' => $this->areasEditor->renderPage($this->pageLayouts, $typeDef, $values, $locale, $errors, $record, \Preflow\Folio\Field\AreasEditor::PICKER),
+                'areas' => $this->areasEditor->renderPage($this->pageLayouts, $typeDef, $values, $locale, $errors, $record, \Preflow\Folio\Field\AreasEditor::AREAS),
+            ];
+            $multipart = true; // area blocks may hold upload fields
+            $blocksType = $this->fieldTypes->get('blocks');
+            foreach ($blocksType->assets() as $asset) {
+                $editorAssets[$asset] = true;
+            }
+        }
+
         foreach ($fields as &$entry) {
             $entry['outdated'] = $outdated[$entry['name']] ?? null;
             $entry['unchecked'] = $unchecked[$entry['name']] ?? null;
@@ -1643,6 +1662,7 @@ final class AdminController
             'record_id' => isset($values[$typeDef->idField]) ? rawurlencode((string) $values[$typeDef->idField]) : '',
             'csrf' => $csrf,
             'fields' => $fields,
+            'page_layout' => $pageLayout,
             // editor-frame.js: the save state, the Publish split button, the side panel, the editor's keys.
             // The order is admin.js, then fields.js, then editor-frame.js: fields.js uses what admin.js shares
             // (folioT, Folio.copyLater, fillAssetField, ownControls), editor-frame.js uses Folio.relativeTime.

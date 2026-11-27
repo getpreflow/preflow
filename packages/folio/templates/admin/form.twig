@@ -118,12 +118,12 @@
                 {% endfor %}
             </fieldset>
             {% endif %}
-        {% endif %}
+        {% endif %}{# A type with page layouts (0.92): the layout first, the layout's areas after the fields. #}{% if page_layout|default(null) %}{{ page_layout.picker|raw }}{% endif %}
         {% for row in rows %}
             {% if row.half %}<div class="folio-field-row">{% endif %}
             {% for field in row.fields %}{% include '@folio/admin/partials/_field.twig' %}{% endfor %}
             {% if row.half %}</div>{% endif %}
-        {% endfor %}
+        {% endfor %}{% if page_layout|default(null) %}{{ page_layout.areas|raw }}{% endif %}
         </fieldset>
         {% endset %}
         {% if seo_section|default(null) %}

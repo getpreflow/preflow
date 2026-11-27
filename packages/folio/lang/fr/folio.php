@@ -535,6 +535,17 @@ return [
         'search' => 'Ajouter un bloc — tapez pour filtrer :count',
         'no_match' => 'Aucun bloc ne correspond à « :query ».',
     ],
+    // The page layout editor (0.92): the picker, a pinned page's fixed layout, the panel of blocks a layout does not show.
+    'page_layouts' => [
+        'label' => 'Mise en page',
+        'fixed' => 'Mise en page : :label (fixe)',
+        'fixed_help' => 'Définie par « layouts.pinned » dans la configuration du type.',
+        'unavailable' => 'La mise en page « :key » n\'est plus disponible. Cette page s\'affiche comme « :label » jusqu\'à ce que vous choisissiez une mise en page.',
+        'not_shown' => 'Non affiché dans cette mise en page',
+        'not_shown_help' => 'Ces blocs sont conservés, mais la page ne les affiche pas. Déplacez-les dans une zone de cette mise en page, ou retirez-les.',
+        'move_to' => 'Déplacer vers',
+        'move' => 'Déplacer',
+    ],
     'fields' => [
         'filter_label' => 'Filtrer :label',
         'search_label' => 'Rechercher dans :label',

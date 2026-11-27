@@ -798,6 +798,9 @@ final class FolioServiceProvider extends ServiceProvider
             translator: $c->get(\Preflow\I18n\Machine\MachineTranslator::class),
             draftWriter: \Preflow\I18n\Machine\AiPackage::installed() ? $c->get(\Preflow\Ai\Draft\DraftWriter::class) : null,
             jobs: $c->get(\Preflow\I18n\Machine\JobRunner::class),
+            // A page's layout picker and areas (0.92); without page layouts no type has any.
+            pageLayouts: self::pageLayouts($c),
+            areasEditor: self::areasEditor($c, $prefix),
             reviewIndex: $c->get(\Preflow\I18n\Machine\ReviewIndex::class),
             worker: $c->get(\Preflow\I18n\Machine\TranslationWorker::class),
             seo: $c->bound(\Preflow\View\Seo\SeoConfig::class) ? $c->get(\Preflow\View\Seo\SeoConfig::class) : null,
@@ -977,6 +980,8 @@ final class FolioServiceProvider extends ServiceProvider
             $locales ?? \Preflow\Data\Locales::single('en'),
             $c->get(DataManager::class),
             $c->get(TypeCatalog::class),
+            self::pageLayouts($c),
+            self::areasEditor($c, $prefix),
         ));
         $container->bind(UploadController::class, fn (Container $c) => new UploadController($uploadsDir));
 
@@ -2619,6 +2624,16 @@ final class FolioServiceProvider extends ServiceProvider
     }
 
     /** The types' page layouts (0.92): bound in preflow/blocks' boot when there is a type registry. */
+    /** The layout editor (0.92): a page's layout picker, its areas and the panel "Not shown in this layout". */
+    private static function areasEditor(Container $c, string $prefix): ?\Preflow\Folio\Field\AreasEditor
+    {
+        $blocks = $c->get(FieldTypeRegistry::class)->get('blocks');
+
+        return $blocks instanceof BlocksFieldType
+            ? new \Preflow\Folio\Field\AreasEditor($c->get(\Preflow\Folio\View\FolioEngine::class), $blocks, $c->get(BlockRegistry::class), $prefix)
+            : null;
+    }
+
     private static function pageLayouts(Container $c): ?\Preflow\Blocks\Layouts\PageLayouts
     {
         return $c->bound(\Preflow\Blocks\Layouts\PageLayouts::class) ? $c->get(\Preflow\Blocks\Layouts\PageLayouts::class) : null;

@@ -71,7 +71,8 @@ final class PageLayoutsReadersTest extends TestCase
         $built = $drafts->build($this->stored('page', 'r1')->getType(), (new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/')->withParsedBody($unknown), $this->stored('page', 'r1')->toArray(), 'en');
         $this->assertSame(['_areas.footer'], array_keys($drafts->buildErrors()), 'the form error, keyed as the core keys it');
         $this->assertStringContainsString('"footer"', $drafts->buildErrors()['_areas.footer'][0]);
-        $this->assertSame(['hero', 'main', 'sidebar'], array_keys($built->get('_areas')), 'the stored areas, untouched');
+        $this->assertSame(['hero', 'main', 'sidebar', 'footer'], array_keys($built->get('_areas')), 'the areas as posted, for the form to show again (0.92, Task 8)');
+        $this->assertSame(['hero', 'main', 'sidebar'], array_keys($this->stored('page', 'r1')->get('_areas')), 'the stored areas, untouched');
 
         // The side panel names what changed since publishing.
         $this->publisher()->publish($this->stored('page', 'r1'), null);

@@ -1,0 +1,8 @@
+{# The panel "Not shown in this layout" (AreasEditor, 0.92): the blocks of areas the layout lacks. They are
+   kept and the page does not show them; each card's Move puts it in an area of this layout, its Remove
+   drops it (the only way they go). Each list posts with the form, so a save keeps them. -#}
+<section class="folio-areas-panel" aria-labelledby="{{ id }}-hidden" data-areas-panel>
+    <h3 class="folio-areas-panel-title" id="{{ id }}-hidden"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-eye"></use></svg>{{ t('folio.page_layouts.not_shown') }}</h3>
+    <p class="folio-areas-panel-help">{{ t('folio.page_layouts.not_shown_help') }}</p>
+    {% for list in hidden %}<div class="folio-area is-hidden">{{ list|raw }}</div>{% endfor %}
+</section>

@@ -58,6 +58,12 @@ final class PublishingController
         $body = (array) $request->getParsedBody();
         $locale = is_string($body['_locale'] ?? null) ? $body['_locale'] : $typeDef->locales->default;
         $record = $this->drafts->build($typeDef, $request, $current->toArray(), $locale, writeUploads: false);
+        // A page's layout or areas the core refused (0.92): not saved, said as any refusal is, so no
+        // area edit is dropped silently; the record then holds them as posted, not as they may be stored.
+        $refused = array_filter($this->drafts->buildErrors(), static fn (string $key): bool => $key === '_layout' || $key === '_areas' || str_starts_with($key, '_areas.'), ARRAY_FILTER_USE_KEY);
+        if ($refused !== []) {
+            return $this->status(self::refusal('folio.publishing.not_saved_invalid', $typeDef, $refused), null, true);
+        }
         $loaded = is_string($body['_version'] ?? null) && ctype_digit($body['_version']) ? (int) $body['_version'] : null;
 
         try {
@@ -66,7 +72,7 @@ final class PublishingController
             return $this->status(\Preflow\Folio\FolioText::get('folio.publishing.not_saved_conflict'), null, true);
         } catch (ValidationException $e) {
             // What a #[BeforeSave] hook or the storage refuses (a taken unique value, an overlong bounded one): the editor keeps its version.
-            return $this->status(self::refusal('folio.publishing.not_saved_invalid', $typeDef, $e), null, true);
+            return $this->status(self::refusal('folio.publishing.not_saved_invalid', $typeDef, $e->errors()), null, true);
         }
 
         return $this->status(self::stateText($this->publisher->state($record), Contexts::clock()->now()), (int) $record->get('_version'));
@@ -84,7 +90,7 @@ final class PublishingController
             $restored = $type !== null ? $this->writer->restore($type, $id, $revision, new SaveOptions(by: self::userId($request), mayPublish: $this->mayPublish($type))) : null;
         } catch (ValidationException $e) {
             \assert($type !== null);
-            self::flash($request, 'error', self::refusal('folio.revisions.not_restored', $this->dm->getTypeRegistry()?->get($type), $e));
+            self::flash($request, 'error', self::refusal('folio.revisions.not_restored', $this->dm->getTypeRegistry()?->get($type), $e->errors()));
 
             return $this->backToEditor($type, $id);
         }
@@ -207,7 +213,7 @@ final class PublishingController
         try {
             $this->writer->discard($type, $id, new SaveOptions(by: self::userId($request), mayPublish: $this->mayPublish($type)));
         } catch (ValidationException $e) {
-            self::flash($request, 'error', self::refusal('folio.publishing.not_discarded', $this->dm->getTypeRegistry()?->get($type), $e));
+            self::flash($request, 'error', self::refusal('folio.publishing.not_discarded', $this->dm->getTypeRegistry()?->get($type), $e->errors()));
         }
 
         return $this->backToEditor($type, $id);
@@ -246,15 +252,21 @@ final class PublishingController
         ]));
     }
 
-    /** A refused write's text: the first field error with the field's label ("Not saved — Slug: This value is already taken."). */
-    private static function refusal(string $key, ?TypeDefinition $def, ValidationException $e): string
+    /**
+     * A refused write's text: the first field error with the field's label ("Not saved — Slug: This value is already taken.").
+     *
+     * @param array<string, list<string>> $errors
+     */
+    private static function refusal(string $key, ?TypeDefinition $def, array $errors): string
     {
-        $errors = $e->errors();
         $first = (string) array_key_first($errors);
         [$name, $locale] = array_pad(explode('.', $first, 2), 2, null);
         $field = $def?->fields[$name] ?? null;
         $label = \Preflow\Folio\FolioText::label($field?->label ?? ucfirst(str_replace('_', ' ', $name)));
-        if ($locale !== null) {
+        if ($name === '_layout' || $name === '_areas') {
+            // A page's layout and areas (0.92), as the change list names them; the message names the area.
+            $label = \Preflow\Folio\FolioText::get($name === '_layout' ? 'folio.form.change_layout' : 'folio.form.change_areas');
+        } elseif ($locale !== null) {
             $label .= ' (' . strtoupper($locale) . ')';
         }
 

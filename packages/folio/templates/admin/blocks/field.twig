@@ -16,8 +16,8 @@
         </ul>
     {% endif %}
     <div class="folio-sr" aria-live="assertive" data-blocks-live></div>
-    <div class="folio-blocks-list" data-blocks-list>
-        {% for card in cards %}{{ card|raw }}{% endfor %}
+    {# An area's list (0.92) posts an empty entry first: without cards the area is emptied, not kept. #}{% if emptiable|default(false) %}<input type="hidden" name="{{ name }}[_order][]" value="">{% endif %}<div class="folio-blocks-list" data-blocks-list>
+        {% for card in cards %}{{ card|raw }}{% endfor %}{# The panel "Not shown in this layout" (0.92) has no picker. #}{% if picker ?? true %}
         <div class="folio-blocks-picker{% if not single %} has-popover{% endif %}" data-blocks-picker>
             {% if single %}
                 {% for group, items in groups %}{% for item in items %}
@@ -52,5 +52,5 @@
                 </div>
             {% endif %}
         </div>
-    </div>
+{% endif %}    </div>
 </div>
