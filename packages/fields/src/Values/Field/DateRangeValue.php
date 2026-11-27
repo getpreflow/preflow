@@ -13,7 +13,7 @@ use Preflow\Fields\Values\Link;
 /**
  * A "daterange" field's value, shape "daterange": the object {start, end}. toStored(): the object
  * or JSON text of it, its ends trimmed (an end that is missing or no date is the rule's to
- * refuse); no value, or both ends empty, is null. toOutput(): {start, end}, null when none is stored.
+ * refuse); no value, or both ends empty, is null; an object of another shape is passed on as it is. toOutput(): {start, end}, null when none is stored.
  *
  * @since 0.93.0
  */
@@ -28,8 +28,15 @@ final class DateRangeValue implements FieldValue, DescribesShapes
             return $input;
         }
         $parts = DateRange::parts($input);
+        if ($parts !== null) {
+            return ['start' => $parts['start'], 'end' => $parts['end']];
+        }
+        $object = Link::decode($input);
+        // Both ends empty (and nothing else) is no value; any other object is the client's data, for the rule.
+        $empty = array_diff_key($object, ['start' => 1, 'end' => 1]) === []
+            && array_filter($object, static fn (mixed $v): bool => !($v === null || (is_string($v) && trim($v) === ''))) === [];
 
-        return $parts === null ? null : ['start' => $parts['start'], 'end' => $parts['end']];
+        return $empty ? null : $object;
     }
 
     public function toOutput(mixed $stored, TypeFieldDefinition $field): ?array

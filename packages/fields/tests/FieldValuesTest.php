@@ -132,6 +132,25 @@ final class FieldValuesTest extends TestCase
         }
     }
 
+    public function test_json_keeps_empty_objects_and_lists_apart(): void
+    {
+        $value = $this->value('json');
+        $field = $this->field('json');
+
+        $this->assertSame('{}', json_encode($value->toOutput('{}', $field)));
+        $this->assertSame('[]', json_encode($value->toOutput('[]', $field)));
+        $this->assertSame('{"a":{}}', json_encode($value->toOutput('{"a":{}}', $field)));
+        $this->assertSame('{"a":{"b":[]},"c":[{}]}', json_encode($value->toOutput('{"a":{"b":[]},"c":[{}]}', $field)));
+        $this->assertSame(['a' => 1], $value->toOutput('{"a":1}', $field));
+        // Input: text keeps its bytes; an empty list or an empty object is a value, not "no value".
+        $this->assertSame('{}', $value->toStored('{}', $field));
+        $this->assertSame('[]', $value->toStored([], $field));
+        $this->assertSame('{}', $value->toStored(new \stdClass(), $field));
+        $this->assertSame('{"a":{}}', $value->toStored('{"a":{}}', $field));
+        $this->assertNull($value->toStored(null, $field));
+        $this->assertNull($value->toStored('  ', $field));
+    }
+
     public function test_json_text_reads_as_its_object(): void
     {
         $value = $this->value('json');
@@ -184,6 +203,20 @@ final class FieldValuesTest extends TestCase
         $this->assertSame('25:99', $this->value('time')->toStored('25:99', $this->field('time')));
         $this->assertSame('tomorrow', $this->value('datetime')->toStored(' tomorrow ', $this->field('datetime')));
         $this->assertSame(['start' => '2026-03-05', 'end' => null], $this->value('daterange')->toStored(['start' => '2026-03-05'], $this->field('daterange')));
+        foreach ([
+            'daterange' => [['from' => '2026-03-01', 'to' => '2026-03-05'], ['start' => 20260301]],
+            'link' => [['target' => 'x'], ['href' => 'https://example.org']],
+            'phone' => [['number' => '044 123 45 67']],
+            'embed' => [['url' => 'https://nowhere.example/v'], ['video' => 'x']],
+            'table' => [['cells' => [['a']]]],
+            'location' => [['latitude' => 1, 'longitude' => 2]],
+        ] as $type => $inputs) {
+            foreach ($inputs as $input) {
+                $this->assertSame($input, $this->value($type)->toStored($input, $this->field($type)), $type . ' ' . json_encode($input));
+                $this->assertSame($input, $this->value($type)->toStored(json_encode($input), $this->field($type)), $type . ' as text');
+            }
+        }
+        $this->assertNull($this->value('daterange')->toStored(['start' => '', 'end' => ' '], $this->field('daterange')));
         $this->assertSame('not a video', $this->value('embed')->toStored('not a video', $this->field('embed')));
         $this->assertSame(['rows' => 'x'], $this->value('table')->toStored(['rows' => 'x'], $this->field('table')));
     }
@@ -193,7 +226,7 @@ final class FieldValuesTest extends TestCase
         foreach (self::TYPES as $type) {
             $value = $this->value($type);
             $field = $this->field($type);
-            foreach ($type === 'code' ? [null, '', []] : [null, '', '  ', []] as $input) {
+            foreach ($type === 'code' ? [null, '', []] : ($type === 'json' ? [null, '', '  '] : [null, '', '  ', []]) as $input) {
                 $this->assertNull($value->toStored($input, $field), $type);
             }
             $this->assertNull($value->toOutput(null, $field), $type);
