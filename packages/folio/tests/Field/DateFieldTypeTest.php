@@ -96,4 +96,31 @@ final class DateFieldTypeTest extends TestCase
             });
         }
     }
+
+    public function test_seconds_from_the_datetime_input_are_read(): void
+    {
+        $this->assertSame('Oct 22, 2026 23:15', (new DateFieldType())->renderAdmin('2026-10-22T23:15:12', ['time' => true]));
+        $this->assertSame('2026-10-22T23:15:12+02:00', DateFieldType::read('2026-10-22T23:15:12')?->format(DATE_ATOM), 'in the app timezone');
+    }
+
+    public function test_the_stored_rule_takes_exactly_what_the_type_reads(): void
+    {
+        $type = new DateFieldType();
+        $rule = $type->storedRules([])[0];
+        $this->assertEquals($type->storedRules([]), $type->storedRules(['time' => true]), 'with or without time');
+        $context = new \Preflow\Validation\ValidationContext('d', []);
+
+        foreach (['2026-10-22', '2026-10-22T23:15', '2026-10-22T23:15:12', '2026-10-22T23:15:12+00:00', '2026-10-22T23:15:12.5+00:00', '2026-10-22T23:15+00:00', '2026-10-22T23:15:12Z', gmdate(DATE_ATOM), '', null] as $value) {
+            $this->assertTrue($rule->validate($value, $context), var_export($value, true));
+            if (is_string($value) && $value !== '') {
+                $this->assertNotNull(DateFieldType::read($value), $value . ' is read');
+            }
+        }
+        foreach (['tomorrow', 'now', '2026-10-22 23:15', '22.10.2026', '2026-02-30', '2026-10-22T24:15', ['2026-10-22'], 20261022] as $value) {
+            $this->assertNotTrue($rule->validate($value, $context), var_export($value, true));
+            if (is_string($value)) {
+                $this->assertSame($value, $type->renderAdmin($value, []), $value . ' is not read either');
+            }
+        }
+    }
 }

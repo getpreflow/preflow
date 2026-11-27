@@ -760,6 +760,7 @@ final class FolioServiceProvider extends ServiceProvider
         $container->singleton(\Preflow\Folio\Content\RecordValidator::class, fn (Container $c) => new \Preflow\Folio\Content\RecordValidator(
             $c->get(DataManager::class),
             $c->get(FrontendResolver::class),
+            $c->get(FieldTypeRegistry::class),
         ));
         $this->registerPublishing($container);
         $container->singleton(\Preflow\Folio\Content\ReviewIndexUpdater::class, fn (Container $c) => new \Preflow\Folio\Content\ReviewIndexUpdater(

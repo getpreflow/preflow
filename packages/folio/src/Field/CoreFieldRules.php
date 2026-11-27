@@ -15,9 +15,11 @@ use Preflow\Data\TypeFieldDefinition;
  * Folio's field types' rules, given to the core (0.92), so every write path checks them once —
  * Folio's form, imports, seeds and REST alike — and Folio's RecordValidator merges none of them:
  *
- * - a type's rules() (date's format, number's step, tags' limits, a blocks field's min/max, a
- *   site's own field types) as the core checks of its kind (FieldKinds::rules()), where no core
- *   package registered checks for that kind already;
+ * - a type's rules() (number's step, tags' limits, a blocks field's min/max, a site's own field
+ *   types) as the core checks of its kind (FieldKinds::rules()), where no core package registered
+ *   checks for that kind already; a type whose form takes fewer shapes than it stores and reads
+ *   (HasStoredRules, 0.92.1: date) gives its storedRules() instead, so a write from server code
+ *   is refused only for a value the type cannot read;
  * - a type whose rules read the other fields (HasRecordRules, HasBlockRules) not as a kind: its
  *   recordRules() as rules the core adds for the records' fields (RecordRules::add()), its
  *   blockRules() (or rules()) for a block's field through BlockValueChecks::extraRules().
@@ -82,7 +84,19 @@ final class CoreFieldRules
             return;
         }
         // The registry's type when the rules run: a type registered later under the key replaces it.
-        $kinds->rules($key, static fn (array $config): array => $types->get($key)->rules($config));
+        $kinds->rules($key, static fn (array $config): array => self::kindRules($types->get($key), $config));
+    }
+
+    /**
+     * The checks every write runs for a field of the type: storedRules() for a type whose form
+     * takes fewer shapes than it stores (HasStoredRules), else its rules().
+     *
+     * @param array<string, mixed> $config
+     * @return list<string|\Preflow\Validation\ValidationRule>
+     */
+    private static function kindRules(FieldType $type, array $config): array
+    {
+        return $type instanceof HasStoredRules ? $type->storedRules($config) : $type->rules($config);
     }
 
     /** A type whose rules read the record's or the block's other fields: not a kind of its own. */

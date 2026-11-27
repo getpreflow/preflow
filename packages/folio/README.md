@@ -1047,7 +1047,9 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   gets the record's values as `FieldContext::$values`, whatever its type (each in the default
   language, as its field type reads it; null without a record), and a field type whose rules need the record's other
   fields implements `HasRecordRules`. A field type's `rules()` reach the core at boot (since 0.92), so every write
-  path checks them, each message once.
+  path checks them, each message once. A type whose form takes fewer shapes than the type stores
+  and reads implements `HasStoredRules` (since 0.92.1): its `storedRules()` reach the core instead,
+  and Folio's form checks its `rules()` in their place (`date` does this).
 
   In a block (since 0.90) the source is another field of **the same block**, never the record's
   or another block's: `#[BlockField(type: 'select', config: ['options_from' => 'answers'])]`.
@@ -1237,8 +1239,11 @@ frontend output is never changed by it.
 
 A `date` shows in the admin as `folio_date()` writes it in the interface language: "Oct 22, 2026"
 (German "22.10.2026", French "22/10/2026"), or "Oct 22, 2026 23:15" with `"time": true`. Only
-`Y-m-d`, `Y-m-d\TH:i` and ISO 8601 with an offset (shown in the app's timezone) are parsed; any
-other value is shown escaped as it is stored, never as an error.
+`Y-m-d`, `Y-m-d\TH:i`, `Y-m-d\TH:i:s` and ISO 8601 with an offset (shown in the app's timezone)
+are parsed (`DateFieldType::read()`); any other value is shown escaped as it is stored, never as an
+error. Every write accepts exactly these shapes in a `date` field, with or without `"time"`, so
+server code may store `gmdate(DATE_ATOM)` (since 0.92.1); Folio's form still takes only what its
+input posts (`Y-m-d`, or `Y-m-d\TH:i` with optional seconds for `"time": true`).
 
 A field type says how its value is stored in a SQL column by implementing
 `Preflow\Folio\Field\HasColumnKind` (`columnKind(array $config): Preflow\Data\Schema\ColumnKind`:

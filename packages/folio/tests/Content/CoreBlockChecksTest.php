@@ -36,6 +36,7 @@ final class CoreBlockChecksTest extends TestCase
         $this->writeModel('event', ['label' => 'Events', 'publishing' => false, 'fields' => [
             'name' => ['type' => 'string', 'validate' => ['required']],
             'day' => ['type' => 'date'],
+            'starts' => ['type' => 'date', 'time' => true],
             'count' => ['type' => 'number', 'step' => 5],
             'labels' => ['type' => 'tags', 'max' => 2],
             'size' => ['type' => 'select', 'options' => ['s' => 'Small', 'l' => 'Large']],
@@ -170,5 +171,70 @@ final class CoreBlockChecksTest extends TestCase
         $this->assertSame(422, $res->getStatusCode());
         $this->assertStringContainsString('This field is required.', (string) $res->getBody());
         $this->assertNull($this->dm()->findType('event', 'e1'));
+    }
+
+    /** @return array<string, string> every stored shape DateFieldType reads */
+    private static function storedDates(): array
+    {
+        return [
+            'date' => '2026-11-27',
+            'date and time' => '2026-11-27T05:00',
+            'with seconds' => '2026-11-27T05:00:12',
+            'DATE_ATOM' => '2026-11-27T05:00:00+00:00',
+            'microseconds' => '2026-11-27T05:00:00.123456+01:00',
+            'minutes with offset' => '2026-11-27T05:00+01:00',
+            'Z' => '2026-11-27T05:00:00Z',
+        ];
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_core_save_takes_every_date_shape_the_type_reads(): void
+    {
+        $dm = $this->dm();
+        $def = $dm->getTypeRegistry()->get('event');
+        $i = 0;
+        foreach (self::storedDates() as $what => $value) {
+            $id = 'e' . ++$i;
+            $dm->saveType(DynamicRecord::fromArray($def, ['uuid' => $id, 'name' => 'Fair', 'day' => $value, 'starts' => $value,
+                'sections' => [['_uid' => self::A, '_block' => 'checked_fields', 'title' => 'T', 'day' => $value]]]));
+            $this->assertSame($value, $dm->findType('event', $id)?->get('starts'), $what);
+        }
+        $dm->saveType(DynamicRecord::fromArray($def, ['uuid' => 'gm', 'name' => 'Fair', 'day' => gmdate(DATE_ATOM), 'starts' => gmdate(DATE_ATOM)]));
+        $this->assertNotNull($dm->findType('event', 'gm'), 'gmdate(DATE_ATOM) from server code');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_core_save_still_refuses_a_malformed_date(): void
+    {
+        $dm = $this->dm();
+        $def = $dm->getTypeRegistry()->get('event');
+        foreach (['26.11.2026', '2026-02-30', '2026-11-27 05:00', 'tomorrow', '2026-11-27T25:00'] as $value) {
+            try {
+                $dm->saveType(DynamicRecord::fromArray($def, ['uuid' => 'e1', 'name' => 'Fair', 'starts' => $value,
+                    'sections' => [['_uid' => self::A, '_block' => 'checked_fields', 'title' => 'T', 'day' => $value]]]));
+                $this->fail($value . ' was saved');
+            } catch (ValidationException $e) {
+                $this->assertSame(['Format is invalid.'], $e->errors()['starts'] ?? null, $value);
+                $this->assertSame(['Format is invalid.'], $e->errors()['sections.' . self::A . '.day'] ?? null, $value . ' in a block');
+            }
+        }
+        $this->assertNull($dm->findType('event', 'e1'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_form_still_takes_only_what_its_date_inputs_post(): void
+    {
+        $base = ['uuid' => 'e1', 'name' => 'Fair'];
+
+        $this->assertSame([], $this->validatorErrors($base + ['day' => '2026-11-27', 'starts' => '2026-11-27T05:00']));
+        $this->assertSame([], $this->validatorErrors($base + ['starts' => '2026-11-27T05:00:12']), 'seconds from the input');
+        $errors = $this->validatorErrors($base + ['day' => '2026-11-27T05:00:00+00:00', 'starts' => '2026-11-27T05:00:00+00:00']);
+        $this->assertSame(['Format is invalid.'], $errors['day'] ?? null, 'a date input posts no time');
+        $this->assertSame(['Format is invalid.'], $errors['starts'] ?? null, 'a datetime-local input posts no offset');
+        $this->assertSame(['Format is invalid.'], $this->validatorErrors($base + ['day' => '2026-11-27T05:00'])['day'] ?? null);
+
+        $res = $this->post('/folio/event', ['name' => 'Fair', 'day' => '2026-11-27T05:00:00+00:00']);
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertSame([], $this->dm()->queryType('event')->get()->items());
     }
 }
