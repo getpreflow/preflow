@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio;
 
+use Preflow\Blocks\Layouts\AreaDefinition;
 use Preflow\Core\Context\Contexts;
 use Preflow\I18n\Translator;
 
@@ -68,13 +69,25 @@ final class FolioText
      * key ("members-admin.list.state") and the translator has a text for it, that text in the
      * interface language; otherwise the text as it is, so plain English labels stay as they are.
      */
-    public static function label(string $text): string
+    /** @param array<string, string|int> $params the key's :name parameters (an area's labelParams) */
+    public static function label(string $text, array $params = []): string
     {
         if (preg_match('/^[a-z][a-z0-9_-]*(\.[a-z0-9_]+)+$/', $text) !== 1) {
             return $text;
         }
 
-        return self::get($text);
+        return self::get($text, $params);
+    }
+
+    /**
+     * An area's or column's label in the interface language, with its parameters
+     * ("block-library.columns.column" with ['n' => 2]: "Column 2").
+     *
+     * @since 0.92.0
+     */
+    public static function areaLabel(AreaDefinition $area): string
+    {
+        return self::label($area->label, $area->labelParams);
     }
 
     /** The interface language of the texts. */

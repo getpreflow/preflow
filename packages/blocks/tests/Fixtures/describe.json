@@ -204,6 +204,7 @@
             "areas": {
                 "hero": {
                     "label": "Hero",
+                    "label_params": {},
                     "allowed": [
                         "hero"
                     ],
@@ -213,6 +214,7 @@
                 },
                 "main": {
                     "label": "Main",
+                    "label_params": {},
                     "allowed": [],
                     "except": [
                         "columns"
@@ -228,6 +230,7 @@
             "areas": {
                 "main": {
                     "label": "Main",
+                    "label_params": {},
                     "allowed": [],
                     "except": [],
                     "min": null,
@@ -241,6 +244,7 @@
             "areas": {
                 "top": {
                     "label": "Top",
+                    "label_params": {},
                     "allowed": [],
                     "except": [],
                     "min": 1,
@@ -259,6 +263,7 @@
                     "areas": {
                         "c1": {
                             "label": "Column 1",
+                            "label_params": {},
                             "allowed": [],
                             "except": [],
                             "min": null,
@@ -273,6 +278,7 @@
                     "areas": {
                         "c1": {
                             "label": "Column 1",
+                            "label_params": {},
                             "allowed": [],
                             "except": [],
                             "min": null,
@@ -281,6 +287,7 @@
                         },
                         "c2": {
                             "label": "Column 2",
+                            "label_params": {},
                             "allowed": [],
                             "except": [
                                 "columns"

@@ -56,6 +56,7 @@ final class ColumnLayoutsTest extends TestCase
 
         $column = $set->get('1-1')?->areas['c2'];
         $this->assertSame('block-library.columns.column', $column?->label);
+        $this->assertSame(['n' => 2], $column?->labelParams, 'translated as "Column 2"');
         $this->assertSame([], $column?->allowed);
         $this->assertSame(['columns'], $column?->except, 'every block but the columns block itself');
     }

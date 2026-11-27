@@ -337,7 +337,7 @@ final class AreasFieldTest extends BlocksAppTestCase
         $this->assertSame(['type' => 'areas', 'label' => 'Columns', 'help' => null, 'translatable' => false, 'required' => false, 'list' => false, 'config' => ['layouts' => 'grid'], 'value' => 'areas_value'], $field);
         $this->assertSame('full', $description['area_layout_sets']['grid']['fallback']);
         $this->assertSame(['full', '1-1', '2-1', '1-1-1'], array_keys($description['area_layout_sets']['grid']['layouts']));
-        $this->assertSame(['label' => 'Column 2', 'allowed' => [], 'except' => ['grid'], 'min' => null, 'max' => 1, 'width' => 1], $description['area_layout_sets']['grid']['layouts']['2-1']['areas']['c2']);
+        $this->assertSame(['label' => 'Column 2', 'label_params' => [], 'allowed' => [], 'except' => ['grid'], 'min' => null, 'max' => 1, 'width' => 1], $description['area_layout_sets']['grid']['layouts']['2-1']['areas']['c2'], 'a plain label: no parameters');
         $this->assertSame(2, $description['area_layout_sets']['grid']['layouts']['2-1']['areas']['c1']['width']);
         $this->assertArrayNotHasKey('value', $description['blocks']['section']['fields']['quotes'], 'only an areas field names a value shape');
     }

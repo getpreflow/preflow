@@ -23,13 +23,14 @@ use Preflow\Data\TypeRegistry;
  *     {"version": 1,
  *      "blocks": {"text": {"label": "Text", "group": "Blocks", "description": null, "icon": null, "family": null, "renders": true,
  *                          "fields": {"body": {"type": "richtext", "label": null, "help": null, "translatable": true, "required": true, "list": false, "config": {}}}}},
- *      "layouts": {"standard": {"label": "Standard", "description": null, "areas": {"main": {"label": "Main", "allowed": [], "except": [], "min": null, "max": null}}}},
- *      "area_layout_sets": {"columns": {"fallback": "full", "layouts": {"full": {…, "areas": {"c1": {…, "width": 1}}}}}},
+ *      "layouts": {"standard": {"label": "Standard", "description": null, "areas": {"main": {"label": "Main", "label_params": {}, "allowed": [], "except": [], "min": null, "max": null}}}},
+ *      "area_layout_sets": {"columns": {"fallback": "full", "layouts": {"full": {…, "areas": {"c1": {"label": "block-library.columns.column", "label_params": {"n": 1}, …, "width": 1}}}}}},
  *      "types": {"page": {"layouts": {"allowed": ["standard"], "default": "standard", "pinned": {}, "slug_field": "slug",
  *                                     "values": {"_layout": "layout_key", "_areas": "area_map"}}}}}
  *
  * Declared data only: no PHP class names, no template paths, and labels as declared (a key-shaped
- * label stays the key; translating it is the API's choice, through its translator), so every site
+ * label stays the key, with an area's "label_params" for its :name placeholders since 0.92; translating
+ * it is the API's choice, through its translator), so every site
  * and language gets the same description of the same declarations. "renders": the block has its
  * own component (else its parent's template renders it). A field's "required": its "validate" has
  * "required"; "list": its value is a list of values (FieldKinds::holdsList(): tags, a multiple
@@ -166,7 +167,7 @@ final readonly class ContentDescription
     /** @return array<string, mixed> */
     private static function area(AreaDefinition $area, bool $withWidth): array
     {
-        $out = ['label' => $area->label, 'allowed' => $area->allowed, 'except' => $area->except, 'min' => $area->min, 'max' => $area->max];
+        $out = ['label' => $area->label, 'label_params' => self::map($area->labelParams), 'allowed' => $area->allowed, 'except' => $area->except, 'min' => $area->min, 'max' => $area->max];
         if ($withWidth) {
             $out['width'] = $area->width;
         }

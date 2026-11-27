@@ -184,7 +184,8 @@ final class AreasFieldType implements FieldType, StructuredFieldType, DisplaysIn
         $placement = $areas->placement($set);
         $texts = [];
         foreach ($stored ? $placement->placed() + $placement->areas() : $placement->placed() as $name => $list) {
-            $label = FolioText::label($layout?->areas[$name]->label ?? $this->labelOf((string) $name, $set));
+            $area = $layout?->areas[$name] ?? null;
+            $label = $area !== null ? FolioText::areaLabel($area) : $this->labelOf((string) $name, $set);
             $inner = $stored ? $this->blocks->storedTranslatableTexts($list, [], $locales) : $this->blocks->translatableTexts($list, [], $locales);
             foreach ($inner as $text) {
                 $texts[] = $text->within('areas.' . $name, $label);
@@ -194,12 +195,12 @@ final class AreasFieldType implements FieldType, StructuredFieldType, DisplaysIn
         return $texts;
     }
 
-    /** An area the layout lacks, by the label another layout of the set gives it, else its name. */
+    /** An area the layout lacks, by the label another layout of the set gives it (translated), else its name. */
     private function labelOf(string $name, AreaLayoutSet $set): string
     {
         foreach ($set->all() as $layout) {
             if (isset($layout->areas[$name])) {
-                return $layout->areas[$name]->label;
+                return FolioText::areaLabel($layout->areas[$name]);
             }
         }
 

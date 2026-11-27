@@ -138,7 +138,7 @@ final class TranslationStatus
         $texts = [];
         foreach ($areas as $name => $list) {
             $area = $resolved->layout?->areas[$name] ?? null;
-            $label = $area !== null ? \Preflow\Folio\FolioText::label($area->label) : (new FieldRenderer())->humanize((string) $name);
+            $label = $area !== null ? \Preflow\Folio\FolioText::areaLabel($area) : (new FieldRenderer())->humanize((string) $name);
             foreach ($unplaced ? $blocks->storedTranslatableTexts($list, [], $def->locales) : $blocks->translatableTexts($list, [], $def->locales) as $text) {
                 $texts[] = $text->within(PageLayouts::AREAS . '.' . $name, $label);
             }

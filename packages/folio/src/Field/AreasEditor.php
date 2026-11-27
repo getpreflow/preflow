@@ -118,7 +118,7 @@ final class AreasEditor
             [$own, $nested] = self::areaErrors($errors, $areasKey . '.' . $name);
             $areas[] = $this->blocks->renderList(
                 $areasName . '[' . $name . ']',
-                FolioText::label($area->label),
+                FolioText::areaLabel($area),
                 $area->help !== null ? FolioText::label($area->help) : null,
                 $blocks,
                 $this->configOf($area),
@@ -139,7 +139,7 @@ final class AreasEditor
                 $targets = [];
                 foreach ($current->areas ?? [] as $name => $area) {
                     if ($area->accepts($blockKey)) {
-                        $targets[] = ['area' => (string) $name, 'label' => FolioText::label($area->label)];
+                        $targets[] = ['area' => (string) $name, 'label' => FolioText::areaLabel($area)];
                     }
                 }
 
@@ -245,7 +245,7 @@ final class AreasEditor
     {
         foreach ($choices as $layout) {
             if (isset($layout->areas[$name])) {
-                return FolioText::label($layout->areas[$name]->label);
+                return FolioText::areaLabel($layout->areas[$name]);
             }
         }
 

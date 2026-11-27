@@ -81,7 +81,8 @@ return [
 Each entry has a `key` (stored with the block, so keep it once editors use it; lower-case letters,
 digits, `-` and `_`), a `label` (a text, or a translation key such as `block-library.layouts.full`)
 and `widths` (1 to 6 columns, each a whole number from 1 to 12). The columns are named `c1`, `c2`,
-… in that order.
+… in that order, and the editor labels them "Column 1", "Column 2", … in its language (the key
+`block-library.columns.column` with the column's number).
 
 A mistake is refused when the block registry is built (when `preflow optimize` builds the boot
 manifest, or on the first request without one), naming the entry, for example:

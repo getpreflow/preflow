@@ -20,8 +20,8 @@ use Preflow\Blocks\Layouts\LayoutConfigException;
  *   'column_blocks'   which blocks a column takes: ['except' => ['columns']] (the default: every
  *                     block but the columns block itself) or ['allowed' => ['text', 'image']]
  *
- * The columns are areas c1…cN (never numeric names, so the stored map stays a map in JSON). A
- * stored key the list no longer has renders with the list's first layout of as many columns, else
+ * The columns are areas c1…cN (never numeric names, so the stored map stays a map in JSON),
+ * labelled "block-library.columns.column" with the label parameter n (1…N): "Column 2". A stored key the list no longer has renders with the list's first layout of as many columns, else
  * "full", else the first (AreaLayoutSet::resolve()); the columns it lacks are kept, not shown.
  *
  * @since 0.92.0
@@ -109,7 +109,7 @@ final class ColumnLayouts
                     ));
                 }
                 $name = 'c' . ($n + 1);
-                $areas[$name] = new AreaDefinition($name, 'block-library.columns.column', allowed: $allowed, except: $except, width: $width);
+                $areas[$name] = new AreaDefinition($name, 'block-library.columns.column', allowed: $allowed, except: $except, width: $width, labelParams: ['n' => $n + 1]);
             }
             $layouts[] = new AreaLayout($key, $label, $areas);
         }

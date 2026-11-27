@@ -8,6 +8,7 @@ use Preflow\BlockLibrary\ColumnLayouts;
 use Preflow\Blocks\BlockConfigException;
 use Preflow\Blocks\BlockRegistry;
 use Preflow\Blocks\BlocksServiceProvider;
+use Preflow\Blocks\Describe\ContentDescription;
 use Preflow\Blocks\Layouts\AreaLayoutSets;
 use Preflow\I18n\Translator;
 
@@ -114,6 +115,21 @@ final class ColumnsBlockTest extends BlockLibraryAppTestCase
         } catch (BlockConfigException $e) {
             $this->assertSame('Block "columns": field "columns": No package registers the area layout set "columns". The package that brings the block registers it in its service provider (config/providers.php).', $e->getMessage());
         }
+    }
+
+    public function test_description_lists_the_columns_with_their_label_params(): void
+    {
+        $set = $this->app()->container()->get(ContentDescription::class)->toArray()['area_layout_sets']['columns'];
+
+        $this->assertSame('full', $set['fallback']);
+        $this->assertSame(['full', '1-1', '2-1', '1-2', '1-1-1', '1-1-1-1'], array_keys($set['layouts']));
+        $this->assertSame(
+            '{"label":"block-library.columns.column","label_params":{"n":3},"allowed":[],"except":["columns"],"min":null,"max":null,"width":1}',
+            json_encode($set['layouts']['1-1-1']['areas']['c3']),
+            'the key and its parameters, untranslated: an API translates them itself',
+        );
+        $this->assertSame(['n' => 1], $set['layouts']['2-1']['areas']['c1']['label_params']);
+        $this->assertSame(2, $set['layouts']['2-1']['areas']['c1']['width']);
     }
 
     public function test_texts_in_english_german_and_french(): void

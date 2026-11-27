@@ -78,7 +78,7 @@ final class ContentDescriptionTest extends BlocksAppTestCase
         $this->assertSame(['section_quote'], $description['blocks']['section']['fields']['quotes']['config']['allowed']);
 
         $this->assertSame(['landing', 'standard', 'home'], array_keys($description['layouts']));
-        $this->assertSame(['label' => 'Hero', 'allowed' => ['hero'], 'except' => [], 'min' => null, 'max' => 1], $description['layouts']['landing']['areas']['hero']);
+        $this->assertSame('{"label":"Hero","label_params":{},"allowed":["hero"],"except":[],"min":null,"max":1}', json_encode($description['layouts']['landing']['areas']['hero']), 'no label parameters: an empty object');
 
         $this->assertSame(['columns'], array_keys($description['area_layout_sets']));
         $this->assertSame('full', $description['area_layout_sets']['columns']['fallback']);

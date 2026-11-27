@@ -8,6 +8,8 @@ use Preflow\Data\TypeFieldDefinition;
 
 /**
  * One area of a layout. $width is set by layouts that divide a row (a column layout: its share, 1–12).
+ * $labelParams fill the label's :name placeholders when it is a translation key (a column layout's
+ * "block-library.columns.column" with ['n' => 2]: "Column 2"); an editor translates the label with them.
  *
  * @since 0.92.0
  */
@@ -16,6 +18,7 @@ final readonly class AreaDefinition
     /**
      * @param list<string> $allowed block keys; empty: every block
      * @param list<string> $except  block keys left out
+     * @param array<string, string|int> $labelParams the label's parameters (since 0.92.0, with the class)
      */
     public function __construct(
         public string $name,
@@ -26,6 +29,7 @@ final readonly class AreaDefinition
         public ?int $max = null,
         public ?string $help = null,
         public ?int $width = null,
+        public array $labelParams = [],
     ) {}
 
     public function accepts(string $blockKey): bool
