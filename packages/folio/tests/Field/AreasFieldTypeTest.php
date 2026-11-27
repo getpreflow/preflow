@@ -10,6 +10,7 @@ use Preflow\Blocks\Layouts\AreasValue;
 use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Media\FolioRecordReferences;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 use Preflow\I18n\Machine\Scope;
 use Preflow\I18n\Machine\TextSources;
 use Psr\Http\Message\ResponseInterface;
@@ -23,6 +24,7 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class AreasFieldTypeTest extends TestCase
 {
+    use ChecksFrameBalance;
     use PublishingScaffold;
 
     private const string GRID = '9a9a9a9a9a9a9a9a';
