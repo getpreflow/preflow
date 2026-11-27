@@ -877,22 +877,28 @@ final class AdminController
         $path = $body['_confirm_path'] ?? $body['path'] ?? null;
         $path = is_string($path) && $path !== '' ? $path : null;
         $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
-        $action = $this->prefix . '/' . $type . '/' . $id;
-        $editUrl = $this->isSingleton($type) ? $this->prefix . '/' . $type : $action . '/edit';
+        // In the drawer (0.92): the form stays in the drawer's layout, and a save hands back to the editor, as update() does.
+        $drawer = $this->isDrawer($request);
+        $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
+        $base = $this->prefix . '/' . $type . '/' . $id;
+        $action = $base . ($drawer ? '?_drawer=1' : '');
+        $editUrl = $drawer ? $base . '/edit?_drawer=1' : ($this->isSingleton($type) ? $this->prefix . '/' . $type : $base . '/edit');
         $heading = FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]);
-        $done = new Response(302, ['Location' => $editUrl . '?locale=' . rawurlencode($locale) . '&confirmed=1']);
+        $done = fn (): ResponseInterface => $drawer
+            ? new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $this->engine->render('@folio/admin/drawer_saved.twig', ['type' => $type, 'id' => $id]))
+            : new Response(302, ['Location' => $editUrl . '?locale=' . rawurlencode($locale) . '&confirmed=1']);
 
         if ($fromForm) {
             $built = $this->drafts->build($typeDef, $request, $current->toArray(), $locale, $this->can('assets.upload'));
             if ($this->drafts->buildErrors() !== []) {
-                return $this->form($type, $built->toArray(), $action, $heading, $this->drafts->buildErrors(), $csrf, 422, locale: $locale, editUrl: $editUrl);
+                return $this->form($type, $built->toArray(), $action, $heading, $this->drafts->buildErrors(), $csrf, 422, $layout, locale: $locale, editUrl: $editUrl);
             }
             $record = $this->translations->confirm($typeDef, $built, $locale, $path);
             $failed = $this->saveForm($request, $record, $this->saveOptions($request, $type, publish: false), false,
-                fn (array $values, array $errors, int $status, bool $saved, ?string $notice, bool $reload): ResponseInterface => $this->form($type, $values, $action, $heading, $errors, $csrf, $status, locale: $locale, editUrl: $editUrl, notice: $notice, reloadUrl: $reload ? $editUrl : null),
+                fn (array $values, array $errors, int $status, bool $saved, ?string $notice, bool $reload): ResponseInterface => $this->form($type, $values, $action, $heading, $errors, $csrf, $status, $layout, locale: $locale, editUrl: $editUrl, notice: $notice, reloadUrl: $reload ? $editUrl : null),
             );
 
-            return $failed ?? $done;
+            return $failed ?? $done();
         }
 
         $confirmed = $this->translations->confirm($typeDef, $current, $locale, $path);
@@ -902,15 +908,15 @@ final class AdminController
             $values = $current->toArray();
             $values['_version'] = $e->current;
 
-            return $this->form($type, $values, $action, $heading, [], $csrf, 409, locale: $locale, editUrl: $editUrl,
-                notice: FolioText::get('folio.form.conflict'), reloadUrl: $editUrl . '?locale=' . rawurlencode($locale));
+            return $this->form($type, $values, $action, $heading, [], $csrf, 409, $layout, locale: $locale, editUrl: $editUrl,
+                notice: FolioText::get('folio.form.conflict'), reloadUrl: self::withLocale($editUrl, $locale));
         } catch (ValidationException $e) {
             // A #[BeforeSave] hook, the rules or the storage refused: nothing saved.
-            return $this->form($type, $confirmed->toArray(), $action, $heading, $e->errors(), $csrf, 422, locale: $locale, editUrl: $editUrl);
+            return $this->form($type, $confirmed->toArray(), $action, $heading, $e->errors(), $csrf, 422, $layout, locale: $locale, editUrl: $editUrl);
         }
         $this->leftSite($request, $outcome->addressesLeft ? [$outcome->record] : []);
 
-        return $done;
+        return $done();
     }
 
     public function update(ServerRequestInterface $request): ResponseInterface
@@ -1692,6 +1698,8 @@ final class AdminController
                 + ($this->frontend->routeFor($type) !== null ? ['page-preview.js' => true] : [])),
             'multipart' => $multipart,
             'layout' => $layout,
+            // In the drawer (0.92): "Still correct" posts there too (partials/_field.twig).
+            'drawer' => $layout === '@folio/admin/_drawer_layout.twig',
             // No preview in the create drawer: its form posts to the save route.
             // A read-only form has nothing to preview (and its user may not post to the preview route).
             'previewable' => $this->frontend->routeFor($type) !== null && $layout !== '@folio/admin/_drawer_layout.twig'

@@ -136,6 +136,37 @@ final class LinkedRecordPreviewTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_still_correct_in_the_drawer_stays_in_the_drawer(): void
+    {
+        $this->signIn('admin');
+        $status = $this->session->container()->get(\Preflow\Folio\Content\TranslationStatus::class);
+        $outdated = [
+            'title' => ['en' => 'Hello!', 'de' => 'Hallo'], 'slug' => ['en' => 'hello', 'de' => 'hallo'], '_locales' => ['en', 'de'],
+            '_translated_from' => ['de' => ['title' => $status->fingerprint('Hello'), 'slug' => $status->fingerprint('hello')]],
+        ];
+        $this->working('post', 'p1', $outdated);
+
+        $form = (string) $this->send('GET', '/folio/post/p1/edit?_drawer=1&locale=de')->getBody();
+        $this->assertStringContainsString('formaction="/folio/post/p1/_translations/confirm?_drawer=1"', $form, 'the button posts in the drawer');
+
+        // From the form (its fields and the button's path): saved, and the editor behind is told.
+        $saved = $this->send('POST', '/folio/post/p1/_translations/confirm?_drawer=1', ['_locale' => 'de', '_confirm_path' => 'title', 'title' => 'Hallo', 'slug' => 'hallo']);
+        $this->assertSame(200, $saved->getStatusCode(), substr((string) $saved->getBody(), 0, 2000));
+        $this->assertStringContainsString("source: 'folio-drawer'", (string) $saved->getBody(), 'drawer_saved, not the full-page editor');
+        $this->assertSame([], $status->outdated($this->dm()->getTypeRegistry()->get('post'), $this->stored('post', 'p1'), 'de'), 'the title is marked');
+
+        // Without form fields (only the stamp) too.
+        $this->assertStringContainsString("source: 'folio-drawer'", (string) $this->send('POST', '/folio/post/p1/_translations/confirm?_drawer=1', ['locale' => 'de', 'path' => 'title'])->getBody());
+
+        // A conflict keeps the drawer's layout.
+        $this->working('post', 'p1', ['_version' => 7] + $outdated);
+        $conflict = $this->send('POST', '/folio/post/p1/_translations/confirm?_drawer=1', ['locale' => 'de', 'path' => 'title', '_version' => '1']);
+        $this->assertSame(409, $conflict->getStatusCode());
+        $this->assertStringContainsString('folio-drawer-heading', (string) $conflict->getBody());
+        $this->assertStringContainsString('action="/folio/post/p1?_drawer=1"', (string) $conflict->getBody());
+    }
+
+    #[RunInSeparateProcess]
     public function test_the_full_page_edit_is_unchanged(): void
     {
         $this->signIn('admin');

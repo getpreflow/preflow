@@ -14,13 +14,13 @@
         {% if field.outdated %}
             <p class="folio-outdated">
                 <span>{{ field.outdated.plain ? t('folio.form.outdated') : t('folio.form.outdated_texts', {count: field.outdated.count}) }}</span>
-                {% if can_save ?? true %}<button type="submit"{% if owner %} form="{{ owner }}"{% endif %} formaction="{{ prefix }}/{{ type }}/{{ record_id }}/_translations/confirm" name="_confirm_path" value="{{ field.name }}" class="btn btn-ghost">{{ t('folio.form.still_correct') }}</button>{% endif %}
+                {% if can_save ?? true %}<button type="submit"{% if owner %} form="{{ owner }}"{% endif %} formaction="{{ prefix }}/{{ type }}/{{ record_id }}/_translations/confirm{{ drawer|default(false) ? '?_drawer=1' : '' }}" name="_confirm_path" value="{{ field.name }}" class="btn btn-ghost">{{ t('folio.form.still_correct') }}</button>{% endif %}
             </p>
         {% endif %}
         {% if field.unchecked %}
             <p class="folio-unchecked">
                 <span>{{ t('folio.form.unchecked') }}{% if not field.unchecked.plain %} ({{ field.unchecked.count }}){% endif %}</span>
-                {% if can_save ?? true %}<button type="submit"{% if owner %} form="{{ owner }}"{% endif %} formaction="{{ prefix }}/{{ type }}/{{ record_id }}/_translations/confirm" name="_confirm_path" value="{{ field.name }}" class="btn btn-ghost">{{ t('folio.form.still_correct') }}</button>{% endif %}
+                {% if can_save ?? true %}<button type="submit"{% if owner %} form="{{ owner }}"{% endif %} formaction="{{ prefix }}/{{ type }}/{{ record_id }}/_translations/confirm{{ drawer|default(false) ? '?_drawer=1' : '' }}" name="_confirm_path" value="{{ field.name }}" class="btn btn-ghost">{{ t('folio.form.still_correct') }}</button>{% endif %}
             </p>
         {% endif %}
         {% if field.translatable and field.reference %}
