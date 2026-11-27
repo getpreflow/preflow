@@ -68,8 +68,9 @@ final class BlockEditorController
      * posted area is built as a blocks field over the stored one (BlocksFieldType::buildValue(), no
      * file written); areas not posted keep their stored blocks; nothing is dropped: an area the
      * layout lacks goes to the panel "Not shown in this layout". Answers the areas section
-     * (AreasEditor::SWAP) for htmx to swap in; a switch clears the notice of a layout that is no
-     * longer available, since the editor has chosen one.
+     * (AreasEditor::SWAP) for htmx to swap in. A stored key that is no longer available is the
+     * picker's value until the editor chooses a layout, so a move keeps its notice and a switch to
+     * another layout clears it.
      */
     public function areas(ServerRequestInterface $request): ResponseInterface
     {
@@ -112,14 +113,6 @@ final class BlockEditorController
         $slugField = $typeLayouts->slugField;
         if (is_string($body[$slugField] ?? null) && $locale === $def->locales->default) {
             $values[$slugField] = $body[$slugField]; // a pin follows the slug as typed
-        }
-        if ($move !== null) {
-            // A move keeps the notice of a stored layout that is no longer available while the form
-            // shows its fallback (the picker preselects it): nothing was chosen yet.
-            $was = $this->layouts->resolveValues($def, $values);
-            if ($was !== null && $was->fallback && $was->layout?->key === $layout) {
-                $layout = $was->storedKey;
-            }
         }
         $values[PageLayouts::LAYOUT] = $layout;
         $values[PageLayouts::AREAS] = $areas;

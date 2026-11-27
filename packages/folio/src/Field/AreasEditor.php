@@ -52,7 +52,8 @@ final class AreasEditor
     ) {}
 
     /**
-     * @param list<AreaLayout>                  $choices    the layouts the editor may pick, in order (none for a pinned page)
+     * @param list<AreaLayout>                  $choices    the layouts the editor may pick, in order (none for a pinned page);
+     *        with $missingKey the picker starts on that key ("Standard (until you choose a layout)"), so a save as shown keeps it
      * @param AreaLayout|null                   $current    the layout the areas show (the picker's choice); null: none exists
      * @param string|null                       $fixedLabel a pinned page's layout label ("Layout: Home (fixed)", no picker)
      * @param string|null                       $missingKey the stored (or pinned) key that is no longer available (the notice)
@@ -72,6 +73,23 @@ final class AreasEditor
             'depth' => (string) $depth,
             'set' => $set ?? '',
         ], static fn (string $value): bool => $value !== ''), '', '&', PHP_QUERY_RFC3986);
+        $options = array_map(static fn (AreaLayout $layout): array => [
+            'key' => $layout->key,
+            'label' => FolioText::label($layout->label),
+            'description' => $layout->description !== null ? FolioText::label($layout->description) : null,
+        ], $choices);
+        $selected = $current?->key;
+        if ($missingKey !== null && $fixedLabel === null && $current !== null) {
+            // The stored key that is no longer available stays the picker's value, shown as the layout the
+            // page shows meanwhile: saving as shown writes nothing new (an unchanged key passes the core's
+            // check), and only choosing a layout, the fallback too, changes it.
+            array_unshift($options, [
+                'key' => $missingKey,
+                'label' => FolioText::get('folio.page_layouts.fallback_choice', ['label' => FolioText::label($current->label)]),
+                'description' => null,
+            ]);
+            $selected = $missingKey;
+        }
         $layoutKey = self::dotted($layoutName);
         $areasKey = self::dotted($areasName);
         $context = [
@@ -79,12 +97,8 @@ final class AreasEditor
             'id' => $id,
             'url' => $url,
             'layout_name' => $layoutName,
-            'choices' => array_map(static fn (AreaLayout $layout): array => [
-                'key' => $layout->key,
-                'label' => FolioText::label($layout->label),
-                'description' => $layout->description !== null ? FolioText::label($layout->description) : null,
-            ], $choices),
-            'current' => $current?->key,
+            'choices' => $options,
+            'current' => $selected,
             'fixed' => $fixedLabel,
             'notice' => $missingKey === null ? null : FolioText::get('folio.page_layouts.unavailable', [
                 'key' => $missingKey,

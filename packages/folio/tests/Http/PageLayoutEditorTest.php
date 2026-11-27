@@ -107,6 +107,7 @@ final class PageLayoutEditorTest extends TestCase
         $this->assertStringContainsString('These blocks are kept, but the page does not show them.', $panel);
         $this->assertStringContainsString('name="_areas[hero][_order][]" value="' . self::HERO . '"', $panel, 'the hero block, as a card');
         $this->assertStringContainsString('value="Welcome"', $panel);
+        $this->assertStringContainsString('<span class="form-label">Hero <span', $panel, 'labelled');
         $this->assertStringContainsString('name="_areas_move" value="' . self::HERO . ':main"', $panel, 'movable to the new layout\'s area');
         $this->assertStringContainsString('>Move</span>', $panel);
         $this->assertStringNotContainsString('new?name=_areas%5Bhero%5D&', $panel, 'nothing is added to a hidden area');
@@ -273,7 +274,9 @@ final class PageLayoutEditorTest extends TestCase
         $form = $this->html($this->get('/folio/page/r1/edit'));
 
         $this->assertStringContainsString('The layout &quot;gone&quot; is no longer available. This page shows as &quot;Standard&quot; until you choose a layout.', $form);
-        $this->assertStringContainsString('<option value="standard" selected>', $form, 'the fallback, preselected');
+        $select = $this->between($form, 'name="_layout"', '</select>');
+        $this->assertStringContainsString('<option value="gone" selected>Standard (until you choose a layout)</option>', $select, 'the fallback shown, the stored key kept');
+        $this->assertStringContainsString('<option value="standard">Standard</option>', $select, 'and the fallback as a choice of its own');
         $this->assertStringContainsString('name="_areas[sidebar][_order][]" value="' . self::OTHER . '"', $this->between($form, 'data-areas-panel', '</section>'));
         $this->assertLessThan(strpos($form, 'name="title"'), strpos($form, 'no longer available'), 'beside the picker');
 
@@ -282,11 +285,50 @@ final class PageLayoutEditorTest extends TestCase
         $this->assertStringContainsString('no longer available', $moved);
         $switched = $this->switchTo($form, 'landing', 'r1');
         $this->assertMatchesRegularExpression('~<div class="folio-notice folio-layout-notice" id="[^"]+-notice" role="status" hidden hx-swap-oob="true"></div>~', $switched);
+    }
 
-        // Saving as shown keeps the page savable, now on the layout it showed.
-        $this->assertSame(302, $this->post('/folio/page/r1', self::posted($form))->getStatusCode());
+    #[RunInSeparateProcess]
+    public function test_saving_as_shown_keeps_a_removed_layout_until_one_is_chosen(): void
+    {
+        $this->page('r1', 'about', 'gone', ['main' => [], 'sidebar' => [self::prose(self::OTHER, ['en' => 'Kept'])]]);
+        $reported = fn (): bool => str_contains(implode("\n", $this->report()), 'the layout "gone"');
+        $this->assertTrue($reported(), 'db:check names the page');
+
+        // An unrelated edit, saved and autosaved: the stored key stays, and so do the notice and the report.
+        $body = self::posted($this->edit('r1'));
+        $body['title'] = 'Renamed';
+        $this->assertSame(302, $this->post('/folio/page/r1', $body)->getStatusCode());
+        $this->assertSame('gone', $this->stored('page', 'r1')->get('_layout'));
+        $body = self::posted($this->edit('r1'));
+        $body['title'] = 'Autosaved';
+        $saved = $this->post('/folio/page/r1/autosave', $body);
+        $this->assertStringNotContainsString('Not saved', (string) $saved->getBody());
+        $this->assertSame('Autosaved', $this->stored('page', 'r1')->get('title')['en']);
+        $this->assertSame('gone', $this->stored('page', 'r1')->get('_layout'), 'no write: nothing was chosen');
+        $this->assertStringContainsString('is no longer available', $this->edit('r1'));
+        $this->assertTrue($reported(), 'still reported');
+
+        // Choosing the layout it showed, explicitly, writes it.
+        $form = $this->edit('r1');
+        $chosen = self::swapped($form, $this->switchTo($form, 'standard', 'r1'), 'standard');
+        $this->assertSame(302, $this->post('/folio/page/r1', self::posted($chosen))->getStatusCode());
         $this->assertSame('standard', $this->stored('page', 'r1')->get('_layout'));
+        $this->assertStringNotContainsString('is no longer available', $this->edit('r1'));
+        $this->assertFalse($reported(), 'no longer on a missing layout');
         $this->assertSame('Kept', $this->stored('page', 'r1')->get('_areas')['sidebar'][0]['caption']['en']);
+    }
+
+    /** @return list<string> the page layout report's lines (what `preflow db:check` prints) */
+    private function report(): array
+    {
+        $c = $this->app()->container();
+
+        return (new \Preflow\Blocks\Layouts\LayoutReport(
+            $c->get(\Preflow\Blocks\Layouts\PageLayouts::class),
+            $c->get(\Preflow\Blocks\Layouts\LayoutRegistry::class),
+            $c->get(\Preflow\Data\DataManager::class)->getTypeRegistry(),
+            $c->get(\Preflow\Data\DataManager::class),
+        ))->lines();
     }
 
     #[RunInSeparateProcess]
@@ -402,9 +444,9 @@ final class PageLayoutEditorTest extends TestCase
     public static function interfaceLanguages(): iterable
     {
         yield 'German' => ['de', ['>Layout</label>', 'Das Layout „gone“ ist nicht mehr verfügbar. Diese Seite erscheint als „Standard“, bis du ein Layout wählst.', 'In diesem Layout nicht angezeigt',
-            'Diese Blöcke bleiben erhalten, aber die Seite zeigt sie nicht. Verschiebe sie in einen Bereich dieses Layouts oder entferne sie.', '<span>Verschieben</span>', 'Verschieben nach', 'Layout: Home (fest)', 'Festgelegt durch „layouts.pinned“ in der Konfiguration des Typs.', 'Seitenbereiche']];
+            'Diese Blöcke bleiben erhalten, aber die Seite zeigt sie nicht. Verschiebe sie in einen Bereich dieses Layouts oder entferne sie.', '<span>Verschieben</span>', 'Verschieben nach', 'Layout: Home (fest)', 'Standard (bis du ein Layout wählst)', 'Festgelegt durch „layouts.pinned“ in der Konfiguration des Typs.', 'Seitenbereiche']];
         yield 'French' => ['fr', ['>Mise en page</label>', 'La mise en page « gone » n&#039;est plus disponible. Cette page s&#039;affiche comme « Standard » jusqu&#039;à ce que vous choisissiez une mise en page.', 'Non affiché dans cette mise en page',
-            'Ces blocs sont conservés, mais la page ne les affiche pas. Déplacez-les dans une zone de cette mise en page, ou retirez-les.', '<span>Déplacer</span>', 'Déplacer vers', 'Mise en page : Home (fixe)', 'Définie par « layouts.pinned » dans la configuration du type.', 'Zones de la page']];
+            'Ces blocs sont conservés, mais la page ne les affiche pas. Déplacez-les dans une zone de cette mise en page, ou retirez-les.', '<span>Déplacer</span>', 'Déplacer vers', 'Mise en page : Home (fixe)', 'Standard (jusqu&#039;à ce que vous choisissiez une mise en page)', 'Définie par « layouts.pinned » dans la configuration du type.', 'Zones de la page']];
     }
 
     /** @param list<string> $texts */

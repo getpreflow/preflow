@@ -556,6 +556,7 @@ return [
         'fixed' => 'Layout: :label (fixed)',
         'fixed_help' => 'Set by "layouts.pinned" in the type\'s configuration.',
         'unavailable' => 'The layout ":key" is no longer available. This page shows as ":label" until you choose a layout.',
+        'fallback_choice' => ':label (until you choose a layout)',
         'not_shown' => 'Not shown in this layout',
         'not_shown_help' => 'These blocks are kept, but the page does not show them. Move them to an area of this layout, or remove them.',
         'move_to' => 'Move to',

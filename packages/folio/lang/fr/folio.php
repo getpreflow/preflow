@@ -541,6 +541,7 @@ return [
         'fixed' => 'Mise en page : :label (fixe)',
         'fixed_help' => 'Définie par « layouts.pinned » dans la configuration du type.',
         'unavailable' => 'La mise en page « :key » n\'est plus disponible. Cette page s\'affiche comme « :label » jusqu\'à ce que vous choisissiez une mise en page.',
+        'fallback_choice' => ':label (jusqu\'à ce que vous choisissiez une mise en page)',
         'not_shown' => 'Non affiché dans cette mise en page',
         'not_shown_help' => 'Ces blocs sont conservés, mais la page ne les affiche pas. Déplacez-les dans une zone de cette mise en page, ou retirez-les.',
         'move_to' => 'Déplacer vers',

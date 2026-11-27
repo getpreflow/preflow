@@ -541,6 +541,7 @@ return [
         'fixed' => 'Layout: :label (fest)',
         'fixed_help' => 'Festgelegt durch „layouts.pinned“ in der Konfiguration des Typs.',
         'unavailable' => 'Das Layout „:key“ ist nicht mehr verfügbar. Diese Seite erscheint als „:label“, bis du ein Layout wählst.',
+        'fallback_choice' => ':label (bis du ein Layout wählst)',
         'not_shown' => 'In diesem Layout nicht angezeigt',
         'not_shown_help' => 'Diese Blöcke bleiben erhalten, aber die Seite zeigt sie nicht. Verschiebe sie in einen Bereich dieses Layouts oder entferne sie.',
         'move_to' => 'Verschieben nach',
