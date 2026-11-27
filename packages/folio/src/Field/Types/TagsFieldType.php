@@ -233,7 +233,6 @@ final class TagsFieldType implements FieldType, HasColumnKind, SearchableText, D
         }
     }
 
-
     /** @param array<string, mixed> $config */
     private static function limit(array $config, string $option, int $default): int
     {

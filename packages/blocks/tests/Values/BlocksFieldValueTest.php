@@ -144,7 +144,7 @@ final class BlocksFieldValueTest extends BlocksAppTestCase
     {
         $stored = $this->blocks()->toStored([self::card(self::A, ['count' => '3', 'body' => ['en' => '<p onclick="x()">Hi</p>']])], self::blocksField());
 
-        $this->assertSame(3, $stored[0]['count']);
+        $this->assertSame('3', $stored[0]['count'], 'a number is stored as given, as 0.92 stored it in a block (0.93 fix round 1); its output is the number');
         $this->assertSame(['en' => '<p>Hi</p>'], $stored[0]['body']);
         $this->assertSame(42, $this->blocks()->toStored(42, self::blocksField()), 'what does not convert passes through for the rules');
         $this->assertSame('not json', $this->blocks()->toStored('not json', self::blocksField()));

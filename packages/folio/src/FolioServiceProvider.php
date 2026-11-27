@@ -2615,14 +2615,22 @@ final class FolioServiceProvider extends ServiceProvider
      */
     private static function registerFieldValues(FieldTypeRegistry $registry, \Preflow\Data\FieldKinds $kinds): void
     {
-        $kinds->value('matrix', new \Preflow\Folio\Field\Values\MatrixValue());
-        $kinds->value('env', new \Preflow\Folio\Field\Values\EnvValue());
+        // A value a site (or a package) registered first is kept: Folio's are the defaults.
+        $values = [
+            'matrix' => static fn (): \Preflow\Data\Values\FieldValue => new \Preflow\Folio\Field\Values\MatrixValue(),
+            'env' => static fn (): \Preflow\Data\Values\FieldValue => new \Preflow\Folio\Field\Values\EnvValue(),
+        ];
         if ($registry->has('codes_purpose')) {
-            $kinds->value('codes_purpose', new \Preflow\Folio\Codes\Fields\PurposeValue());
+            $values['codes_purpose'] = static fn (): \Preflow\Data\Values\FieldValue => new \Preflow\Folio\Codes\Fields\PurposeValue();
         }
         if ($registry->has('rbac_permissions')) {
-            $kinds->value('rbac_permissions', new \Preflow\Folio\Rbac\Fields\PermissionsValue());
-            $kinds->value('rbac_roles', new \Preflow\Folio\Rbac\Fields\RolesValue());
+            $values['rbac_permissions'] = static fn (): \Preflow\Data\Values\FieldValue => new \Preflow\Folio\Rbac\Fields\PermissionsValue();
+            $values['rbac_roles'] = static fn (): \Preflow\Data\Values\FieldValue => new \Preflow\Folio\Rbac\Fields\RolesValue();
+        }
+        foreach ($values as $key => $value) {
+            if (!$kinds->hasValue($key)) {
+                $kinds->value($key, $value());
+            }
         }
         foreach (['int', 'integer', 'float'] as $alias) {
             if (!$kinds->hasValue($alias) && $kinds->hasValue('number')) {

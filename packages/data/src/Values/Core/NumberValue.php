@@ -10,9 +10,15 @@ use Preflow\Data\Values\DescribesShapes;
 use Preflow\Data\Values\FieldValue;
 
 /**
- * A "number" field's value, shape "number": numeric text is a number (an int when whole and in
- * range, else a float: "3.50" is 3.5), empty ("") is null; anything else passes through for the
- * rules ("abc" stays "abc").
+ * A "number" field's value, shape "number".
+ *
+ * Stored as given: a number, or numeric text, as the form posts it (Folio 0.92 stored it so in a
+ * block and in a translatable field, and a record saved again keeps its bytes and its change
+ * date); a record-level field's text becomes a number in DataManager::storageValues() (as since
+ * 0.78), "" no value there. Anything else passes through for the rules ("abc" stays "abc").
+ *
+ * Output: numeric text is a number (an int when whole and in range, else a float: "3.50" is 3.5),
+ * empty ("") is null.
  *
  * @since 0.93.0
  */
@@ -20,7 +26,7 @@ final class NumberValue implements FieldValue, DescribesShapes
 {
     public function toStored(mixed $input, TypeFieldDefinition $field): mixed
     {
-        return $input === '' ? null : self::number($input);
+        return $input;
     }
 
     public function toOutput(mixed $stored, TypeFieldDefinition $field): mixed

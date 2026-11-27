@@ -13,7 +13,8 @@ use Preflow\Data\Values\FieldValue;
 
 /**
  * A "date" field's value, shape "date": stored and read out as given ("Y-m-d", "Y-m-d\TH:i" with
- * optional seconds, or ISO 8601 with an offset that server code stored); empty ("") is null.
+ * optional seconds, or ISO 8601 with an offset that server code stored); an empty one ("") is
+ * stored as given and read out as null.
  * Nothing is reformatted: a value the type cannot read passes through and its stored rule
  * (StoredDate, storedRules()) refuses it on save.
  *
@@ -21,9 +22,10 @@ use Preflow\Data\Values\FieldValue;
  */
 final class DateValue implements FieldValue, DescribesShapes, HasStoredRules
 {
+    /** As given: "" stays "" (as Folio 0.92 stored it in a block and a translatable field; a record-level field's "" is null in storageValues()). */
     public function toStored(mixed $input, TypeFieldDefinition $field): mixed
     {
-        return $input === '' ? null : $input;
+        return $input;
     }
 
     public function toOutput(mixed $stored, TypeFieldDefinition $field): mixed

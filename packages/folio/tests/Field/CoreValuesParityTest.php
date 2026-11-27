@@ -18,6 +18,7 @@ use Preflow\Data\Locales;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Data\Values\Core\NumberValue;
+use Preflow\Folio\Codes\Fields\PurposeFieldType;
 use Preflow\Folio\Codes\Fields\PurposeValue;
 use Preflow\Folio\Field\BuildContext;
 use Preflow\Folio\Rbac\Fields\PermissionsValue;
@@ -131,31 +132,105 @@ final class CoreValuesParityTest extends TestCase
         yield 'env' => ['env', ['env' => 'SECRET'], 'posted', null];
         yield 'blocks' => ['blocks', [], ['_order' => [self::UID], self::UID => ['_block' => 'link', 'label' => 'L', 'url' => '/x']], [['_uid' => self::UID, '_block' => 'link', 'label' => 'L', 'url' => '/x']]];
         yield 'blocks none' => ['blocks', [], [], []];
+        // A block's date and number went through the field types unconverted in 0.92 (storageValues()
+        // never goes inside blocks): "" stays "", "3" stays "3".
+        yield 'blocks with an empty date and a number' => ['blocks', [], ['_order' => [self::UID], self::UID => ['_block' => 'checked_fields', 'title' => 'T', 'day' => '', 'count' => '3', 'size' => '']], [['_uid' => self::UID, '_block' => 'checked_fields', 'title' => 'T', 'day' => '', 'count' => '3', 'labels' => null, 'size' => null]]];
+        yield 'blocks with an empty number' => ['blocks', [], ['_order' => [self::UID], self::UID => ['_block' => 'checked_fields', 'title' => 'T', 'day' => '2026-11-27', 'count' => '', 'size' => 's']], [['_uid' => self::UID, '_block' => 'checked_fields', 'title' => 'T', 'day' => '2026-11-27', 'count' => '', 'labels' => null, 'size' => 's']]];
+        // A translatable field's map is stored as the form gives it (storageValues() skips it).
+        yield 'translatable date empty' => ['date', [], '', ['en' => ''], true];
+        yield 'translatable number' => ['number', [], '3', ['en' => '3'], true];
+        yield 'translatable number empty' => ['number', [], '', ['en' => ''], true];
+        yield 'translatable string' => ['string', [], 'x', ['en' => 'x'], true];
+        // The aliases have no column kind: their posted text was stored as it is.
+        yield 'int alias' => ['int', [], '7', '7'];
+        yield 'integer alias' => ['integer', [], '7', '7'];
+        yield 'float alias' => ['float', [], '2.50', '2.50'];
+        yield 'int alias empty' => ['int', [], '', ''];
+        yield 'asset' => ['asset', [], 'a/b.png', 'a/b.png'];
+        yield 'asset none' => ['asset', [], '', ''];
+        yield 'asset multiple' => ['asset', ['asset' => ['multiple' => true]], ['x.png', 'y.png'], ['x.png', 'y.png']];
+        yield 'areas none' => ['areas', ['layouts' => 'grid'], [], ['layout' => null, 'areas' => []]];
+        yield 'codes_purpose' => ['codes_purpose', [], 'signup', 'signup'];
+        yield 'codes_purpose none' => ['codes_purpose', [], '', null];
+        yield 'rbac_roles' => ['rbac_roles', [], [' editor', '', 'admin', 'editor'], ['editor', 'admin']];
+        yield 'rbac_permissions' => ['rbac_permissions', [], ['', 'folio.dashboard', 'ghost.view'], ['folio.dashboard']];
+        yield 'matrix not a list' => ['matrix', ['matrix' => ['allowed' => ['note']]], 'x', '[]'];
+    }
+
+    /** The Folio type for $key: the app's registry's, or the codes and rbac admins' types, built as Folio builds them. */
+    private static function folioType(Application $app, string $key): \Preflow\Folio\Field\FieldType
+    {
+        $c = $app->container();
+        $type = match ($key) {
+            'codes_purpose' => new PurposeFieldType([]),
+            'rbac_roles' => new \Preflow\Folio\Rbac\Fields\RolesFieldType($c->get(DataManager::class), $c->get(\Preflow\Folio\Content\TypeCatalog::class)),
+            'rbac_permissions' => (static function () use ($c): \Preflow\Folio\Rbac\Fields\PermissionsFieldType {
+                $registry = new \Preflow\Auth\Access\PermissionRegistry();
+                $registry->declare('folio.dashboard', 'See the dashboard', 'Folio');
+
+                return new \Preflow\Folio\Rbac\Fields\PermissionsFieldType($registry, $c->get(\Preflow\Folio\Content\TypeCatalog::class));
+            })(),
+            default => null,
+        };
+        if ($type === null) {
+            return $c->get(FieldTypeRegistry::class)->get($key);
+        }
+        if ($type instanceof \Preflow\Folio\Field\UsesFieldKinds) {
+            $type->useFieldKinds($c->get(DataManager::class)->fieldKinds());
+        }
+
+        return $type;
     }
 
     /** @param array<string, mixed> $config */
     #[DataProvider('posts')]
-    public function test_form_post_stores_what_0_92_stored(string $type, array $config, mixed $post, mixed $stored): void
+    public function test_form_post_stores_what_0_92_stored(string $type, array $config, mixed $post, mixed $stored, bool $translatable = false): void
     {
+        $this->write('config/blocks.php', "<?php\nreturn ['classes' => [\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\LinkBlock::class, \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\CheckedFieldsBlock::class]];\n");
+        if ($type === 'areas') {
+            $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\GridSetProvider::class];\n");
+        }
         $app = $this->app();
-        $fieldType = $app->container()->get(FieldTypeRegistry::class)->get($type);
+        $fieldType = self::folioType($app, $type);
         $value = $fieldType instanceof StructuredFieldType
             ? $fieldType->buildValue($post, null, [], new BuildContext(Locales::single('en'), 'en', true), $config)
             : $fieldType->toStorage($fieldType->normalizeInput($post, $config));
-        $def = new TypeDefinition('parity', 'parity', 'json', ['f' => new TypeFieldDefinition('f', $type, config: $config)]);
+        $def = new TypeDefinition('parity', 'parity', 'json', ['f' => new TypeFieldDefinition('f', $type, config: $config, translatable: $translatable)], locales: new Locales(['en', 'de'], 'en'));
 
-        $this->assertSame($stored, $app->container()->get(DataManager::class)->storageValues($def, ['f' => $value])['f']);
+        $this->assertSame($stored, $app->container()->get(DataManager::class)->storageValues($def, ['f' => $translatable ? ['en' => $value] : $value])['f']);
     }
 
-    public function test_an_int_field_stores_a_number(): void
+    /**
+     * A record as Folio 0.92 stored it (empty and numeric text in a block and in translatable
+     * fields, an int field's text), saved again unchanged through the edit form: the same bytes,
+     * the same change date.
+     */
+    public function test_a_0_92_record_saved_again_unchanged_keeps_its_bytes_and_change_date(): void
     {
-        // 0.92.1 stored the text "7" (no kind for the alias); since 0.93 "int" is a number on every
-        // path (builder's call 2), the form's and an API write's alike.
-        $app = $this->app();
-        $fieldType = $app->container()->get(FieldTypeRegistry::class)->get('int');
-        $def = new TypeDefinition('parity', 'parity', 'json', ['f' => new TypeFieldDefinition('f', 'int')]);
+        $this->write('config/blocks.php', "<?php\nreturn ['classes' => [\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\CheckedFieldsBlock::class]];\n");
+        $this->writeModel('keeper', [
+            'label' => 'Keepers',
+            'fields' => [
+                'title' => ['type' => 'string'],
+                'day' => ['type' => 'date', 'translatable' => true],
+                'amount' => ['type' => 'number', 'translatable' => true],
+                'qty' => ['type' => 'int'],
+                'sections' => ['type' => 'blocks', 'blocks' => ['allowed' => ['checked_fields']]],
+            ],
+        ]);
+        $block = ['_uid' => self::UID, '_block' => 'checked_fields', 'title' => 'T', 'day' => '', 'count' => '5', 'labels' => null, 'size' => null];
+        $stored = ['title' => 'Keep', 'day' => ['en' => ''], 'amount' => ['en' => '3'], 'qty' => '7', 'sections' => [$block], 'uuid' => 'k1', '_locales' => ['en'], '_updated_at' => '2026-01-02T03:04:05Z'];
+        $this->dm()->driver('json')->save('keeper', 'k1', $stored, 'uuid');
+        $file = $this->dir . '/storage/data/keeper/k1.json';
+        $before = (string) file_get_contents($file);
 
-        $this->assertSame(7, $app->container()->get(DataManager::class)->storageValues($def, ['f' => $fieldType->toStorage($fieldType->normalizeInput('7', []))])['f']);
+        $response = $this->post('/folio/keeper/k1', [
+            'title' => 'Keep', 'day' => '', 'amount' => '3', 'qty' => '7', '_locale' => 'en',
+            'sections' => ['_order' => [self::UID], self::UID => ['_block' => 'checked_fields', 'title' => 'T', 'day' => '', 'count' => '5', 'size' => '']],
+        ]);
+
+        $this->assertSame(302, $response->getStatusCode(), (string) $response->getBody());
+        $this->assertSame($before, (string) file_get_contents($file), 'the same bytes, the same change date');
     }
 
     /**
@@ -248,6 +323,15 @@ final class CoreValuesParityTest extends TestCase
             $this->assertInstanceOf(NumberValue::class, $kinds->valueOf(new TypeFieldDefinition('n', $alias)), $alias);
         }
         $this->assertSame('json', $kinds->valueOf(new TypeFieldDefinition('notes', 'matrix'))->shape(new TypeFieldDefinition('notes', 'matrix')));
+    }
+
+    public function test_a_value_a_site_registered_first_is_kept(): void
+    {
+        $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\Tests\\Fixtures\\OwnMatrixValueProvider::class, \\Preflow\\Folio\\FolioServiceProvider::class];\n");
+        $kinds = $this->app()->container()->get(DataManager::class)->fieldKinds();
+
+        $this->assertNotInstanceOf(MatrixValue::class, $kinds->valueOf(new TypeFieldDefinition('notes', 'matrix')));
+        $this->assertInstanceOf(EnvValue::class, $kinds->valueOf(new TypeFieldDefinition('secret', 'env')));
     }
 
     public function test_folio_values_read_and_write_as_the_types(): void

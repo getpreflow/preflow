@@ -992,7 +992,10 @@ final class Job extends Model { … }
   `hasValue()` and `values()` list them. Every `DataManager` starts with the core types' values
   (`Values\CoreValues`: `string`, `text`, `number`, `boolean`, `date`, `select`, `tags`,
   `relation`, `asset`, and `richtext`), and `CoreValues::SHAPES` describes their shapes. Optional
-  companions: `DescribesShapes`, `CleansOnWrite`, `MergesInput`, `ListsReferences`.
+  companions: `DescribesShapes`, `CleansOnWrite`, `MergesInput`, `ListsReferences`. Stored values
+  keep the bytes 0.92 stored: `number` and `date` store their input as given (numeric text and
+  `""` stay, inside a block and in a translatable field too; a record-level field's text is a
+  number, `""` none, in `storageValues()` as before), and only `toOutput()` gives typed values.
 - Rich text is cleaned on every typed write (since 0.93): `DataManager::storageValues()` first
   runs `cleaning()` (`Values\StoredCleaning`), so `saveType()` with or without validation,
   `saveTypeIfVersion()`, class-backed types, `updateWhen()`, `updateIf()`,

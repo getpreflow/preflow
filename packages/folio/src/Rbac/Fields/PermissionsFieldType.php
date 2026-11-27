@@ -266,8 +266,11 @@ final class PermissionsFieldType implements FieldType, \Preflow\Folio\Field\Uses
         return '<span class="folio-type-icon" data-family="' . htmlspecialchars($family ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8') . '" aria-hidden="true">' . $svg . '</span>';
     }
 
-    /** @return list<string> only "*", declared names and declared patterns */
-    /** The posted permissions the matrix offers (others are dropped), as the core stores them (PermissionsValue). */
+    /**
+     * The posted permissions the matrix offers (others are dropped), as the core stores them (PermissionsValue).
+     *
+     * @return list<string> only "*", declared names and declared patterns
+     */
     public function normalizeInput(mixed $raw, array $config): array
     {
         return array_values(array_intersect($this->stored($raw, $config), $this->known()));

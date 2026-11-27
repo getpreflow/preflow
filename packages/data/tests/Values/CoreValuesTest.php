@@ -91,11 +91,13 @@ final class CoreValuesTest extends TestCase
         $field = self::field('number');
 
         $this->assertSame('number', $value->shape($field));
-        $this->assertSame(3.5, $value->toStored('3.50', $field));
-        $this->assertSame(12, $value->toStored('12', $field));
-        $this->assertSame(-7, $value->toStored(' -7', $field));
+        // Stored as given (0.93 fix round 1): the form and every write keep the bytes 0.92 stored
+        // (numeric text and "" inside blocks and translatable fields); a record-level field's text
+        // is a number in storageValues(), as since 0.78. Typed values are the output's.
+        $this->assertSame('3.50', $value->toStored('3.50', $field));
+        $this->assertSame(12, $value->toStored(12, $field));
         $this->assertSame(4.25, $value->toStored(4.25, $field));
-        $this->assertNull($value->toStored('', $field));
+        $this->assertSame('', $value->toStored('', $field));
         $this->assertNull($value->toStored(null, $field));
         $this->assertSame(3.5, $value->toOutput('3.50', $field), 'numeric text an SQL driver returns');
         $this->assertSame(12, $value->toOutput(12, $field));
@@ -131,7 +133,8 @@ final class CoreValuesTest extends TestCase
             $this->assertSame($date, $value->toStored($date, $field), 'stored as given');
             $this->assertSame($date, $value->toOutput($date, $field));
         }
-        $this->assertNull($value->toStored('', $field));
+        $this->assertSame('', $value->toStored('', $field), 'stored as given, as 0.92 stored it; the output reads it as null');
+        $this->assertNull($value->toOutput('', $field));
         $this->assertNull($value->toOutput(null, $field));
     }
 

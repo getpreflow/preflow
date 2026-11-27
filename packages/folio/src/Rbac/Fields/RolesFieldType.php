@@ -87,8 +87,11 @@ final class RolesFieldType implements FieldType, \Preflow\Folio\Field\UsesFieldK
         return $html . "\n" . '</fieldset>';
     }
 
-    /** @return list<string> */
-    /** The posted roles, as the core stores them (RolesValue). */
+    /**
+     * The posted roles, as the core stores them (RolesValue).
+     *
+     * @return list<string>
+     */
     public function normalizeInput(mixed $raw, array $config): array
     {
         return $this->stored($raw, $config);

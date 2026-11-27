@@ -20,13 +20,10 @@ use Preflow\Data\Values\ListsReferences;
  */
 final class MatrixValue implements FieldValue, DescribesShapes, ListsReferences
 {
-    public function toStored(mixed $input, TypeFieldDefinition $field): mixed
+    /** The refs' JSON text; what holds no refs (no list, its text or anything else) is "[]", as Folio stored it. */
+    public function toStored(mixed $input, TypeFieldDefinition $field): string
     {
-        if ($input !== null && !is_array($input) && !is_string($input)) {
-            return $input; // not a list: for the rules
-        }
-
-        return json_encode(self::refs($input), JSON_UNESCAPED_SLASHES);
+        return (string) json_encode(self::refs($input), JSON_UNESCAPED_SLASHES);
     }
 
     /** @return list<array{_type: string, id: string, view?: string}> */

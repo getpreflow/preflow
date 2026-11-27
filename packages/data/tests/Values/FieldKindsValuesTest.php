@@ -90,7 +90,7 @@ final class FieldKindsValuesTest extends TestCase
             $this->assertTrue($kinds->hasValue($type), $type);
         }
         $this->assertInstanceOf(DateValue::class, $kinds->valueOf(new TypeFieldDefinition('d', 'date')));
-        $this->assertSame(3.5, $kinds->valueOf(new TypeFieldDefinition('n', 'number'))->toStored('3.50', new TypeFieldDefinition('n', 'number')));
+        $this->assertSame(3.5, $kinds->valueOf(new TypeFieldDefinition('n', 'number'))->toOutput('3.50', new TypeFieldDefinition('n', 'number')));
         $this->assertTrue($kinds->hasRules('date'), 'date\'s stored rule comes with the core values');
     }
 
