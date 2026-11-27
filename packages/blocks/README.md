@@ -185,6 +185,165 @@ You write none of this: `BlocksServiceProvider` runs `Preflow\Blocks\BlockValueC
 adapter adds rules for block fields with `BlockValueChecks::extraRules()`; `BlockLists` is the one
 place that knows which field types hold blocks.
 
+## Page layouts (0.92)
+
+### The problem it solves
+
+A landing page has a hero and a main part. An article has only a main part. If both are one type
+with one blocks field, the editor has to remember which blocks belong where, and the template has
+to guess. If they are two types, switching a page from one to the other means copying its content
+by hand. And when the editor tries the other layout "just to see", content should not vanish.
+
+### The idea: a layout is a class with named areas
+
+A **layout** names the areas of a page. An **area** is a place that holds blocks, like a blocks
+field. A page stores which layout it uses and the blocks of each area.
+
+| Question | Where it lives | Example |
+|---|---|---|
+| Which layouts exist? | classes with `#[Layout]` | `app/Layouts/Landing.php` |
+| Which areas does a layout have? | its public array properties with `#[Area]` | `$hero`, `$main` |
+| Which layouts may a type use? | the type's `"layouts"` option | `{"allowed": ["landing", "standard"], "default": "standard"}` |
+| Which one does a page use? | the page's `_layout` | `"landing"` |
+| What do the areas hold? | the page's `_areas` | `{"hero": [...], "main": [...]}` |
+
+```php
+// app/Layouts/Landing.php
+use Preflow\Blocks\Layouts\{Area, Layout};
+
+#[Layout(key: 'landing', label: 'Landing page', template: 'layouts/landing.twig')]
+final class Landing
+{
+    #[Area(label: 'Hero', allowed: ['hero'], max: 1)]
+    public array $hero = [];
+
+    #[Area(label: 'Main', except: ['hero'])]
+    public array $main = [];
+}
+```
+
+```json
+"layouts": {"allowed": ["landing", "standard"], "default": "standard", "pinned": {"home": "landing"}}
+```
+
+`key` is what is stored, so keep it once pages use it. `template` is a template name your engine
+resolves (it is not a file next to the class). An area takes `allowed` (block keys; none means
+every block), `except`, `min`, `max` and `help`. `pinned` maps a page's slug (in the default
+language; the slug field is `"layouts": {"slug_field": …}`, default `slug`) to a layout: that
+page always uses it, even if `allowed` does not list it, and renaming it is refused.
+
+Layouts are found like blocks: in `app/Layouts`, in `config/blocks.php` `'layouts'` (a list of
+classes) and in installed packages (`extra.preflow.layouts` in their `composer.json`). The result
+is cached (`layouts.cache`, the boot manifest). A type with `"layouts"` gets two columns,
+`_layout` and `_areas` (Folio's `preflow migrate` adds them; without Folio add them yourself). A
+class-backed type sets `layouts` in its admin file, like a model file does.
+
+### Rendering: you pass the areas yourself
+
+A page's template gets `layout` (its `key`, `label`, `pinned` and `template`) and `areas`. You
+decide where each area goes:
+
+```twig
+<main>
+  {{ blocks(areas.hero) }}
+  {{ blocks(areas.main) }}
+</main>
+```
+
+Nothing matches templates by name for you. In Folio's frontend, the template of the layout comes
+before `page.twig` in the chain; a type's own template may include it with
+`{% include layout.template %}`. Without Folio, ask `PageLayouts::resolve($record)` for a
+`ResolvedLayout` and use its `context()`.
+
+Which layout a page renders with is decided in this order: its pin, the stored `_layout`, the
+type's `default`, the first allowed layout that exists, none. If the stored or pinned layout
+cannot be used (its class is gone, or the type no longer allows it), `fallback` is true and the
+page renders with the layout found instead. A deleted layout class is never a boot error.
+
+### Nothing is lost
+
+An editor switches a page from "Landing" (hero, main) to "Standard" (main). The hero blocks are
+no longer rendered, but they are **kept**, shown in a "Not shown in this layout" panel. Switch
+back and they are in the hero area again. `Preflow\Blocks\Layouts\Placement` is the one class that
+decides this (`placed()`, `unplaced()`); it only reads. A layout switch, a removed layout, a pin
+or a save without the panel's blocks never drop anything. Only an explicit Remove does.
+
+### The rules a save is checked against
+
+A write of a page is checked by the core (`DataManager`'s `RecordRules`, see preflow/data), so
+Folio, REST, imports and seeds get the same answers:
+
+- the `_layout` must be one the type allows (or the pin). A stored key that is stale passes
+  unchanged, so a page on a removed layout stays savable; nobody can write an unknown key;
+- the blocks of an area must be ones it accepts, within its `min` and `max`. A save refuses only
+  what it introduces: a page stored with an over-full area can shrink it, not grow it;
+- the slug of a pinned page does not change (also when a draft is stored);
+- every block value, as in "Checked on every write". Problems are keyed `_areas.<area>` for an
+  area's limits and `_areas.<area>.<uid>.<field>` for a block's value. Blocks in an area the
+  layout does not show are not checked.
+
+`preflow migrate` and `db:check` print a report (`LayoutReport`) of what needs a person: a layout
+nobody declares, a pin without a page, pages on a layout that is gone, pages with blocks in areas
+their layout does not show.
+
+### The `areas` field
+
+A layout from a *named set*, plus the blocks of each of its areas, can also be a field of a type
+or of a block. The columns block of preflow/block-library is one. A package registers the set in
+its service provider; the field names it:
+
+```php
+$container->get(Preflow\Blocks\Layouts\AreaLayoutSets::class)->add('columns', fn () => new AreaLayoutSet('columns', [...], fallback: 'full'));
+```
+
+```php
+#[BlockField(type: 'areas', config: ['layouts' => 'columns'])]
+```
+
+It is stored as `{"layout": "2-1", "areas": {"c1": [...], "c2": [...]}}` and it gets the same
+"not shown" rule. Area names start with a letter or `_` and are never only numbers (a
+list keyed 0, 1, 2 would be stored as a JSON list, not a map). A stored layout key the set no
+longer has resolves to the set's first layout with as many areas, else its `fallback`, else its
+first layout (`AreaLayoutSet::resolve($key, $count)`).
+
+### For APIs
+
+Everything above can be read and written as JSON through core classes, with or without Folio. No
+REST package is part of 0.92: you call these from your own controller.
+
+| Class | Does |
+|---|---|
+| `LayoutResource::toArray($record)` | the page's `layout`, its `areas` and its `unplaced` areas as JSON-safe data; `areasField($field, $value)` does the same for an `areas` field |
+| `LayoutInput::merge($def, $stored, $input)` | the values after a body `{"layout": "…", "areas": {…}}`: only the areas the body names change, every other keeps its blocks, a block without `_uid` gets a fresh one |
+| `ContentDescription::toArray()` | blocks, layouts, area layout sets and the types' layouts as one array with `"version": 1`, declared data only, for an OpenAPI or GraphQL schema builder |
+
+`merge()` refuses what no layout of the type declares (an area name, a block key, a `_uid` that is
+not 16 hex digits, a value of the wrong shape), naming the key. You then save the result with
+`DataManager::saveType()`, and the rules above decide the rest.
+
+## Linked records in the preview: `preview_mark()` (0.92)
+
+A page often shows other records: a team member's card, a post teaser. In Folio's live preview an
+editor should be able to click such a card and edit that record. Nothing is marked on its own,
+because only your template knows which element is the card. You mark it:
+
+```twig
+<article class="card"{{ preview_mark('member', m) }}>…</article>
+```
+
+`preview_mark(type, record)` takes the type's key and the record: its id, an array holding the
+type's id field, or a `DynamicRecord`. It prints the attributes of `RecordPreviewMarks`
+(` data-record-type="member" data-record-id="…"` by default, Folio's own `data-folio-record`,
+`data-folio-record-id` and `data-folio-label`) only while the render is a preview. On a visit, in a
+share link and outside every render it prints nothing, so no markup changes for visitors.
+
+- **Blade:** write a space before the directive: `<article @preview_mark('member', $m)>`. Blade
+  leaves `<article@preview_mark(…)>` as plain text.
+- **Clickable ids:** the id must match `^[A-Za-z0-9_-]{1,64}$` for the click to open the record;
+  Folio ignores any other id.
+- **Your own marks:** bind a `RecordPreviewMarks` (`attributes(string $type, string $id): array`).
+  A name that does not start with `data-` is refused with an exception.
+
 ## Configuration
 
 `config/blocks.php` (a missing file means the defaults):
@@ -195,6 +354,8 @@ return [
     'classes' => [App\Content\Teaser::class],
     // How many levels of blocks an editor saves in all: the field's own blocks are level 1, blocks in their blocks fields level 2, ….
     'max_depth' => 4,
+    // Page layout classes (#[Layout]) besides app/Layouts and the packages' (since 0.92).
+    'layouts' => [App\Layouts\Landing::class],
     // Where blocks.cache is kept: storage/cache by default, or a path (absolute, or from the project root).
     'cache_path' => null,
 ];
@@ -207,7 +368,7 @@ classes and their files' modification times, so adding, removing or editing a bl
 
 ## Extend
 
-The renderer asks three interfaces; each has a plain default, and an app (or Folio) binds its own
+The renderer asks three interfaces (and `preview_mark()` a fourth); each has a plain default, and an app (or Folio) binds its own
 in a provider's `register()`:
 
 | Interface | Asks | Default | Folio binds |
@@ -215,6 +376,7 @@ in a provider's `register()`:
 | `BlockLocale` | the locale to render in (`localeOf(RenderContext $ctx)`, `locales()`; since 0.83 `localeOf()` is part of `BlockLocale`, which was `ContextBlockLocale`'s in 0.81 and 0.82, and `get()` is gone) | the render context's locale when it is a content locale, else the default | its content locale (the page's; the editing locale in a preview) |
 | `BlockTextCleaner` | `block(array $block): array`, the values on their way to the template | as stored | its rich-text sanitizer (nested blocks included) |
 | `BlockPreviewMarks` | the root attributes of a block in preview (`data-…` only) | `data-block`, `data-block-label` | `data-folio-block`, `data-folio-label` |
+| `RecordPreviewMarks` (0.92) | the attributes of a linked record's element in preview (`attributes($type, $id)`, `data-…` only) | `data-record-type`, `data-record-id` | `data-folio-record`, `data-folio-record-id`, `data-folio-label` |
 
 Without Folio, rich-text values are rendered as stored: the default cleaner changes nothing, so bind a
 `BlockTextCleaner` to clean them (below).
