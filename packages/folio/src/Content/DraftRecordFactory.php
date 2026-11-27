@@ -241,7 +241,7 @@ final class DraftRecordFactory
         $input = [];
         if (array_key_exists(PageLayouts::LAYOUT, $submitted)) {
             // "" (nothing chosen) is the type's default, as null is for the core.
-            $input['layout'] = $submitted[PageLayouts::LAYOUT] === '' ? null : $submitted[PageLayouts::LAYOUT];
+            $input[PageLayouts::LAYOUT] = $submitted[PageLayouts::LAYOUT] === '' ? null : $submitted[PageLayouts::LAYOUT];
         }
         $stored = Placement::areasOf($data[PageLayouts::AREAS] ?? null);
         $posted = is_array($submitted[PageLayouts::AREAS] ?? null) ? $submitted[PageLayouts::AREAS] : [];
@@ -264,7 +264,7 @@ final class DraftRecordFactory
             $this->uploadErrors[PageLayouts::AREAS] = $errors; // uploads inside area blocks
         }
         if ($areas !== []) {
-            $input['areas'] = $areas;
+            $input[PageLayouts::AREAS] = $areas;
         }
 
         try {
@@ -274,8 +274,8 @@ final class DraftRecordFactory
 
             // Refused: nothing of it may be saved (every save checks buildErrors()), but the form shows
             // the layout and areas as posted, over the stored ones, so the editor's edits stay in it.
-            if (array_key_exists('layout', $input) && (is_string($input['layout']) || $input['layout'] === null)) {
-                $data[PageLayouts::LAYOUT] = $input['layout'];
+            if (array_key_exists(PageLayouts::LAYOUT, $input) && (is_string($input[PageLayouts::LAYOUT]) || $input[PageLayouts::LAYOUT] === null)) {
+                $data[PageLayouts::LAYOUT] = $input[PageLayouts::LAYOUT];
             }
             $data[PageLayouts::AREAS] = array_replace($stored, $areas);
 

@@ -13,14 +13,16 @@ use Preflow\Data\TypeFieldDefinition;
  * A page's layout and areas as an API answers with them (JSON-safe), next to the fields the site's
  * own resource gives:
  *
- *     {"layout": {"key": "standard", "label": "Standard", "pinned": false, "fallback": false, "stored": "standard"},
- *      "areas": {"main": [{"_uid": "…", "_block": "text", "body": {"en": "…", "de": "…"}}]},
- *      "unplaced": {"hero": […]}}
+ *     {"_layout": {"key": "standard", "label": "Standard", "pinned": false, "fallback": false, "stored": "standard"},
+ *      "_areas": {"main": [{"_uid": "…", "_block": "text", "body": {"en": "…", "de": "…"}}]},
+ *      "_unplaced": {"hero": […]}}
  *
- * "layout" is the layout the page renders with (PageLayouts::resolve(); null when no allowed layout
+ * The keys are system keys, as LayoutInput::merge() takes them (a key with an underscore is never a
+ * type's own field, so a field named "layout" or "areas" sits beside them untouched).
+ * "_layout" is the layout the page renders with (PageLayouts::resolve(); null when no allowed layout
  * exists): "stored" is the key on the page, "fallback" is true when a stored or pinned key could not
- * be used. "areas" are the areas that layout shows, in its order (an area with nothing stored is
- * []); "unplaced" the stored areas it lacks that hold blocks (kept, not shown; a layout switch
+ * be used. "_areas" are the areas that layout shows, in its order (an area with nothing stored is
+ * []); "_unplaced" the stored areas it lacks that hold blocks (kept, not shown; a layout switch
  * brings them back). Each block is as BlockRegistry::visibleBlock() reads it: a field its show_when
  * hides is null. Blocks keep "_uid", "_block" and their locale maps; the API picks a locale itself
  * (LocaleValue::resolveTree(), as blocks() does). An empty map is an object ({}), never a list.
@@ -41,7 +43,7 @@ final readonly class LayoutResource
     /**
      * The record's layout and areas; null for a type without "layouts".
      *
-     * @return array{layout: array{key: string, label: string, pinned: bool, fallback: bool, stored: ?string}|null, areas: array<string, list<array<string, mixed>>>|\stdClass, unplaced: array<string, list<array<string, mixed>>>|\stdClass}|null
+     * @return array{_layout: array{key: string, label: string, pinned: bool, fallback: bool, stored: ?string}|null, _areas: array<string, list<array<string, mixed>>>|\stdClass, _unplaced: array<string, list<array<string, mixed>>>|\stdClass}|null
      */
     public function toArray(DynamicRecord $record): ?array
     {
@@ -51,15 +53,15 @@ final readonly class LayoutResource
         }
 
         return [
-            'layout' => $resolved->layout === null ? null : [
+            PageLayouts::LAYOUT => $resolved->layout === null ? null : [
                 'key' => $resolved->layout->key,
                 'label' => $resolved->layout->label,
                 'pinned' => $resolved->pinned,
                 'fallback' => $resolved->fallback,
                 'stored' => $resolved->storedKey,
             ],
-            'areas' => $this->map($resolved->placement->placed()),
-            'unplaced' => $this->map($resolved->placement->unplaced()),
+            PageLayouts::AREAS => $this->map($resolved->placement->placed()),
+            '_unplaced' => $this->map($resolved->placement->unplaced()),
         ];
     }
 

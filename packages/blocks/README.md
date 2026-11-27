@@ -315,13 +315,22 @@ REST package is part of 0.92: you call these from your own controller.
 
 | Class | Does |
 |---|---|
-| `LayoutResource::toArray($record)` | the page's `layout`, its `areas` and its `unplaced` areas as JSON-safe data; `areasField($field, $value)` does the same for an `areas` field |
-| `LayoutInput::merge($def, $stored, $input)` | the values after a body `{"layout": "…", "areas": {…}}`: only the areas the body names change, every other keeps its blocks, a block without `_uid` gets a fresh one |
+| `LayoutResource::toArray($record)` | the page's `_layout`, its `_areas` and its `_unplaced` areas as JSON-safe data; `areasField($field, $value)` does the same for an `areas` field |
+| `LayoutInput::merge($def, $stored, $input)` | the values after a body `{"_layout": "…", "_areas": {…}}`: only the areas the body names change, every other keeps its blocks, a block without `_uid` gets a fresh one |
 | `ContentDescription::toArray()` | blocks, layouts, area layout sets and the types' layouts as one array with `"version": 1`, declared data only, for an OpenAPI or GraphQL schema builder |
 
 `merge()` refuses what no layout of the type declares (an area name, a block key, a `_uid` that is
 not 16 hex digits, a value of the wrong shape), naming the key. You then save the result with
 `DataManager::saveType()`, and the rules above decide the rest.
+
+The keys start with an underscore, as they are stored: an underscore key is a system value, never
+a field of your type. So a type with layouts can still have its own field called `layout` (a
+"wide" or "narrow" select, say). Your controller reads and writes that field by its name, and
+`_layout` beside it is the page layout:
+
+```json
+{"id": "p1", "title": "About", "layout": "wide", "_layout": {"key": "standard", …}, "_areas": {"main": […]}, "_unplaced": {}}
+```
 
 ## Linked records in the preview: `preview_mark()` (0.92)
 

@@ -59,7 +59,7 @@ return [
         'area_max' => 'Området ":area" rymmer högst :max block.',
         'area_min' => 'Området ":area" behöver minst :min block.',
         'area_block' => 'Området ":area" tar inte emot ":block"-block. Flytta det till ett annat område eller ta bort det.',
-        'none' => 'Typen ":type" har inga layouter; utelämna "layout" och "areas".',
+        'none' => 'Typen ":type" har inga layouter; utelämna "_layout" och "_areas".',
         'key' => 'Måste vara nyckeln till en layout, till exempel "standard", eller null för typens standard.',
         'areas' => 'Måste vara ett objekt med områdesnamn, vart och ett med en lista med block, till exempel {"main": [{"_block": "text"}]}.',
         'block' => 'Måste vara ett block: ett objekt vars "_block" är nyckeln till dess blocktyp, till exempel {"_block": "text"}.',

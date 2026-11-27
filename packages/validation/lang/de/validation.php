@@ -63,7 +63,7 @@ return [
         'area_max' => 'Der Bereich ":area" nimmt höchstens :max Blöcke auf.',
         'area_min' => 'Der Bereich ":area" braucht mindestens :min Blöcke.',
         'area_block' => 'Der Bereich ":area" nimmt keine Blöcke vom Typ ":block" auf. Verschiebe ihn in einen anderen Bereich oder entferne ihn.',
-        'none' => 'Der Typ ":type" hat keine Layouts; lass "layout" und "areas" weg.',
+        'none' => 'Der Typ ":type" hat keine Layouts; lass "_layout" und "_areas" weg.',
         'key' => 'Muss der Schlüssel eines Layouts sein, etwa "standard", oder null für das Standardlayout des Typs.',
         'areas' => 'Muss ein Objekt aus Bereichsnamen sein, jeder mit einer Liste von Blöcken, etwa {"main": [{"_block": "text"}]}.',
         'block' => 'Muss ein Block sein: ein Objekt, dessen "_block" der Schlüssel seines Blocktyps ist, etwa {"_block": "text"}.',

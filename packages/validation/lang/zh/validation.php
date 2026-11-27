@@ -59,7 +59,7 @@ return [
         'area_max' => '区域 ":area" 最多可放 :max 个区块。',
         'area_min' => '区域 ":area" 至少需要 :min 个区块。',
         'area_block' => '区域 ":area" 不接受 ":block" 区块。请将其移到其他区域或删除。',
-        'none' => '类型 ":type" 没有布局；请省略 "layout" 和 "areas"。',
+        'none' => '类型 ":type" 没有布局；请省略 "_layout" 和 "_areas"。',
         'key' => '必须是布局的键，例如 "standard"，或用 null 表示该类型的默认布局。',
         'areas' => '必须是以区域名为键、每个区域带一个区块列表的对象，例如 {"main": [{"_block": "text"}]}。',
         'block' => '必须是区块：一个 "_block" 为其区块类型键的对象，例如 {"_block": "text"}。',

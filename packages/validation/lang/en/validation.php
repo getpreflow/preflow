@@ -69,7 +69,7 @@ return [
         'area_max' => 'The area ":area" takes at most :max blocks.',
         'area_min' => 'The area ":area" takes at least :min blocks.',
         'area_block' => 'The area ":area" does not take ":block" blocks. Move it to another area or remove it.',
-        'none' => 'The type ":type" has no layouts; leave out "layout" and "areas".',
+        'none' => 'The type ":type" has no layouts; leave out "_layout" and "_areas".',
         'key' => 'Must be the key of a layout, such as "standard", or null for the type\'s default.',
         'areas' => 'Must be an object of area names, each with a list of blocks, such as {"main": [{"_block": "text"}]}.',
         'block' => 'Must be a block: an object whose "_block" is the key of its block type, such as {"_block": "text"}.',

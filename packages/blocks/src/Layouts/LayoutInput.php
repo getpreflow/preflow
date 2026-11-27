@@ -17,9 +17,11 @@ use Preflow\Validation\ValidatorFactory;
 /**
  * A page's layout and areas from a write (an API body, a form), merged into its values:
  *
- *     {"layout": "standard", "areas": {"main": [{"_uid": "…", "_block": "text", "body": {"en": "…"}}, {"_block": "text"}]}}
+ *     {"_layout": "standard", "_areas": {"main": [{"_uid": "…", "_block": "text", "body": {"en": "…"}}, {"_block": "text"}]}}
  *
- * "layout" (optional; a layout key, or null for the type's default) becomes "_layout". "areas"
+ * The keys are the stored system keys (PageLayouts::LAYOUT, PageLayouts::AREAS): a key with an
+ * underscore is never a type's own field, so a field named "layout" or "areas" is the caller's.
+ * "_layout" (optional; a layout key, or null for the type's default) is stored as given. "_areas"
  * (optional) replaces only the areas it names (a list [] empties one); every area it does not name
  * keeps its stored blocks, unplaced ones included, so a write never loses content it did not touch.
  * A block without "_uid" (or with null or "") gets a fresh one (16 hex digits, nested blocks too); a field its show_when
@@ -58,7 +60,7 @@ final readonly class LayoutInput
      *
      * @param array<string, mixed> $stored the record's values before this write (the caller may
      *        have applied its own fields already); [] for a new record
-     * @param array<string, mixed> $input  the body: "layout", "areas", and the caller's own keys
+     * @param array<string, mixed> $input  the body: "_layout", "_areas", and the caller's own keys
      * @return array<string, mixed>
      * @throws ValidationException naming the stored key ("_layout", "_areas", "_areas.<name>…")
      */
@@ -67,8 +69,8 @@ final readonly class LayoutInput
         $type = $this->layouts->forType($def->key);
         $errors = [];
         if ($type === null) {
-            foreach (['layout' => PageLayouts::LAYOUT, 'areas' => PageLayouts::AREAS] as $key => $column) {
-                if (array_key_exists($key, $input)) {
+            foreach ([PageLayouts::LAYOUT, PageLayouts::AREAS] as $column) {
+                if (array_key_exists($column, $input)) {
                     $errors[$column] = new Message('validation.layout.none', ['type' => $def->key]);
                 }
             }
@@ -78,18 +80,18 @@ final readonly class LayoutInput
         }
 
         $values = $stored;
-        if (array_key_exists('layout', $input)) {
-            $layout = $input['layout'];
+        if (array_key_exists(PageLayouts::LAYOUT, $input)) {
+            $layout = $input[PageLayouts::LAYOUT];
             if ($layout !== null && !is_string($layout)) {
                 $errors[PageLayouts::LAYOUT] = new Message('validation.layout.key');
             } else {
                 $values[PageLayouts::LAYOUT] = $layout;
             }
         }
-        if (array_key_exists('areas', $input)) {
+        if (array_key_exists(PageLayouts::AREAS, $input)) {
             $values[PageLayouts::AREAS] = $this->areas(
                 Placement::areasOf($values[PageLayouts::AREAS] ?? null),
-                $input['areas'],
+                $input[PageLayouts::AREAS],
                 $this->layouts->resolveValues($def, $values)?->layout,
                 $this->layouts->declaredAreas($def->key),
                 PageLayouts::AREAS,

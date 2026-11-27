@@ -18,7 +18,8 @@ use Psr\Http\Message\ServerRequestInterface;
 
 /**
  * Pages as JSON, written the way a site writes its API: its own fields by name, the layout and
- * areas through the core (LayoutResource to read, LayoutInput to merge a body), and the save through
+ * areas through the core under the system keys "_layout" and "_areas" (LayoutResource to read,
+ * LayoutInput to merge a body), so a field of the page's own named "layout" sits beside them; the save through
  * DataManager::saveType(), so a refusal is the core's (422 with "errors", as Folio's form refuses).
  * An areas field of the page (0.92) is read with LayoutResource::areasField() and merged with
  * LayoutInput::mergeField().
@@ -27,8 +28,8 @@ use Psr\Http\Message\ServerRequestInterface;
 #[Route('/api/pages')]
 final class PagesController
 {
-    /** The page's own fields this API reads and writes. */
-    private const array FIELDS = ['title', 'slug'];
+    /** The page's own fields this API reads and writes, where its type has them. */
+    private const array FIELDS = ['title', 'slug', 'layout', 'areas'];
 
     public function __construct(
         private readonly DataManager $data,
@@ -50,12 +51,12 @@ final class PagesController
         $body = is_array($body) ? $body : [];
 
         $values = $page->toArray();
-        foreach (self::FIELDS as $field) {
+        foreach ($this->fields($page) as $field) {
             if (array_key_exists($field, $body)) {
                 $values[$field] = $body[$field];
             }
         }
-        // "layout" and "areas" of the body, merged under the core's rules (refusals are 422).
+        // "_layout" and "_areas" of the body, merged under the core's rules (refusals are 422).
         $values = $this->input->merge($page->getType(), $values, $body);
         // Its areas fields (a layout from a named set and its areas), by the same rules.
         foreach ($this->areasFields($page) as $name => $field) {
@@ -78,7 +79,7 @@ final class PagesController
     private function present(DynamicRecord $page): array
     {
         $data = ['id' => $page->getId()];
-        foreach (self::FIELDS as $field) {
+        foreach ($this->fields($page) as $field) {
             $data[$field] = $page->get($field);
         }
 
@@ -87,6 +88,12 @@ final class PagesController
         }
 
         return $data + ($this->layouts->toArray($page) ?? []);
+    }
+
+    /** @return list<string> the FIELDS the page's type has */
+    private function fields(DynamicRecord $page): array
+    {
+        return array_values(array_filter(self::FIELDS, static fn (string $field): bool => isset($page->getType()->fields[$field])));
     }
 
     /** @return array<string, \Preflow\Data\TypeFieldDefinition> the page's fields of the type "areas" */

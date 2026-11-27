@@ -63,7 +63,7 @@ return [
         'area_max' => 'La zone « :area » accepte au plus :max blocs.',
         'area_min' => 'La zone « :area » demande au moins :min blocs.',
         'area_block' => 'La zone « :area » n\'accepte pas les blocs « :block ». Déplacez-le dans une autre zone ou supprimez-le.',
-        'none' => 'Le type « :type » n\'a pas de mises en page ; omettez « layout » et « areas ».',
+        'none' => 'Le type « :type » n\'a pas de mises en page ; omettez « _layout » et « _areas ».',
         'key' => 'Doit être la clé d\'une mise en page, p. ex. « standard », ou null pour celle par défaut du type.',
         'areas' => 'Doit être un objet de noms de zones, chacune avec une liste de blocs, p. ex. {"main": [{"_block": "text"}]}.',
         'block' => 'Doit être un bloc : un objet dont « _block » est la clé de son type de bloc, p. ex. {"_block": "text"}.',

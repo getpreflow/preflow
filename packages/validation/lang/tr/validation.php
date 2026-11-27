@@ -59,7 +59,7 @@ return [
         'area_max' => '":area" alanı en fazla :max blok alır.',
         'area_min' => '":area" alanı en az :min blok gerektirir.',
         'area_block' => '":area" alanı ":block" bloklarını almaz. Bloğu başka bir alana taşıyın veya kaldırın.',
-        'none' => '":type" türünün düzeni yok; "layout" ve "areas" alanlarını çıkarın.',
+        'none' => '":type" türünün düzeni yok; "_layout" ve "_areas" alanlarını çıkarın.',
         'key' => '"standard" gibi bir düzen anahtarı ya da türün varsayılanı için null olmalıdır.',
         'areas' => 'Her biri bir blok listesi taşıyan alan adlarından oluşan bir nesne olmalıdır, örneğin {"main": [{"_block": "text"}]}.',
         'block' => 'Bir blok olmalıdır: "_block" değeri blok türünün anahtarı olan bir nesne, örneğin {"_block": "text"}.',
