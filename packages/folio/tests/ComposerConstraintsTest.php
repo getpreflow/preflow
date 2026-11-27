@@ -96,7 +96,8 @@ use PHPUnit\Framework\TestCase;
  * site.view_as (PreviewGate::VIEW_AS), which the whole-page preview's View as asks for (before 0.69 it still ships
  * that admin itself, its own extension "rbac", field types and texts, and lacks StaffAccounts, StaffLinks::available()
  * and StaffMail::sendTo(), which Folio's rbac admin and staff mails call; before 0.84.0 it lacks RoleStore::hasRoles(),
- * which tells Folio whether a site held roles before), so it conflicts.
+ * which tells Folio whether a site held roles before; before 0.93.0 it lacks TypePermissions, which Folio declares
+ * the type permissions through where rbac is installed), so it conflicts.
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -105,7 +106,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/ai' => '<0.78', 'preflow/auth' => '<0.83.0', 'preflow/blocks' => '<0.93.0', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.82.0', 'preflow/data' => '<0.93.0', 'preflow/devtools' => '<0.85.0', 'preflow/fields' => '<0.93.0', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.83.0', 'preflow/media' => '<0.89.0', 'preflow/members' => '<0.77', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.93.0', 'preflow/rbac' => '<0.84.0', 'preflow/routing' => '<0.78.2', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
+            ['preflow/ai' => '<0.78', 'preflow/auth' => '<0.83.0', 'preflow/blocks' => '<0.93.0', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.82.0', 'preflow/data' => '<0.93.0', 'preflow/devtools' => '<0.85.0', 'preflow/fields' => '<0.93.0', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.83.0', 'preflow/media' => '<0.89.0', 'preflow/members' => '<0.77', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.93.0', 'preflow/rbac' => '<0.93.0', 'preflow/routing' => '<0.78.2', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; ai, members, codes and rbac are suggested, not required.

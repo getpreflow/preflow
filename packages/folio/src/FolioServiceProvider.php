@@ -2288,11 +2288,10 @@ final class FolioServiceProvider extends ServiceProvider
         foreach (['ai.translate' => 'Use AI translation', 'ai.draft' => 'Write drafts with AI', 'ai.settings' => 'AI settings'] as $name => $label) {
             $offered[$name] ? $registry->declare($name, $label, 'AI') : $registry->disable($name, $missing[$name]);
         }
+        // Every catalog type's five names with Folio's catalog labels (through rbac's TypePermissions
+        // where it is installed; they replace rbac's, which declares only what nobody declared).
         foreach ($container->get(TypeCatalog::class)->all() as $listing) {
-            $registry->declarePattern($listing->key . '.*');
-            foreach (['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete'] as $action => $verb) {
-                $registry->declare($listing->key . '.' . $action, $verb, $listing->label);
-            }
+            \Preflow\Folio\Content\TypeActions::declare($registry, $listing->key, $listing->label);
         }
         $registry->declarePattern('assets.*');
         foreach (['view' => 'View', 'upload' => 'Upload', 'edit' => 'Edit', 'delete' => 'Delete'] as $action => $verb) {

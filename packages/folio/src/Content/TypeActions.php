@@ -18,7 +18,11 @@ use Preflow\Data\TypeRegistry;
  */
 final class TypeActions
 {
-    /** Folio's record verbs and the data action each one is. */
+    /**
+     * Folio's record verbs and the data action each one is. The same map as preflow/rbac's
+     * TypePermissions::VERBS (a test keeps them identical); Folio keeps its own because it does
+     * not require rbac.
+     */
     public const array VERBS = [
         'create' => TypeAction::Create,
         'edit' => TypeAction::Update,
@@ -27,6 +31,29 @@ final class TypeActions
     ];
 
     public function __construct(private readonly TypeRegistry $types) {}
+
+    /**
+     * Declares a type's permissions: the family "{type}.*" (once) and "{type}.view", ".create",
+     * ".edit", ".publish", ".delete" labelled View … Delete in the group $label, replacing earlier
+     * labels. Through rbac's TypePermissions::declare() where preflow/rbac is installed, the same
+     * declaration otherwise.
+     *
+     * @since 0.93.0
+     */
+    public static function declare(\Preflow\Auth\Access\PermissionRegistry $registry, string $type, string $label): void
+    {
+        if (class_exists(\Preflow\Rbac\TypePermissions::class)) {
+            \Preflow\Rbac\TypePermissions::declare($registry, $type, $label);
+
+            return;
+        }
+        if (!in_array($type . '.*', $registry->patterns(), true)) {
+            $registry->declarePattern($type . '.*');
+        }
+        foreach (['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete'] as $verb => $verbLabel) {
+            $registry->declare($type . '.' . $verb, $verbLabel, $label);
+        }
+    }
 
     /** Whether the type allows the action; a key that is no data type (assets, folio) allows everything. */
     public function allows(string $type, TypeAction $action): bool
