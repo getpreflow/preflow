@@ -10,7 +10,8 @@ use Preflow\Data\Attributes\Id;
 use Preflow\Data\Model;
 use Preflow\Validation\Attributes\Validate;
 
-#[Entity(table: 'companies', storage: 'default')]
+/** A company that posts jobs. `type: 'company'` makes it a data type (the JSON API serves it: ContentController). */
+#[Entity(table: 'companies', storage: 'default', type: 'company')]
 final class Company extends Model
 {
     #[Id]
@@ -30,7 +31,11 @@ final class Company extends Model
     #[Validate('nullable', 'url')]
     public ?string $website = null;
 
-    #[Field]
+    /**
+     * One text per language once the site has more than one (config/i18n.php): then it holds a
+     * map such as {"en": …, "de": …}, and a page shows one of them. With one language it is text.
+     */
+    #[Field(type: 'string', translatable: true)]
     #[Validate('nullable', 'max:300')]
-    public ?string $summary = null;
+    public array|string|null $summary = null;
 }

@@ -13,7 +13,7 @@ use Preflow\Data\DataManager;
 use Preflow\Testing\TestResponse;
 use Tests\Support\StarterApp;
 
-/** The token-protected write side: an employer's own jobs, through the same JobWriter as the employer area. */
+/** The token-protected write side: an employer's own jobs, under the same rules as the employer area's form. */
 final class WriteApiTest extends TestCase
 {
     use StarterApp;
@@ -57,10 +57,10 @@ final class WriteApiTest extends TestCase
         return $override + [
             'title' => 'API Platform Engineer',
             'place' => 'Berlin',
-            'employment_type' => 'full_time',
+            'employmentType' => 'full_time',
             'remote' => 'hybrid',
-            'salary_from' => 60000,
-            'salary_to' => 75000,
+            'salaryFrom' => 60000,
+            'salaryTo' => 75000,
             'description' => 'You build the services behind our job board, from the API down to the queries.',
         ];
     }
@@ -88,12 +88,16 @@ final class WriteApiTest extends TestCase
         $response = $this->json('POST', '/api/jobs', $this->body(), $this->bearer());
 
         $this->assertSame(201, $response->status());
-        $id = $response->json('data.id');
+        $id = $response->json('data._id');
         $response->assertHeader('Location', '/api/jobs/' . $id);
         $this->assertSame('draft', $response->json('data.status'));
-        $this->assertSame('northwind-labs', $response->json('data.company.slug'));
-        $this->assertSame(['from' => 60000, 'to' => 75000, 'currency' => 'EUR'], $response->json('data.salary'));
-        $this->assertNull($response->json('data.published_at'));
+        // The server sets the company (the token's), the slug and the dates.
+        $this->assertSame($this->data()->query(User::class)->where('email', 'employer@example.com')->first()->company, $response->json('data.company'));
+        $this->assertSame('api-platform-engineer', $response->json('data.slug'));
+        $this->assertSame(60000, $response->json('data.salaryFrom'));
+        $this->assertSame(75000, $response->json('data.salaryTo'));
+        $this->assertNull($response->json('data.publishedAt'));
+        $this->assertNotNull($response->json('data.createdAt'));
 
         // A draft is not public.
         $this->assertSame(404, $this->json('GET', '/api/jobs/' . $id)->status());
@@ -105,32 +109,39 @@ final class WriteApiTest extends TestCase
 
         $this->assertSame(201, $response->status());
         $this->assertSame('published', $response->json('data.status'));
-        $this->assertNotNull($response->json('data.published_at'));
+        $this->assertNotNull($response->json('data.publishedAt'));
 
         $list = $this->json('GET', '/api/jobs');
         $this->assertSame(35, $list->json('meta.total'));
-        $this->assertSame($response->json('data.id'), $list->json('data.0.id'));
-        $this->assertArrayNotHasKey('status', $list->json('data.0'));
+        $this->assertSame($response->json('data._id'), $list->json('data.0._id'));
     }
 
-    public function test_validation_422_lists_snake_case_fields(): void
+    public function test_validation_422_is_keyed_by_the_field(): void
     {
-        $response = $this->json('POST', '/api/jobs', ['title' => '', 'employment_type' => 'bogus', 'remote' => 'hybrid', 'place' => 'Berlin', 'description' => 'x'], $this->bearer());
+        $response = $this->json('POST', '/api/jobs', ['title' => '', 'employmentType' => 'bogus', 'remote' => 'hybrid', 'place' => 'Berlin', 'description' => 'x'], $this->bearer());
 
-        $response->assertJsonValidationErrors('title', 'employment_type', 'description');
-        $this->assertArrayNotHasKey('employmentType', $response->json('errors'));
+        $response->assertJsonValidationErrors('title', 'employmentType', 'description');
 
-        $salary = $this->json('POST', '/api/jobs', $this->body(['salary_from' => 'lots']), $this->bearer());
-        $salary->assertJsonValidationErrors('salary_from');
+        $salary = $this->json('POST', '/api/jobs', $this->body(['salaryFrom' => 'lots']), $this->bearer());
+        $salary->assertJsonValidationErrors('salaryFrom');
+        $range = $this->json('POST', '/api/jobs', $this->body(['salaryFrom' => 80000, 'salaryTo' => 70000]), $this->bearer());
+        $range->assertJsonValidationErrors('salaryTo');
 
         $status = $this->json('POST', '/api/jobs', $this->body(['status' => 'archived']), $this->bearer());
         $status->assertJsonValidationErrors('status');
+
+        // What the server sets is refused, not dropped; so is a key that is no field.
+        $this->json('POST', '/api/jobs', $this->body(['company' => str_repeat('0', 32), 'slug' => 'mine']), $this->bearer())
+            ->assertJsonValidationErrors('company', 'slug');
+        $this->json('POST', '/api/jobs', $this->body(['_id' => str_repeat('0', 32)]), $this->bearer())->assertJsonValidationErrors('_id');
+        $this->json('POST', '/api/jobs', $this->body(['salary' => 1]), $this->bearer())->assertJsonValidationErrors('salary');
+        $this->assertSame(0, $this->data()->query(Job::class)->where('title', 'API Platform Engineer')->get()->total(), 'nothing was saved');
     }
 
     public function test_patch_own_job(): void
     {
         $headers = $this->bearer();
-        $id = $this->json('POST', '/api/jobs', $this->body(), $headers)->json('data.id');
+        $id = $this->json('POST', '/api/jobs', $this->body(), $headers)->json('data._id');
 
         $patched = $this->json('PATCH', '/api/jobs/' . $id, ['title' => 'Renamed Engineer'], $headers);
         $patched->assertOk();
@@ -139,14 +150,20 @@ final class WriteApiTest extends TestCase
 
         $published = $this->json('PATCH', '/api/jobs/' . $id, ['status' => 'published'], $headers);
         $this->assertSame('published', $published->json('data.status'));
+        $publishedAt = $published->json('data.publishedAt');
+        $this->assertNotNull($publishedAt);
         $this->assertSame(200, $this->json('GET', '/api/jobs/' . $id)->status());
 
         $back = $this->json('PATCH', '/api/jobs/' . $id, ['status' => 'draft'], $headers);
         $this->assertSame('draft', $back->json('data.status'));
         $this->assertSame(404, $this->json('GET', '/api/jobs/' . $id)->status());
+        // Publishing again keeps the first date, so the job keeps its place in the list.
+        $this->assertSame($publishedAt, $this->json('PATCH', '/api/jobs/' . $id, ['status' => 'published'], $headers)->json('data.publishedAt'));
 
-        $this->json('PATCH', '/api/jobs/' . $id, ['employment_type' => 'nope'], $headers)
-            ->assertJsonValidationErrors('employment_type');
+        $this->json('PATCH', '/api/jobs/' . $id, ['employmentType' => 'nope'], $headers)
+            ->assertJsonValidationErrors('employmentType');
+        $this->json('PATCH', '/api/jobs/' . $id, ['company' => str_repeat('0', 32)], $headers)
+            ->assertJsonValidationErrors('company');
         $this->assertSame(404, $this->json('PATCH', '/api/jobs/' . str_repeat('0', 32), ['title' => 'x'], $headers)->status());
     }
 
@@ -167,7 +184,7 @@ final class WriteApiTest extends TestCase
     public function test_delete_own_job_204(): void
     {
         $headers = $this->bearer();
-        $id = $this->json('POST', '/api/jobs', $this->body(), $headers)->json('data.id');
+        $id = $this->json('POST', '/api/jobs', $this->body(), $headers)->json('data._id');
 
         $response = $this->json('DELETE', '/api/jobs/' . $id, null, $headers);
 

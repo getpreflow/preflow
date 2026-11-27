@@ -7,13 +7,18 @@ namespace App\Models;
 use Preflow\Data\Attributes\Entity;
 use Preflow\Data\Attributes\Field;
 use Preflow\Data\Attributes\Id;
+use Preflow\Data\Attributes\Relation;
 use Preflow\Data\Model;
 use Preflow\Validation\Attributes\Validate;
 use Preflow\Validation\Rules\Nullable;
 use Preflow\Validation\ValidationContext;
 use Preflow\Validation\ValidationRule;
 
-#[Entity(table: 'jobs', storage: 'default')]
+/**
+ * A job ad. `type: 'job'` makes it a data type too, so the core's description, read and write
+ * classes know it (the JSON API reads and writes jobs through them).
+ */
+#[Entity(table: 'jobs', storage: 'default', type: 'job')]
 final class Job extends Model
 {
     /** Salaries are whole numbers of this currency per year. */
@@ -29,8 +34,9 @@ final class Job extends Model
     #[Field(unique: true, length: 140)]
     public ?string $slug = null;
 
-    /** The uuid of the company that posted the job. */
+    /** The uuid of the company that posted the job: a relation, so the description names its target type. */
     #[Field(index: true)]
+    #[Relation(to: 'company')]
     #[Validate('required')]
     public ?string $company = null;
 

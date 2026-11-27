@@ -43,20 +43,23 @@ final class JobsApiTest extends TestCase
         $this->assertCount(12, $all->json('data'));
 
         $first = $all->json('data.0');
+        // The core read output (RecordOutput): "_id", the type's fields in declared order, then
+        // what the controller adds: the job's page.
         $this->assertSame(
-            ['id', 'slug', 'title', 'company', 'place', 'employment_type', 'remote', 'salary', 'description', 'published_at', 'url'],
+            ['_id', 'title', 'slug', 'company', 'place', 'employmentType', 'remote', 'salaryFrom', 'salaryTo', 'description', 'status', 'publishedAt', 'createdAt', 'updatedAt', '_url'],
             array_keys($first),
-            'status is only for token-authenticated responses',
         );
-        $this->assertSame(['id', 'slug', 'name'], array_keys($first['company']));
-        $this->assertStringStartsWith('http://localhost:8080/jobs/', $first['url']);
+        $this->assertSame('published', $first['status']);
+        // A relation is the related record's id (GET /api/content/company/{id} reads it).
+        $this->assertSame(32, strlen($first['company']));
+        $this->assertStringStartsWith('http://localhost:8080/jobs/', $first['_url']);
 
         $filtered = $this->json('GET', '/api/jobs?type=contract&remote=full');
         $filtered->assertOk();
         $this->assertGreaterThan(0, $filtered->json('meta.total'));
         $this->assertLessThan(34, $filtered->json('meta.total'));
         foreach ($filtered->json('data') as $job) {
-            $this->assertSame('contract', $job['employment_type']);
+            $this->assertSame('contract', $job['employmentType']);
             $this->assertSame('full', $job['remote']);
         }
     }
@@ -98,10 +101,11 @@ final class JobsApiTest extends TestCase
         $response = $this->json('GET', '/api/jobs/' . $job->uuid);
 
         $response->assertOk();
-        $this->assertSame($job->uuid, $response->json('data.id'));
+        $this->assertSame($job->uuid, $response->json('data._id'));
         $this->assertSame('Frontend Developer', $response->json('data.title'));
         $this->assertSame($job->description, $response->json('data.description'));
-        $this->assertArrayNotHasKey('status', $response->json('data'));
+        $this->assertSame($job->company, $response->json('data.company'));
+        $this->assertSame($job->salaryFrom, $response->json('data.salaryFrom'));
     }
 
     public function test_draft_is_404_json(): void

@@ -32,9 +32,14 @@ final class Company extends Model
     #[Validate('nullable', 'url')]
     public ?string $website = null;
 
-    #[Field]
+    /**
+     * One text per language once the site has more than one (config/i18n.php): then it holds a
+     * map such as {"en": …, "de": …}, Folio edits each language, and a page shows one of them.
+     * With one language it is text.
+     */
+    #[Field(type: 'string', translatable: true)]
     #[Validate('nullable', 'max:300')]
-    public ?string $summary = null;
+    public array|string|null $summary = null;
 
     /** An asset id from Folio's media library. */
     #[Field(type: 'asset', label: 'Logo', config: ['asset' => ['multiple' => false, 'accept' => 'image/*']])]

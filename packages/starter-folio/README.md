@@ -44,6 +44,7 @@ A known limit: Folio's own login at `/folio/login` compares the email case-sensi
 | `/employer` | Employers sign in, then add, edit, publish and unpublish their jobs | `app/Controllers/Site/Employer*Controller.php`, `app/pages/_views/employer/` |
 | `/folio` | The admin for staff | Folio, set up by `config/folio.php`, `config/roles.php` and `config/models/` |
 | `/api/jobs` | The same jobs as JSON | `app/Controllers/Api/JobsController.php` |
+| `/api/content/company` | Any type you list, read and written by the core classes | `app/Controllers/Api/ContentController.php` |
 | `/llms.txt`, `/index.md`, `/sitemap.xml`, `/robots.txt` | Pages for AI assistants and search engines | `config/geo.php`, `config/seo.php` |
 
 `php preflow routes:list` lists the routed paths. What middleware answers (`/sitemap.xml`, `/robots.txt`, `/llms.txt`, redirects) isn't listed, and Folio's pages, `/` among them, are one catch-all row, `/{...path}`.
@@ -61,12 +62,12 @@ Staff accounts are not a model of this project: `preflow/rbac` defines the staff
 
 There is no `status` field on `Job`. A job is public only when it has been published (by staff in Folio, or by its employer). The pages and the API read through `app/Jobs/JobSearch.php`, which uses `PublishedModels` (`preflow/publishing`), so a draft, or an edit nobody has published yet, never leaves that class. The list sorts by the `postedOn` field ("Posted on"), newest first, and then by the time Folio published the copy.
 
-Employers do not bypass this. `app/Jobs/JobWriter.php` is the one place that changes a job for the employer area and the API. It takes the `DataManager`, the `Publisher`, the `RecordWriter` and the `RecordDeleter` (`preflow/publishing`), and writes through the last two, so the type's hooks and rules run as they do in Folio:
+Employers do not bypass this. `app/Jobs/JobWriter.php` changes a job for the employer area; the API's `JobsController` reads and writes with the core's read and write classes and saves through the same `RecordWriter` (see "The API" below). `JobWriter` takes the `DataManager`, the `Publisher`, the `RecordWriter` and the `RecordDeleter` (`preflow/publishing`), and writes through the last two, so the type's hooks and rules run as they do in Folio:
 
 - `create()` and `update()` change the working copy only (`RecordWriter::create()` and `save()`). `update()` takes `mayPublish`: a save by an account without `job.publish` cancels a publish staff scheduled in Folio, as a save in the admin does.
 - `publish()` saves and publishes through the `RecordWriter` (`SaveOptions(publish: true)`), as the Publish button in Folio does. The revision names the employer, so staff see who published it. It sets `postedOn` on the first publish. Publishing again, or unpublishing and publishing again, never moves a job to the top of the list.
 - `unpublish()` goes through the `Publisher` and `delete()` through the `RecordDeleter`, so no published copy is left behind.
-- `state()` is `draft`, `published`, or `changed` (published, with edits not yet published). The employer's job list and the API's owner view show it.
+- `state()` is `draft`, `published`, or `changed` (published, with edits not yet published). The employer's job list shows it; the API's owner view shows the same as `_status`.
 
 Publishing needs the permission `job.publish`, which `config/roles.php` gives the `employer` role (`employer:create` and the demo seed give every employer that role). The employer area and the API ask before they publish; an account without the role posts drafts. When it tries to publish, the employer area goes back to the job list with a notice and the API answers 403.
 
@@ -99,11 +100,11 @@ A block is a `BlockComponent` with a `#[Block(key: ...)]` attribute and `#[Block
 
 ### The API
 
-Unchanged from `preflow/starter`: the same routes, fields, paging (12 per page), tokens and errors. See its README. The differences come from Folio:
+The same routes, paging (12 per page), tokens and errors as `preflow/starter`; see its README. A job reads as the core's read class gives it (`Preflow\Data\Records\RecordOutput`): `"_id"`, then each field by its name in the model, a relation as the related record's id. The differences come from Folio:
 
-- The owner's `status` can also be `changed`: the job is published and has edits that are not published yet. Public reads never show a status.
-- Writing `"status":"published"` publishes through `JobWriter`, so a draft that staff saved in Folio with a broken field answers 422 instead of going live.
-- `published_at` is the job's "Posted on" date, or the time Folio published it.
+- `status` is no field: `"status": "published"` or `"draft"` in a write asks `JobsController` to publish or unpublish, through the `RecordWriter` and the `Publisher`. The rules run before anything is saved, so a draft that staff saved in Folio with a broken field answers 422 instead of going live.
+- The owner's view adds `_status`: `draft`, `published` or `changed` (published, with edits not yet published). Public reads show the published copy, with `_published_at` (when Folio published it) and `postedOn` ("Posted on").
+- `app/Controllers/Api/ContentController.php` serves the types in its `TYPES` list (`company`) through the core's description, read and write classes: `GET /api/content`, `GET /api/content/company[/<id>]` (`?locale=de`, `?with=media` for the logo's URL and sizes), and `POST`/`PATCH` with a token. Reads show the published copies. Writes need the type's permissions from the roles (`company.create`, `company.edit`; with `company.publish` the change goes live at once, without it it waits as a draft). The demo employer role has none of them.
 
 ### Make Folio yours
 
@@ -260,11 +261,12 @@ Ask an admin when you need more. Admins are the staff with the `admin` role.
 
 | File | What changed |
 |---|---|
-| `app/Models/Job.php`, `Company.php` | `type: 'job'` / `type: 'company'` on `#[Entity]`; `Job::slug` is now `#[Validate('required', 'slug')]`; `Job` loses `status` and `publishedAt` and gains `postedOn`; `Company` gains `logo`; `Job::company` is a `#[Relation]` |
+| `app/Models/Job.php`, `Company.php` | `Job::slug` is now `#[Validate('required', 'slug')]`; `Job` loses `status` and `publishedAt` and gains `postedOn`; `Company` gains `logo` |
 | `app/Jobs/JobSearch.php` | Reads Folio's published copies (`PublishedModels`); `byId()` is new |
 | `app/Jobs/JobWriter.php` | The constructor takes `DataManager`, `Publisher`, `RecordWriter` and `RecordDeleter` (`preflow/publishing`) (starter 1 takes `DataManager` only); `create()`, `update()`, `publish()` and `delete()` write through the `RecordWriter` and `RecordDeleter`; `update()` takes `mayPublish`; `publish()` takes the user; `state()` and `states()` are new; `create()`, `unpublish()` and `delete()` keep their signatures |
-| `app/Jobs/JobResource.php` | `status` is the publish state; `published_at` is the posted date |
-| `app/Controllers/Api/JobsController.php`, `Site/EmployerJobController.php` | Call the new `publish()`; a failed publish gives a 422, or the form with the errors |
+| `app/Jobs/JobResource.php` | `published_at` is the posted date |
+| `app/Controllers/Api/JobsController.php` | Saves through the `RecordWriter` and publishes or unpublishes on `"status"`; the owner's view has `_status`, public reads `_published_at` |
+| `app/Controllers/Site/EmployerJobController.php` | Calls the new `publish()`; a failed publish gives the form with the errors |
 | `app/Components/ErrorDemo/ErrorDemo.php` | The comment now points to the page it lives on |
 | `app/Console/EmployerCreateCommand.php` | Also publishes the new company (through the `RecordWriter`) |
 | `app/pages/_layout.twig`, `jobs/index.twig`, `_views/job.twig`, `_views/company.twig`, `_views/employer/index.twig` | News link and footer link, the singletons' texts, the publish state |
@@ -275,7 +277,7 @@ Ask an admin when you need more. Admins are the staff with the `admin` role.
 - The fields of the models: `title`, `place`, `employmentType`, `remote`, `salaryFrom`, `salaryTo`, `description` (Markdown) and the rest.
 - The signatures of `JobSearch` and `JobWriter`, apart from the two additions above.
 - The routes of the controllers, the employer area, the components (`JobSearch`, `JobCard`, `JobResults`, `FilterChips`, `Pager`, `ViewToggle`), `JobFilters`, `Markdown`.
-- The API: routes, keys, paging, tokens, errors, CORS (`config/api.php`).
+- The API: routes, paging, tokens, errors, CORS (`config/api.php`), and `ContentController`, but for reading the published copies and asking the roles.
 
 ### Gone
 
