@@ -36,7 +36,28 @@ final class BlockEditorController
         /** The types' page layouts (0.92; bound in preflow/blocks' boot); without, areas() finds none. */
         private readonly ?PageLayouts $layouts = null,
         private readonly ?AreasEditor $areasEditor = null,
+        /** Asked for the edit (create, for a new record) permission of the type a request names (0.92); null: everything allowed. */
+        private readonly ?\Preflow\Auth\Access\Access $access = null,
+        /** The admin's 403 page; null answers a plain 403. */
+        private readonly ?\Preflow\View\TemplateEngineInterface $engine = null,
+        private readonly string $prefix = '/folio',
     ) {}
+
+    /**
+     * The 403 for a request naming a type ("type", with "id" for a stored record) the user may not
+     * edit (or, without "id", create); null when allowed. The route only asks for some type's edit
+     * or create, and these endpoints read the stored record of the type named.
+     */
+    private function refuse(ServerRequestInterface $request, string $type, string $id): ?ResponseInterface
+    {
+        if ($this->access === null || $this->access->can($type . ($id !== '' ? '.edit' : '.create'))) {
+            return null;
+        }
+
+        return $this->engine !== null && $this->catalog !== null
+            ? Forbidden::response($request, $this->engine, $this->prefix, $this->catalog)
+            : new Response(403, ['Content-Type' => 'text/plain; charset=UTF-8'], FolioText::get('folio.errors.forbidden'));
+    }
 
     /**
      * A page's areas after a layout switch or a move (POST {admin}/_areas, 0.92), built from the
@@ -58,6 +79,10 @@ final class BlockEditorController
             return new Response(400, [], FolioText::get('folio.errors.invalid_field'));
         }
         $type = is_string($query['type'] ?? null) ? $query['type'] : '';
+        $id = is_string($query['id'] ?? null) ? $query['id'] : '';
+        if ($type !== '' && ($refused = $this->refuse($request, $type, $id)) !== null) {
+            return $refused;
+        }
         $blocks = $this->fieldTypes->has('blocks') ? $this->fieldTypes->get('blocks') : null;
         $typeLayouts = $type !== '' && $this->catalog?->has($type) ? $this->layouts?->forType($type) : null;
         $registry = $this->dm?->getTypeRegistry();
@@ -66,7 +91,6 @@ final class BlockEditorController
         }
         $def = $registry->get($type);
         $locale = is_string($query['locale'] ?? null) && $def->locales->has($query['locale']) ? $query['locale'] : $def->locales->default;
-        $id = is_string($query['id'] ?? null) ? $query['id'] : '';
         $stored = $id !== '' ? ($this->dm->findType($type, $id)?->toArray() ?? []) : [];
         $body = (array) $request->getParsedBody();
 
@@ -138,6 +162,10 @@ final class BlockEditorController
         $blocks = $this->fieldTypes->get('blocks');
         $type = is_string($query['type'] ?? null) ? $query['type'] : '';
         $id = is_string($query['id'] ?? null) ? $query['id'] : '';
+        // The stored block is read from the record of the type named: only for someone who may edit it (0.92).
+        if ($type !== '' && ($refused = $this->refuse($request, $type, $id)) !== null) {
+            return $refused;
+        }
         $stored = null;
         $record = null;
         if ($type !== '' && $this->catalog?->has($type) && $this->dm !== null) {

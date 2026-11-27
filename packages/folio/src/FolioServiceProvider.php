@@ -982,6 +982,9 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TypeCatalog::class),
             self::pageLayouts($c),
             self::areasEditor($c, $prefix),
+            $c->get(\Preflow\Auth\Access\Access::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
+            $prefix,
         ));
         $container->bind(UploadController::class, fn (Container $c) => new UploadController($uploadsDir));
 

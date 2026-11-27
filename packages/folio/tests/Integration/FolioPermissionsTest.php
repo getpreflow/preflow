@@ -507,6 +507,18 @@ final class FolioPermissionsTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_block_editor_reads_a_record_only_of_a_type_the_user_may_edit(): void
+    {
+        $this->as('eventer'); // event.edit, nothing on posts
+        $duplicate = '/folio/_blocks/duplicate?' . http_build_query(['name' => 'sections', 'uid' => 'a1a1a1a1a1a1a1a1', 'type' => 'post', 'id' => 'p1']);
+        $this->assertSame(403, $this->send('POST', $duplicate)->getStatusCode(), 'a duplicate names the post: its stored block is not read');
+        $this->assertSame(403, $this->send('POST', '/folio/_areas?' . http_build_query(['name' => '_areas', 'type' => 'post', 'id' => 'p1']))->getStatusCode(), 'nor its areas');
+        $this->assertSame(403, $this->send('POST', '/folio/_areas?' . http_build_query(['name' => '_areas', 'type' => 'event']))->getStatusCode(), 'a new record needs create');
+        $this->assertNotSame(403, $this->send('POST', '/folio/_blocks/duplicate?' . http_build_query(['name' => 'sections', 'uid' => 'a1a1a1a1a1a1a1a1', 'type' => 'event', 'id' => 'e1']))->getStatusCode(), 'its own type');
+        $this->assertNotSame(403, $this->send('POST', '/folio/_areas?' . http_build_query(['name' => '_areas', 'type' => 'event', 'id' => 'e1']))->getStatusCode());
+    }
+
+    #[RunInSeparateProcess]
     public function test_create_only_role_can_use_the_block_picker(): void
     {
         $this->as('creator');
