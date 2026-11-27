@@ -119,6 +119,14 @@ final class ComposerConstraintsTest extends TestCase
         }
     }
 
+    /** Its suite's TypeActionsVerbsTest pins TypeActions::VERBS to rbac's TypePermissions::VERBS: a split run installs rbac. */
+    public function test_its_suite_installs_rbac(): void
+    {
+        $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
+
+        $this->assertSame('^0.93.0 || @dev', $composer['require-dev']['preflow/rbac'] ?? null);
+    }
+
     public function test_declares_its_extensions_file_as_a_runtime_file(): void
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);

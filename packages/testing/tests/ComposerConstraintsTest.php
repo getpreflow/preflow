@@ -17,6 +17,8 @@ use PHPUnit\Framework\TestCase;
  * fields, with which WebApplication::componentAction() calls an action the way a page does); components 0.86
  * (StateStore, SignedStateStore and StateRefused, which StateStoreContract tests; enableState(), which TestApplication
  * turns on); view 0.86 (SafeHtml and RendersRegions, which TemplateEngineContract tests).
+ * Since 0.93.0: data 0.93.0 (StorageDriverContract::test_rich_text_cleaned_before_the_driver: data 0.92 cleans no rich
+ * text before the driver, so a driver run against it would fail the case falsely).
  * Since 0.85: core 0.85 (PageCache\Cacheability, which WebApplication::assertPageCacheable() asks).
  * Since 0.82: core 0.82 (Deprecations::expected(), with which RenderIsolationContract marks its own calls of the deprecated
  * setters).
@@ -41,10 +43,10 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(['preflow/auth' => '<0.81.0', 'preflow/core' => '<0.88.0', 'preflow/data' => '<0.90.0', 'preflow/htmx' => '<0.88.0', 'preflow/view' => '<0.86.0', 'preflow/components' => '<0.86.0'], $composer['conflict'] ?? null);
+        $this->assertSame(['preflow/auth' => '<0.81.0', 'preflow/core' => '<0.88.0', 'preflow/data' => '<0.93.0', 'preflow/htmx' => '<0.88.0', 'preflow/view' => '<0.86.0', 'preflow/components' => '<0.86.0'], $composer['conflict'] ?? null);
         $this->assertSame('^0.88.0 || @dev', $composer['require']['preflow/core'] ?? null);
         $this->assertSame('^0.88.0 || @dev', $composer['require']['preflow/htmx'] ?? null);
-        $this->assertSame('^0.90.0 || @dev', $composer['require']['preflow/data'] ?? null);
+        $this->assertSame('^0.93.0 || @dev', $composer['require']['preflow/data'] ?? null);
         foreach (['view', 'components'] as $package) {
             $this->assertSame('^0.86.0 || @dev', $composer['require']['preflow/' . $package] ?? null, $package);
         }

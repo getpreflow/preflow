@@ -7,6 +7,10 @@ namespace Preflow\Data\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.93.0 (final review): blocks 0.93.0 (before it, rich text inside blocks is not cleaned on write: BlocksFieldValue
+ * is the value StoredCleaning cleans it through); fields 0.93.0 (before it, its twelve types register no value and read
+ * out and describe as "raw"); publishing 0.93.0 (before it, the default RecordChecks stay NoRecordChecks, so a publish
+ * without Folio checks no field rule).
  * Since 0.93.0: folio 0.93.0 (Folio before 0.93 has its own StoredDate class: its form would not find the core's date
  * rule to put its input rule in its place); validation 0.93.0 (validation.record.*, the messages of RecordInput's refusals:
  * an older one would show their keys).
@@ -32,7 +36,7 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(['preflow/core' => '<0.84.0', 'preflow/validation' => '<0.93.0', 'preflow/folio' => '<0.93.0', 'preflow/publishing' => '<0.72', 'preflow/devtools' => '<0.80'], $composer['conflict'] ?? null);
+        $this->assertSame(['preflow/core' => '<0.84.0', 'preflow/validation' => '<0.93.0', 'preflow/folio' => '<0.93.0', 'preflow/publishing' => '<0.93.0', 'preflow/devtools' => '<0.80', 'preflow/blocks' => '<0.93.0', 'preflow/fields' => '<0.93.0'], $composer['conflict'] ?? null);
         $this->assertSame('^0.84.0 || @dev', $composer['require']['preflow/core'] ?? null);
         $this->assertSame('^0.93.0 || @dev', $composer['require']['preflow/validation'] ?? null);
     }
