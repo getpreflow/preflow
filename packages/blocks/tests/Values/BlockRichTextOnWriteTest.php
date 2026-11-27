@@ -194,6 +194,34 @@ final class BlockRichTextOnWriteTest extends BlocksAppTestCase
         $this->assertSame(self::CLEAN, $sections[1]['note']);
     }
 
+    /** 0.93.1: after the save the record holds what was stored, a block's rich text included. */
+    #[DataProvider('storages')]
+    public function test_the_saved_record_holds_the_cleaned_block_rich_text(string $type): void
+    {
+        $record = DynamicRecord::fromArray($this->types()->get($type), [
+            'uuid' => 'p1',
+            'title' => "it's",
+            'sections' => [self::card(self::A, ['body' => ['en' => self::UNSAFE, 'de' => "<p>c'est<br></p>"], 'note' => "<p>it's</p>", 'count' => 3])],
+            '_layout' => 'standard',
+            '_areas' => ['main' => [self::card(self::C, ['note' => self::UNSAFE])]],
+        ]);
+        $this->data()->saveType($record, false);
+
+        $card = $record->get('sections')[0];
+        $this->assertSame(['en' => self::CLEAN, 'de' => '<p>c&#039;est<br /></p>'], $card['body'], 'every locale of a translatable block field');
+        $this->assertSame('<p>it&#039;s</p>', $card['note']);
+        $this->assertSame([self::A, 'value_card', 3], [$card['_uid'], $card['_block'], $card['count']], 'the rest of the block as given');
+        $this->assertSame(self::CLEAN, $record->get('_areas')['main'][0]['note'], 'a page area');
+        $this->assertSame("it's", $record->get('title'), 'no rich text: as given');
+        $this->assertSame($this->row($type, 'p1')['sections'], $record->get('sections'), 'as stored');
+
+        // Read back (JSON text on SQLite) and saved again: the record keeps the form it was read in.
+        $read = $this->data()->findType($type, 'p1') ?? $this->fail('stored');
+        $before = $read->toArray();
+        $this->data()->saveType($read, false);
+        $this->assertSame($before['sections'], $read->get('sections'));
+    }
+
     public function test_render_without_folio_cleans_block_rich_text(): void
     {
         $this->assertInstanceOf(CoreBlockTextCleaner::class, $this->app()->container()->get(BlockTextCleaner::class), 'the default binding');

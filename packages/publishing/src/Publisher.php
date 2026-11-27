@@ -137,7 +137,7 @@ final class Publisher
      */
     public function stateWith(DynamicRecord $working, ?DynamicRecord $snapshot): PublishState
     {
-        return self::compare($working, $snapshot);
+        return $this->compare($working, $snapshot);
     }
 
     /**
@@ -161,6 +161,19 @@ final class Publisher
         if ($snapshot === null) {
             return [];
         }
+        $changed = self::changedKeys($def, $working, $snapshot);
+
+        // Rich text not cleaned yet (a working copy built in PHP, a row stored before 0.93.0): compared as stored, cleaned.
+        return $changed === [] ? [] : self::changedKeys($def, $this->cleaned($working), $this->cleaned($snapshot));
+    }
+
+    /**
+     * changes() of two records as they hold their values.
+     *
+     * @return list<string>
+     */
+    private static function changedKeys(TypeDefinition $def, DynamicRecord $working, DynamicRecord $snapshot): array
+    {
         $now = self::normalized($working);
         $before = self::normalized($snapshot);
         $others = array_diff(array_unique([...array_keys($now), ...array_keys($before)]), array_keys($def->fields));
@@ -292,7 +305,7 @@ final class Publisher
                     continue;
                 }
                 // A snapshot without its working copy (an orphan) gets -1 too, so it is not read again.
-                $version = isset($working[$id]) && self::compare($working[$id], $snapshot) === PublishState::Published
+                $version = isset($working[$id]) && $this->compare($working[$id], $snapshot) === PublishState::Published
                     ? (int) ($working[$id]->get('_version') ?? 0)
                     : -1;
                 // Only while it has none: a publish in between wrote its own.
@@ -356,7 +369,7 @@ final class Publisher
                 if ($chunk !== null && !in_array($id, $chunk, true)) {
                     continue;
                 }
-                $states[$id] = self::compare($working, $snapshots[$id] ?? null);
+                $states[$id] = $this->compare($working, $snapshots[$id] ?? null);
             }
         }
 
@@ -403,7 +416,7 @@ final class Publisher
                 // (the fast path: no snapshot read when it stood for the version replaced). Otherwise,
                 // a save whose content equals the snapshot's (an edit undone by hand, a snapshot edited
                 // to the working content) marks the snapshot with the new version too.
-                $same = $stored !== null && self::comparable($working) === self::comparable($stored);
+                $same = $stored !== null && $this->sameContent($working, $stored);
                 if (!$same || !$this->carryForward($working, $current)) {
                     $this->relinkSaved($working);
                 }
@@ -532,7 +545,7 @@ final class Publisher
             // Read before any transaction: on MariaDB a transaction's later write to a row changed
             // since its first read fails (snapshot isolation); the checked write catches a save in between.
             $stored = $this->dm->findIn($def, $id);
-            $changed = $stored === null || self::comparable($working) !== self::comparable($stored);
+            $changed = $stored === null || !$this->sameContent($working, $stored);
             $expected = $loadedVersion ?? (int) ($stored?->get('_version') ?? 0);
             $next = $changed ? $expected + 1 : $expected;
 
@@ -570,7 +583,7 @@ final class Publisher
         // After the commit: the address book writes on its own (it never fails a publish).
         $this->addresses?->sync($def->key, $id, $previous);
         $this->index?->refresh($working);
-        $this->activity->note($working, ActivityKind::Published, self::changedFields($def, $snapshot, $previous), $by);
+        $this->activity->note($working, ActivityKind::Published, $this->changedFields($def, $snapshot, $previous), $by);
 
         return $snapshot;
     }
@@ -810,7 +823,7 @@ final class Publisher
         $version = (int) ($working->get('_version') ?? 0);
         $read = self::versionOf($snapshot?->get(self::PUBLISHED_VERSION));
         // Never back: a snapshot already marked with a newer version (a later save got there first) keeps it.
-        if ($snapshot === null || $read === $version || ($read !== null && $read > $version) || self::compare($working, $snapshot) !== PublishState::Published) {
+        if ($snapshot === null || $read === $version || ($read !== null && $read > $version) || $this->compare($working, $snapshot) !== PublishState::Published) {
             return;
         }
         try {
@@ -858,7 +871,7 @@ final class Publisher
             'record_id' => $id,
             'seq' => ($existing[0]->seq ?? 0) + 1,
             'data' => json_encode($snapshot->toArray()),
-            'changed' => json_encode(self::changedFields($def, $snapshot, $previous)),
+            'changed' => json_encode($this->changedFields($def, $snapshot, $previous)),
             'created_at' => $stamp,
             'created_by' => $by,
         ]), false);
@@ -877,11 +890,12 @@ final class Publisher
      *
      * @return list<string>
      */
-    private static function changedFields(TypeDefinition $def, DynamicRecord $snapshot, ?DynamicRecord $previous): array
+    private function changedFields(TypeDefinition $def, DynamicRecord $snapshot, ?DynamicRecord $previous): array
     {
         $changed = [];
         $nowAll = $snapshot->toArray();
         $beforeAll = $previous?->toArray() ?? [];
+        $cleaned = null; // [now, before], cleaned when a field differs (sameContent())
         foreach (array_keys($def->fields) as $name) {
             if ($name === $def->idField) {
                 continue;
@@ -891,7 +905,15 @@ final class Publisher
             if (self::isEmpty($now) && self::isEmpty($before)) {
                 continue;
             }
-            if ($previous === null || json_encode(self::sortKeys($now)) !== json_encode(self::sortKeys($before))) {
+            if ($previous === null) {
+                $changed[] = $name;
+                continue;
+            }
+            if (json_encode(self::sortKeys($now)) === json_encode(self::sortKeys($before))) {
+                continue;
+            }
+            $cleaned ??= [self::normalized($this->cleaned($snapshot)), self::normalized($this->cleaned($previous))];
+            if (json_encode(self::sortKeys($cleaned[0][$name] ?? null)) !== json_encode(self::sortKeys($cleaned[1][$name] ?? null))) {
                 $changed[] = $name;
             }
         }
@@ -968,14 +990,33 @@ final class Publisher
         return $registry->get($type);
     }
 
-    private static function compare(DynamicRecord $working, ?DynamicRecord $snapshot): PublishState
+    private function compare(DynamicRecord $working, ?DynamicRecord $snapshot): PublishState
     {
         if ($snapshot === null) {
             return PublishState::Draft;
         }
 
-        // As stored on both sides (comparable()), as changes() compares: the two never disagree.
-        return self::comparable($working) === self::comparable($snapshot) ? PublishState::Published : PublishState::Changed;
+        // As stored on both sides (sameContent()), as changes() compares: the two never disagree.
+        return $this->sameContent($working, $snapshot) ? PublishState::Published : PublishState::Changed;
+    }
+
+    /**
+     * Whether two records hold the same content as stored (comparable()). Every typed write
+     * cleans rich text (0.93.0), so a record that holds it uncleaned (one built in PHP, as a
+     * site's importer publishes it; a row stored before 0.93.0) is compared cleaned too
+     * (DataManager::cleaning(), 0.93.1): only when the two differ as given, so records read
+     * from storage that agree cost no cleaning.
+     */
+    private function sameContent(DynamicRecord $a, DynamicRecord $b): bool
+    {
+        return self::comparable($a) === self::comparable($b)
+            || self::comparable($this->cleaned($a)) === self::comparable($this->cleaned($b));
+    }
+
+    /** A copy of $record with its values as a typed write stores them first (DataManager::cleaning()). */
+    private function cleaned(DynamicRecord $record): DynamicRecord
+    {
+        return new DynamicRecord($record->getType(), $this->dm->cleaning()->apply($record->getType(), $record->toArray()));
     }
 
     /**

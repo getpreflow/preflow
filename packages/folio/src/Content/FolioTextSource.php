@@ -305,12 +305,16 @@ final class FolioTextSource implements TextSource, \Preflow\I18n\Machine\WritesA
         // reports a path but cannot accept it would otherwise get a human translation marked as machine-made.
         $candidate = DynamicRecord::fromArray($def, $data);
         $now = [];
+        $html = [];
         foreach ($this->texts($def, $candidate) as $text) {
             $now[$text->path] = $text->in($to);
+            $html[$text->path] = $text->format === 'html';
         }
         $written = [];
         foreach ($expected as $path => $text) {
-            if (isset($now[$path]) && trim($now[$path]) === trim($text)) {
+            // Rich text is there cleaned, as every write stores it (0.93.0): a block's HTML given
+            // with "<br>" or an apostrophe is written as "<br />" and "&#039;" (0.93.1).
+            if (isset($now[$path]) && (trim($now[$path]) === trim($text) || (($html[$path] ?? false) && trim($now[$path]) === trim($this->dm->htmlCleaner()->clean($text))))) {
                 $written[] = (string) $path;
             }
         }

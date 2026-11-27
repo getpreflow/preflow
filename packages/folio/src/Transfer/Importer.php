@@ -386,7 +386,10 @@ final class Importer
                 // The content alone decides (the change date is no content): an archive from before
                 // change dates carries none, and two copies of a site date a record each their own way.
                 $skip = [$dateKey => true];
-                if (self::canonical(array_diff_key($row, $skip)) !== self::canonical(array_diff_key($local[$id], $skip))) {
+                if (self::canonical(array_diff_key($row, $skip)) !== self::canonical(array_diff_key($local[$id], $skip))
+                    // Rich text is stored cleaned since 0.93.0; an archive (or a row here) from before
+                    // holds it as given: the same text cleaned is no change (0.93.1).
+                    && self::canonical(array_diff_key($this->dm->cleaning()->apply($def, $row), $skip)) !== self::canonical(array_diff_key($this->dm->cleaning()->apply($def, $local[$id]), $skip))) {
                     $diff['changed'][] = $id;
                 }
             }

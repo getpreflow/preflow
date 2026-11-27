@@ -469,7 +469,10 @@ final class RecordWriter
         if (!$this->activity->on()) {
             return;
         }
-        $this->activity->note($record, $kind, ChangedFields::between($record->getType(), $record->toArray(), $before), $by);
+        // The record holds what was stored (cleaned); a row stored before 0.93.0 may hold its rich
+        // text uncleaned: compared as cleaned, the same text is no change (0.93.1).
+        $def = $record->getType();
+        $this->activity->note($record, $kind, ChangedFields::between($def, $record->toArray(), $before === null ? null : $this->dm->cleaning()->apply($def, $before)), $by);
     }
 
     /**

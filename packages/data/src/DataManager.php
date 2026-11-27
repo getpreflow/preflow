@@ -1400,6 +1400,10 @@ final class DataManager
         if (!$written) {
             return $this->duplicateId($model, $id, $mode === 'ignore');
         }
+        // The model holds what was stored, as a saved record does (holdStored()).
+        foreach ($this->cleanedChanges($def, $values) as $name => $value) {
+            $model->{$name} = $value;
+        }
 
         if (self::emptyId($id)) {
             $this->takeInsertId($driver, $meta, $model);
@@ -1726,6 +1730,9 @@ final class DataManager
      * ExclusiveWrites). A duplicate is a ValidationException
      * with validation.unique on the field ("field.locale" for another locale's value).
      *
+     * Once written, the record holds what was stored: the rich text the write cleaned is put back
+     * on it (holdStored(), since 0.93.1), as saveTypeIfVersion() and a class-backed save do.
+     *
      * @throws ValidationException (nothing saved)
      */
     public function saveType(DynamicRecord $record, bool $validate = true, array $rules = []): void
@@ -1773,6 +1780,7 @@ final class DataManager
             $restore();
             throw $e;
         }
+        $this->holdStored($record);
         $this->reportWrite($typeDef->storage, $typeDef->table, (string) $id);
     }
 
@@ -1787,6 +1795,20 @@ final class DataManager
      * @param array<string, mixed> $stored
      */
     private function contentChanged(TypeDefinition $def, array $data, array $stored, string $versionField): bool
+    {
+        // $data is cleaned (storageValues()); a row stored before 0.93.0 holds its rich text as it
+        // was given: the same text cleaned is no change (0.93.1). Cleaned only when it differs.
+        return $this->differs($def, $data, $stored, $versionField)
+            && $this->differs($def, $data, $this->cleaning()->apply($def, $stored), $versionField);
+    }
+
+    /**
+     * contentChanged() without the second look.
+     *
+     * @param array<string, mixed> $data
+     * @param array<string, mixed> $stored
+     */
+    private function differs(TypeDefinition $def, array $data, array $stored, string $versionField): bool
     {
         // The change date (ChangeDates) is no content: it follows whether the rest changed.
         $skip = array_flip([$def->idField, $versionField, ChangeDates::FIELD, ...($this->versionFields?->nonContent($def) ?? [])]);
@@ -1939,6 +1961,7 @@ final class DataManager
             $had ? $record->set($versionField, $before) : $record->remove($versionField);
             $unstamp();
         } else {
+            $this->holdStored($record);
             $this->reportWrite($typeDef->storage, $typeDef->table, (string) $id);
         }
 
@@ -1953,6 +1976,46 @@ final class DataManager
         }
         $id = $model->toArray()[$meta->idField] ?? null;
         $this->reportWrite($meta->storage, $meta->table, (is_int($id) || is_string($id)) && $id !== 0 && $id !== '0' ? $id : null);
+    }
+
+    /**
+     * After a typed write (0.93.1): the values the write cleaned (cleaning()) put back on the
+     * record, so it holds what was stored and a caller that compares or publishes it next
+     * (Publisher) sees the stored text. Only the values the cleaner changed; nothing else on the
+     * record changes.
+     */
+    private function holdStored(DynamicRecord $record): void
+    {
+        foreach ($this->cleanedChanges($record->getType(), $record->toArray()) as $key => $value) {
+            $record->set($key, $value);
+        }
+    }
+
+    /**
+     * The keys of $given whose value cleaning() changes, with the cleaned value in the shape given:
+     * a value given as JSON text (a translatable field a SQL driver read back) stays JSON text.
+     *
+     * @param array<string, mixed> $given
+     * @return array<string, mixed>
+     */
+    private function cleanedChanges(TypeDefinition $def, array $given): array
+    {
+        $changes = [];
+        foreach ($this->cleaning()->apply($def, $given) as $key => $value) {
+            $was = $given[$key] ?? null;
+            if ($value === $was) {
+                continue;
+            }
+            if (is_string($was) && is_array($value)) {
+                if (json_decode($was, true) === $value) {
+                    continue;
+                }
+                $value = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+            }
+            $changes[$key] = $value;
+        }
+
+        return $changes;
     }
 
     /** @return array<string, mixed> */
