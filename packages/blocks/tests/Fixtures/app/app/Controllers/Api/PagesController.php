@@ -90,10 +90,15 @@ final class PagesController
         return $data + ($this->layouts->toArray($page) ?? []);
     }
 
-    /** @return list<string> the FIELDS the page's type has */
+    /**
+     * @return list<string> the FIELDS the page's type has, but not its areas fields: their body value
+     *         goes through mergeField(), which keeps the stored columns the body does not name
+     */
     private function fields(DynamicRecord $page): array
     {
-        return array_values(array_filter(self::FIELDS, static fn (string $field): bool => isset($page->getType()->fields[$field])));
+        $areas = $this->areasFields($page);
+
+        return array_values(array_filter(self::FIELDS, static fn (string $field): bool => isset($page->getType()->fields[$field]) && !isset($areas[$field])));
     }
 
     /** @return array<string, \Preflow\Data\TypeFieldDefinition> the page's fields of the type "areas" */

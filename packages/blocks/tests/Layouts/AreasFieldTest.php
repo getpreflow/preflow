@@ -285,6 +285,28 @@ final class AreasFieldTest extends BlocksAppTestCase
         $this->assertSame($lines, ($warnings['blocks.layouts'])(), 'what migrate and db:check print');
     }
 
+    public function test_api_write_of_an_areas_field_named_areas_keeps_the_columns_it_does_not_name(): void
+    {
+        // The page's own areas field is called "areas": the controller merges it with mergeField(), never copies it.
+        $this->write('config/models/page.json', (string) json_encode([
+            'key' => 'page', 'table' => 'page', 'storage' => 'json', 'id_field' => 'uuid', 'titleField' => 'title',
+            'fields' => ['title' => ['type' => 'string'], 'slug' => ['type' => 'string'], 'areas' => ['type' => 'areas', 'layouts' => 'grid']],
+        ]));
+        $this->store(['uuid' => 'p1', 'title' => 'About', 'slug' => 'about', 'areas' => ['layout' => '1-1-1', 'areas' => [
+            'c1' => [self::section(self::A)], 'c2' => [], 'c3' => [self::section(self::B)],
+        ]]]);
+
+        $write = $this->json('PATCH', '/api/pages/p1', ['areas' => ['areas' => ['c2' => [['_block' => 'section', 'title' => ['en' => 'New']]]]]])->assertOk();
+
+        $this->assertSame([self::A], array_column($write->json('data.areas.areas.c1'), '_uid'), 'a column the body does not name keeps its blocks');
+        $this->assertSame([self::B], array_column($write->json('data.areas.areas.c3'), '_uid'));
+        $stored = AreasValue::fromStored($this->stored('p1')?->get('areas'));
+        $this->assertSame('1-1-1', $stored->layout);
+        $this->assertSame([self::A], array_column($stored->areas['c1'], '_uid'));
+        $this->assertSame([self::B], array_column($stored->areas['c3'], '_uid'));
+        $this->assertCount(1, $stored->areas['c2']);
+    }
+
     public function test_api_reads_and_writes_an_areas_field(): void
     {
         $this->store(['uuid' => 'p1', 'title' => 'About', 'slug' => 'about', 'columns' => ['layout' => '1-1-1', 'areas' => [
