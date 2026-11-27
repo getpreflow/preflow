@@ -84,8 +84,10 @@ final readonly class LayoutInput implements InputPart
      * @param array<string, mixed> $input  the body: "_layout", "_areas", and the caller's own keys
      * @return array<string, mixed>
      * @throws ValidationException naming the stored key ("_layout", "_areas", "_areas.<name>…")
-     * @deprecated since 0.93.0 as a call of your own (it stays as InputPart::merge(), which RecordInput
-     *             calls): write a record through RecordInput, which merges these keys with this method
+     * As InputPart::merge() (0.93) RecordInput calls it; a site's own write calls RecordInput,
+     * which also takes the fields, the languages and the refusals of the rest of the body.
+     *
+     * @see \Preflow\Data\Records\RecordInput
      */
     public function merge(TypeDefinition $def, array $stored, array $input): array
     {
@@ -149,6 +151,19 @@ final readonly class LayoutInput implements InputPart
      *             which merges an areas field's value through its value (AreasFieldValue::merge())
      */
     public function mergeField(TypeFieldDefinition $field, mixed $stored, mixed $input): array
+    {
+        return $this->mergeAreasValue($field, $stored, $input);
+    }
+
+    /**
+     * mergeField()'s merge, which AreasFieldValue::merge() calls (0.93): the same rules and keys.
+     *
+     * @internal
+     * @return array{layout: ?string, areas: array<string, list<array<string, mixed>>>}
+     * @throws ValidationException naming the field's keys
+     * @throws LayoutConfigException when the field is no areas field or its set is not registered
+     */
+    public function mergeAreasValue(TypeFieldDefinition $field, mixed $stored, mixed $input): array
     {
         $set = $this->setOf($field);
         $value = AreasValue::fromStored($stored);

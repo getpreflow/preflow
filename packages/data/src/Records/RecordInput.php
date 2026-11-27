@@ -40,8 +40,8 @@ use Preflow\Validation\ValidatorFactory;
  *   other value, that value is the language $locale names (default: the type's default
  *   language). A field whose value is itself such an object is given per language.
  * - A field its show_when hides keeps its stored value whatever the body gives
- *   (FieldVisibility::keepStored(), decided on the new values, as Folio's form does); a new
- *   record keeps nothing for it.
+ *   (FieldVisibility::keepStored(), decided on the new values, as Folio's form does), and what
+ *   its value's merge refuses does not refuse the body; a new record keeps nothing for it.
  * - The keys the packages' input parts take (RecordParts::inputKeys(): the blocks package's
  *   "_layout" and "_areas"), each merged by its part.
  *
@@ -130,6 +130,8 @@ final readonly class RecordInput
         $problems = [];
         /** @var array<string, list<string>> $refused what a merging value or a part refused, in its words */
         $refused = [];
+        /** @var array<string, array<string, list<string>>> $refusedBy what each field's merge refused */
+        $refusedBy = [];
 
         foreach ($input as $key => $given) {
             $key = (string) $key;
@@ -154,7 +156,15 @@ final readonly class RecordInput
                     ? $this->translated($def, $field, $stored[$key] ?? null, $given, $locale, $problems)
                     : $this->value($field, $stored[$key] ?? null, $given);
             } catch (ValidationException $e) {
-                $refused += $e->errors();
+                $refusedBy[$key] = $e->errors();
+            }
+        }
+        // A field its show_when hides keeps its stored value (below), so what its value's merge
+        // refused is no problem of this write: Folio's form does not build a hidden field either.
+        $hidden = array_flip(FieldVisibility::hiddenFieldsOf($def, $values));
+        foreach ($refusedBy as $key => $errors) {
+            if (!isset($hidden[$key])) {
+                $refused += $errors;
             }
         }
 

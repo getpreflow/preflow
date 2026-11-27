@@ -24,7 +24,7 @@ use Preflow\Data\Values\MergesInput;
  *   in every area; any other input passes through for the rules.
  * - toOutput(): as LayoutResource::areasField() reads it ({"layout", "resolved", "areas",
  *   "unplaced"}), each block's fields through their values as a blocks field's.
- * - merge(): LayoutInput::mergeField(): the areas the input names replace the stored ones, the
+ * - merge(): LayoutInput's merge of an areas value (mergeField()'s rules): the areas the input names replace the stored ones, the
  *   others are kept (refusals as ValidationException with the field's keys).
  * - clean() and references(): every stored area's blocks, as a blocks field's (BlocksFieldValue).
  *
@@ -81,7 +81,7 @@ final class AreasFieldValue implements FieldValue, CleansOnWrite, MergesInput, L
 
     public function merge(mixed $stored, mixed $input, TypeFieldDefinition $field): mixed
     {
-        return ($this->input)()->mergeField($field, $stored, $input);
+        return ($this->input)()->mergeAreasValue($field, $stored, $input);
     }
 
     public function clean(mixed $value, TypeFieldDefinition $field): mixed

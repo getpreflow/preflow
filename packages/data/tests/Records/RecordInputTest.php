@@ -245,6 +245,29 @@ final class RecordInputTest extends TestCase
         }
     }
 
+    public function test_a_hidden_fields_value_is_not_merged_and_not_refused(): void
+    {
+        $this->model('note', [
+            'kind' => ['type' => 'select', 'options' => ['plain', 'list']],
+            'items' => ['type' => 'picky', 'show_when' => ['field' => 'kind', '=' => 'list']],
+        ]);
+        $dm = $this->dm();
+        $dm->fieldKinds()->value('picky', new PickyValue());
+        $def = $dm->getTypeRegistry()->get('note');
+        $record = DynamicRecord::fromArray($def, ['uuid' => 'n1', 'kind' => 'list', 'items' => 'kept']);
+
+        // Hidden by the new kind: kept as stored, its value never merged, so never refused (as Folio's form skips it).
+        $written = $this->input($dm)->update($record, ['kind' => 'plain', 'items' => 'bad']);
+        $this->assertSame('kept', $written->get('items'));
+
+        try {
+            $this->input($dm)->update(DynamicRecord::fromArray($def, ['uuid' => 'n1', 'kind' => 'list', 'items' => 'kept']), ['items' => 'bad']);
+            self::fail('a shown field\'s value is merged and refused');
+        } catch (ValidationException $e) {
+            $this->assertSame(['items' => ['Picky.', 'Bad item.']], $e->errors());
+        }
+    }
+
     private function input(DataManager $dm): RecordInput
     {
         return new RecordInput($dm, new RecordParts(), self::validators());
@@ -318,5 +341,33 @@ final class ExtraPart implements InputPart
         $stored['_extra'] = $input['_extra'] . '!';
 
         return $stored;
+    }
+}
+
+/** A value that merges partial input (MergesInput) and refuses "bad"; "bad" also fails its own check. */
+final class PickyValue implements \Preflow\Data\Values\FieldValue, \Preflow\Data\Values\MergesInput
+{
+    public function toStored(mixed $input, \Preflow\Data\TypeFieldDefinition $field): mixed
+    {
+        return $input;
+    }
+
+    public function toOutput(mixed $stored, \Preflow\Data\TypeFieldDefinition $field): mixed
+    {
+        return $stored;
+    }
+
+    public function shape(\Preflow\Data\TypeFieldDefinition $field): string
+    {
+        return 'raw';
+    }
+
+    public function merge(mixed $stored, mixed $input, \Preflow\Data\TypeFieldDefinition $field): mixed
+    {
+        if ($input === 'bad') {
+            throw new ValidationException(new \Preflow\Validation\ValidationResult(['items' => ['Picky.', 'Bad item.']]));
+        }
+
+        return $input;
     }
 }
