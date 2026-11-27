@@ -78,8 +78,6 @@
             </div>
         {% endif %}
         {% set form_attrs = {'id': record_form} %}
-        {# The record the editor has open: a click on it in the preview opens no drawer (admin.js openLinkedRecord()). #}
-        {% if previewable and record_id %}{% set form_attrs = form_attrs|merge({'data-folio-record-type': type, 'data-folio-record-id': record_id}) %}{% endif %}
         {% if unsaved_state and edit_url|default(null) %}{% set form_attrs = form_attrs|merge({'data-folio-edit-url': edit_url}) %}{% endif %}
         {% if unsaved_state and refused|default(false) %}{% set form_attrs = form_attrs|merge({'data-folio-refused': ''}) %}{% endif %}
         {% if multipart|default(false) %}{% set form_attrs = form_attrs|merge({'enctype': 'multipart/form-data'}) %}{% endif %}

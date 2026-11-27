@@ -98,7 +98,7 @@ function editor({ pagePreview = false } = {}) {
     const splitEl = el(doc.body, 'div', { 'data-folio-split': '', 'data-mode': 'form' }, 'folio-split');
     splitEl.style = { setProperty() {} };
     const host = el(splitEl, 'div', {}, 'folio-split-form');
-    const form = el(host, 'form', { id: 'folio-record', 'data-folio-record-type': 'post', 'data-folio-record-id': 'p1' });
+    const form = el(host, 'form', { id: 'folio-record', action: '/folio/post/p1' });
     el(form, 'input', { type: 'hidden', name: '_version' });
     const title = el(form, 'input', { type: 'text', name: 'title' });
     const stage = el(splitEl, 'section', pagePreview

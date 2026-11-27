@@ -112,11 +112,11 @@ final class LinkedRecordPreviewTest extends TestCase
         // A type with a frontend route: the drawer shows no preview of its own, so nothing in it can open another drawer.
         $this->assertStringNotContainsString('data-folio-stage', $drawer, 'no nested preview in the drawer');
         $this->assertStringNotContainsString('data-folio-split', $drawer);
-        $this->assertStringNotContainsString('data-folio-record-type', $drawer);
         $full = (string) $this->send('GET', '/folio/post/p1/edit')->getBody();
         $this->assertStringContainsString('/folio/post/p1/edit?locale=de"', $full, 'the full page as before');
         $this->assertStringContainsString('data-folio-stage', $full, 'with its preview');
-        $this->assertStringContainsString('data-folio-record-type="post" data-folio-record-id="p1"', $full, 'the record it has open: a click on it in the preview opens no drawer (admin.js)');
+        $this->assertStringContainsString('id="folio-record"', $full);
+        $this->assertStringContainsString('action="/folio/post/p1"', $full, 'the record it has open, which admin.js opens no drawer for');
 
         $saved = $this->send('POST', '/folio/note/n1?_drawer=1', ['name' => 'Open daily', '_locale' => 'en']);
         $body = (string) $saved->getBody();
