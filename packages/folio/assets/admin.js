@@ -923,10 +923,20 @@
 
     // A linked record clicked in either preview (a template's preview_mark()): its form in the drawer.
     // Only a well-formed type key and id make the address; the edit route checks the permission (403).
-    // Its save (folio:drawer-saved) renders both previews again.
+    // Its save (folio:drawer-saved) renders both previews again. The record this editor has open
+    // (form.twig's data-folio-record-type and -id) opens no drawer: a save there would make this
+    // form's next save conflict. Its first field takes the focus instead.
     function openLinkedRecord(type, id) {
         if (typeof type !== 'string' || !/^[a-z][a-z0-9_]*$/.test(type)) { return; }
         if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(id)) { return; }
+        var form = document.getElementById('folio-record');
+        if (form && form.getAttribute('data-folio-record-type') === type && form.getAttribute('data-folio-record-id') === id) {
+            var first = Array.prototype.find.call(form.querySelectorAll('input, textarea, select, trix-editor'), function (el) {
+                return el.getAttribute('type') !== 'hidden';
+            });
+            if (first && first.focus) { first.focus(); }
+            return;
+        }
         var prefix = ((document.body && document.body.getAttribute('data-folio-prefix')) || '').replace(/\/+$/, '');
         openDrawer(prefix + '/' + type + '/' + id + '/edit?_drawer=1');
     }

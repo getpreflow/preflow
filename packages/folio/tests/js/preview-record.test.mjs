@@ -98,7 +98,9 @@ function editor({ pagePreview = false } = {}) {
     const splitEl = el(doc.body, 'div', { 'data-folio-split': '', 'data-mode': 'form' }, 'folio-split');
     splitEl.style = { setProperty() {} };
     const host = el(splitEl, 'div', {}, 'folio-split-form');
-    el(host, 'form', { id: 'folio-record' });
+    const form = el(host, 'form', { id: 'folio-record', 'data-folio-record-type': 'post', 'data-folio-record-id': 'p1' });
+    el(form, 'input', { type: 'hidden', name: '_version' });
+    const title = el(form, 'input', { type: 'text', name: 'title' });
     const stage = el(splitEl, 'section', pagePreview
         ? { 'data-folio-stage': '', 'data-preview-url': '/folio/post/p1/preview', 'data-page-preview': '', 'data-page-preview-url': '/folio/preview/page/post/p1' }
         : { 'data-folio-stage': '', 'data-preview-url': '/folio/post/p1/preview' });
@@ -115,7 +117,7 @@ function editor({ pagePreview = false } = {}) {
     const drawer = () => doc.querySelector('.folio-drawer iframe');
     const from = (frame, msg) => w.receive({ source: 'folio-preview', type: 'open', ...msg }, 'https://site.test', frame.contentWindow);
     const saved = () => doc.dispatchEvent(new w.CustomEvent('folio:drawer-saved', { detail: { type: 'member', id: 'm1' } }));
-    return { w, doc, fetched, split, live, page, pageTab, drawer, from, saved };
+    return { w, doc, fetched, split, live, page, pageTab, drawer, from, saved, title };
 }
 
 test('the editor opens the linked record in the drawer, from the live and the whole-page preview', () => {
@@ -126,6 +128,17 @@ test('the editor opens the linked record in the drawer, from the live and the wh
 
     e.from(e.page, { recordType: 'team_member', id: 'A-b_9' });
     assert.equal(e.drawer().src, '/folio/team_member/A-b_9/edit?_drawer=1', 'the whole-page frame\'s bridge too');
+});
+
+test('the record open in the editor opens no drawer: its form takes the focus', () => {
+    const e = editor();
+
+    e.from(e.live, { recordType: 'post', id: 'p1' });
+    assert.equal(e.drawer(), null, 'no second copy of the record, whose save would make this form\'s next save conflict');
+    assert.equal(e.doc.activeElement, e.title, 'the form\'s first field');
+
+    e.from(e.page, { recordType: 'post', id: 'p2' });
+    assert.equal(e.drawer().src, '/folio/post/p2/edit?_drawer=1', 'another record of the same type opens');
 });
 
 test('a forged type or id is ignored', () => {
