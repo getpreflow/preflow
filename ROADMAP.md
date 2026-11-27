@@ -4,7 +4,7 @@
 
 ## Current State
 
-**v0.93.0** — [TEST COUNT: integrator fills in at release] tests, 29 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.93.0** — 12096 tests, 29 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -525,7 +525,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
-- **API core (v0.93.0, released [RELEASE DATE: integrator fills in at release]):** every content type readable, writable and describable without the Folio admin, so a site writes any API style (a simple REST API, a versioned `/v1` API with links, GraphQL) on core building blocks, under the same rules as Folio's form.
+- **API core (v0.93.0, released 2026-11-27):** every content type readable, writable and describable without the Folio admin, so a site writes any API style (a simple REST API, a versioned `/v1` API with links, GraphQL) on core building blocks, under the same rules as Folio's form.
   - **Added (data):** what a field's value means, without any adapter. `Preflow\Data\Values\FieldValue` (`toStored($input, $field)`: one language's input value as `saveType()` stores it, converting and never refusing; `toOutput($stored, $field)`: a stored value, as a driver returns it, to a JSON-safe output value; `shape($field)`: the output shape's name) with the optional companions `DescribesShapes` (`shapes()`), `CleansOnWrite` (`clean()`), `MergesInput` (`merge()`), `ListsReferences` (`references()`) and `ListsVisibleReferences` (`visibleReferences()`). `FieldKinds::value($type, $value)`, `valueOf($field)` (`RawValue`, shape `raw`, for a type without one), `hasValue()` and `values()`. The core values (`Values\CoreValues::register()`, `CoreValues::SHAPES`, `Values\Core\*`): `string`, `text`, `number`, `boolean`, `date`, `select`, `tags`, `relation`, `asset` and `richtext`, registered on every `DataManager`.
   - **Added (data):** the core's HTML cleaner. `Html\HtmlCleaner` (`clean(string): string`) and its default `Html\SymfonyHtmlCleaner::standard()` (symfony/html-sanitizer, the config Folio's rich text used; `sanitizer()` gives the Symfony sanitizer to code that needs its interface); `DataManager::htmlCleaner()`, `htmlCleanerFrom()` (the application hands a bound `HtmlCleaner` to it) and `cleaning()` (`Values\StoredCleaning`: `apply()`, `fields()`, `systemKey($key, $clean)` for a package's own system key).
   - **Added (data):** labels without an admin. `Labels\DeclaredLabels` (implements `TypeLabels` and `FieldLabels`: a declared label, a label per language with fallback then English, a key-shaped label looked up through the translate closure, else the key capitalised or the field name humanized) and `Labels\DataLabels`; `DataManager::labels()` (the bound labels where one is bound, else the declared ones) and `translateLabelsWith()` (the application wires preflow/i18n's translator). `RecordTitle::field()`.
