@@ -301,8 +301,10 @@ $container->get(Preflow\Blocks\Layouts\AreaLayoutSets::class)->add('columns', fn
 ```
 
 It is stored as `{"layout": "2-1", "areas": {"c1": [...], "c2": [...]}}` and it gets the same
-"not shown" rule. Area names start with a letter or `_` and are never only numbers (a
-list keyed 0, 1, 2 would be stored as a JSON list, not a map). A stored layout key the set no
+"not shown" rule. Name your areas like `c1`, `c2`, never `0`, `1` (a PHP list keyed 0, 1, 2 would be stored as a JSON
+list, not a map). The core takes any name a set gives; Folio's form ignores a posted area whose name
+does not start with a letter or `_`. The properties of a `#[Layout]` class are checked at boot: a
+lower-case letter first, then lower-case letters, digits and `_`. A stored layout key the set no
 longer has resolves to the set's first layout with as many areas, else its `fallback`, else its
 first layout (`AreaLayoutSet::resolve($key, $count)`).
 
@@ -342,7 +344,7 @@ share link and outside every render it prints nothing, so no markup changes for 
 - **Clickable ids:** the id must match `^[A-Za-z0-9_-]{1,64}$` for the click to open the record;
   Folio ignores any other id.
 - **Your own marks:** bind a `RecordPreviewMarks` (`attributes(string $type, string $id): array`).
-  A name that does not start with `data-` is refused with an exception.
+  A name that is not a lower-case `data-…` name (`data-` and lower-case letters, digits and `-`) is refused with an exception.
 
 ## Configuration
 
