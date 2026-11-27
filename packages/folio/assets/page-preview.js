@@ -2,10 +2,11 @@
  * Live is admin.js's preview of the form as typed (the type's template). Whole page loads the
  * record's real page (PagePreviewController: its route, layout, navigation, SEO, with the saved
  * working copies) into a frame of its own, and loads it again after each autosave, so it follows
- * the draft a few seconds behind the typing. "View as" (shown with Whole page, when the editor may
- * view as roles) reloads it as the chosen role. The device switch sizes both frames. The chosen
- * tab is remembered in localStorage (an admin convenience). A record that was never saved has no
- * page: its Whole page tab is disabled and says why (the template). Vanilla, no build step.
+ * the draft a few seconds behind the typing, and after a save in the drawer (folio:drawer-saved).
+ * "View as" (shown with Whole page, when the editor may view as roles) reloads it as the chosen
+ * role. The device switch sizes both frames. The chosen tab is remembered in localStorage (an admin
+ * convenience). A record that was never saved has no page: its Whole page tab is disabled and says
+ * why (the template). Vanilla, no build step.
  */
 (function () {
     'use strict';
@@ -94,6 +95,11 @@
         document.addEventListener('htmx:afterRequest', function (e) {
             var elt = e.detail && e.detail.elt;
             if (!elt || elt.tagName !== 'FORM' || !e.detail.successful || (elt.getAttribute('hx-post') || '').indexOf('/autosave') < 0) { return; }
+            if (current === 'page') { load(); } else { stale = true; }
+        });
+
+        // A record saved in the drawer (a linked record opened from either preview): the page shows it.
+        document.addEventListener('folio:drawer-saved', function () {
             if (current === 'page') { load(); } else { stale = true; }
         });
 

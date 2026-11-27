@@ -727,6 +727,14 @@
             }
         });
 
+        // A record saved in the drawer (a linked record opened from the preview, a new related record):
+        // the preview shows it as saved; while only the form shows, when the preview shows again.
+        document.addEventListener('folio:drawer-saved', function () {
+            if (split.getAttribute('data-mode') === 'form') { stale = true; return; }
+            if (timer) { clearTimeout(timer); timer = null; }
+            render();
+        });
+
         preview.setMode = setMode;
         preview.mode = function () { return split.getAttribute('data-mode'); };
         setMode(stored('folio-split-mode') || (window.innerWidth >= 1100 ? 'split' : 'form'));
@@ -908,7 +916,19 @@
             selectInForm(uid, field);
         } else if (data.type === 'ready') {
             repostHighlights();
+        } else if (data.type === 'open') {
+            openLinkedRecord(data.recordType, data.id);
         }
+    }
+
+    // A linked record clicked in either preview (a template's preview_mark()): its form in the drawer.
+    // Only a well-formed type key and id make the address; the edit route checks the permission (403).
+    // Its save (folio:drawer-saved) renders both previews again.
+    function openLinkedRecord(type, id) {
+        if (typeof type !== 'string' || !/^[a-z][a-z0-9_]*$/.test(type)) { return; }
+        if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(id)) { return; }
+        var prefix = ((document.body && document.body.getAttribute('data-folio-prefix')) || '').replace(/\/+$/, '');
+        openDrawer(prefix + '/' + type + '/' + id + '/edit?_drawer=1');
     }
 
     // ---- Dialogs: window.folioConfirm and window.folioAlert ---------------------------------

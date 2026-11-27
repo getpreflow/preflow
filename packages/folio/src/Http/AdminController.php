@@ -819,6 +819,13 @@ final class AdminController
         if (!$this->catalog->has($type)) {
             return NotFound::response($request, FolioText::get('folio.errors.unknown_type'));
         }
+        $drawer = $this->isDrawer($request);
+        // The drawer (a linked record opened from the preview, 0.92) is for editing: the route asks
+        // {type}.view, the drawer the edit permission the save asks too (and a type that allows editing).
+        if ($drawer && !$this->can($type . '.edit')) {
+            return Forbidden::response($request, $this->engine, $this->prefix, $this->catalog,
+                $this->typeActions->readonly($type) ? FolioText::get('folio.form.readonly_note', ['label' => $this->labelFor($type)]) : null);
+        }
         $record = $this->dm->findType($type, $id);
         if ($record === null) {
             return NotFound::response($request, FolioText::get('folio.errors.not_found'));
@@ -829,12 +836,14 @@ final class AdminController
         return $this->form(
             $type,
             $record->toArray(),
-            $this->prefix . '/' . $type . '/' . $id,
+            $this->prefix . '/' . $type . '/' . $id . ($drawer ? '?_drawer=1' : ''),
             FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]),
             [],
             $csrf,
+            layout: $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig',
             locale: $this->requestLocale($request, $this->registry->get($type)),
-            editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit',
+            // Another language of the record stays in the drawer.
+            editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit' . ($drawer ? '?_drawer=1' : ''),
             notice: self::restoredNotice($request) ?? $this->confirmedNotice($request, $type),
         );
     }
@@ -925,21 +934,34 @@ final class AdminController
             return $refused;
         }
         $locale = $this->requestLocale($request, $typeDef);
+        // In the drawer (0.92): the form stays in the drawer's layout, and a save hands back to the editor.
+        $drawer = $this->isDrawer($request);
+        $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
+        $base = $this->prefix . '/' . $type . '/' . $id;
+        $action = $base . ($drawer ? '?_drawer=1' : '');
+        $editUrl = $base . '/edit' . ($drawer ? '?_drawer=1' : '');
         $record = $this->drafts->build($typeDef, $request, $existing, $locale, $this->can('assets.upload'));
         if ($this->drafts->buildErrors() !== []) {
-            return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . '/' . $id, FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), $this->drafts->buildErrors(), $csrf, 422, locale: $locale, editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit');
+            return $this->form($type, $record->toArray(), $action, FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), $this->drafts->buildErrors(), $csrf, 422, $layout, locale: $locale, editUrl: $editUrl);
         }
-        $action = $this->prefix . '/' . $type . '/' . $id;
         $failed = $this->saveForm($request, $record, $this->saveOptions($request, $type, publish: true), false,
-            fn (array $values, array $errors, int $status, bool $saved, ?string $notice, bool $reload): ResponseInterface => $this->form($type, $values, $action, FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), $errors, $csrf, $status,
+            fn (array $values, array $errors, int $status, bool $saved, ?string $notice, bool $reload): ResponseInterface => $this->form($type, $values, $action, FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), $errors, $csrf, $status, $layout,
                 locale: $locale,
-                editUrl: $action . '/edit',
+                editUrl: $editUrl,
                 notice: $notice,
-                reloadUrl: $reload ? $action . '/edit' : null,
+                reloadUrl: $reload ? $editUrl : null,
             ),
         );
         if ($failed !== null) {
             return $failed;
+        }
+        if ($drawer) {
+            // As store() does: the saved record back to the editor below (drawer_saved.twig), which
+            // renders its previews again; "Save and leave" (_folio_next) is the full-page editor's.
+            return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $this->engine->render('@folio/admin/drawer_saved.twig', [
+                'type' => $type,
+                'id' => $record->getId() ?? $id,
+            ]));
         }
 
         return new Response(302, ['Location' => self::leaveTo($request) ?? $this->prefix . '/' . $type . $this->localeQuery($typeDef, $locale)]);
@@ -1596,7 +1618,7 @@ final class AdminController
             }
             $localeErrors[] = [
                 'language' => self::languageName($code),
-                'url' => ($editUrl ?? $action) . '?locale=' . rawurlencode($code),
+                'url' => self::withLocale($editUrl ?? $action, $code),
                 'field' => $incomplete ? '' : $this->labels->field($type, $field),
                 'messages' => (array) $messages,
             ];
@@ -1612,7 +1634,7 @@ final class AdminController
                 $languages[] = [
                     'code' => $code,
                     'name' => self::languageName($code),
-                    'url' => ($editUrl ?? $action) . '?locale=' . rawurlencode($code),
+                    'url' => self::withLocale($editUrl ?? $action, $code),
                     'active' => $code === $locale,
                     'state' => $state,
                     // The share of the default language's texts this one has (the bar's fill).
@@ -2591,6 +2613,12 @@ final class AdminController
     private function listQuery(string $type, TypeDefinition $typeDef, array $listConfig): \Preflow\Data\QueryBuilder
     {
         return \Preflow\Folio\Content\ListOrder::apply($this->dm->queryType($type), $typeDef, $listConfig);
+    }
+
+    /** $url in the language $code: "?locale=…", or "&locale=…" after a query it has (the drawer's "_drawer=1"). */
+    private static function withLocale(string $url, string $code): string
+    {
+        return $url . (str_contains($url, '?') ? '&' : '?') . 'locale=' . rawurlencode($code);
     }
 
     private function isDrawer(ServerRequestInterface $request): bool

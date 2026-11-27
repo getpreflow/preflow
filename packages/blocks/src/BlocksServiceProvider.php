@@ -11,6 +11,8 @@ use Preflow\Core\Cache\CacheRegistry;
 use Preflow\Core\Cache\FileCache;
 use Preflow\Core\Composer\InstalledPackages;
 use Preflow\Core\Container\Container;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Purpose;
 use Preflow\Blocks\Describe\ContentDescription;
 use Preflow\Blocks\Layouts\AreaLayoutSets;
 use Preflow\Blocks\Layouts\Layout;
@@ -49,8 +51,9 @@ use Preflow\View\TemplateFunctionDefinition;
  *
  * The registry is a boot-manifest catalog ("blocks"); without a manifest it is cached in
  * blocks.cache when debug is off (Settings → Cache and cache:clear list it). The renderer
- * asks BlockLocale, BlockTextCleaner and BlockPreviewMarks: a provider (the app's, Folio)
- * binds its own in register(), and boot() binds the plain defaults for the rest.
+ * asks BlockLocale, BlockTextCleaner and BlockPreviewMarks (preview_mark() asks RecordPreviewMarks):
+ * a provider (the app's, Folio) binds its own in register(), and boot() binds the plain defaults for
+ * the rest.
  *
  * Page layouts (since 0.92): the layout classes (LayoutRegistry, found and cached like blocks)
  * and, with a type registry, PageLayouts for the types with "layouts" — their option checked at
@@ -163,6 +166,9 @@ final class BlocksServiceProvider extends ServiceProvider
         if (!$container->bound(BlockPreviewMarks::class)) {
             $container->singleton(BlockPreviewMarks::class, static fn (): BlockPreviewMarks => new DefaultBlockPreviewMarks());
         }
+        if (!$container->bound(RecordPreviewMarks::class)) {
+            $container->singleton(RecordPreviewMarks::class, static fn (): RecordPreviewMarks => new DefaultRecordPreviewMarks());
+        }
 
         self::bootPageLayouts($container);
         self::bindApi($container);
@@ -178,7 +184,66 @@ final class BlocksServiceProvider extends ServiceProvider
                 callable: static fn (mixed $blocks, bool $preview = false): string => $container->get(BlockRenderer::class)->render($blocks, $preview),
                 isSafe: true,
             ));
+            // preview_mark(type, record) (since 0.92): a linked record's element marked for the editor.
+            $container->get(TemplateEngineInterface::class)->addFunction(new TemplateFunctionDefinition(
+                name: 'preview_mark',
+                callable: static fn (string $type, mixed $record): string => self::previewMark($container, $type, $record),
+                isSafe: true,
+            ));
         }
+    }
+
+    /**
+     * preview_mark(type, record): the RecordPreviewMarks attributes as ` name="value"` (escaped) for
+     * the element a template shows a linked record in, only while the render is a preview
+     * (Purpose::Preview): a visit, a share-link preview, every other render and code outside every
+     * render (no context: nothing is previewed) get ''. $record is the
+     * record's id, an array holding the type's id field, or a DynamicRecord; without an id, ''.
+     * The template marks the element itself: nothing is marked on its own.
+     *
+     * @throws \LogicException when a RecordPreviewMarks gives an attribute name that is not data-…
+     */
+    private static function previewMark(Container $container, string $type, mixed $record): string
+    {
+        if (Contexts::peek()?->purpose !== Purpose::Preview || $type === '') {
+            return '';
+        }
+        $id = self::recordId($container, $type, $record);
+        if ($id === null) {
+            return '';
+        }
+        $marks = $container->get(RecordPreviewMarks::class);
+        $html = '';
+        foreach ($marks->attributes($type, $id) as $name => $value) {
+            if (preg_match('/^data-[a-z0-9]+(-[a-z0-9]+)*$/', (string) $name) !== 1) {
+                throw new \LogicException(sprintf('%s gave the attribute name "%s"; preview marks are data-… attributes in lower case (data-record-id).', $marks::class, $name));
+            }
+            $html .= ' ' . $name . '="' . htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '"';
+        }
+
+        return $html;
+    }
+
+    /** The id preview_mark() is given: a scalar, a DynamicRecord's, or an array's under the type's id field. */
+    private static function recordId(Container $container, string $type, mixed $record): ?string
+    {
+        if ($record instanceof DynamicRecord) {
+            $id = $record->getId();
+        } elseif (is_array($record)) {
+            $types = $container->bound(TypeRegistry::class) ? $container->get(TypeRegistry::class)
+                : ($container->bound(DataManager::class) ? $container->get(DataManager::class)->getTypeRegistry() : null);
+            if ($types === null || !$types->has($type)) {
+                return null;
+            }
+            $id = $record[$types->get($type)->idField] ?? null;
+        } else {
+            $id = $record;
+        }
+        if (is_int($id)) {
+            $id = (string) $id;
+        }
+
+        return is_string($id) && $id !== '' ? $id : null;
     }
 
     /**

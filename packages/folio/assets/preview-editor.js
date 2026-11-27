@@ -3,7 +3,9 @@
    asks the editor to open that block or field; the editor asks back to
    highlight what has focus in the form: the block card selected there stays outlined, with its
    label, until another card is selected (a "sticky" highlight); a top-level field is outlined while
-   it has the focus. Messages are same-origin only.
+   it has the focus. A linked record the page template marked (preview_mark(): data-folio-record,
+   data-folio-record-id) is outlined with its label too, and a click on it asks the editor to open that
+   record (the innermost mark wins: a record inside a block opens the record). Messages are same-origin only.
    Outlines live in an overlay layer of their own: the site's elements get no
    classes, styles or children, so the preview lays out exactly like the page. */
 (function () {
@@ -79,17 +81,26 @@
         window.parent.postMessage(Object.assign({ source: 'folio-preview' }, msg), window.location.origin);
     }
 
-    // Hover: outline the innermost block and show its label.
-    // Hover: outline the innermost block, show its label, and underline the
+    // The linked record under el (preview_mark()) when it is the innermost mark: inside the block around
+    // el, or outside every block. A block inside a record is the innermost one instead.
+    function recordAt(el, block) {
+        var record = el.closest ? el.closest('[data-folio-record]') : null;
+        if (!record || (block && !block.contains(record))) { return null; }
+        return record;
+    }
+
+    // Hover: outline the innermost block or linked record, show its label, and underline the
     // field target (folio_editable) under the pointer: a click opens that field.
     document.addEventListener('mouseover', function (e) {
         var block = e.target.closest ? e.target.closest('[data-folio-block]') : null;
+        var record = recordAt(e.target, block);
         var field = e.target.closest ? e.target.closest('[data-folio-edit]') : null;
-        if (field && field.closest('[data-folio-block]') !== block) { field = null; }
-        if (block === hovered && field === hoveredField) { return; }
-        hovered = block;
+        if (record || (field && field.closest('[data-folio-block]') !== block)) { field = null; }
+        var target = record || block;
+        if (target === hovered && field === hoveredField) { return; }
+        hovered = target;
         hoveredField = field;
-        label.textContent = block ? (block.getAttribute('data-folio-label') || blockWord()) : '';
+        label.textContent = target ? (target.getAttribute('data-folio-label') || (record ? '' : blockWord())) : '';
         schedule();
     });
     document.addEventListener('mouseleave', function () { hovered = null; hoveredField = null; schedule(); });
@@ -123,8 +134,16 @@
     document.addEventListener('click', function (e) {
         if (!e.target.closest) { return; }
         var block = e.target.closest('[data-folio-block]');
+        var record = recordAt(e.target, block);
         var edit = e.target.closest('[data-folio-edit]');
         var region = e.target.closest('[data-folio-field]');
+        if (record) {
+            // A linked record: the editor opens it (in its drawer), not the block around it.
+            e.preventDefault();
+            e.stopPropagation();
+            send({ type: 'open', recordType: record.getAttribute('data-folio-record') || '', id: record.getAttribute('data-folio-record-id') || '' });
+            return;
+        }
         if (locked && !block && !region && e.target.closest(INTERACTIVE)) {
             e.preventDefault();
             e.stopPropagation();

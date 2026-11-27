@@ -195,6 +195,10 @@ final class FolioServiceProvider extends ServiceProvider
         if (!$container->bound(\Preflow\Blocks\BlockPreviewMarks::class)) {
             $container->singleton(\Preflow\Blocks\BlockPreviewMarks::class, static fn (): \Preflow\Blocks\BlockPreviewMarks => new \Preflow\Folio\Content\FolioBlockPreviewMarks());
         }
+        // Linked records a template marks with preview_mark() (0.92): opened in the drawer from the preview.
+        if (!$container->bound(\Preflow\Blocks\RecordPreviewMarks::class)) {
+            $container->singleton(\Preflow\Blocks\RecordPreviewMarks::class, static fn (): \Preflow\Blocks\RecordPreviewMarks => new \Preflow\Folio\Content\FolioRecordPreviewMarks($displayLabels));
+        }
 
         // Rebuilt on the next request; Settings → Cache and cache:clear list it (and the blocks cache, preflow/blocks').
         $caches = $container->get(\Preflow\Core\Cache\CacheRegistry::class);
