@@ -643,7 +643,7 @@ final class FolioServiceProvider extends ServiceProvider
             $registry->register(new SelectFieldType());
             $registry->register(new EnvFieldType());
             $registry->register(new \Preflow\Folio\Field\Types\TagsFieldType());
-            $registry->register(new BlocksFieldType(
+            $registry->register($blocksType = new BlocksFieldType(
                 $c->get(BlockRegistry::class),
                 $registry,
                 $c->get(\Preflow\Blocks\BlocksConfig::class)->maxDepth,
@@ -653,6 +653,14 @@ final class FolioServiceProvider extends ServiceProvider
                 $this->dataManager($c, $c->get(Application::class))?->fieldKinds(),
                 // The core's block value checks (0.92), which every write of a record runs too.
                 $c->bound(\Preflow\Blocks\BlockValueChecks::class) ? $c->get(\Preflow\Blocks\BlockValueChecks::class) : null,
+            ));
+            // The areas field (0.92: the columns block's columns): a layout from a set preflow/blocks
+            // holds, its areas drawn by the page layout editor.
+            $registry->register(new \Preflow\Folio\Field\Types\AreasFieldType(
+                $blocksType,
+                static fn (): \Preflow\Blocks\Layouts\AreaLayoutSets => $c->get(\Preflow\Blocks\Layouts\AreaLayoutSets::class),
+                static fn (): \Preflow\Folio\Field\AreasEditor => new \Preflow\Folio\Field\AreasEditor($c->get(\Preflow\Folio\View\FolioEngine::class), $blocksType, $c->get(BlockRegistry::class), $prefix),
+                $c->get(\Preflow\Folio\View\FolioEngine::class),
             ));
             // The sanitizer is built on the first sanitize call, not on every request.
             $registry->register(new RichTextFieldType(\Preflow\Folio\Field\LazyHtmlSanitizer::standard()));

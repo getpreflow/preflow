@@ -309,7 +309,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
             $ctx->nestedErrors,
             $ctx->locales ?? Locales::single($ctx->locale ?? 'en'),
             $ctx->locale ?? ($ctx->locales?->default ?? 'en'),
-            0,
+            $ctx->depth,
             $ctx->record,
         );
     }
@@ -421,14 +421,19 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         return $value;
     }
 
-    /** @param array<string, mixed> $block */
+    /**
+     * The block with a new uid, and so has every block inside its fields that hold blocks (a blocks
+     * field's, an areas field's columns: BlockLists).
+     *
+     * @param array<string, mixed> $block
+     */
     private function withFreshUids(array $block): array
     {
         $block['_uid'] = bin2hex(random_bytes(8));
         $definition = $this->blocks->get((string) ($block['_block'] ?? ''));
         foreach ($definition?->fields ?? [] as $name => $field) {
-            if ($this->fieldTypes->get($field->type) instanceof self && is_array($block[$name] ?? null)) {
-                $block[$name] = array_map(fn ($child) => is_array($child) ? $this->withFreshUids($child) : $child, $this->fromStorage($block[$name]));
+            if (\Preflow\Blocks\BlockLists::holds($field) && is_array($block[$name] ?? null)) {
+                $block[$name] = \Preflow\Blocks\BlockLists::map($field, $block[$name], fn (array $list): array => array_map($this->withFreshUids(...), $list));
             }
         }
 
@@ -440,6 +445,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
      * @param array<string, mixed>        $config
      * @param list<string>                $errors       field-level errors (min/max)
      * @param array<string, list<string>> $nestedErrors keys "<uid>.<field>…" relative to this field
+     * @param array{type: string, id: ?string}|null $record
      * @param array{url: string, target: string, targets: \Closure(string): list<array{area: string, label: string}>}|null $move
      */
     private function renderField(string $name, string $label, ?string $help, array $blocks, array $config, array $errors, array $nestedErrors, Locales $locales, string $locale, int $depth, ?array $record = null, bool $picker = true, ?array $move = null, bool $emptiable = false): string
@@ -527,6 +533,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
     /**
      * @param array<string, mixed>        $block
      * @param array<string, list<string>> $errors keys "<field>…" relative to this block
+     * @param array{type: string, id: ?string}|null $record
      * @param array{url: string, target: string, targets: \Closure(string): list<array{area: string, label: string}>}|null $move
      */
     private function renderCard(\Preflow\Blocks\BlockDefinition $definition, array $block, string $namePrefix, array $errors, Locales $locales, string $locale, int $depth, bool $open = false, ?array $record = null, ?array $move = null): string
@@ -554,20 +561,21 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
             $this->assertLeaf($definition, $field, $def, $type);
             $raw = $block[$field] ?? null;
 
-            if ($type instanceof self) {
-                $fields[] = $conditional($field, $type->renderField(
-                    $base . '[' . $field . ']',
-                    self::fieldLabel($def->label, $field),
-                    $def->help !== null ? \Preflow\Folio\FolioText::label($def->help) : null,
-                    $type->fromStorage($raw),
-                    $def->config,
-                    $errors[$field] ?? [],
-                    self::scoped($errors, $field),
-                    $locales,
-                    $locale,
-                    $depth + 1,
-                    $record,
-                ));
+            if (\Preflow\Blocks\BlockLists::holds($def)) {
+                // A field holding blocks (a blocks field, an areas field's columns) one level deeper.
+                $fields[] = $conditional($field, $type->renderEditor(new FieldContext(
+                    name: $base . '[' . $field . ']',
+                    label: self::fieldLabel($def->label, $field),
+                    help: $def->help !== null ? \Preflow\Folio\FolioText::label($def->help) : null,
+                    value: $type->fromStorage($raw),
+                    errors: $errors[$field] ?? [],
+                    config: $def->config,
+                    nestedErrors: self::scoped($errors, $field),
+                    locale: $locale,
+                    locales: $locales,
+                    record: $record,
+                    depth: $depth + 1,
+                )));
                 continue;
             }
 
@@ -672,7 +680,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
 
     /**
      * The block's values, field => value, as FieldContext::$values holds a record's: each in the
-     * default language, as its own field type reads it; nested blocks fields left out.
+     * default language, as its own field type reads it; fields holding blocks (BlockLists) left out.
      *
      * @param array<string, mixed> $block
      * @return array<string, mixed>
@@ -681,10 +689,10 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
     {
         $values = [];
         foreach ($definition->fields as $name => $field) {
-            $type = $this->fieldTypes->get($field->type);
-            if ($type instanceof self) {
+            if (\Preflow\Blocks\BlockLists::holds($field)) {
                 continue;
             }
+            $type = $this->fieldTypes->get($field->type);
             $raw = $field->translatable
                 ? LocaleValue::pick($block[$name] ?? null, $locales, $locales->default)
                 : LocaleValue::default($block[$name] ?? null, $locales);
@@ -816,7 +824,8 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         }
         foreach ($this->blocks->all() as $definition) {
             foreach ($definition->fields as $field) {
-                if ($field->type !== $this->key() && $this->fieldTypes->has($field->type)) {
+                // A field holding blocks (BlockLists) draws these same blocks: its assets are these.
+                if (!\Preflow\Blocks\BlockLists::holds($field) && $this->fieldTypes->has($field->type)) {
                     $assets = [...$assets, ...$this->fieldTypes->get($field->type)->assets()];
                 }
             }

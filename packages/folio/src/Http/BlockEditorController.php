@@ -11,6 +11,7 @@ use Preflow\Data\Locales;
 use Preflow\Folio\Field\AreasEditor;
 use Preflow\Folio\Field\BuildContext;
 use Preflow\Folio\Field\FieldTypeRegistry;
+use Preflow\Folio\Field\Types\AreasFieldType;
 use Preflow\Folio\Field\Types\BlocksFieldType;
 use Preflow\Folio\FolioText;
 use Psr\Http\Message\ResponseInterface;
@@ -76,11 +77,21 @@ final class BlockEditorController
     {
         $query = $request->getQueryParams();
         $name = is_string($query['name'] ?? null) ? $query['name'] : '';
-        if ($name !== PageLayouts::AREAS || isset($query['set'])) {
-            return new Response(400, [], FolioText::get('folio.errors.invalid_field'));
-        }
         $type = is_string($query['type'] ?? null) ? $query['type'] : '';
         $id = is_string($query['id'] ?? null) ? $query['id'] : '';
+        if (isset($query['set'])) {
+            if (!is_string($query['set']) || preg_match(self::NAME, $name) !== 1 || str_starts_with($name, PageLayouts::AREAS)) {
+                return new Response(400, [], FolioText::get('folio.errors.invalid_field'));
+            }
+            if ($type !== '' && ($refused = $this->refuse($request, $type, $id)) !== null) {
+                return $refused;
+            }
+
+            return $this->fieldAreas($request, $name, $query['set'], $type, $id);
+        }
+        if ($name !== PageLayouts::AREAS) {
+            return new Response(400, [], FolioText::get('folio.errors.invalid_field'));
+        }
         if ($type !== '' && ($refused = $this->refuse($request, $type, $id)) !== null) {
             return $refused;
         }
@@ -125,6 +136,64 @@ final class BlockEditorController
         }
 
         $html = $this->areasEditor->renderPage($this->layouts, $def, $values, $locale, [], ['type' => $type, 'id' => $id !== '' ? $id : null], AreasEditor::SWAP);
+
+        return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
+    }
+
+    /**
+     * An areas field's editor after a layout switch or a move (POST {admin}/_areas with "set", 0.92):
+     * the field's value as the form holds it (posted under "name": "<name>[layout]",
+     * "<name>[areas][<area>]"), over its stored value (the record's field, or the field of the block
+     * at that path; read only for someone who may edit the type), built as the save builds it
+     * (AreasFieldType::buildValue(), no file written); "_areas_to" a layout chosen, "_areas_move"
+     * "<uid>:<area>" a block moved to the end of an area of the layout. Nothing is stored or
+     * dropped: a column the layout lacks goes to the panel "Not shown in this layout". Answers the
+     * whole editor (AreasEditor::WHOLE) for htmx to swap in.
+     */
+    private function fieldAreas(ServerRequestInterface $request, string $name, string $set, string $type, string $id): ResponseInterface
+    {
+        $areasType = $this->fieldTypes->has('areas') ? $this->fieldTypes->get('areas') : null;
+        $blocks = $this->fieldTypes->has('blocks') ? $this->fieldTypes->get('blocks') : null;
+        if (!$areasType instanceof AreasFieldType || !$blocks instanceof BlocksFieldType) {
+            return NotFound::response($request, FolioText::get('folio.errors.invalid_field'));
+        }
+        $config = ['layouts' => $set];
+        try {
+            $layouts = $areasType->layoutSet($config);
+        } catch (\Preflow\Blocks\Layouts\LayoutConfigException) {
+            return NotFound::response($request, FolioText::get('folio.errors.invalid_field')); // a set no package registers
+        }
+        $query = $request->getQueryParams();
+        $locales = $this->locales;
+        $stored = null;
+        $record = null;
+        $keys = self::keys($name);
+        if ($type !== '' && $this->catalog?->has($type) && $this->dm !== null) {
+            $locales = $this->dm->getTypeRegistry()?->get($type)->locales ?? $locales;
+            $record = ['type' => $type, 'id' => $id !== '' ? $id : null];
+            $existing = $id !== '' ? $this->dm->findType($type, $id) : null;
+            $stored = $existing !== null ? $blocks->storedLevel($existing->toArray(), $keys) : null;
+        }
+        $locale = is_string($query['locale'] ?? null) && $locales->has($query['locale']) ? $query['locale'] : $locales->default;
+        $depth = max(0, (int) ($query['depth'] ?? 0));
+
+        $body = (array) $request->getParsedBody();
+        $posted = $body;
+        foreach ($keys as $key) {
+            $posted = is_array($posted[$key] ?? null) ? $posted[$key] : [];
+        }
+        $value = \Preflow\Blocks\Layouts\AreasValue::fromStored($areasType->buildValue($posted, $stored, [], new BuildContext($locales, $locale, false, $depth), $config));
+        $layout = is_string($body['_areas_to'] ?? null) && $body['_areas_to'] !== '' ? $body['_areas_to'] : $value->layout;
+        $areas = $value->areas;
+        $move = is_string($body['_areas_move'] ?? null) ? explode(':', $body['_areas_move'], 2) : [];
+        if (count($move) === 2 && preg_match('/^[a-f0-9]{16}$/', $move[0]) === 1) {
+            $current = \Preflow\Blocks\Layouts\AreasValue::of($layout, $areas)->resolve($layouts);
+            if (isset($current?->areas[$move[1]])) {
+                $areas = Placement::moved($areas, $move[0], $move[1]);
+            }
+        }
+
+        $html = $areasType->renderAreas($name, \Preflow\Blocks\Layouts\AreasValue::of($layout, $areas)->toStored(), $config, $locales, $locale, $depth, [], $record);
 
         return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
     }

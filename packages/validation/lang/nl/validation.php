@@ -67,5 +67,7 @@ return [
         'unknown_area' => 'De lay-out ":layout" heeft geen gebied ":name". Gebruik een van: :areas.',
         'uid_twice' => 'De uid ":uid" is aan meer dan één blok gegeven. Geef elk blok een eigen "_uid", of laat hem weg voor een nieuw blok.',
         'uid_format' => 'De uid ":uid" is geen blok-uid: een uid bestaat uit 16 hexadecimale cijfers (0-9, a-f), zoals "3f9a1c2b4d5e6f70". Laat "_uid" weg om een nieuwe te krijgen.',
+        'set_layout' => 'De lay-out ":key" hoort niet bij de lay-outs van de set ":set" (:layouts). Kies er een van.',
+        'areas_value' => 'Moet een object zijn met "layout" (de sleutel van een lay-out van de set, of null) en "areas" (namen van gebieden, elk met een lijst blokken), zoals {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
 ];

@@ -67,5 +67,7 @@ return [
         'unknown_area' => 'Layouten ":layout" har inget område ":name". Använd ett av: :areas.',
         'uid_twice' => 'Uid ":uid" har getts till mer än ett block. Ge varje block ett eget "_uid", eller utelämna det för ett nytt block.',
         'uid_format' => 'Uid ":uid" är inte ett block-uid: ett uid består av 16 hexadecimala siffror (0-9, a-f), till exempel "3f9a1c2b4d5e6f70". Utelämna "_uid" för att få ett nytt.',
+        'set_layout' => 'Layouten ":key" är inte en av layouterna i uppsättningen ":set" (:layouts). Välj en av dem.',
+        'areas_value' => 'Måste vara ett objekt med "layout" (nyckeln till en av uppsättningens layouter, eller null) och "areas" (områdesnamn, vart och ett med en lista block), till exempel {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
 ];

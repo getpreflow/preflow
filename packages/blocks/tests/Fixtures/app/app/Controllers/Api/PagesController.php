@@ -20,6 +20,8 @@ use Psr\Http\Message\ServerRequestInterface;
  * Pages as JSON, written the way a site writes its API: its own fields by name, the layout and
  * areas through the core (LayoutResource to read, LayoutInput to merge a body), and the save through
  * DataManager::saveType(), so a refusal is the core's (422 with "errors", as Folio's form refuses).
+ * An areas field of the page (0.92) is read with LayoutResource::areasField() and merged with
+ * LayoutInput::mergeField().
  * A real site adds its authentication (TokenAuthMiddleware) to the write.
  */
 #[Route('/api/pages')]
@@ -55,6 +57,12 @@ final class PagesController
         }
         // "layout" and "areas" of the body, merged under the core's rules (refusals are 422).
         $values = $this->input->merge($page->getType(), $values, $body);
+        // Its areas fields (a layout from a named set and its areas), by the same rules.
+        foreach ($this->areasFields($page) as $name => $field) {
+            if (array_key_exists($name, $body)) {
+                $values[$name] = $this->input->mergeField($field, $values[$name] ?? null, $body[$name]);
+            }
+        }
         $this->data->saveType(DynamicRecord::fromArray($page->getType(), $values));
 
         return Json::data($this->present($this->data->findIn($page->getType(), (string) $page->getId()) ?? $page));
@@ -74,6 +82,16 @@ final class PagesController
             $data[$field] = $page->get($field);
         }
 
+        foreach ($this->areasFields($page) as $name => $field) {
+            $data[$name] = $this->layouts->areasField($field, $page->get($name));
+        }
+
         return $data + ($this->layouts->toArray($page) ?? []);
+    }
+
+    /** @return array<string, \Preflow\Data\TypeFieldDefinition> the page's fields of the type "areas" */
+    private function areasFields(DynamicRecord $page): array
+    {
+        return array_filter($page->getType()->fields, static fn ($field): bool => $field->type === 'areas');
     }
 }

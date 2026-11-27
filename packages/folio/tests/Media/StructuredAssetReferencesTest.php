@@ -117,7 +117,7 @@ final class StructuredAssetReferencesTest extends TestCase
             $key = $reflection->newInstanceWithoutConstructor()->key(); // key() returns a literal
             $holds = $reflection->implementsInterface(ReferencesAssets::class)
                 || $reflection->implementsInterface(HandlesUpload::class)
-                || in_array($key, ['blocks', 'matrix'], true); // they nest other fields / have assets()
+                || in_array($key, ['blocks', 'areas', 'matrix'], true); // they nest other fields (blocks, an areas field's columns) / have assets()
             $this->assertSame($holds, in_array($key, TypeCatalog::FILE_HOLDING_FIELD_TYPES, true), "field type \"{$key}\"");
             $checked++;
         }

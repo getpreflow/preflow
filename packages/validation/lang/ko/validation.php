@@ -67,5 +67,7 @@ return [
         'unknown_area' => '레이아웃 ":layout"에는 영역 ":name"이 없습니다. 다음 중 하나를 쓰세요: :areas.',
         'uid_twice' => 'uid ":uid"가 둘 이상의 블록에 쓰였습니다. 블록마다 고유한 "_uid"를 주거나, 새 블록에서는 빼세요.',
         'uid_format' => 'uid ":uid"는 블록 uid가 아닙니다. uid는 16자리 16진수(0-9, a-f)입니다. 예: "3f9a1c2b4d5e6f70". 새 uid를 받으려면 "_uid"를 빼세요.',
+        'set_layout' => '레이아웃 ":key"은(는) 세트 ":set"의 레이아웃(:layouts)에 없습니다. 그중 하나를 선택하세요.',
+        'areas_value' => '"layout"(세트 레이아웃 중 하나의 키 또는 null)과 "areas"(영역 이름마다 블록 목록)를 가진 객체여야 합니다. 예: {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
 ];

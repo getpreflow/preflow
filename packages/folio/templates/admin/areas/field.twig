@@ -1,0 +1,9 @@
+{# The areas field (AreasFieldType, 0.92: the columns block's columns): its label and help over the
+   layout editor (AreasEditor, part "whole": the layout picker, the areas, the panel "Not shown in
+   this layout"). -#}
+<div class="form-group folio-areas-field" role="group" aria-label="{{ label }}">
+    <span class="form-label">{{ label }}</span>
+    {% if help %}<p class="form-help">{{ help }}</p>{% endif %}
+    {% for error in errors %}<div class="form-error">{{ error }}</div>{% endfor %}
+    {{ editor|raw }}
+</div>

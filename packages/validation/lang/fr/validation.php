@@ -71,5 +71,7 @@ return [
         'unknown_area' => 'La mise en page « :layout » n\'a pas de zone « :name ». Utilisez l\'une de : :areas.',
         'uid_twice' => 'L\'uid « :uid » est donné à plus d\'un bloc. Donnez à chaque bloc son propre « _uid », ou omettez-le pour un nouveau bloc.',
         'uid_format' => 'L\'uid « :uid » n\'est pas un uid de bloc : un uid compte 16 chiffres hexadécimaux (0-9, a-f), p. ex. « 3f9a1c2b4d5e6f70 ». Omettez « _uid » pour en obtenir un nouveau.',
+        'set_layout' => 'La mise en page « :key » ne fait pas partie des mises en page de l\'ensemble « :set » (:layouts). Choisissez-en une.',
+        'areas_value' => 'Doit être un objet avec « layout » (la clé d\'une mise en page de l\'ensemble, ou null) et « areas » (des noms de zones, chacun avec une liste de blocs), par exemple {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
 ];

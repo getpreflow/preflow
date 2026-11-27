@@ -67,5 +67,7 @@ return [
         'unknown_area' => '":layout" düzeninde ":name" alanı yok. Şunlardan birini kullanın: :areas.',
         'uid_twice' => '":uid" uid değeri birden fazla bloğa verilmiş. Her bloğa kendi "_uid" değerini verin ya da yeni bir blok için boş bırakın.',
         'uid_format' => '":uid" bir blok uid değeri değil: uid 16 onaltılık basamaktan (0-9, a-f) oluşur, örneğin "3f9a1c2b4d5e6f70". Yeni bir tane almak için "_uid" alanını boş bırakın.',
+        'set_layout' => '":key" düzeni ":set" kümesinin düzenlerinden (:layouts) biri değil. Bunlardan birini seçin.',
+        'areas_value' => '"layout" (kümenin düzenlerinden birinin anahtarı veya null) ve "areas" (her biri bir blok listesi olan alan adları) içeren bir nesne olmalıdır, örneğin {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
 ];

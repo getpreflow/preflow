@@ -77,5 +77,7 @@ return [
         'unknown_area' => 'The layout ":layout" has no area ":name". Use one of: :areas.',
         'uid_twice' => 'The uid ":uid" is given to more than one block. Give each block its own "_uid", or leave it out for a new one.',
         'uid_format' => 'The uid ":uid" is not a block uid: a uid is 16 hex digits (0-9, a-f), such as "3f9a1c2b4d5e6f70". Leave "_uid" out to get a fresh one.',
+        'set_layout' => 'The layout ":key" is not one of the layouts of the set ":set" (:layouts). Choose one of them.',
+        'areas_value' => 'Must be an object with "layout" (the key of one of the set\'s layouts, or null) and "areas" (area names, each with a list of blocks), such as {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
 ];

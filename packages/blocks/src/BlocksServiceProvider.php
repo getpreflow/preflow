@@ -30,7 +30,10 @@ use Preflow\Data\FieldKinds;
 use Preflow\Data\Locales;
 use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\TypeDefinition;
+use Preflow\Data\TypeFieldDefinition;
 use Preflow\Data\TypeRegistry;
+use Preflow\Data\Schema\ColumnKind;
+use Preflow\Blocks\Layouts\AreasFieldChecks;
 use Preflow\Blocks\Layouts\Rules\MessageRule;
 use Preflow\Validation\RuleFactory;
 use Preflow\Validation\ValidationContext;
@@ -114,8 +117,23 @@ final class BlocksServiceProvider extends ServiceProvider
         $app->bootManifest()->whenBuilding(static function (Application $app): void {
             $app->container()->get(LayoutRegistry::class);
         });
-        // The area layout sets packages register (the columns block's column layouts), by name.
-        $container->singleton(AreaLayoutSets::class, static fn (): AreaLayoutSets => new AreaLayoutSets());
+        // The area layout sets packages register (the columns block's column layouts), by name: one
+        // instance, whoever binds it first (a package listed before this provider may add its set).
+        if (!$container->bound(AreaLayoutSets::class)) {
+            $container->instance(AreaLayoutSets::class, new AreaLayoutSets());
+        }
+        // An areas field of a block names a set some package registers (checked when the registry is built).
+        $container->get(BlockFieldChecks::class)->add(static function (array $fields) use ($container): void {
+            foreach ($fields as $name => $field) {
+                if ($field instanceof TypeFieldDefinition && $field->type === BlockLists::AREAS) {
+                    try {
+                        $container->get(AreaLayoutSets::class)->assertNamed($field->config['layouts'] ?? null);
+                    } catch (LayoutConfigException $e) {
+                        throw new \LogicException(sprintf('field "%s": %s', $name, $e->getMessage()), 0, $e);
+                    }
+                }
+            }
+        });
 
         // One renderer per app, so nested blocks() calls see the preview state and the depth.
         $container->singleton(BlockRenderer::class, static fn (Container $c): BlockRenderer => new BlockRenderer(
@@ -228,6 +246,12 @@ final class BlocksServiceProvider extends ServiceProvider
 
             return true;
         }, $manifest->isRecording() ? $types->sources() : []);
+        // An areas field of a type names a set some package registers, as a block's does.
+        $manifest->remember('blocks.type_areas', static function () use ($container, $types): bool {
+            self::assertTypeAreas($types, $container->get(AreaLayoutSets::class));
+
+            return true;
+        }, $manifest->isRecording() ? $types->sources() : []);
 
         if ($data === null) {
             return;
@@ -238,6 +262,8 @@ final class BlocksServiceProvider extends ServiceProvider
             $container->get(LayoutRegistry::class),
             $types,
             $data,
+            sets: $container->get(AreaLayoutSets::class),
+            blocks: $container->get(BlockRegistry::class),
         ))->lines(), sqlOnly: false);
         $data->recordRules()->add(static function (TypeDefinition $def) use ($container, $data): array {
             $layouts = $container->get(PageLayouts::class);
@@ -259,17 +285,12 @@ final class BlocksServiceProvider extends ServiceProvider
             $values = $record->toArray();
             $problems = AreaContents::forPage($layouts, $def, $container->get(BlockRegistry::class), $data)
                 ->problems($values[PageLayouts::AREAS] ?? null, new ValidationContext(PageLayouts::AREAS, $values));
-            if ($problems === []) {
-                return [];
-            }
-            $rules = [];
+            $keyed = [];
             foreach ($problems as $area => $message) {
-                $rules[PageLayouts::AREAS . '.' . $area] = [new MessageRule($message)];
+                $keyed[PageLayouts::AREAS . '.' . $area] = $message;
             }
-            $validators = $container->bound(ValidatorFactory::class) ? $container->get(ValidatorFactory::class) : new ValidatorFactory(new RuleFactory());
 
-            // Through a validator, so the messages are in its language (the render's), as the rules' are.
-            return $validators->make($rules, [])->validate()->errors();
+            return self::errorsOf($container, $keyed);
         });
         $data->recordRules()->add(static function (TypeDefinition $def) use ($container, $data): array {
             $layouts = $container->get(PageLayouts::class);
@@ -277,6 +298,29 @@ final class BlocksServiceProvider extends ServiceProvider
 
             return $type === null || $type->pinned === [] ? [] : [$type->slugField => [new PinnedSlug($layouts, $data, $def)]];
         }, drafts: true);
+    }
+
+    /**
+     * Refuses at boot an areas field of a type whose "layouts" names no registered set, naming the
+     * type and the field (a type's fields as the registry reads them).
+     *
+     * @throws LayoutConfigException
+     */
+    public static function assertTypeAreas(TypeRegistry $types, AreaLayoutSets $sets): void
+    {
+        foreach ($types->keys() as $key) {
+            $schema = $types->schema($key);
+            foreach (is_array($schema['fields'] ?? null) ? $schema['fields'] : [] as $name => $field) {
+                if (!is_array($field) || ($field['type'] ?? null) !== BlockLists::AREAS) {
+                    continue;
+                }
+                try {
+                    $sets->assertNamed($field['layouts'] ?? null);
+                } catch (LayoutConfigException $e) {
+                    throw new LayoutConfigException(sprintf('Type "%s": field "%s": %s', $key, $name, $e->getMessage()), 0, $e);
+                }
+            }
+        }
     }
 
     /**
@@ -300,11 +344,13 @@ final class BlocksServiceProvider extends ServiceProvider
         $container->singleton(LayoutResource::class, static fn (Container $c): LayoutResource => new LayoutResource(
             $c->get(PageLayouts::class),
             $c->get(BlockRegistry::class),
+            $c->get(AreaLayoutSets::class),
         ));
         $container->singleton(LayoutInput::class, static fn (Container $c): LayoutInput => new LayoutInput(
             $c->get(PageLayouts::class),
             $c->get(BlockRegistry::class),
             $c->bound(ValidatorFactory::class) ? $c->get(ValidatorFactory::class) : new ValidatorFactory(new RuleFactory()),
+            $c->get(AreaLayoutSets::class),
         ));
     }
 
@@ -326,9 +372,77 @@ final class BlocksServiceProvider extends ServiceProvider
             // Bound in boot (with a type registry): resolved when the checks are first built.
             $c->bound(PageLayouts::class) ? $c->get(PageLayouts::class) : null,
             $data->fieldLabels(...),
+            $c->get(AreaLayoutSets::class),
         ));
         // Built on the first validated write, not at boot (the registry reflects over every block).
         $data->recordRules()->check(static fn (DynamicRecord $record, array $given): array => $container->get(BlockValueChecks::class)->errors($record->getType(), $record->toArray(), $given));
+
+        // The areas field (0.92): a layout from a named set and its areas, stored as JSON text on SQL.
+        $data->fieldKinds()->column(BlockLists::AREAS, ColumnKind::Text);
+        // What the areas of every areas field hold (AreaContents::forField(), against the stored
+        // value), keyed by the area that is wrong ("<field>.areas.<area>", nested under the block).
+        $data->recordRules()->check(static function (DynamicRecord $record, array $given) use ($container, $data): array {
+            $def = $record->getType();
+            $values = $record->toArray();
+            $layouts = $container->bound(PageLayouts::class) ? $container->get(PageLayouts::class) : null;
+            if (!self::holdsAreas($def, $container->get(BlockRegistry::class), $layouts)) {
+                return [];
+            }
+            $id = $values[$def->idField] ?? null;
+            $stored = is_scalar($id) && (string) $id !== '' ? $data->findIn($def, (string) $id)?->toArray() : null;
+
+            $checks = new AreasFieldChecks($container->get(AreaLayoutSets::class), $container->get(BlockRegistry::class), $layouts);
+
+            return self::errorsOf($container, $checks->problems($def, $values, $stored, $given));
+        });
+    }
+
+    /**
+     * Whether a record of the type may hold an areas value: a field of its own, a block list (a block
+     * with an areas field may be in it), or page areas. Spares the stored read for every other type.
+     */
+    private static function holdsAreas(TypeDefinition $def, BlockRegistry $blocks, ?PageLayouts $layouts): bool
+    {
+        $lists = false;
+        foreach ($def->fields as $field) {
+            if ($field->type === BlockLists::AREAS) {
+                return true;
+            }
+            $lists = $lists || BlockLists::holds($field);
+        }
+        if (!$lists && $layouts?->forType($def->key) === null) {
+            return false;
+        }
+        foreach ($blocks->all() as $block) {
+            foreach ($block->fields as $field) {
+                if ($field->type === BlockLists::AREAS) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Messages keyed by field through a validator, so they are in its language (the render's), as the
+     * rules' are.
+     *
+     * @param array<string, \Preflow\Validation\Message> $problems
+     * @return array<string, list<string>>
+     */
+    private static function errorsOf(Container $container, array $problems): array
+    {
+        if ($problems === []) {
+            return [];
+        }
+        $rules = [];
+        foreach ($problems as $key => $message) {
+            $rules[$key] = [new MessageRule($message)];
+        }
+        $validators = $container->bound(ValidatorFactory::class) ? $container->get(ValidatorFactory::class) : new ValidatorFactory(new RuleFactory());
+
+        return $validators->make($rules, [])->validate()->errors();
     }
 
     /** A warning for the site's log (its PSR logger, error_log() without one). */

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Blocks;
 
+use Preflow\Blocks\Layouts\AreaLayoutSets;
 use Preflow\Blocks\Layouts\PageLayouts;
 use Preflow\Data\FieldKinds;
 use Preflow\Data\FieldLabels;
@@ -27,9 +28,12 @@ use Preflow\Validation\ValidatorFactory;
  * rules ([]: Folio's read-only fields). Lists nest to any depth; a block no class declares (any
  * more) is skipped.
  *
+ * An areas field (0.92) is checked in the areas its layout shows, as a page's areas are.
+ *
  * Error keys: "<field>.<uid>.<leaf>", nested "<field>.<uid>.<child>.<cuid>.<leaf>", page areas
- * "_areas.<area>.<uid>.<leaf>". BlocksServiceProvider runs these on every validated write of a
- * typed record (a RecordRules check), so Folio, imports, seeds and REST refuse the same values.
+ * "_areas.<area>.<uid>.<leaf>", an areas field "<field>.areas.<area>.<uid>.<leaf>".
+ * BlocksServiceProvider runs these on every validated write of a typed record (a RecordRules
+ * check), so Folio, imports, seeds and REST refuse the same values.
  *
  * @since 0.92.0
  */
@@ -45,6 +49,8 @@ final class BlockValueChecks
         private readonly ?PageLayouts $layouts = null,
         /** @var (\Closure(): ?FieldLabels)|null names a select's source in its message (DataManager::fieldLabels()) */
         private readonly ?\Closure $labels = null,
+        /** The area layout sets (0.92): an areas field's blocks are checked in the areas its layout shows only. */
+        private readonly ?AreaLayoutSets $sets = null,
     ) {}
 
     /**
@@ -73,7 +79,7 @@ final class BlockValueChecks
             if (isset($hidden[$name]) || ($given[$name] ?? null) === []) {
                 continue;
             }
-            foreach (BlockLists::of($field, $values[$name] ?? null) as $path => $list) {
+            foreach (BlockLists::of($field, $values[$name] ?? null, $this->sets) as $path => $list) {
                 $errors += $this->blocks($list, $def->locales, $name . '.' . ($path === '' ? '' : $path . '.'));
             }
         }
@@ -109,8 +115,8 @@ final class BlockValueChecks
             $data = [];
             $rules = [];
             foreach ($definition->fields as $name => $field) {
-                $nested = BlockLists::of($field, $block[$name] ?? null);
-                if ($nested !== []) {
+                $nested = BlockLists::of($field, $block[$name] ?? null, $this->sets);
+                if (BlockLists::holds($field)) {
                     $data[$name] = $block[$name] ?? null;
                     if (!isset($hidden[$name])) {
                         foreach ($nested as $path => $children) {

@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Content;
 
+use Preflow\Blocks\BlockLists;
 use Preflow\Blocks\BlockRegistry;
 use Preflow\Blocks\BlockTextCleaner;
+use Preflow\Data\TypeFieldDefinition;
 use Preflow\Folio\Field\FieldTypeRegistry;
 
 /**
  * Rich text on its way to a template: every richtext field of a record or block,
- * nested blocks included, through the richtext field type's sanitizer. Values are
+ * nested blocks included (a blocks field's, an areas field's columns: BlockLists), through the
+ * richtext field type's sanitizer. Values are
  * sanitized when the admin saves them, but content can also arrive by import, app
  * code or older data, and templates print rich text with |raw. Blocks ask it as their BlockTextCleaner.
  */
@@ -23,7 +26,7 @@ final class SafeRichText implements BlockTextCleaner
 
     /**
      * @param array<string, mixed> $values a record's or block's values (localized or locale maps)
-     * @param array<string, object> $fields field definitions with a "type" property
+     * @param array<string, object> $fields field definitions with a "type" property (TypeFieldDefinition for those holding blocks)
      * @return array<string, mixed>
      */
     public function fields(array $values, array $fields): array
@@ -35,11 +38,9 @@ final class SafeRichText implements BlockTextCleaner
             $type = (string) ($field->type ?? '');
             if ($type === 'richtext') {
                 $values[$name] = $this->sanitize($values[$name]);
-            } elseif ($type === 'blocks' && is_array($values[$name])) {
-                $values[$name] = array_map(
-                    fn (mixed $block): mixed => is_array($block) ? $this->block($block) : $block,
-                    $values[$name],
-                );
+            } elseif ($field instanceof TypeFieldDefinition && BlockLists::holds($field) && is_array($values[$name])) {
+                // Every list of blocks the field holds (a blocks field, the areas of an areas field).
+                $values[$name] = BlockLists::map($field, $values[$name], fn (array $list): array => array_map($this->block(...), $list));
             }
         }
 

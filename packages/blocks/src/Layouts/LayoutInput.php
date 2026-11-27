@@ -9,6 +9,7 @@ use Preflow\Blocks\BlockLists;
 use Preflow\Blocks\BlockRegistry;
 use Preflow\Data\FieldVisibility;
 use Preflow\Data\TypeDefinition;
+use Preflow\Data\TypeFieldDefinition;
 use Preflow\Validation\Message;
 use Preflow\Validation\ValidationException;
 use Preflow\Validation\ValidatorFactory;
@@ -36,6 +37,10 @@ use Preflow\Validation\ValidatorFactory;
  * declares. Save the result with DataManager::saveType(): the core rules decide the rest, as for
  * Folio (the layout choice, a pin, the areas' limits, the block values).
  *
+ * mergeField() does the same for the value of an areas field ({"layout": …, "areas": {…}}, the
+ * columns block's columns): its areas are kept, refused and merged by these rules, keyed under the
+ * field.
+ *
  * @since 0.92.0
  */
 final readonly class LayoutInput
@@ -44,6 +49,8 @@ final readonly class LayoutInput
         private PageLayouts $layouts,
         private BlockRegistry $blocks,
         private ValidatorFactory $validators,
+        /** The area layout sets, for an areas field (mergeField(), 0.92). */
+        private ?AreaLayoutSets $sets = null,
     ) {}
 
     /**
@@ -80,7 +87,15 @@ final readonly class LayoutInput
             }
         }
         if (array_key_exists('areas', $input)) {
-            $values[PageLayouts::AREAS] = $this->areas($def, $values, $input['areas'], $errors);
+            $values[PageLayouts::AREAS] = $this->areas(
+                Placement::areasOf($values[PageLayouts::AREAS] ?? null),
+                $input['areas'],
+                $this->layouts->resolveValues($def, $values)?->layout,
+                $this->layouts->declaredAreas($def->key),
+                PageLayouts::AREAS,
+                (string) ($values[PageLayouts::LAYOUT] ?? ''),
+                $errors,
+            );
         }
         $this->refuse($errors);
 
@@ -88,22 +103,89 @@ final readonly class LayoutInput
     }
 
     /**
-     * The stored areas with the given ones replaced.
+     * An areas field's value after a write (since 0.92): the same rules as merge() for a page, one
+     * level down. $input is {"layout": key (optional; a key of the field's set, or null for its
+     * fallback), "areas": {name: [blocks…]} (optional)}: "areas" replaces only the areas it names,
+     * every other stored area keeps its blocks (a column a narrower layout lacks is kept, not
+     * shown). An area no layout of the set declares and the value does not store is refused, so
+     * are a uid that is not 16 hex digits or is given twice, a value of the wrong shape and a new
+     * block of a key no class declares; blocks without "_uid" get fresh ones, hidden fields keep
+     * their stored values. Keys are the field's: "<field>", "<field>.layout",
+     * "<field>.areas.<name>", "<field>.areas.<name>.<i>._uid". Save the record with
+     * DataManager::saveType(): the core rules decide the rest (the layout key, the columns' limits
+     * and allowed blocks, the block values).
      *
-     * @param array<string, mixed>   $values the values with the new layout
-     * @param array<string, Message> $errors
+     * @param mixed $stored the field's stored value (AreasValue: an array or its JSON text; null for none)
+     * @param mixed $input  the field's part of the body
+     * @return array{layout: ?string, areas: array<string, list<array<string, mixed>>>}
+     * @throws ValidationException naming the field's keys
+     * @throws LayoutConfigException when the field is no areas field or its set is not registered
+     */
+    public function mergeField(TypeFieldDefinition $field, mixed $stored, mixed $input): array
+    {
+        $set = $this->setOf($field);
+        $value = AreasValue::fromStored($stored);
+        $errors = [];
+        if (!is_array($input) || ($input !== [] && array_is_list($input))) {
+            $errors[$field->name] = new Message('validation.layout.areas_value');
+            $this->refuse($errors);
+        }
+        $layout = $value->layout;
+        if (array_key_exists('layout', $input)) {
+            if ($input['layout'] !== null && !is_string($input['layout'])) {
+                $errors[$field->name . '.layout'] = new Message('validation.layout.areas_value');
+            } else {
+                $layout = $input['layout'] === '' ? null : $input['layout'];
+            }
+        }
+        $areas = $value->areas;
+        if (array_key_exists('areas', $input)) {
+            $declared = [];
+            foreach ($set->all() as $one) {
+                array_push($declared, ...$one->areaNames());
+            }
+            $at = $field->name . '.areas';
+            $areas = $this->areas($areas, $input['areas'], AreasValue::of($layout, $areas)->resolve($set), array_values(array_unique($declared)), $at, (string) $layout, $errors);
+        }
+        $this->refuse($errors);
+
+        return AreasValue::of($layout, $areas)->toStored();
+    }
+
+    /**
+     * The set an areas field names.
+     *
+     * @throws LayoutConfigException
+     */
+    private function setOf(TypeFieldDefinition $field): AreaLayoutSet
+    {
+        $name = BlockLists::setName($field);
+        if ($field->type !== BlockLists::AREAS || $name === null || $this->sets === null) {
+            throw new LayoutConfigException(sprintf('The field "%s" is no areas field with a set ("type": "areas", "layouts": "<set>"), or no area layout sets are given to LayoutInput.', $field->name));
+        }
+
+        return $this->sets->get($name);
+    }
+
+    /**
+     * The stored areas with the given ones replaced (a page's "_areas", an areas field's "areas").
+     *
+     * @param array<string, list<array<string, mixed>>> $stored   the stored areas
+     * @param AreaLayout|null                           $layout   the layout the value resolves to with the new key
+     * @param list<string>                              $names    the area names any layout of the type or set declares
+     * @param string                                    $at       the areas' key in errors ("_areas", "<field>.areas")
+     * @param string                                    $key      the written layout key, for a message without a layout
+     * @param array<string, Message>                    $errors
      * @return array<string, list<array<string, mixed>>>
      */
-    private function areas(TypeDefinition $def, array $values, mixed $given, array &$errors): array
+    private function areas(array $stored, mixed $given, ?AreaLayout $layout, array $names, string $at, string $key, array &$errors): array
     {
-        $stored = Placement::areasOf($values[PageLayouts::AREAS] ?? null);
         if (!is_array($given) || ($given !== [] && array_is_list($given))) {
-            $errors[PageLayouts::AREAS] = new Message('validation.layout.areas');
+            $errors[$at] = new Message('validation.layout.areas');
 
             return $stored;
         }
-        $layout = $this->layouts->resolveValues($def, $values)?->layout;
-        $declared = array_flip($this->layouts->declaredAreas($def->key));
+        $declared = array_flip($names);
 
         // Every stored block by uid (a block may move between areas); the uids the areas the write
         // does not name still hold.
@@ -124,59 +206,76 @@ final readonly class LayoutInput
         $areas = $stored;
         foreach ($given as $name => $list) {
             $name = (string) $name;
-            $at = PageLayouts::AREAS . '.' . $name;
+            $here = $at . '.' . $name;
             if (!isset($layout?->areas[$name]) && !array_key_exists($name, $stored) && !isset($declared[$name])) {
-                $errors[$at] = new Message('validation.layout.unknown_area', [
-                    'layout' => $layout->key ?? (string) ($values[PageLayouts::LAYOUT] ?? ''),
+                $errors[$here] = new Message('validation.layout.unknown_area', [
+                    'layout' => $layout->key ?? $key,
                     'name' => $name,
                     'areas' => implode(', ', $layout?->areaNames() ?? array_keys($stored)),
                 ]);
                 continue;
             }
             if (!is_array($list) || ($list !== [] && !array_is_list($list))) {
-                $errors[$at] = new Message('validation.layout.areas');
+                $errors[$here] = new Message('validation.layout.areas');
                 continue;
             }
-            $blocks = [];
-            foreach ($list as $index => $block) {
-                $here = $at . '.' . $index;
-                $key = is_array($block) ? ($block['_block'] ?? null) : null;
-                if (!is_string($key) || $key === '') {
-                    $errors[$here] = new Message('validation.layout.block');
-                    continue;
-                }
-                $uid = $block['_uid'] ?? null;
-                if ($uid === null || $uid === '') {
-                    $block['_uid'] = $uid = self::freshUid();
-                } elseif (!self::isUid($uid)) {
-                    $errors[$here . '._uid'] = self::uidFormat($uid);
-                    continue;
-                } elseif (isset($taken[$uid])) {
-                    $errors[$here . '._uid'] = new Message('validation.layout.uid_twice', ['uid' => $uid]);
-                    continue;
-                }
-                $taken[$uid] = true;
-                $was = $previous[$uid] ?? [];
-
-                $definition = $this->blocks->get($key);
-                if ($definition === null) {
-                    // A stored block no class declares any more stays as it is; a new one is a mistake.
-                    if (($was['_block'] ?? null) !== $key) {
-                        $errors[$here . '._block'] = new Message('validation.layout.unknown_block', [
-                            'block' => $key,
-                            'blocks' => implode(', ', array_keys($this->blocks->all())),
-                        ]);
-                        continue;
-                    }
-                    $blocks[] = $block;
-                    continue;
-                }
-                $blocks[] = $this->kept($definition, $block, ($was['_block'] ?? null) === $key ? $was : [], $here, $errors);
-            }
-            $areas[$name] = $blocks;
+            $areas[$name] = $this->list($list, $here, $previous, $taken, $errors);
         }
 
         return $areas;
+    }
+
+    /**
+     * One area as written: each block checked, given a fresh uid when it has none, and merged with
+     * the stored block of its uid.
+     *
+     * @param array<mixed>                        $list
+     * @param string                              $at       the area's key in errors
+     * @param array<string, array<string, mixed>> $previous every stored block by uid
+     * @param array<array-key, true>              $taken    the uids already held
+     * @param array<string, Message>              $errors
+     * @return list<array<string, mixed>>
+     */
+    private function list(array $list, string $at, array $previous, array &$taken, array &$errors): array
+    {
+        $blocks = [];
+        foreach ($list as $index => $block) {
+            $here = $at . '.' . $index;
+            $key = is_array($block) ? ($block['_block'] ?? null) : null;
+            if (!is_string($key) || $key === '') {
+                $errors[$here] = new Message('validation.layout.block');
+                continue;
+            }
+            $uid = $block['_uid'] ?? null;
+            if ($uid === null || $uid === '') {
+                $block['_uid'] = $uid = self::freshUid();
+            } elseif (!self::isUid($uid)) {
+                $errors[$here . '._uid'] = self::uidFormat($uid);
+                continue;
+            } elseif (isset($taken[$uid])) {
+                $errors[$here . '._uid'] = new Message('validation.layout.uid_twice', ['uid' => $uid]);
+                continue;
+            }
+            $taken[$uid] = true;
+            $was = $previous[$uid] ?? [];
+
+            $definition = $this->blocks->get($key);
+            if ($definition === null) {
+                // A stored block no class declares any more stays as it is; a new one is a mistake.
+                if (($was['_block'] ?? null) !== $key) {
+                    $errors[$here . '._block'] = new Message('validation.layout.unknown_block', [
+                        'block' => $key,
+                        'blocks' => implode(', ', array_keys($this->blocks->all())),
+                    ]);
+                    continue;
+                }
+                $blocks[] = $block;
+                continue;
+            }
+            $blocks[] = $this->kept($definition, $block, ($was['_block'] ?? null) === $key ? $was : [], $here, $errors);
+        }
+
+        return $blocks;
     }
 
     /**
@@ -192,7 +291,7 @@ final readonly class LayoutInput
     private function kept(BlockDefinition $definition, array $block, array $previous, string $at, array &$errors): array
     {
         foreach ($definition->fields as $name => $field) {
-            if (!array_key_exists($name, $block) || BlockLists::of($field, null) === []) {
+            if (!array_key_exists($name, $block) || !BlockLists::holds($field)) {
                 continue;
             }
             $before = BlockLists::of($field, $previous[$name] ?? null);

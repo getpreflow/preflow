@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Assets;
 
+use Preflow\Blocks\BlockLists;
 use Preflow\Blocks\Layouts\PageLayouts;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
@@ -14,7 +15,8 @@ use Preflow\Folio\Field\ReferencesAssets;
 /**
  * Walks the asset values of a record: the fields whose type implements ReferencesAssets
  * (asset, embed's poster, a link to a file, a site's own types; since 0.91) and, inside
- * "blocks" fields, each known block's fields the same way, recursively. Unknown blocks are left
+ * the fields that hold blocks (BlockLists: a blocks field, the areas of an areas field, shown or
+ * not), each known block's fields the same way, recursively. Unknown blocks are left
  * untouched. Without a field type registry only "asset" fields are read (as before 0.91). One
  * walker serves the usage scan and the legacy import.
  *
@@ -49,7 +51,7 @@ final class AssetReferences
     /** Whether a field holds asset ids itself (its type implements ReferencesAssets, or is "asset") or holds blocks that may. */
     public function holdsAssets(TypeFieldDefinition $field): bool
     {
-        return $field->type === 'blocks' || $this->referencing($field->type) !== null || $field->type === 'asset';
+        return BlockLists::holds($field) || $this->referencing($field->type) !== null || $field->type === 'asset';
     }
 
     private function referencing(string $type): ?ReferencesAssets
@@ -106,8 +108,8 @@ final class AssetReferences
             if (!array_key_exists($name, $data)) {
                 continue;
             }
-            if ($field->type === 'blocks') {
-                $data[$name] = $this->mapBlocks($data[$name], $fn);
+            if (BlockLists::holds($field)) {
+                $data[$name] = $this->mapHeld($field, $data[$name], $fn);
             } elseif (($type = $this->referencing($field->type)) !== null) {
                 $data[$name] = $type->mapAssetIds($data[$name], $field->config, $fn);
             } elseif ($field->type === 'asset') {
@@ -116,6 +118,40 @@ final class AssetReferences
         }
 
         return $data;
+    }
+
+    /**
+     * A field holding blocks (BlockLists: a blocks field, an areas field's areas, shown or not), each
+     * list walked as a blocks field; JSON text stays JSON text.
+     */
+    private function mapHeld(TypeFieldDefinition $field, mixed $value, \Closure $fn): mixed
+    {
+        if ($field->type === BlockLists::BLOCKS) {
+            return $this->mapBlocks($value, $fn);
+        }
+        $json = is_string($value);
+        if ($json && json_decode($value, true) === null) {
+            return $value;
+        }
+        $mapped = BlockLists::map($field, $value, fn (array $list): array => $this->mapList($list, $fn));
+
+        return $json && is_array($mapped) ? json_encode($mapped, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : $mapped;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $list
+     * @return list<array<string, mixed>>
+     */
+    private function mapList(array $list, \Closure $fn): array
+    {
+        foreach ($list as $i => $block) {
+            $definition = is_string($block['_block'] ?? null) ? $this->blocks->get($block['_block']) : null;
+            if ($definition !== null) {
+                $list[$i] = $this->mapFields($definition->fields, $block, $fn);
+            }
+        }
+
+        return $list;
     }
 
     private function mapBlocks(mixed $value, \Closure $fn): mixed

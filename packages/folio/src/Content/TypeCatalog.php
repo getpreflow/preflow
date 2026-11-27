@@ -14,13 +14,13 @@ final class TypeCatalog
     /**
      * Built-in field types whose values hold files: the ones implementing HandlesUpload or
      * ReferencesAssets (asset, an embed's poster and a link to a file, since 0.91), plus blocks
-     * (hands uploads to nested types) and matrix (its assets()). The catalog is built before the
-     * field types, so this list names them; a test keeps it equal to the built-in types that
-     * implement those interfaces. A link holds files only when it allows its "asset" kind
-     * (holdsFiles()). Field types a site registers itself (config/folio.php
+     * and areas (0.92; both hand uploads to nested types) and matrix (its assets()). The catalog
+     * is built before the field types, so this list names them; a test keeps it equal to the
+     * built-in types that implement those interfaces. A link holds files only when it allows its
+     * "asset" kind (holdsFiles()). Field types a site registers itself (config/folio.php
      * "field_types") are not known here.
      */
-    public const array FILE_HOLDING_FIELD_TYPES = ['asset', 'blocks', 'matrix', 'embed', 'link'];
+    public const array FILE_HOLDING_FIELD_TYPES = ['asset', 'blocks', 'areas', 'matrix', 'embed', 'link'];
 
     /**
      * @param \Preflow\Core\Boot\BootManifest|null $manifest the boot manifest the model files' listings come from when it has them

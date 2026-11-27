@@ -42,6 +42,21 @@ final class AreaLayoutSets
         return array_map('strval', array_keys($this->factories));
     }
 
+    /**
+     * Refuses the "layouts" option of an areas field that names no registered set: missing, not a
+     * name, or a name no package registers. The caller puts the field (and its block or type) in
+     * front of the message.
+     *
+     * @throws LayoutConfigException
+     */
+    public function assertNamed(mixed $name): void
+    {
+        if (!is_string($name) || $name === '') {
+            throw new LayoutConfigException('An areas field takes its layouts from a named area layout set, and "layouts" names none. Give it the name of one, such as "layouts": "columns".');
+        }
+        $this->get($name);
+    }
+
     public function get(string $name): AreaLayoutSet
     {
         if (!isset($this->factories[$name])) {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Blocks\Describe;
 
 use Preflow\Blocks\BlockDefinition;
+use Preflow\Blocks\BlockLists;
 use Preflow\Blocks\BlockRegistry;
 use Preflow\Blocks\Layouts\AreaDefinition;
 use Preflow\Blocks\Layouts\AreaLayout;
@@ -40,6 +41,12 @@ use Preflow\Data\TypeRegistry;
  * - "layout_key": a key of "layouts" (a string), or null for the type's default;
  * - "area_map": an object of area name => list of blocks, each block an object with "_uid",
  *   "_block" (a key of "blocks") and its fields (a translatable one a map of locale => value).
+ *
+ * A field of the type "areas" (since 0.92: the columns block's columns) names its set in
+ * "config.layouts" (a key of "area_layout_sets") and its value shape in "value":
+ *
+ * - "areas_value": an object {"layout": a key of that set's "layouts" or null, "areas": an
+ *   "area_map" whose names are those of the set's layouts' areas}.
  *
  * An empty map is an object ({}), never a list. "version" grows when a key changes meaning or goes;
  * a new key may be added within a version.
@@ -128,7 +135,7 @@ final readonly class ContentDescription
     /** @return array<string, mixed> */
     private function field(TypeFieldDefinition $field): array
     {
-        return [
+        $out = [
             'type' => $field->type,
             'label' => $field->label,
             'help' => $field->help,
@@ -137,6 +144,12 @@ final readonly class ContentDescription
             'list' => $this->kinds->holdsList($field),
             'config' => self::map($field->config),
         ];
+        if ($field->type === BlockLists::AREAS) {
+            // Its layouts are those of the set "config.layouts" names (under "area_layout_sets").
+            $out['value'] = 'areas_value';
+        }
+
+        return $out;
     }
 
     /** @return array<string, mixed> */

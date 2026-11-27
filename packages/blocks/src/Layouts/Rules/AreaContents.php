@@ -7,6 +7,7 @@ namespace Preflow\Blocks\Layouts\Rules;
 use Preflow\Blocks\BlockRegistry;
 use Preflow\Blocks\Layouts\AreaLayout;
 use Preflow\Blocks\Layouts\AreaLayoutSet;
+use Preflow\Blocks\Layouts\AreasValue;
 use Preflow\Blocks\Layouts\PageLayouts;
 use Preflow\Blocks\Layouts\Placement;
 use Preflow\Data\DataManager;
@@ -30,7 +31,8 @@ use Preflow\Validation\ValidationRule;
  * (a type that opts into layouts keeps its pages savable); only a new record is checked plainly.
  *
  * forPage(): a page's "_areas", on the layout its values resolve to (PageLayouts::resolveValues()).
- * forField(): a value {layout, areas} whose layout is from a named set (the areas field).
+ * forField(): a value {layout, areas} whose layout is from a named set (the areas field), with the
+ * same tolerance against the field's stored value.
  *
  * @since 0.92.0
  */
@@ -57,18 +59,21 @@ final readonly class AreaContents implements ValidationRule
         }, $blocks);
     }
 
-    /** A value {"layout": key, "areas": {…}} whose layout the set resolves (by key, else by its number of areas). */
-    public static function forField(AreaLayoutSet $set, ?BlockRegistry $blocks = null): self
+    /**
+     * A value {"layout": key, "areas": {…}} (an areas field, AreasValue) whose layout the set
+     * resolves (by key, else by its number of areas). $stored is the field's stored value, read by
+     * the caller as forPage() reads "_areas" (the stored record's field, or the stored block's with
+     * the same uid; JSON text or an array): its areas are what the write may keep. Null: nothing is
+     * stored (a new record, a new block), and every area is checked as new.
+     */
+    public static function forField(AreaLayoutSet $set, ?BlockRegistry $blocks = null, mixed $stored = null): self
     {
-        return new self(static function (mixed $value) use ($set): array {
-            if (is_string($value)) {
-                $value = trim($value) === '' ? [] : json_decode($value, true);
-            }
-            $value = is_array($value) ? $value : [];
-            $areas = Placement::areasOf($value['areas'] ?? null);
-            $key = $value['layout'] ?? null;
+        $storedAreas = $stored === null ? null : AreasValue::fromStored($stored)->areas;
 
-            return [$set->resolve(is_string($key) ? $key : null, $areas === [] ? null : count($areas)), $areas, null];
+        return new self(static function (mixed $value) use ($set, $storedAreas): array {
+            $areas = AreasValue::fromStored($value);
+
+            return [$areas->resolve($set), $areas->areas, $storedAreas];
         }, $blocks);
     }
 

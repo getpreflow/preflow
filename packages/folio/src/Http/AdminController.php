@@ -45,7 +45,6 @@ use Preflow\Folio\Extension\Screen\ScreenView;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\HandlesUpload;
-use Preflow\Folio\Field\Types\BlocksFieldType;
 use Preflow\Folio\Seo\SeoSection;
 use Preflow\Folio\View\FormOwner;
 use Preflow\I18n\Completeness;
@@ -1489,8 +1488,8 @@ final class AdminController
                 ];
                 continue;
             }
-            if ($fieldType instanceof HandlesUpload || $fieldType instanceof BlocksFieldType) {
-                $multipart = true; // blocks may contain upload fields
+            if ($fieldType instanceof HandlesUpload || \Preflow\Blocks\BlockLists::holds($fieldDef)) {
+                $multipart = true; // blocks (a blocks field's, an areas field's columns) may contain upload fields
             }
 
             $isTranslatable = isset($translatable[$name]) && !$fieldType instanceof HandlesUpload;
@@ -1546,8 +1545,8 @@ final class AdminController
                 'name' => $name,
                 'html' => $placement === 'main' ? $html : FormOwner::assign($html, self::RECORD_FORM),
                 'translatable' => $isTranslatable,
-                // Blocks hold their own (possibly translated) leaves: no "shared" label.
-                'structured' => $fieldType instanceof BlocksFieldType,
+                // Blocks (a blocks field's, an areas field's columns) hold their own (possibly translated) leaves: no "shared" label.
+                'structured' => \Preflow\Blocks\BlockLists::holds($fieldDef),
                 'falls_back' => $fallsBack,
                 'reference' => $reference,
                 'address' => $addressFields[$name] ?? null,

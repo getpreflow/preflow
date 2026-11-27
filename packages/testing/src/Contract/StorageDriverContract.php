@@ -435,7 +435,7 @@ abstract class StorageDriverContract extends TestCase
 
     /**
      * Each field type's stored shapes (preflow/fields): a link of every kind; and (since 0.92.0)
-     * a page's areas map (preflow/blocks' "_areas").
+     * a page's areas map (preflow/blocks' "_areas") and an areas field's value ({layout, areas}).
      *
      * @return array<string, array{array<string, mixed>}>
      */
@@ -461,6 +461,10 @@ abstract class StorageDriverContract extends TestCase
             'page areas' => [['hero' => [['_uid' => 'a1b2c3d4e5f60718', '_block' => 'hero', 'title' => ['en' => 'Welcome', 'de' => 'Willkommen']]], 'main' => []]],
             'page areas with one empty area' => [['main' => []]],
             'page areas with nested blocks' => [['main' => [['_uid' => '0f1e2d3c4b5a6978', '_block' => 'banner', 'title' => 'Grüße', 'children' => [['_uid' => '1a2b3c4d5e6f7081', '_block' => 'quote', 'text' => ['en' => 'Hi "there"', 'de' => 'Hallo']]]]]]],
+            // An areas field (preflow/blocks, @since 0.92.0: the columns block's columns): a layout of a set and its areas, c1…cN, a map on every driver.
+            'columns value' => [['layout' => '2-1', 'areas' => ['c1' => [['_uid' => '2b3c4d5e6f708192', '_block' => 'text', 'body' => ['en' => '<p>Left</p>', 'de' => '<p>Links</p>']]], 'c2' => []]]],
+            'columns value with one column' => [['layout' => 'full', 'areas' => ['c1' => [['_uid' => '3c4d5e6f708192a3', '_block' => 'quote', 'text' => 'Grüße "quoted"']]]]],
+            'columns value with an unplaced column' => [['layout' => '1-1', 'areas' => ['c1' => [], 'c2' => [], 'c3' => [['_uid' => '4d5e6f708192a3b4', '_block' => 'text', 'body' => ['en' => 'Kept, not shown']]]]]],
         ];
     }
 

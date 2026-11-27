@@ -83,6 +83,17 @@ final class LayoutReportTest extends BlocksAppTestCase
         $this->assertNotContains('Type "page": layouts.pinned "start" names no page with that slug yet. The pin applies once the page exists.', $this->report()->lines());
     }
 
+    public function test_report_names_a_pin_whose_layout_no_class_declares(): void
+    {
+        $this->model('page', ['allowed' => ['promo', 'standard'], 'default' => 'standard', 'pinned' => ['start' => 'promo', 'home' => 'deleted']]);
+        $this->page('p1', ['slug' => 'home']);
+
+        $lines = $this->report()->lines();
+
+        $this->assertContains('Type "page": layouts.pinned "home" names the layout "deleted", which no #[Layout] class declares. The page shows as "standard" until you add the class or change the pin.', $lines);
+        $this->assertNotContains('Type "page": layouts.pinned "start" names the layout "promo", which no #[Layout] class declares. The page shows as "standard" until you add the class or change the pin.', $lines, 'a pin whose class exists is fine');
+    }
+
     public function test_report_names_pages_with_unplaced_areas(): void
     {
         $block = static fn (string $uid): array => ['_uid' => $uid, '_block' => 'quote'];

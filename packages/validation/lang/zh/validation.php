@@ -67,5 +67,7 @@ return [
         'unknown_area' => '布局 ":layout" 没有区域 ":name"。请使用以下之一：:areas。',
         'uid_twice' => 'uid ":uid" 被用于多个区块。请为每个区块设置各自的 "_uid"，新区块则省略它。',
         'uid_format' => 'uid ":uid" 不是区块 uid：uid 由 16 位十六进制数字（0-9、a-f）组成，例如 "3f9a1c2b4d5e6f70"。省略 "_uid" 即可获得新的 uid。',
+        'set_layout' => '布局 ":key" 不属于集合 ":set" 的布局（:layouts）。请选择其中之一。',
+        'areas_value' => '必须是一个对象，包含 "layout"（集合中某个布局的键，或 null）和 "areas"（区域名称，每个对应一个区块列表），例如 {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}。',
     ],
 ];
