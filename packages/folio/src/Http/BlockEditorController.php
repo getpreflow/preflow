@@ -80,7 +80,9 @@ final class BlockEditorController
         $type = is_string($query['type'] ?? null) ? $query['type'] : '';
         $id = is_string($query['id'] ?? null) ? $query['id'] : '';
         if (isset($query['set'])) {
-            if (!is_string($query['set']) || preg_match(self::NAME, $name) !== 1 || str_starts_with($name, PageLayouts::AREAS)) {
+            // An areas field anywhere, also in a block of a page's area ("_areas[main][<uid>][columns]");
+            // never the page's own list ("_areas", "_areas[<area>]"), which is no areas field.
+            if (!is_string($query['set']) || preg_match(self::NAME, $name) !== 1 || preg_match('/^' . PageLayouts::AREAS . '(?:\[[A-Za-z_][A-Za-z0-9_]*\])?$/', $name) === 1) {
                 return new Response(400, [], FolioText::get('folio.errors.invalid_field'));
             }
             if ($type !== '' && ($refused = $this->refuse($request, $type, $id)) !== null) {

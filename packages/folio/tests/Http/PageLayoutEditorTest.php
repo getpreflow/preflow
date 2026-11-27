@@ -228,6 +228,40 @@ final class PageLayoutEditorTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_columns_block_in_a_page_area_switches_and_moves(): void
+    {
+        $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\BlockLibrary\\BlockLibraryServiceProvider::class];\n");
+        $this->write('config/blocks.php', "<?php\nreturn ['classes' => [\\Preflow\\BlockLibrary\\Columns\\Columns::class, \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\ProseBlock\\ProseBlock::class], "
+            . "'layouts' => [\\Preflow\\Folio\\Tests\\Fixtures\\Layouts\\Landing::class, \\Preflow\\Folio\\Tests\\Fixtures\\Layouts\\Standard::class, \\Preflow\\Folio\\Tests\\Fixtures\\Layouts\\Home::class]];\n");
+        $grid = '9a9a9a9a9a9a9a9a';
+        $this->page('r1', 'about', 'standard', ['main' => [['_uid' => $grid, '_block' => 'columns', 'columns' => ['layout' => '1-1', 'areas' => [
+            'c1' => [self::prose(self::PROSE, ['en' => 'Left'])],
+            'c2' => [self::prose(self::OTHER, ['en' => 'Right'])],
+        ]]]]]);
+        $name = '_areas[main][' . $grid . '][columns]';
+        $form = $this->edit('r1');
+        $this->assertSame(1, preg_match('~<select [^>]*name="' . preg_quote($name, '~') . '\[layout\]"[^>]*hx-post="([^"]+)"~', $form, $m), 'the columns picker inside the page area');
+        $url = html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5);
+        $this->assertStringContainsString('name=' . rawurlencode($name) . '&', $url, 'named by the field, inside the area');
+        $body = self::posted($form);
+        $body['_areas']['main'][$grid]['columns']['layout'] = 'full';
+
+        $switched = $this->html($this->post($url, $body));
+        $this->assertMatchesRegularExpression('~<option value="full" selected>~', $switched);
+        $panel = $this->after($switched, 'data-areas-panel');
+        $this->assertStringContainsString('name="' . $name . '[areas][c2][_order][]" value="' . self::OTHER . '"', $panel, 'the second column waits in the panel');
+
+        $moved = $this->html($this->post($url, ['_areas_move' => self::OTHER . ':c1'] + $body));
+        $this->assertStringNotContainsString('data-areas-panel', $moved, 'moved into the first column');
+        $this->assertSame('1-1', $this->stored('page', 'r1')->get('_areas')['main'][0]['columns']['layout'], 'nothing stored');
+
+        // The page's own lists are no areas field.
+        foreach (['_areas', '_areas[main]'] as $own) {
+            $this->assertSame(400, $this->post('/folio/_areas?' . http_build_query(['name' => $own, 'set' => 'columns', 'type' => 'page', 'id' => 'r1']), $body)->getStatusCode(), $own);
+        }
+    }
+
+    #[RunInSeparateProcess]
     public function test_pinned_page_shows_fixed_and_no_picker(): void
     {
         $this->page('r1', 'home', 'standard', ['top' => [self::prose(self::PROSE, ['en' => 'On top'])], 'main' => [self::prose(self::OTHER, ['en' => 'Kept'])]]);
