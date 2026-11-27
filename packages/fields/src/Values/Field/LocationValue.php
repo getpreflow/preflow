@@ -29,6 +29,7 @@ final class LocationValue implements FieldValue, DescribesShapes
         return Location::fromStored($input)?->toStored() ?? Link::decode($input) ?? $input;
     }
 
+    /** @return array{lat: float, lng: float, address: ?string}|null */
     public function toOutput(mixed $stored, TypeFieldDefinition $field): ?array
     {
         return Location::fromStored($stored)?->toStored();

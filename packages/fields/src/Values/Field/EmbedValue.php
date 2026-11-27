@@ -39,6 +39,7 @@ final class EmbedValue implements FieldValue, DescribesShapes, ListsReferences
         return Embed::fromStored($input, $this->providers())?->toStored() ?? Link::decode($input) ?? $input;
     }
 
+    /** @return array{provider: string, id: string, url: string, poster: ?string}|null */
     public function toOutput(mixed $stored, TypeFieldDefinition $field): ?array
     {
         return Embed::fromStored($stored, $this->providers())?->toStored();
@@ -56,9 +57,11 @@ final class EmbedValue implements FieldValue, DescribesShapes, ListsReferences
 
     public function references(mixed $stored, TypeFieldDefinition $field): array
     {
-        $poster = $this->toOutput($stored, $field)['poster'] ?? null;
+        // Read from the stored object itself, not its output (which needs the video's host): an
+        // embed whose host was removed still lists its poster, so media keeps the asset.
+        $poster = Link::decode($stored)['poster'] ?? null;
 
-        return is_string($poster) && $poster !== '' ? ['asset' => [$poster]] : [];
+        return is_string($poster) && trim($poster) !== '' ? ['asset' => [trim($poster)]] : [];
     }
 
     private function providers(): EmbedProviders

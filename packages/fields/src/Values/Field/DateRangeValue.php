@@ -39,11 +39,10 @@ final class DateRangeValue implements FieldValue, DescribesShapes
         return $empty ? null : $object;
     }
 
+    /** @return array{start: string, end: string}|null both ends of a valid range; null for none and for anything else stored (half a range, the wrong order) */
     public function toOutput(mixed $stored, TypeFieldDefinition $field): ?array
     {
-        $parts = DateRange::parts($stored);
-
-        return $parts === null ? null : ['start' => $parts['start'], 'end' => $parts['end']];
+        return DateRange::fromStored($stored)?->toStored();
     }
 
     public function shape(TypeFieldDefinition $field): string

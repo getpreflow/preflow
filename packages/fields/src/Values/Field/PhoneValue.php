@@ -36,6 +36,7 @@ final class PhoneValue implements FieldValue, DescribesShapes
         return Phone::fromStored($input)?->toStored() ?? Link::decode($input) ?? $input;
     }
 
+    /** @return array{as_typed: string, e164: string|null}|null */
     public function toOutput(mixed $stored, TypeFieldDefinition $field): ?array
     {
         return Phone::fromStored($stored)?->toStored();

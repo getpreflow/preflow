@@ -31,6 +31,7 @@ final class LinkValue implements FieldValue, DescribesShapes, ListsReferences
         return Link::fromStored($input)?->toStored() ?? Link::decode($input) ?? $input;
     }
 
+    /** @return array{kind: string, target: array{type: string, id: string}|string, label: string|array<string, string>|null, new_tab: bool}|null */
     public function toOutput(mixed $stored, TypeFieldDefinition $field): ?array
     {
         return Link::fromStored($stored)?->toStored();

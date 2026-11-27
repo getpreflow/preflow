@@ -32,6 +32,7 @@ final class TableValue implements FieldValue, DescribesShapes
         return Link::decode($input) ?? $input;
     }
 
+    /** @return array{head: list<string|array<string, string>>|null, rows: list<list<string|array<string, string>>>}|null */
     public function toOutput(mixed $stored, TypeFieldDefinition $field): ?array
     {
         return Table::fromStored($stored)?->toStored();

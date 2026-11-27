@@ -27,9 +27,10 @@ final class TimeValue implements FieldValue, DescribesShapes
         return TimeOfDay::parse($input)?->toStored() ?? (is_string($input) ? trim($input) : $input);
     }
 
+    /** "HH:MM"; a time stored as "9:30" or "09:30:00" (older data) reads as its time, as the form reads it; null for anything else. */
     public function toOutput(mixed $stored, TypeFieldDefinition $field): ?string
     {
-        return TimeOfDay::fromStored($stored)?->toStored();
+        return TimeOfDay::parse($stored)?->toStored();
     }
 
     public function shape(TypeFieldDefinition $field): string

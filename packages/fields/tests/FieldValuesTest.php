@@ -293,6 +293,66 @@ final class FieldValuesTest extends TestCase
         }
     }
 
+    public function test_an_embed_lists_its_poster_without_its_host(): void
+    {
+        // Final review (Task 4 minor 2): the poster is read from the stored value itself, not
+        // through the output, which needs the host's provider. An embed whose host was removed
+        // still lists its poster, so media's usage check keeps the asset.
+        $gone = ['provider' => 'removed-host', 'id' => 'v1', 'url' => 'https://removed.example/v1', 'poster' => 'asset-9'];
+
+        $this->assertNull($this->value('embed')->toOutput($gone, $this->field('embed')), 'no provider: no output');
+        $this->assertSame(['asset' => ['asset-9']], $this->value('embed')->references($gone, $this->field('embed')));
+        $this->assertSame(['asset' => ['asset-9']], $this->value('embed')->references(json_encode($gone), $this->field('embed')), 'JSON text on SQL');
+        $this->assertSame([], $this->value('embed')->references(['poster' => ''], $this->field('embed')));
+    }
+
+    public function test_time_reads_a_stored_time_with_seconds(): void
+    {
+        // Final review (Task 4 minor 1): a legacy "09:30:00" reads as its time, as the form reads it.
+        $value = $this->value('time');
+        $field = $this->field('time');
+
+        $this->assertSame('09:30', $value->toOutput('09:30:00', $field));
+        $this->assertSame('09:05', $value->toOutput('9:05', $field));
+        $this->assertSame('09:30', $value->toOutput('09:30', $field));
+        $this->assertNull($value->toOutput('25:99', $field));
+        $this->assertNull($value->toOutput('9.30', $field));
+    }
+
+    /**
+     * Stored values outside a shape: each reads out as null (final review finding 5); reading
+     * never writes.
+     *
+     * @return iterable<string, array{string, mixed}>
+     */
+    public static function storedOutsideTheShape(): iterable
+    {
+        $odd = ['word' => 'abc', 'true' => true, 'int' => 5, 'list' => ['x'], 'object' => ['a' => ['b' => 1]]];
+        foreach (array_diff(self::TYPES, ['json']) as $type) {
+            foreach ($odd as $name => $stored) {
+                if (in_array($type, ['code', 'email', 'phone', 'color'], true) && $name === 'word') {
+                    // In the shape: "abc" is code, a phone number as typed, the colour #aabbcc; an
+                    // e-mail field's text is checked on write.
+                    continue;
+                }
+                yield "{$type} {$name}" => [$type, $stored];
+            }
+        }
+    }
+
+    #[DataProvider('storedOutsideTheShape')]
+    public function test_output_is_null_outside_its_shape(string $type, mixed $stored): void
+    {
+        $this->assertNull($this->value($type)->toOutput($stored, $this->field($type)));
+    }
+
+    public function test_shape_texts_say_when_a_value_is_null(): void
+    {
+        foreach (\Preflow\Fields\Values\Field\StoredShapes::SHAPES as $shape => $text) {
+            $this->assertMatchesRegularExpression('/\bnull\b/', $text, $shape);
+        }
+    }
+
     private function field(string $type): TypeFieldDefinition
     {
         return new TypeFieldDefinition($type . 'x', $type);
