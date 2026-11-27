@@ -59,6 +59,7 @@ final class AdminController
     private readonly DraftRecordFactory $drafts;
     private readonly DisplayLabels $labels;
     private readonly TranslationStatus $translations;
+    private readonly \Preflow\Publishing\RecordChecks $formChecks;
 
     public function __construct(
         private readonly TypeCatalog $catalog,
@@ -107,7 +108,10 @@ final class AdminController
         // A page's layout picker and areas (0.92): the types' page layouts and the editor that draws them.
         private readonly ?\Preflow\Blocks\Layouts\PageLayouts $pageLayouts = null,
         private readonly ?\Preflow\Folio\Field\AreasEditor $areasEditor = null,
+        // The form's own checks (0.93: its input rules, SaveOptions::$checks); null builds them from the data manager, frontend and field types.
+        ?\Preflow\Publishing\RecordChecks $formChecks = null,
     ) {
+        $this->formChecks = $formChecks ?? new \Preflow\Folio\Publishing\FolioFormChecks(new \Preflow\Folio\Content\RecordValidator($dm, $frontend, $fieldTypes));
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
@@ -903,7 +907,7 @@ final class AdminController
 
         $confirmed = $this->translations->confirm($typeDef, $current, $locale, $path);
         try {
-            $outcome = $this->writer->save($confirmed, $this->saveOptions($request, $type, publish: false));
+            $outcome = $this->writer->save($confirmed, $this->saveOptions($request, $type, publish: false, form: false));
         } catch (VersionConflict $e) {
             $values = $current->toArray();
             $values['_version'] = $e->current;
@@ -2187,8 +2191,10 @@ final class AdminController
      * How a post saves: by the user, under their right to publish (without it, a pending schedule
      * is cancelled), published when "_action" asks and $publish allows (refusePublish() refused
      * those who may not), against the loaded "_version", scheduled by "_publish_at" when posted.
+     * A save of the form's post ($form) runs the form's own checks (FolioFormChecks: its input
+     * rules), any other the bound RecordChecks.
      */
-    private function saveOptions(ServerRequestInterface $request, string $type, bool $publish): SaveOptions
+    private function saveOptions(ServerRequestInterface $request, string $type, bool $publish, bool $form = true): SaveOptions
     {
         $body = (array) $request->getParsedBody();
 
@@ -2198,6 +2204,7 @@ final class AdminController
             publish: $publish && ($body['_action'] ?? null) === 'publish' && $this->publishes($type),
             loadedVersion: is_string($body['_version'] ?? null) && ctype_digit($body['_version']) ? (int) $body['_version'] : null,
             publishAt: array_key_exists('_publish_at', $body) ? (is_string($body['_publish_at']) ? $body['_publish_at'] : '') : null,
+            checks: $form ? $this->formChecks : null,
         );
     }
 

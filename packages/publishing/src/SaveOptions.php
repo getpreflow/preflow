@@ -17,6 +17,10 @@ namespace Preflow\Publishing;
  *   app's zone sets it; a past or malformed time clears it (a mistake, or a stale tab re-sending a
  *   schedule that already ran). Only with $mayPublish.
  * - $kind: what kind of write this is, handed to SaveHooks (an autosave, a bulk set, …).
+ * - $checks (since 0.93): the rules this save runs in place of the bound RecordChecks, where a save
+ *   runs them (a type that does not publish); null runs the bound ones. An admin form passes its
+ *   own input rules (Folio: FolioFormChecks). A publish (Publisher::publish()) always runs the
+ *   bound checks.
  */
 final readonly class SaveOptions
 {
@@ -27,6 +31,7 @@ final readonly class SaveOptions
         public ?int $loadedVersion = null,
         public ?string $publishAt = null,
         public WriteKind $kind = WriteKind::Save,
+        public ?RecordChecks $checks = null,
     ) {
         if ($publish && !$mayPublish) {
             throw new \InvalidArgumentException('A save that may not publish cannot publish.');

@@ -18,9 +18,10 @@ use Preflow\Folio\Http\AdminFormat;
  *
  * The core's writes (saveType(), imports, seeds, the API) check the stored shapes: the core's date
  * rule (StoredDate, registered by preflow/data's CoreValues since 0.93; storedRules() names it so
- * Folio's checks can find it); Folio's checks (RecordValidator: its form, RecordWriter,
- * publishing) check the shapes its input posts (rules()), as since 0.91. Reading a stored value is
- * the core's (DateValue::read()).
+ * Folio's checks can find it), and since 0.93 so do RecordWriter's saves and publishing while
+ * Folio is installed (FolioRecordChecks). Only Folio's own form checks the shapes its input posts
+ * (rules(); FolioFormChecks, RecordValidator), as since 0.91. Reading a stored value is the core's
+ * (DateValue::read()).
  */
 final class DateFieldType extends AbstractScalarFieldType implements DisplaysInAdmin, \Preflow\Folio\Field\HasColumnKind, \Preflow\Data\HasStoredRules
 {
@@ -136,7 +137,7 @@ final class DateFieldType extends AbstractScalarFieldType implements DisplaysInA
     }
 
     /**
-     * What Folio's form checks: the shape its input posts ("Y-m-d", or with "time" "Y-m-d\TH:i"
+     * What Folio's form checks (only its own saves since 0.93): the shape its input posts ("Y-m-d", or with "time" "Y-m-d\TH:i"
      * and optional seconds).
      */
     public function rules(array $config): array

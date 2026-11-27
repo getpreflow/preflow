@@ -818,6 +818,8 @@ final class FolioServiceProvider extends ServiceProvider
             // A page's layout picker and areas (0.92); without page layouts no type has any.
             pageLayouts: self::pageLayouts($c),
             areasEditor: self::areasEditor($c, $prefix),
+            // The form's own checks (0.93): its input rules; RecordWriter's other saves and publishing run the bound RecordChecks.
+            formChecks: new \Preflow\Folio\Publishing\FolioFormChecks($c->get(\Preflow\Folio\Content\RecordValidator::class)),
             reviewIndex: $c->get(\Preflow\I18n\Machine\ReviewIndex::class),
             worker: $c->get(\Preflow\I18n\Machine\TranslationWorker::class),
             seo: $c->bound(\Preflow\View\Seo\SeoConfig::class) ? $c->get(\Preflow\View\Seo\SeoConfig::class) : null,
@@ -2166,7 +2168,8 @@ final class FolioServiceProvider extends ServiceProvider
     /**
      * Folio's answers to the publishing core's questions, unless the app bound its own
      * (preflow/publishing binds the plain defaults for the rest at boot): which types publish
-     * (the catalog), the rules (RecordValidator), the languages (TranslationStatus), the review
+     * (the catalog), the rules (FolioRecordChecks: the core's plus the address rules; the form's
+     * input rules only on the form's saves, FolioFormChecks), the languages (TranslationStatus), the review
      * index, the addresses (redirects, page-cache tags), the columns Folio adds to the record
      * tables, the legacy drafts `publish` skips, and for RecordWriter and RecordDeleter the save
      * and delete hooks of the type customizations and the orderable listings. The Publisher is

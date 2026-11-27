@@ -13,27 +13,33 @@ use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\HasBlockRules;
 use Preflow\Folio\Field\HasRecordRules;
 use Preflow\Data\HasStoredRules;
+use Preflow\Publishing\CoreRecordChecks;
 use Preflow\Validation\ValidationException;
 use Preflow\Validation\ValidationRule;
 
 /**
- * Full validation of a record: the data layer's (DataManager::validate()), which since 0.92 also
- * checks the values inside block lists and page areas (preflow/blocks' BlockValueChecks) and has
- * Folio's field types' rules (CoreFieldRules, registered by FolioServiceProvider at boot; code
- * that builds a validator by hand registers them itself), so this walks no blocks and merges no
- * field-type rules itself. It gives each field the core's rules (DataManager::fieldRules()) plus Folio's own:
- * with a frontend resolver, the fields a type's public address is built from also get "slug"
- * ("slug:path" for a catch-all): no umlauts, capitals or spaces. A "readonly" field gets an empty
- * list: it is not validated on save, its blocks included (nor checked for being unique).
+ * Full validation of a record as Folio's form checks it: the data layer's (DataManager::validate()),
+ * which since 0.92 also checks the values inside block lists and page areas (preflow/blocks'
+ * BlockValueChecks) and has Folio's field types' rules (CoreFieldRules, registered by
+ * FolioServiceProvider at boot; code that builds a validator by hand registers them itself), so
+ * this walks no blocks and merges no field-type rules itself. It starts from publishing's core
+ * checks (CoreRecordChecks::rules(): DataManager::fieldRules() per field, an empty list for a
+ * "readonly" field, which is not validated on save, its blocks included, nor checked for being
+ * unique) and adds Folio's own: with a frontend resolver, the fields a type's public address is
+ * built from also get "slug" ("slug:path" for a catch-all): no umlauts, capitals or spaces.
  *
  * With the field types (0.92.1), a field whose type's form takes fewer shapes than the type
  * stores (HasStoredRules: date) gets the type's rules() — what the editor's input posts — in
- * place of the stored-shape checks the core's writes run, as since 0.91. As Folio's RecordChecks
- * this also holds for RecordWriter's saves and publishing. Without them (code that builds a
- * validator by hand) it keeps the core's checks.
+ * place of the stored-shape checks the core's writes run. Since 0.93 this holds for Folio's form
+ * only (FolioFormChecks, passed as SaveOptions::$checks): Folio's RecordChecks, which
+ * RecordWriter's other saves and publishing run, are storedChecks(), the core's stored rules plus
+ * the address rules. Without the field types (code that builds a validator by hand) rules() keeps
+ * the core's checks.
  */
 final class RecordValidator
 {
+    private ?CoreRecordChecks $storedChecks = null;
+
     /**
      * Since 0.92 the block walk and the field types' rules are the core's; the FieldTypeRegistry
      * (optional again since 0.92.1) only gives the form's input checks of a HasStoredRules type.
@@ -63,12 +69,12 @@ final class RecordValidator
     public function rules(TypeDefinition $typeDef): array
     {
         $rules = [];
-        $core = $this->dm->fieldRules($typeDef);
+        $core = (new CoreRecordChecks($this->dm))->rules($typeDef);
         $addressRules = $this->addressRules($typeDef);
         foreach ($typeDef->fields as $name => $fieldDef) {
-            if (self::readonly($fieldDef->config)) {
-                // The editor can't touch it, so its stored value is not checked: it would block
-                // every save (and "required" can't be met). An empty list replaces the type's own rules.
+            if (($core[$name] ?? null) === []) {
+                // Read-only: the editor can't touch it, so its stored value is not checked: it would
+                // block every save (and "required" can't be met). An empty list replaces the type's own rules.
                 $rules[$name] = [];
                 continue;
             }
@@ -83,6 +89,20 @@ final class RecordValidator
 
         return $rules;
     }
+
+    /**
+     * Folio's RecordChecks (since 0.93): the core's stored rules of each field (CoreRecordChecks)
+     * plus the address rules, without the form's input rules, so a date server code stored with
+     * an offset publishes and saves as saveType() takes it.
+     */
+    public function storedChecks(): CoreRecordChecks
+    {
+        return $this->storedChecks ??= new CoreRecordChecks(
+            $this->dm,
+            fn (TypeDefinition $def): array => array_map(static fn (AddressPart $rule): array => [$rule], $this->addressRules($def)),
+        );
+    }
+
     /**
      * The core's list for the field with a HasStoredRules type's storedRules() replaced by its
      * rules() (what the form's input posts), where the first stored rule stood. A stored rule is
@@ -131,11 +151,5 @@ final class RecordValidator
             return [];
         }
         return array_map(static fn (string $mode): AddressPart => new AddressPart($typeDef->locales, $mode === 'path'), $route->addressModes());
-    }
-
-    /** @param array<string, mixed> $config */
-    private static function readonly(array $config): bool
-    {
-        return ($config['readonly'] ?? false) === true;
     }
 }
