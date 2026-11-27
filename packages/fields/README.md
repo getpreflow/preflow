@@ -10,20 +10,20 @@ The types are `link`, `email`, `phone`, `color`, `code`, `json`, `datetime`, `ti
 
 At a glance (each type's section below has the options, the checks and the template functions):
 
-| type | stored | searched by loose search |
-|---|---|---|
-| `link` | an object: kind, target, label, new tab | no |
-| `email` | text | yes |
-| `phone` | an object: as typed and the E.164 form | no |
-| `color` | `#rrggbb` or `#rrggbbaa` text | no |
-| `code` | plain text (the language is a field option) | yes |
-| `json` | JSON as text | no |
-| `datetime` | UTC ISO text | no |
-| `time` | `HH:MM` text | no |
-| `daterange` | an object: start and end | no |
-| `embed` | an object: provider, id, url, poster | no |
-| `table` | an object: head and rows | no |
-| `location` | an object: lat, lng, address | no |
+| type | stored | read out as (0.93, the shape) | searched by loose search |
+|---|---|---|---|
+| `link` | an object: kind, target, label, new tab | `link`: `{kind, target, label, new_tab}` | no |
+| `email` | text | `string` | yes |
+| `phone` | an object: as typed and the E.164 form | `phone`: `{as_typed, e164}` | no |
+| `color` | `#rrggbb` or `#rrggbbaa` text | `color` | no |
+| `code` | plain text (the language is a field option) | `string` | yes |
+| `json` | JSON as text | `json`: decoded | no |
+| `datetime` | UTC ISO text | `datetime`: `Y-m-d\TH:i:s\Z` | no |
+| `time` | `HH:MM` text | `time` | no |
+| `daterange` | an object: start and end | `daterange`: `{start, end}` | no |
+| `embed` | an object: provider, id, url, poster | `embed`: `{provider, id, url, poster}` | no |
+| `table` | an object: head and rows | `table`: `{head, rows}` | no |
+| `location` | an object: lat, lng, address | `location`: `{lat, lng, address}` | no |
 
 A field in a model file, a block or a model class (`#[Field(type: 'link')]`) uses these keys the
 same way. Every value is checked in the core, so a seed, an import and the REST write path refuse the
@@ -37,6 +37,23 @@ The options are checked at boot, with or without Folio: `FieldsServiceProvider` 
 fields when the app boots (kept in the boot manifest, so a site with `preflow optimize` reads no
 model file for it), and every block's fields once, when the block registry is built. A mistake
 stops the boot with a message naming the type or block, the field and what to write instead.
+
+### Over an API (0.93)
+
+An API that reads these fields by hand has to know each stored form: a link as an object or as
+JSON text on SQL, a phone number with and without its E.164 form, a date range of dates or of UTC
+moments. Each type therefore registers its **value** (`Preflow\Data\Values\FieldValue`, in
+`Preflow\Fields\Values\Field`: `LinkValue`, `EmailValue`, `PhoneValue`, `ColorValue`,
+`CodeValue`, `JsonValue`, `DateTimeValueKind`, `TimeValue`, `DateRangeValue`, `EmbedValue`,
+`TableValue`, `LocationValue`) on the data package's `FieldKinds`, as `FieldsServiceProvider`
+does with `$kinds->value('link', new LinkValue())`. preflow/data's read class (`RecordOutput`)
+then gives each field in the shape of the table above, the same on every driver, and its write
+class (`RecordInput`) turns an API body into what the form stores (a phone number keeps the
+field's `default_region`, code its line ends as the form stores them). A structured value reads
+out as its value object's `toStored()` array; the shapes are described in the core's description
+(`Describe\Description`, `"values"`) and frozen in its version 1. You write none of this: install
+the package and the read and write classes know the twelve types. See "Records over an API" in
+preflow/data's README.
 
 ## Install
 
@@ -551,8 +568,11 @@ Each type of this package is built from the same parts. The link field shows eac
    `src/Rules/` (`ValidLink`). Options of the field get a small reader with a boot check
    (`LinkOptions::fromConfig()`, `check()`).
 3. **Its registration** in `FieldsServiceProvider::registerKinds()`: the column kind
-   (`$kinds->column('link', ColumnKind::Text)`) and the checks
-   (`$kinds->rules('link', fn (array $config) => [...])`).
+   (`$kinds->column('link', ColumnKind::Text)`), the checks
+   (`$kinds->rules('link', fn (array $config) => [...])`) and, since 0.93, the value
+   (`$kinds->value('link', new LinkValue())`, in `src/Values/Field/`: `toStored()` converts an
+   input and never refuses, `toOutput()` reads any stored form to the output shape, `shape()` names
+   it, and `DescribesShapes::shapes()` describes a new shape).
 4. **Its template functions** as `Preflow\View\TemplateFunctionDefinition`s in
    `FieldsExtensionProvider`, never engine-only code.
 5. **Its boot check**: the type's entry in `FieldOptions::check()` (and `FieldOptions::TYPES`).

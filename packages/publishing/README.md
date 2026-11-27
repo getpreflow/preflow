@@ -256,7 +256,7 @@ service provider's `register()`; the package binds a plain default for each one 
 | Interface | Asks | Default |
 |---|---|---|
 | `PublishingTypes` | `publishes($type)`, `publishing()`: which types publish | `SchemaPublishingTypes`: the `"publishing"` flag |
-| `RecordChecks` | `validate($record)`: the rules before a publish (throws `ValidationException`) | none |
+| `RecordChecks` | `validate($record)`: the rules before a publish (throws `ValidationException`) | `CoreRecordChecks` (since 0.93; was `NoRecordChecks`): the core's rules of each field |
 | `LanguageChecks` | `clearMachineMarks($record)`; `incomplete($record)`: errors keyed `_translations.<locale>`; `stateKeys()`: translation keys a restore or discard clears when the content lacks them | none |
 | `RecordIndex` | `refresh($record)` after each save, `forget($type, $id)` | none |
 | `RecordAddresses` | `sync()` after a publish or a save, `removed()` after an unpublish or a delete (to a `RemovalTarget`), `changed($before, $after)` (`$before` a closure that reads the old snapshot when called), `finalTarget($target, $deleting)`: where a delete's old links lead | none |
@@ -266,6 +266,25 @@ service provider's `register()`; the package binds a plain default for each one 
 | `RecordTypes` | `orderable($type)`: records kept in a manual order (`_order`) | none |
 
 `complete_languages` only takes effect with a `LanguageChecks` that finds something.
+
+**The core's rules at publish (0.93).** Before 0.93 a site without Folio published whatever its
+working copy held: a required field left empty went live, while the same record saved through
+`DataManager::saveType()` would have been refused. Since 0.93 the default `RecordChecks` is
+`CoreRecordChecks`: each field gets `DataManager::fieldRules()` (its `validate`, its type's checks
+such as a date's stored shapes, a select's options, the rules packages add), so a publish and a
+`RecordWriter` save of a type that does not publish refuse what `saveType()` refuses, with the same
+keys and messages. A field whose config has `"readonly": true` is not checked (nobody can change
+it). `new CoreRecordChecks($data, fn (TypeDefinition $def) => [...])` adds rules per field after the
+core's. Folio binds `FolioRecordChecks`, which is this plus its address rules.
+
+- `Publisher::publish()` always runs the bound checks.
+- A single save can run other checks: `new SaveOptions(..., checks: $myChecks)` (trailing, since
+  0.93) replaces the bound ones for that save. Folio's form passes its input rules
+  (`FolioFormChecks`) this way, so its editor still refuses `26.11.2026` while `RecordWriter` and a
+  publish accept every date shape the type stores, such as `2026-11-27T05:00:00+00:00`.
+- **Upgrading to 0.93:** a site without Folio that published or saved through `RecordWriter` with
+  data the core's rules refuse is now refused there. Fix the data; bind `NoRecordChecks` only
+  knowingly.
 
 **Copies and addresses.** `RecordWriter::duplicate()` gives a copy free values in the fields that make
 up the record's public address (its route parameters), so the copy never takes over the original's

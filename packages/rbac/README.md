@@ -105,6 +105,11 @@ if (!TypePermissions::allows($access, $def, 'create')) {   // $access: Preflow\A
 refuses create). `view` is never restricted by the type. `TypePermissions::VERBS` maps each verb
 to data's `TypeAction`; `TypePermissions::name('job', 'edit')` is `"job.edit"`.
 
+The names are declared for every data type, also those an admin does not list (a type only an API
+serves, an extension model not switched on), because a controller needs them. In Folio's Roles
+screen that can show a few more rows than before 0.93. Grant them as usual: `config/roles.php`
+(`'job.create'`), or `*` for everything.
+
 ## User types
 
 A user type gives its users roles with an `rbac_roles` field:

@@ -1013,6 +1013,26 @@ Rich text is cleaned with the core's `HtmlCleaner` (`DataManager::htmlCleaner()`
 in the container and the form, "Write a draft", every write and the templates use it.
 `SafeRichText` and `LazyHtmlSanitizer` are deprecated (0.93; removed no earlier than 0.95).
 
+**What moved to the core in 0.93, and why.** Folio used to be the only place that knew what a field
+holds, how rich text is cleaned, which rules a publish runs and what a type's permissions are
+called. An API, an import or a site without Folio then had to copy that knowledge, and got it
+slightly wrong. Since 0.93 each of these lives in a core package, and Folio is one caller of it:
+
+| What | Now in | Folio keeps |
+|---|---|---|
+| A field's value: input to stored, stored to output | preflow/data `FieldValue` on `FieldKinds` (blocks' and fields' values for their types) | the editors, `normalizeInput()`'s form parsing, `renderFrontend()`, the values of `matrix`, `env`, `codes_purpose`, `rbac_permissions`, `rbac_roles` |
+| Rich text cleaning | preflow/data `HtmlCleaner`, run on every typed write (`DataManager::storageValues()`) | `SafeRichText`, `LazyHtmlSanitizer` as deprecated delegates |
+| The date's stored rule | preflow/data `Validation\StoredDate`, `HasStoredRules`, `DateValue::read()` | aliases of the old names until 0.95; `DateFieldType::read()` delegates |
+| The rules a publish runs | preflow/publishing `CoreRecordChecks` | `FolioRecordChecks` (the core's plus its address rules), `FolioFormChecks` (the form's input rules, for its own save) |
+| Labels of types and fields | preflow/data `DeclaredLabels`, `DataManager::labels()` | `DisplayTypeLabels`, bound, with its derived `site.types.*` keys |
+| Per-type permission names | preflow/rbac `TypePermissions` | `TypeActions::declare()` (through `TypePermissions` where rbac is installed, the same declaration without it) and `TypeActions::VERBS`, kept equal to `TypePermissions::VERBS` by a test, because Folio does not require rbac |
+| Reading, writing and describing records as JSON | preflow/data `RecordOutput`, `RecordInput`, `Description` | nothing: the admin does not use them, an API does |
+
+Nothing changes in the stored bytes: a record Folio saved in 0.92 is saved again unchanged, with
+the same change date. With rbac installed Folio declares the type permissions through
+`TypePermissions` with its catalog labels; rbac also declares them for every other data type, so
+Settings → Roles may list a few more types (an API needs their names).
+
 How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` runs the controls):
 
 - `string`: a route parameter of the record's address (`slug`) has the static path before it as a

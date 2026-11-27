@@ -336,8 +336,24 @@ first layout (`AreaLayoutSet::resolve($key, $count)`).
 
 ### For APIs
 
-Everything above can be read and written as JSON through core classes, with or without Folio. No
-REST package is part of 0.92: you call these from your own controller.
+Everything above can be read and written as JSON through core classes, with or without Folio.
+
+Since 0.93 you don't call these yourself for a record: the blocks package plugs them into the
+core's read, write and describe classes (preflow/data's `RecordOutput`, `RecordInput` and
+`Description`, see "Records over an API" in its README). `BlocksServiceProvider` registers them:
+
+| Registered as | Class | Adds |
+|---|---|---|
+| an output part (`RecordParts::output()`) | `LayoutResource` | `_layout`, `_areas` and `_unplaced` to a read of a type with layouts; `references()` lists what the area blocks point at, so `_media` covers them |
+| an input part (`RecordParts::input()`) | `LayoutInput` | takes `_layout` and `_areas` from a write body, merged as below |
+| a description contributor (`DescriptionContributors::add()`) | `ContentDescription` | the sections `blocks`, `layouts`, `area_layout_sets`, and per type with layouts `layouts` with its `output` map: `{"_layout": "resolved_layout", "_areas": "area_map", "_unplaced": "area_map"}` |
+| field values (`FieldKinds::value()`) | `BlocksFieldValue`, `AreasFieldValue` | a `blocks` and an `areas` field read and written block by block (above) |
+
+So a controller reads a page with `$output->toArray($record)` and gets the layout keys beside the
+fields, and `$input->update($record, $body)` takes them from the body. The direct calls below stay
+for 0.92 code: `LayoutResource::toArray()`, `areasField()` and `LayoutInput::mergeField()` are
+deprecated since 0.93.0 (removed no earlier than 0.95), their output unchanged; `ContentDescription::toArray()`
+keeps its version 1 output byte for byte.
 
 | Class | Does |
 |---|---|
