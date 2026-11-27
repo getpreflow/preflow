@@ -116,11 +116,22 @@ final class DateFieldTypeTest extends TestCase
                 $this->assertNotNull(DateFieldType::read($value), $value . ' is read');
             }
         }
-        foreach (['tomorrow', 'now', '2026-10-22 23:15', '22.10.2026', '2026-02-30', '2026-10-22T24:15', ['2026-10-22'], 20261022] as $value) {
+        foreach (['tomorrow', 'now', '2026-10-22 23:15', '22.10.2026', '2026-02-30', '2026-10-22T24:15', ['2026-10-22'], 20261022,
+            '2026-02-30T05:00:00+00:00', '2026-11-27T25:00:00+00:00', '2026-11-27T05:61+01:00', '2026-11-31T05:00+01:00'] as $value) {
             $this->assertNotTrue($rule->validate($value, $context), var_export($value, true));
             if (is_string($value)) {
                 $this->assertSame($value, $type->renderAdmin($value, []), $value . ' is not read either');
             }
         }
+    }
+
+    public function test_a_padded_value_is_not_stored_but_still_shown(): void
+    {
+        $type = new DateFieldType();
+        $context = new \Preflow\Validation\ValidationContext('d', []);
+
+        $this->assertNotTrue($type->storedRules([])[0]->validate(' 2026-11-27 ', $context), 'stored as it is, it would print padded');
+        $this->assertNull(DateFieldType::read(' 2026-11-27 '));
+        $this->assertSame('Nov 27, 2026', $type->renderAdmin(' 2026-11-27 ', []), 'the admin still shows an old padded value');
     }
 }

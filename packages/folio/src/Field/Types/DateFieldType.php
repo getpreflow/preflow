@@ -87,23 +87,25 @@ final class DateFieldType extends AbstractScalarFieldType implements DisplaysInA
      * The date a stored value holds, in the app timezone, or null when the type does not read it.
      * It reads exactly "Y-m-d", "Y-m-d\TH:i" and "Y-m-d\TH:i:s" (what the inputs post; a real
      * calendar date and time, in the app timezone) and ISO 8601 with an offset ("Y-m-d\TH:i:sP",
-     * "Y-m-d\TH:i:s.uP", "Y-m-d\TH:iP", as PHP parses them). Surrounding spaces are ignored.
+     * "Y-m-d\TH:i:s.uP", "Y-m-d\TH:iP"), also a real date and time (since 0.92.1 no overflow:
+     * "2026-02-30T05:00:00+00:00" or an hour 25 is not read). Nothing around the value: a padded
+     * one (" 2026-11-27 ") is not read (renderAdmin() trims before it reads).
      *
      * @since 0.92.1
      */
     public static function read(string $value): ?\DateTimeImmutable
     {
-        $raw = trim($value);
         $zone = new \DateTimeZone(date_default_timezone_get());
         foreach (['Y-m-d|' => 'Y-m-d', 'Y-m-d\TH:i|' => 'Y-m-d\TH:i', 'Y-m-d\TH:i:s|' => 'Y-m-d\TH:i:s'] as $format => $shape) {
-            $date = \DateTimeImmutable::createFromFormat($format, $raw, $zone);
-            if ($date !== false && $date->format($shape) === $raw) {
+            $date = \DateTimeImmutable::createFromFormat($format, $value, $zone);
+            if ($date !== false && $date->format($shape) === $value) {
                 return $date;
             }
         }
         foreach (['Y-m-d\TH:i:sP', 'Y-m-d\TH:i:s.uP', 'Y-m-d\TH:iP'] as $format) {
-            $date = \DateTimeImmutable::createFromFormat($format, $raw);
-            if ($date !== false) {
+            $date = \DateTimeImmutable::createFromFormat($format, $value);
+            $problems = \DateTimeImmutable::getLastErrors();
+            if ($date !== false && ($problems === false || ($problems['warning_count'] === 0 && $problems['error_count'] === 0))) {
                 return $date->setTimezone($zone);
             }
         }

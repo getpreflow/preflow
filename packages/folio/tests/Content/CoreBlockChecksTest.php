@@ -208,7 +208,7 @@ final class CoreBlockChecksTest extends TestCase
     {
         $dm = $this->dm();
         $def = $dm->getTypeRegistry()->get('event');
-        foreach (['26.11.2026', '2026-02-30', '2026-11-27 05:00', 'tomorrow', '2026-11-27T25:00'] as $value) {
+        foreach (['26.11.2026', '2026-02-30', '2026-11-27 05:00', 'tomorrow', '2026-11-27T25:00', '2026-02-30T05:00:00+00:00', '2026-11-27T25:00:00+00:00', ' 2026-11-27 '] as $value) {
             try {
                 $dm->saveType(DynamicRecord::fromArray($def, ['uuid' => 'e1', 'name' => 'Fair', 'starts' => $value,
                     'sections' => [['_uid' => self::A, '_block' => 'checked_fields', 'title' => 'T', 'day' => $value]]]));

@@ -11,7 +11,8 @@ use Preflow\Validation\ValidationRule;
 /**
  * A date field's stored value (DateFieldType::storedRules()): a value the type reads
  * (DateFieldType::read(): "Y-m-d", "Y-m-d\TH:i", "Y-m-d\TH:i:s" and ISO 8601 with an offset),
- * whether or not the field has "time". Empty (null or "") passes: "required" judges that.
+ * whether or not the field has "time"; a real date and time (no overflow), nothing around it.
+ * Empty (null or "") passes: "required" judges that.
  *
  * @since 0.92.1
  */
