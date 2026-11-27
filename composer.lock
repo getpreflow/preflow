@@ -3619,14 +3619,14 @@
             "require": {
                 "php": ">=8.4",
                 "preflow/core": "^0.84.0 || @dev",
-                "preflow/data": "^0.91.0 || @dev",
+                "preflow/data": "^0.93.0 || @dev",
                 "preflow/validation": "^0.91.0 || @dev",
                 "preflow/view": "^0.91.0 || @dev"
             },
             "conflict": {
                 "preflow/blocks": "<0.91.0",
                 "preflow/core": "<0.84.0",
-                "preflow/data": "<0.91.0",
+                "preflow/data": "<0.93.0",
                 "preflow/validation": "<0.91.0",
                 "preflow/view": "<0.91.0"
             },
