@@ -102,9 +102,10 @@ final class DateRangeFieldType implements FieldType, DisplaysInAdmin, \Preflow\F
         return $this->stored($value);
     }
 
+    /** As stored, half a range included (the core's output reads only a valid range, else null): the editor shows what is stored, as in 0.92. */
     public function fromStorage(mixed $value): mixed
     {
-        return $this->output($value);
+        return $this->stored($value);
     }
 
     public function renderFrontend(mixed $value, array $config): string

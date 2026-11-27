@@ -109,9 +109,16 @@ abstract class AbstractScalarFieldType implements FieldType, UsesFieldKinds
         return $this->stored($value);
     }
 
+    /**
+     * The stored value as the core reads it out; a value the core reads as null although one is
+     * stored (outside its shape: older data, a row a script wrote) as stored, so the editor shows
+     * it and saving the page without touching it keeps it, as in 0.92.
+     */
     public function fromStorage(mixed $value): mixed
     {
-        return $this->output($value);
+        $output = $this->output($value);
+
+        return $output === null && $value !== null && $value !== '' ? $value : $output;
     }
 
     /** The value of a type the kinds hold none for: unchanged (RawValue). Subclasses name their core value. */

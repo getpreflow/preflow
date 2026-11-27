@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Field\Types;
 
 use Preflow\Data\Schema\ColumnKind;
+use Preflow\Data\Values\Core\TagsValue;
 use Preflow\Folio\Field\DisplaysInAdmin;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldType;
@@ -139,9 +140,7 @@ final class TagsFieldType implements FieldType, HasColumnKind, SearchableText, D
      */
     public function normalizeInput(mixed $raw, array $config): mixed
     {
-        $tags = $this->stored($raw, $config);
-
-        return is_array($tags) ? $tags : [];
+        return TagsValue::read($this->stored($raw, $config));
     }
 
     /**
@@ -164,9 +163,7 @@ final class TagsFieldType implements FieldType, HasColumnKind, SearchableText, D
      */
     public function fromStorage(mixed $value): mixed
     {
-        $tags = $this->output($value);
-
-        return is_array($tags) ? $tags : [];
+        return TagsValue::read($this->output($value));
     }
 
     public function renderFrontend(mixed $value, array $config): string

@@ -234,6 +234,69 @@ final class CoreValuesParityTest extends TestCase
     }
 
     /**
+     * Final review finding 1: numeric text in a block and in a translatable number field (kept as
+     * stored since 0.92) shows in the editor as stored, not as the core's output ("3.50" stays
+     * "3.50", not 3.5), so saving the page without touching it keeps the bytes and the change date.
+     */
+    public function test_numeric_text_shows_as_stored_and_saves_unchanged(): void
+    {
+        $this->write('config/blocks.php', "<?php\nreturn ['classes' => [\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\CheckedFieldsBlock::class]];\n");
+        $this->writeModel('keeper', [
+            'label' => 'Keepers',
+            'fields' => [
+                'title' => ['type' => 'string'],
+                'amount' => ['type' => 'number', 'translatable' => true],
+                'sections' => ['type' => 'blocks', 'blocks' => ['allowed' => ['checked_fields']]],
+            ],
+        ]);
+        $block = ['_uid' => self::UID, '_block' => 'checked_fields', 'title' => 'T', 'day' => '', 'count' => '5.0', 'labels' => null, 'size' => null];
+        $stored = ['title' => 'Keep', 'amount' => ['en' => '3.50'], 'sections' => [$block], 'uuid' => 'k1', '_locales' => ['en'], '_updated_at' => '2026-01-02T03:04:05Z'];
+        $this->dm()->driver('json')->save('keeper', 'k1', $stored, 'uuid');
+        $file = $this->dir . '/storage/data/keeper/k1.json';
+        $before = (string) file_get_contents($file);
+
+        $html = (string) $this->get('/folio/keeper/k1/edit')->getBody();
+        $this->assertMatchesRegularExpression('/name="amount"[^>]*value="3\.50"|value="3\.50"[^>]*name="amount"/', $html, 'the translatable number as stored');
+        $this->assertMatchesRegularExpression('/name="sections\[' . self::UID . '\]\[count\]"[^>]*value="5\.0"|value="5\.0"[^>]*name="sections\[' . self::UID . '\]\[count\]"/', $html, 'the block number as stored');
+
+        // What the editor shows, posted back unchanged.
+        $response = $this->post('/folio/keeper/k1', [
+            'title' => 'Keep', 'amount' => '3.50', '_locale' => 'en',
+            'sections' => ['_order' => [self::UID], self::UID => ['_block' => 'checked_fields', 'title' => 'T', 'day' => '', 'count' => '5.0', 'size' => '']],
+        ]);
+
+        $this->assertSame(302, $response->getStatusCode(), (string) $response->getBody());
+        $this->assertSame($before, (string) file_get_contents($file), 'the same bytes, the same change date');
+        $this->assertSame('3.50', $this->app()->container()->get(FieldTypeRegistry::class)->get('number')->fromStorage('3.50'), 'the editor gets the stored text');
+        $this->assertNull($this->app()->container()->get(FieldTypeRegistry::class)->get('number')->fromStorage(''), 'an emptied number holds none');
+    }
+
+    /**
+     * A stored value outside its shape (older data) reads out as null through the core (finding
+     * 5), but the editor shows it as stored, so a save of the page does not lose it.
+     *
+     * @return iterable<string, array{string, mixed}>
+     */
+    public static function oddStoredValues(): iterable
+    {
+        yield 'number' => ['number', 'abc'];
+        yield 'date' => ['date', '22.10.2026'];
+        yield 'string' => ['string', ['x']];
+        yield 'email' => ['email', ['x']];
+        yield 'daterange' => ['daterange', ['start' => '2026-03-05', 'end' => null]];
+    }
+
+    #[DataProvider('oddStoredValues')]
+    public function test_the_editor_keeps_a_value_the_core_reads_as_null(string $type, mixed $stored): void
+    {
+        $app = $this->app();
+        $field = new TypeFieldDefinition('f', $type);
+        $this->assertNull($app->container()->get(DataManager::class)->fieldKinds()->valueOf($field)->toOutput($stored, $field), 'the API reads null');
+
+        $this->assertSame($stored, $app->container()->get(FieldTypeRegistry::class)->get($type)->fromStorage($stored), 'the editor shows what is stored');
+    }
+
+    /**
      * A stored value, as drivers return it (numeric text on SQL included), read by the Folio type
      * (fromStorage()) as the core's value reads it out.
      *
@@ -245,9 +308,8 @@ final class CoreValuesParityTest extends TestCase
             yield "string {$i}" => ['string', [], $stored];
             yield "text {$i}" => ['text', [], $stored];
         }
-        foreach ([3, '3', '3.50', '', null, 'abc'] as $i => $stored) {
-            yield "number {$i}" => ['number', [], $stored];
-        }
+        // Not number: its editor shows the stored text ("3.50", as since 0.92), the core's output a
+        // number (3.5); test_numeric_text_shows_as_stored_and_saves_unchanged.
         foreach (['2026-11-27', '2026-11-27T09:30', '2026-11-27T05:00:00+00:00', '', null] as $i => $stored) {
             yield "date {$i}" => ['date', [], $stored];
         }

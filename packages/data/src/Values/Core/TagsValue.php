@@ -65,6 +65,18 @@ final class TagsValue implements FieldValue, DescribesShapes
     /** @return list<string> */
     public function toOutput(mixed $stored, TypeFieldDefinition $field): array
     {
+        return self::read($stored);
+    }
+
+    /**
+     * The tags a value holds, as toOutput() reads them: a list (or its JSON text), or a legacy
+     * comma string, each tag trimmed, without empty ones; [] for anything else.
+     *
+     * @return list<string>
+     * @since 0.93.0
+     */
+    public static function read(mixed $stored): array
+    {
         if (is_string($stored)) {
             $trimmed = trim($stored);
             if ($trimmed === '') {

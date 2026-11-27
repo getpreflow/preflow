@@ -22,6 +22,17 @@ final class NumberFieldType extends AbstractScalarFieldType implements \Preflow\
         return new \Preflow\Data\Values\Core\NumberValue();
     }
 
+    /**
+     * The stored value as it is, numeric text included ("3.50", not the core output's 3.5): a
+     * block and a translatable field keep the text the form posted (since 0.92), so the editor
+     * shows it and saving the page without touching it keeps its bytes and change date. An
+     * emptied number field holds no number. The API reads it as a number (NumberValue).
+     */
+    public function fromStorage(mixed $value): mixed
+    {
+        return $value === '' ? null : $value;
+    }
+
     public function columnKind(array $config): \Preflow\Data\Schema\ColumnKind
     {
         return \Preflow\Data\Schema\ColumnKind::Number;
