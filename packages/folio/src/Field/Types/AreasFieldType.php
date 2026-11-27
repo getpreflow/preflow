@@ -14,7 +14,7 @@ use Preflow\Folio\Field\BuildContext;
 use Preflow\Folio\Field\DisplaysInAdmin;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldType;
-use Preflow\Folio\Field\ReportsTranslatableTexts;
+use Preflow\Folio\Field\ReportsStoredTranslatableTexts;
 use Preflow\Folio\Field\StructuredFieldType;
 use Preflow\Folio\FolioText;
 use Preflow\View\TemplateEngineInterface;
@@ -38,7 +38,7 @@ use Preflow\View\TemplateEngineInterface;
  * and takes translations back at those paths. Asset usage, rich text, show_when and fresh uids reach
  * the blocks inside through preflow/blocks' BlockLists, as for a blocks field.
  */
-final class AreasFieldType implements FieldType, StructuredFieldType, DisplaysInAdmin, ReportsTranslatableTexts, AcceptsTranslatedTexts
+final class AreasFieldType implements FieldType, StructuredFieldType, DisplaysInAdmin, ReportsStoredTranslatableTexts, AcceptsTranslatedTexts
 {
     /** An area name as the form posts it. */
     private const string AREA = '/^[A-Za-z_][A-Za-z0-9_]*$/';
@@ -159,18 +159,51 @@ final class AreasFieldType implements FieldType, StructuredFieldType, DisplaysIn
      */
     public function translatableTexts(mixed $value, array $config, Locales $locales): array
     {
+        return $this->texts($value, $config, $locales, false);
+    }
+
+    /**
+     * Every stored text: the areas the layout shows, then those it lacks (kept, not shown), each with
+     * the hidden fields of its blocks; what a save keeps the stamps and machine marks of, so a switch
+     * to fewer columns and back finds them intact.
+     */
+    public function storedTranslatableTexts(mixed $value, array $config, Locales $locales): array
+    {
+        return $this->texts($value, $config, $locales, true);
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     * @return list<\Preflow\Folio\Content\TranslatableText>
+     */
+    private function texts(mixed $value, array $config, Locales $locales, bool $stored): array
+    {
         $set = $this->layoutSet($config);
         $areas = AreasValue::fromStored($value);
         $layout = $areas->resolve($set);
+        $placement = $areas->placement($set);
         $texts = [];
-        foreach ($areas->placement($set)->placed() as $name => $list) {
-            $label = FolioText::label($layout?->areas[$name]->label ?? $name);
-            foreach ($this->blocks->translatableTexts($list, [], $locales) as $text) {
+        foreach ($stored ? $placement->placed() + $placement->areas() : $placement->placed() as $name => $list) {
+            $label = FolioText::label($layout?->areas[$name]->label ?? $this->labelOf((string) $name, $set));
+            $inner = $stored ? $this->blocks->storedTranslatableTexts($list, [], $locales) : $this->blocks->translatableTexts($list, [], $locales);
+            foreach ($inner as $text) {
                 $texts[] = $text->within('areas.' . $name, $label);
             }
         }
 
         return $texts;
+    }
+
+    /** An area the layout lacks, by the label another layout of the set gives it, else its name. */
+    private function labelOf(string $name, AreaLayoutSet $set): string
+    {
+        foreach ($set->all() as $layout) {
+            if (isset($layout->areas[$name])) {
+                return $layout->areas[$name]->label;
+            }
+        }
+
+        return $name;
     }
 
     /** Translations at the paths translatableTexts() reports ("areas.<area>.<uid>.<field>…"), each area as a blocks field. */

@@ -36,7 +36,7 @@ final class MakeModelCommand implements CommandInterface
     private const array STRING_KINDS = ['string', 'text', 'richtext', 'date', 'select', 'env'];
 
     /** Field types stored as a list or a structure, which DataManager's typed read gives as an array (from JSON text too). */
-    private const array STRUCTURED_KINDS = ['blocks', 'matrix'];
+    private const array STRUCTURED_KINDS = ['blocks', 'matrix', 'areas'];
 
     /**
      * Schema keys with a #[Field] parameter or #[Validate]. The parameter is used only where

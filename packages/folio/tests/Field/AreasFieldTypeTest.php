@@ -179,6 +179,32 @@ final class AreasFieldTypeTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_hidden_column_keeps_its_translation_stamps_and_machine_marks(): void
+    {
+        $this->post_('p1', '1-1-1', ['c1' => [self::prose(self::LEFT, 'Left')], 'c2' => [], 'c3' => [self::prose(self::RIGHT, 'Right')]]);
+        $prefix = 'sections.' . self::GRID . '.columns.areas.';
+        $right = $prefix . 'c3.' . self::RIGHT . '.caption';
+        $outcome = $this->app()->container()->get(TextSources::class)->get('post')->write('p1', 'de', [$prefix . 'c1.' . self::LEFT . '.caption' => 'Links', $right => 'Rechts', 'title' => 'Hallo', 'slug' => 'hallo']);
+        $this->assertSame('written', $outcome->status->value, (string) $outcome->message);
+        $status = $this->app()->container()->get(TranslationStatus::class);
+        $stamp = $status->stampedFingerprint($this->stored('post', 'p1'), 'de', $right);
+        $this->assertNotNull($stamp, 'stamped by the machine translation');
+
+        // Two columns, saved: c3 is kept, not shown; its stamp and machine mark stay with it.
+        $this->saveLayout('1-1');
+        $narrow = $this->stored('post', 'p1');
+        $this->assertSame('1-1', $narrow->get('sections')[0]['columns']['layout']);
+        $this->assertSame($stamp, $status->stampedFingerprint($narrow, 'de', $right), 'the hidden column keeps its stamp');
+
+        // Back to three: the column's translation is as it was, still machine-made and not checked.
+        $this->saveLayout('1-1-1');
+        $back = $this->stored('post', 'p1');
+        $this->assertSame($stamp, $status->stampedFingerprint($back, 'de', $right));
+        $this->assertContains($right, array_map(static fn ($t): string => $t->path, $status->unchecked($back->getType(), $back, 'de')), 'the machine mark is intact');
+        $this->assertNotContains($right, array_map(static fn ($t): string => $t->path, $status->outdated($back->getType(), $back, 'de')), 'and not outdated');
+    }
+
+    #[RunInSeparateProcess]
     public function test_rich_text_inside_a_column_is_sanitized(): void
     {
         $this->publisher()->publish($this->working('post', 'p1', [
@@ -230,6 +256,15 @@ final class AreasFieldTypeTest extends TestCase
             'status' => 'published',
             'sections' => [['_uid' => self::GRID, '_block' => 'grid', 'columns' => ['layout' => $layout, 'areas' => $areas]]],
         ]);
+    }
+
+    /** The post's edit form saved in English with the grid's layout set to $layout. */
+    private function saveLayout(string $layout): void
+    {
+        $body = self::posted($this->html($this->get('/folio/post/p1/edit')));
+        $body['sections'][self::GRID]['columns']['layout'] = $layout;
+        $saved = $this->post('/folio/post/p1', $body);
+        $this->assertSame(302, $saved->getStatusCode(), substr((string) $saved->getBody(), 0, 3000));
     }
 
     /**

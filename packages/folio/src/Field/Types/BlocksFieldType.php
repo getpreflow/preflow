@@ -27,7 +27,7 @@ use Psr\Http\Message\UploadedFileInterface;
  * their own "blocks" fields; translatable leaves are locale maps, structure
  * is shared across locales. Unknown block keys are kept untouched.
  */
-final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\Folio\Field\DisplaysInAdmin, ReportsTranslatableTexts, AcceptsTranslatedTexts
+final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\Folio\Field\DisplaysInAdmin, \Preflow\Folio\Field\ReportsStoredTranslatableTexts, AcceptsTranslatedTexts
 {
     private const UID = '/^[a-f0-9]{16}$/';
 
@@ -173,6 +173,24 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
      */
     public function translatableTexts(mixed $value, array $config, Locales $locales): array
     {
+        return $this->texts($value, $locales, false);
+    }
+
+    /**
+     * Every text of the known blocks, the fields their show_when hides and, inside an areas field,
+     * the columns its layout does not show included (0.92): what a save keeps the stamps of.
+     */
+    public function storedTranslatableTexts(mixed $value, array $config, Locales $locales): array
+    {
+        return $this->texts($value, $locales, true);
+    }
+
+    /**
+     * @param bool $stored every stored text (storedTranslatableTexts()), not only the shown ones
+     * @return list<TranslatableText>
+     */
+    private function texts(mixed $value, Locales $locales, bool $stored): array
+    {
         if (!$locales->isMultilingual()) {
             return [];
         }
@@ -185,7 +203,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
             }
             $prefix = $block['_uid'];
             $blockLabel = \Preflow\Folio\FolioText::label($definition->label);
-            $hidden = array_flip($this->blocks->hiddenFieldsOf($definition->key, $block));
+            $hidden = $stored ? [] : array_flip($this->blocks->hiddenFieldsOf($definition->key, $block));
             foreach ($definition->fields as $name => $field) {
                 if (isset($hidden[$name])) {
                     continue;
@@ -193,7 +211,10 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                 $type = $this->fieldTypes->get($field->type);
                 $label = $blockLabel . ' › ' . self::fieldLabel($field->label, $name);
                 if ($type instanceof ReportsTranslatableTexts) {
-                    foreach ($type->translatableTexts($type->fromStorage($block[$name] ?? null), $field->config, $locales) as $text) {
+                    $nested = $stored && $type instanceof \Preflow\Folio\Field\ReportsStoredTranslatableTexts
+                        ? $type->storedTranslatableTexts($type->fromStorage($block[$name] ?? null), $field->config, $locales)
+                        : $type->translatableTexts($type->fromStorage($block[$name] ?? null), $field->config, $locales);
+                    foreach ($nested as $text) {
                         $texts[] = $text->within($prefix . '.' . $name, $label);
                     }
                     continue;

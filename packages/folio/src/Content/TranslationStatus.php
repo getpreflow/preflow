@@ -12,6 +12,7 @@ use Preflow\Data\TypeFieldDefinition;
 use Preflow\Folio\Field\FieldType;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\HandlesUpload;
+use Preflow\Folio\Field\ReportsStoredTranslatableTexts;
 use Preflow\Folio\Field\ReportsTranslatableTexts;
 use Preflow\Folio\Field\StructuredFieldType;
 use Preflow\Folio\Field\Types\AssetFieldType;
@@ -81,7 +82,8 @@ final class TranslationStatus
 
     /**
      * @param list<string> $hidden   fields left out
-     * @param bool         $unplaced the page's areas its layout does not show too
+     * @param bool         $unplaced every stored text: the page's areas its layout does not show, an areas
+     *                               field's columns its layout lacks and hidden block fields too (stamp())
      * @return list<TranslatableText>
      */
     private function textsOf(TypeDefinition $def, DynamicRecord $record, array $hidden, bool $unplaced = false): array
@@ -101,7 +103,12 @@ final class TranslationStatus
             $type = $this->fieldTypes->get($field->type);
             if ($type instanceof ReportsTranslatableTexts) {
                 $label = $this->label($def, $name);
-                foreach ($type->translatableTexts($type->fromStorage($record->get($name)), $field->config, $locales) as $text) {
+                // With $unplaced every stored text (0.92): an areas field's columns its layout lacks, a block field
+                // its show_when hides, at any depth (ReportsStoredTranslatableTexts), as a page's hidden areas.
+                $own = $unplaced && $type instanceof ReportsStoredTranslatableTexts
+                    ? $type->storedTranslatableTexts($type->fromStorage($record->get($name)), $field->config, $locales)
+                    : $type->translatableTexts($type->fromStorage($record->get($name)), $field->config, $locales);
+                foreach ($own as $text) {
                     $texts[] = $text->within($name, $label);
                 }
                 continue;
@@ -132,7 +139,7 @@ final class TranslationStatus
         foreach ($areas as $name => $list) {
             $area = $resolved->layout?->areas[$name] ?? null;
             $label = $area !== null ? \Preflow\Folio\FolioText::label($area->label) : (new FieldRenderer())->humanize((string) $name);
-            foreach ($blocks->translatableTexts($list, [], $def->locales) as $text) {
+            foreach ($unplaced ? $blocks->storedTranslatableTexts($list, [], $def->locales) : $blocks->translatableTexts($list, [], $def->locales) as $text) {
                 $texts[] = $text->within(PageLayouts::AREAS . '.' . $name, $label);
             }
         }
@@ -453,7 +460,8 @@ final class TranslationStatus
         }
 
         // Every text, hidden ones too: a field its show_when hides keeps its stamps and marks, and so
-        // does an area its layout does not show.
+        // does an area its layout does not show (a page's, and since 0.92 an areas field's column, at
+        // any depth).
         $texts = [];
         foreach ($this->textsOf($def, $after, [], unplaced: true) as $text) {
             $texts[$text->path] = $text;
