@@ -68,6 +68,11 @@ final class ContentApiTest extends TestCase
         $this->data()->save($user);
     }
 
+    private function revoke(string ...$permissions): void
+    {
+        $this->assertSame(0, $this->console('rbac:role', 'company_editor', '--population=members', '--revoke=' . implode(',', $permissions)));
+    }
+
     /** The site in two languages: this copy's config/i18n.php, read by every app booted after it. */
     private function speak(string ...$locales): void
     {
@@ -153,8 +158,9 @@ final class ContentApiTest extends TestCase
         $this->assertSame(['en' => $english, 'de' => 'Produktentwicklung für Logistik-Software.'], $response->json('data.summary'));
         $this->assertSame('Northwind Labs', $response->json('data.name'), 'a field the body does not name keeps its value');
 
-        // One value with ?locale= is that language's; the other stays. The public reads the published copy.
+        // One value with ?locale= is that language's; the other stays. The public reads the published copy, once published.
         $this->json('PATCH', '/api/content/company/' . $id . '?locale=de', ['summary' => 'Software für Logistik.'], $headers)->assertOk();
+        $this->json('POST', '/api/content/company/' . $id . '/publish', null, $headers)->assertOk();
         $this->assertSame('Software für Logistik.', $this->json('GET', '/api/content/company/' . $id . '?locale=de')->json('data.summary'));
         $this->assertSame($english, $this->json('GET', '/api/content/company/' . $id . '?locale=en')->json('data.summary'));
 
@@ -201,21 +207,48 @@ final class ContentApiTest extends TestCase
         $headers = $this->bearer();
         $this->assertSame(403, $this->json('PATCH', $uri, ['place' => 'Hamburg'], $headers)->status());
         $this->assertSame(403, $this->json('POST', '/api/content/company', $new, $headers)->status());
+        $this->assertSame(403, $this->json('PATCH', '/api/content/company/' . str_repeat('0', 32), ['place' => 'Hamburg'], $headers)->status(), 'the permission is asked before the record is looked up');
 
-        // company.edit without company.publish: the change waits as a draft, the public sees the published copy.
-        $this->grant('company.edit');
+        // company.edit changes the working copy; company.create makes a new record, a draft.
+        $this->grant('company.edit', 'company.create');
         $this->assertSame('Hamburg', $this->json('PATCH', $uri, ['place' => 'Hamburg'], $headers)->json('data.place'));
         $this->assertSame('Hamburg', $this->data()->findType('company', $id)->get('place'));
         $this->assertSame('Berlin', $this->json('GET', $uri)->json('data.place'));
-        $this->assertSame(403, $this->json('POST', '/api/content/company', $new, $headers)->status());
-
-        // company.publish puts it live; company.create makes a new one.
-        $this->grant('company.edit', 'company.publish', 'company.create');
-        $this->json('PATCH', $uri, ['place' => 'Hamburg'], $headers)->assertOk();
-        $this->assertSame('Hamburg', $this->json('GET', $uri)->json('data.place'));
         $created = $this->json('POST', '/api/content/company', $new, $headers);
         $this->assertSame(201, $created->status());
         $created->assertHeader('Location', '/api/content/company/' . $created->json('data._id'));
-        $this->assertSame('New Company', $this->json('GET', '/api/content/company/' . $created->json('data._id'))->json('data.name'));
+        $this->assertSame(404, $this->json('GET', '/api/content/company/' . $created->json('data._id'))->status(), 'a new record is a draft');
+    }
+
+    public function test_publishing_is_its_own_request(): void
+    {
+        $id = (string) $this->employer()->company;
+        $uri = '/api/content/company/' . $id;
+        // Staff saved an edit in Folio and did not publish it: a draft edit of a published company.
+        $working = $this->data()->findType('company', $id);
+        $working->set('name', 'Northwind Labs (draft by staff)');
+        $this->container()->get(Publisher::class)->saveDraft($working, null);
+
+        // A token that may publish changes another field: only the working copy changes.
+        $this->grant('company.edit', 'company.publish');
+        $headers = $this->bearer();
+        $patched = $this->json('PATCH', $uri, ['place' => 'Hamburg'], $headers);
+        $patched->assertOk();
+        $this->assertSame('Northwind Labs (draft by staff)', $patched->json('data.name'), 'the answer is the working copy');
+        $live = $this->json('GET', $uri);
+        $this->assertSame('Northwind Labs', $live->json('data.name'), "staff's draft edit stays unpublished");
+        $this->assertSame('Berlin', $live->json('data.place'));
+
+        // Publishing is asked for on its own, and needs company.publish.
+        $this->grant('company.edit');
+        $this->revoke('company.publish');
+        $this->assertSame(403, $this->json('POST', $uri . '/publish', null, $headers)->status());
+        $this->assertSame('Berlin', $this->json('GET', $uri)->json('data.place'));
+
+        $this->grant('company.publish');
+        $this->json('POST', $uri . '/publish', null, $headers)->assertOk();
+        $this->assertSame('Hamburg', $this->json('GET', $uri)->json('data.place'));
+        $this->assertSame(404, $this->json('POST', '/api/content/company/' . str_repeat('0', 32) . '/publish', null, $headers)->status());
+        $this->assertSame(401, $this->json('POST', $uri . '/publish')->status());
     }
 }

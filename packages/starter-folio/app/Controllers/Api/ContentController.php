@@ -20,7 +20,6 @@ use Preflow\Data\Records\RecordOutput;
 use Preflow\Data\TypeActionRefused;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeRegistry;
-use Preflow\Publishing\PublishFailed;
 use Preflow\Publishing\Publisher;
 use Preflow\Publishing\RecordChecks;
 use Preflow\Publishing\RecordWriter;
@@ -44,6 +43,7 @@ use Psr\Http\Message\ServerRequestInterface;
  *     GET   /api/content/{type}/{id}     one published record (RecordOutput)          ?locale=de ?with=media
  *     POST  /api/content/{type}          a new record (RecordInput, RecordWriter)     token, {type}.create
  *     PATCH /api/content/{type}/{id}     a change (RecordInput, RecordWriter)         token, {type}.edit, ?locale=de
+ *     POST  /api/content/{type}/{id}/publish   the working copy, live (Publisher)     token, {type}.publish
  *
  * A record reads as {"_id": …, <field>: …}; a translatable field as {"en": …, "de": …}, or one
  * language with ?locale=; ?with=media adds "_media", the URLs and sizes of the media it points
@@ -51,9 +51,11 @@ use Psr\Http\Message\ServerRequestInterface;
  * German text and keeps the English.
  *
  * Reads show what the site shows: the published copy of a type that publishes. A write changes
- * the working copy, as Folio's form does, and publishes it at once when the token's user may
- * ({type}.publish); a user who may only edit leaves the change as a draft for someone who may.
- * The roles decide for the whole type, as in Folio (config/roles.php, Folio's Settings → Roles).
+ * only the working copy, as Folio's Save does, and answers with it; it never publishes, so a
+ * draft edit someone saved before (staff in Folio) never goes live as a side effect. Publishing
+ * is its own request, as Folio's Publish button is: POST …/publish puts the whole working copy
+ * live. The roles decide for the whole type, as in Folio (config/roles.php, Folio's Settings →
+ * Roles).
  *
  * Errors: 404 for a type this API does not serve, 401 without a token, 403 when the type or the
  * user's roles refuse, 422 with the core's keys ("name", "summary.de", "_id") when the body or
@@ -132,7 +134,7 @@ final class ContentController
             throw new ValidationException(new ValidationResult(['_id' => ['A record with this id exists already.']]));
         }
         $this->checked($record);
-        $this->published(fn () => $this->writer->create($record, $this->saveOptions($type, $user)));
+        $this->writer->create($record, $this->saveOptions($type, $user));
 
         return Json::data(
             $this->output->toArray($record, $this->readOptions($request)),
@@ -147,17 +149,41 @@ final class ContentController
     {
         $type = $this->served($request);
         $user = $this->user($request);
-        // The working copy: the record editors change, published or not.
-        $record = $this->data->findIn($type, (string) $request->getAttribute('id'))
-            ?? throw new NotFoundHttpException('No such record.');
         $this->mayDo($type, 'edit');
+        $record = $this->workingCopy($type, $request);
 
         // Only what the body names changes; the rules run on the whole record before it is saved.
         $this->refusedAs403(fn (): DynamicRecord => $this->input->update($record, $this->body($request), $this->locale($request)));
         $this->checked($record);
-        $this->published(fn () => $this->writer->save($record, $this->saveOptions($type, $user)));
+        $this->writer->save($record, $this->saveOptions($type, $user));
 
+        // The answer is the working copy, which the public sees once it is published.
         return Json::data($this->output->toArray($record, $this->readOptions($request)));
+    }
+
+    #[Post('/{type}/{id}/publish')]
+    #[Middleware(TokenAuthMiddleware::class)]
+    public function publish(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = $this->served($request);
+        $user = $this->user($request);
+        $this->mayDo($type, 'publish');
+        if (!$this->publisher->enabled($type->key)) {
+            throw new NotFoundHttpException('This type does not publish: a save puts a change live.');
+        }
+        $record = $this->workingCopy($type, $request);
+
+        // The working copy as it is, every edit in it, put live; the publish runs the type's rules (422).
+        $live = $this->publisher->publish($record, 'api:' . $user->email);
+
+        return Json::data($this->output->toArray($live, $this->readOptions($request)));
+    }
+
+    /** The working copy: the record editors change, published or not. */
+    private function workingCopy(TypeDefinition $type, ServerRequestInterface $request): DynamicRecord
+    {
+        return $this->data->findIn($type, (string) $request->getAttribute('id'))
+            ?? throw new NotFoundHttpException('No such record.');
     }
 
     /** 403 unless the token's user may $verb records of the type: their role's "{type}.{verb}", and the type's own answer. */
@@ -180,25 +206,13 @@ final class ContentController
         $this->checks->validate($record);
     }
 
-    /** Publishes with the save when the user may ({type}.publish); the revision names them, as Folio shows it. */
+    /**
+     * A save of the working copy, never a publish. The revision names the user, as Folio shows it;
+     * a save by someone who may not publish cancels a publish staff scheduled, as a save in Folio does.
+     */
     private function saveOptions(TypeDefinition $type, User $user): SaveOptions
     {
-        $mayPublish = TypePermissions::allows($this->access, $type, 'publish');
-
-        return new SaveOptions(by: 'api:' . $user->email, mayPublish: $mayPublish, publish: $mayPublish);
-    }
-
-    /**
-     * A publish that fails stores the draft and throws PublishFailed; the client gets its cause
-     * (a 422, or a conflict with a save in between).
-     */
-    private function published(\Closure $save): void
-    {
-        try {
-            $save();
-        } catch (PublishFailed $e) {
-            throw $e->cause();
-        }
+        return new SaveOptions(by: 'api:' . $user->email, mayPublish: TypePermissions::allows($this->access, $type, 'publish'));
     }
 
     /** The type the path names, if this API serves it: 404 for any other, a type of the site or not. */

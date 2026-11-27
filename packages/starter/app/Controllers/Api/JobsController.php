@@ -96,7 +96,7 @@ final class JobsController
 
         // The body onto a new job (refused: 422), then what the server sets.
         $job = $this->input->create($this->job(), $body);
-        $job->set('uuid', bin2hex(random_bytes(16)));
+        $job->set($this->job()->idField, bin2hex(random_bytes(16)));
         $job->set('company', $user->company);
         // Made from the title once; editing the title later keeps the address people may have shared.
         $job->set('slug', Slugs::unique($this->data, Job::class, (string) $job->get('title')));

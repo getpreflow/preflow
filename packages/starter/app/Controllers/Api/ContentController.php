@@ -171,7 +171,8 @@ final class ContentController
 
     /**
      * A write the type refuses ("readonly": true, "creatable": false) is a 403; what the body
-     * gets wrong stays a 422 (ValidationException).
+     * gets wrong stays a 422 (ValidationException). The type is asked by the write class itself:
+     * RecordInput::create() and update() call TypeDefinition::assertAllows() first.
      *
      * @param \Closure(): DynamicRecord $write
      */
