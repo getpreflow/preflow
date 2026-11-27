@@ -49,7 +49,7 @@ final class ContentContributorTest extends BlocksAppTestCase
         $this->assertInstanceOf(DescriptionContributor::class, $content);
         $this->assertSame(['blocks', 'layouts', 'area_layout_sets'], array_keys($content->sections()));
         $this->assertSame(['version', 'types', 'values', 'blocks', 'layouts', 'area_layout_sets'], array_keys($description));
-        $this->assertEquals($old['blocks'], $description['blocks']);
+        $this->assertEquals($old['blocks'], self::withoutValues($description['blocks']), 'the same blocks; the one description adds each field\'s "value"');
         $this->assertEquals($old['layouts'], $description['layouts']);
         $this->assertEquals($old['area_layout_sets'], $description['area_layout_sets']);
 
@@ -67,6 +67,63 @@ final class ContentContributorTest extends BlocksAppTestCase
         $this->assertArrayHasKey('area_map', $description['values']);
         $this->assertArrayHasKey('resolved_layout', $description['values'], 'the read shape of "_layout"');
         $this->assertArrayNotHasKey('areas_value', $description['values'], 'no areas field anywhere');
+    }
+
+    public function test_block_fields_name_their_value_shape(): void
+    {
+        // Final review finding 3: the read output converts every block field through its value,
+        // so the one description names each one's shape, and lists the shape in "values".
+        $container = $this->app()->container();
+        $kinds = $container->get(\Preflow\Data\DataManager::class)->fieldKinds();
+        $description = $container->get(Description::class)->toArray();
+        $section = $container->get(\Preflow\Blocks\BlockRegistry::class)->get('section');
+        $this->assertNotNull($section);
+
+        $fields = $description['blocks']['section']['fields'];
+        foreach ($section->fields as $name => $field) {
+            $shape = $kinds->valueOf($field)->shape($field);
+            $this->assertSame($shape, $fields[$name]['value'], $name);
+            $this->assertArrayHasKey($shape, $description['values'], "{$name}: its shape is in \"values\"");
+        }
+        $this->assertSame('string_list', $fields['answers']['value']);
+        $this->assertSame('blocks', $fields['quotes']['value']);
+        $this->assertSame('string', $description['blocks']['section_quote']['fields']['text']['value']);
+        $this->assertArrayHasKey('blocks', $description['values'], 'a shape only blocks have');
+        $this->assertArrayHasKey('string_list', $description['values']);
+        $this->assertTrue($fields['title']['translatable'], 'two languages: a translatable block field is a map');
+        $this->assertArrayNotHasKey('value', $container->get(ContentDescription::class)->toArray()['blocks']['section']['fields']['title'], 'toArray() keeps its 0.92 keys');
+    }
+
+    public function test_block_fields_are_not_translatable_on_a_single_language_site(): void
+    {
+        // As a type's fields (Task 8): the read output gives one plain value there.
+        $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en'], 'fallback' => 'en', 'url_strategy' => 'prefix'];\n");
+        $container = $this->app()->container();
+
+        $this->assertFalse($container->get(Description::class)->toArray()['blocks']['section']['fields']['title']['translatable']);
+        $this->assertTrue($container->get(ContentDescription::class)->toArray()['blocks']['section']['fields']['title']['translatable'], 'toArray() keeps the declared flag, as in 0.92');
+    }
+
+    /**
+     * The blocks section without the "value" the one description adds (an areas field had one in 0.92).
+     *
+     * @param array<string, mixed>|\stdClass $blocks
+     * @return array<string, mixed>|\stdClass
+     */
+    private static function withoutValues(array|\stdClass $blocks): array|\stdClass
+    {
+        if (!is_array($blocks)) {
+            return $blocks;
+        }
+        foreach ($blocks as $key => $block) {
+            foreach (is_array($block['fields']) ? $block['fields'] : [] as $name => $field) {
+                if ($field['type'] !== 'areas') {
+                    unset($blocks[$key]['fields'][$name]['value']);
+                }
+            }
+        }
+
+        return $blocks;
     }
 
     public function test_content_description_to_array_is_unchanged(): void

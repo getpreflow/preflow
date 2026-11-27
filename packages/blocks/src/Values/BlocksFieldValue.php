@@ -26,7 +26,8 @@ use Preflow\Data\Values\StoredCleaning;
  * - toStored(): a list (or its JSON text) with each block's fields through their toStored(); any
  *   other input passes through for the rules.
  * - toOutput(): the stored list (JSON text on SQL included) as BlockRegistry::visibleBlock() reads
- *   it (a field its show_when hides is null), each field through its toOutput(); none is [].
+ *   it (a field its show_when hides is null), each field through its toOutput(); none is [], and
+ *   so is a stored value that is no list (reading never writes: it stays as stored).
  * - clean() (on every typed write, StoredCleaning): each block's fields cleaned that clean on
  *   write (rich text), in every list the value holds (BlockLists::map()); a clean value comes back
  *   as given, the same array or the same JSON text, so its bytes and the change date stay; a
@@ -44,7 +45,7 @@ use Preflow\Data\Values\StoredCleaning;
 final class BlocksFieldValue implements FieldValue, CleansOnWrite, ListsReferences, ListsVisibleReferences, DescribesShapes
 {
     public const array SHAPES = [
-        'blocks' => 'A list of blocks: each an object with "_uid", "_block" (a key of "blocks") and its fields, each in its own shape (a translatable one a map of locale => value).',
+        'blocks' => 'A list of blocks: each an object with "_uid", "_block" (a key of "blocks") and its fields, each in its own shape (a translatable one a map of locale => value); [] when none.',
     ];
 
     private ?StoredCleaning $cleaning = null;
@@ -69,17 +70,15 @@ final class BlocksFieldValue implements FieldValue, CleansOnWrite, ListsReferenc
         return array_map(fn (mixed $block): mixed => is_array($block) ? $this->storedBlock($block) : $block, $list);
     }
 
-    public function toOutput(mixed $stored, TypeFieldDefinition $field): mixed
+    /** @return list<array<string, mixed>> the blocks; none is [], and so is anything stored that is no list */
+    public function toOutput(mixed $stored, TypeFieldDefinition $field): array
     {
         $list = self::decoded($stored);
-        if ($list === null || $list === '') {
+        if (!is_array($list)) {
             return [];
         }
-        if (!is_array($list)) {
-            return $stored;
-        }
 
-        return array_values(array_map($this->outputBlock(...), array_values(array_filter($list, 'is_array'))));
+        return array_map($this->outputBlock(...), array_values(array_filter($list, 'is_array')));
     }
 
     public function shape(TypeFieldDefinition $field): string
@@ -145,8 +144,7 @@ final class BlocksFieldValue implements FieldValue, CleansOnWrite, ListsReferenc
         if (!is_array($decoded)) {
             return $value;
         }
-        $clean = fn (array $list): array => array_map($this->cleanBlock(...), $list);
-        $cleaned = BlockLists::map($field, $decoded, $clean);
+        $cleaned = BlockLists::map($field, $decoded, $this->cleanList(...));
         if ($cleaned === BlockLists::map($field, $decoded, static fn (array $list): array => $list)) {
             return $value;
         }
@@ -252,6 +250,27 @@ final class BlocksFieldValue implements FieldValue, CleansOnWrite, ListsReferenc
                 }
             }
         }
+    }
+
+    /**
+     * A list of blocks as toStored() stores it: each block's fields through their toStored().
+     *
+     * @param list<array<string, mixed>> $list
+     * @return list<array<string, mixed>>
+     * @internal
+     */
+    public function storedList(array $list): array
+    {
+        return array_map($this->storedBlock(...), $list);
+    }
+
+    /**
+     * @param list<array<string, mixed>> $list
+     * @return list<array<string, mixed>>
+     */
+    private function cleanList(array $list): array
+    {
+        return array_map($this->cleanBlock(...), $list);
     }
 
     /**

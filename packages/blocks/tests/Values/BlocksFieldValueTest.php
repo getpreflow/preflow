@@ -113,6 +113,15 @@ final class BlocksFieldValueTest extends BlocksAppTestCase
         $this->assertSame([], $this->blocks()->toOutput(null, self::blocksField()), 'no blocks: an empty list');
     }
 
+    public function test_blocks_output_is_a_list_whatever_is_stored(): void
+    {
+        // Final review finding 5: the shape "blocks" is a list; what is no list reads as none ([]).
+        foreach (['not json', 42, true, '{"_uid":"x"'] as $stored) {
+            $this->assertSame([], $this->blocks()->toOutput($stored, self::blocksField()), (string) json_encode($stored));
+        }
+        $this->assertSame([], $this->blocks()->toOutput(['not a block', 3], self::blocksField()), 'entries that are no block are left out');
+    }
+
     public function test_areas_output_is_the_layout_resource_s_with_values_read(): void
     {
         $stored = ['layout' => '1-1', 'areas' => ['c1' => [self::card(self::A, ['count' => '3'])], 'c2' => [], 'c3' => [self::card(self::B)]]];

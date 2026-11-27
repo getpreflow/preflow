@@ -52,7 +52,7 @@ final class AreasFieldValue implements FieldValue, CleansOnWrite, MergesInput, L
             return $input;
         }
 
-        return BlockLists::map($field, $input, fn (array $list): array => $this->blocks->toStored($list, new TypeFieldDefinition($field->name, BlockLists::BLOCKS)));
+        return BlockLists::map($field, $input, $this->blocks->storedList(...));
     }
 
     public function toOutput(mixed $stored, TypeFieldDefinition $field): mixed

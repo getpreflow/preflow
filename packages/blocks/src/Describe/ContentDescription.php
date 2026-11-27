@@ -19,6 +19,7 @@ use Preflow\Data\FieldKinds;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Data\TypeRegistry;
+use Preflow\Data\Values\CoreValues;
 use Preflow\Data\Values\DescribesShapes;
 
 /**
@@ -68,7 +69,9 @@ use Preflow\Data\Values\DescribesShapes;
  * Since 0.93 it is also the blocks package's part of the one description of every type
  * (Preflow\Data\Describe\Description, a DescriptionContributor): sections() gives "blocks",
  * "layouts" and "area_layout_sets", forType() a type's "layouts", shapes() the shapes they name.
- * toArray() keeps its 0.92 output.
+ * There each block field also has "value", the shape the read output gives it in (as a type's
+ * field), and "translatable" is true only on a site with more than one language (the output's
+ * map). toArray() keeps its 0.92 output.
  *
  * @since 0.92.0
  */
@@ -119,7 +122,7 @@ final readonly class ContentDescription implements DescriptionContributor, Descr
 
         return [
             'version' => self::VERSION,
-            ...$this->sections(),
+            ...$this->sectionsOf(described: false),
             'types' => self::map($types),
         ];
     }
@@ -133,9 +136,21 @@ final readonly class ContentDescription implements DescriptionContributor, Descr
      */
     public function sections(): array
     {
+        return $this->sectionsOf(described: true);
+    }
+
+    /**
+     * The sections; $described (the one description, sections()): each block field also names
+     * its value's shape ("value", as a type's fields do) and is "translatable" only on a site with
+     * more than one language, as the read output gives it. toArray() keeps 0.92's keys.
+     *
+     * @return array{blocks: array<string, mixed>|\stdClass, layouts: array<string, mixed>|\stdClass, area_layout_sets: array<string, mixed>|\stdClass}
+     */
+    private function sectionsOf(bool $described): array
+    {
         $blocks = [];
         foreach ($this->blocks->all() as $key => $block) {
-            $blocks[$key] = $this->block($block);
+            $blocks[$key] = $this->block($block, $described);
         }
 
         $layouts = [];
@@ -179,7 +194,8 @@ final readonly class ContentDescription implements DescriptionContributor, Descr
 
     /**
      * The shapes its sections and type entries name: "layout_key", "area_map" and (the read
-     * output's) "resolved_layout" when a type has layouts, "areas_value" when a block has an areas field.
+     * output's) "resolved_layout" when a type has layouts, and each block field's shape (its
+     * value's text, else the core's; "areas_value" for an areas field).
      *
      * @return array<string, string>
      * @since 0.93.0
@@ -193,10 +209,19 @@ final readonly class ContentDescription implements DescriptionContributor, Descr
                 break;
             }
         }
+        // Each block field's shape (the one description names it in the field's "value"), with
+        // its value's text, else the core's.
         foreach ($this->blocks->all() as $block) {
             foreach ($block->fields as $field) {
+                $value = $this->kinds->valueOf($field);
+                $shape = $value->shape($field);
+                $text = $value instanceof DescribesShapes ? ($value->shapes()[$shape] ?? null) : null;
+                $text ??= CoreValues::SHAPES[$shape] ?? null;
+                if ($text !== null && !array_key_exists($shape, $shapes)) {
+                    $shapes[$shape] = $text;
+                }
                 if ($field->type === BlockLists::AREAS) {
-                    return $shapes + AreasFieldValue::SHAPES;
+                    $shapes += AreasFieldValue::SHAPES;
                 }
             }
         }
@@ -222,11 +247,11 @@ final readonly class ContentDescription implements DescriptionContributor, Descr
     }
 
     /** @return array<string, mixed> */
-    private function block(BlockDefinition $block): array
+    private function block(BlockDefinition $block, bool $described): array
     {
         $fields = [];
         foreach ($block->fields as $name => $field) {
-            $fields[$name] = $this->field($field);
+            $fields[$name] = $this->field($field, $described);
         }
 
         return [
@@ -241,23 +266,32 @@ final readonly class ContentDescription implements DescriptionContributor, Descr
     }
 
     /** @return array<string, mixed> */
-    private function field(TypeFieldDefinition $field): array
+    private function field(TypeFieldDefinition $field, bool $described): array
     {
         $out = [
             'type' => $field->type,
             'label' => $field->label,
             'help' => $field->help,
-            'translatable' => $field->translatable,
+            'translatable' => $field->translatable && (!$described || $this->multilingual()),
             'required' => in_array('required', $field->validate, true),
             'list' => $this->kinds->holdsList($field),
             'config' => self::map($field->config),
         ];
-        if ($field->type === BlockLists::AREAS) {
+        if ($described) {
+            // Its value's shape, as the read output gives it (BlocksFieldValue::outputBlock()).
+            $out['value'] = $this->kinds->valueOf($field)->shape($field);
+        } elseif ($field->type === BlockLists::AREAS) {
             // Its layouts are those of the set "config.layouts" names (under "area_layout_sets").
             $out['value'] = 'areas_value';
         }
 
         return $out;
+    }
+
+    /** Whether the site has more than one content language (a translatable block field is then a map). */
+    private function multilingual(): bool
+    {
+        return $this->types?->locales()->isMultilingual() ?? true;
     }
 
     /** @return array<string, mixed> */
