@@ -235,6 +235,32 @@ final class FieldValuesTest extends TestCase
         }
     }
 
+    /** @since 0.93.0 as Folio's form reads it: a national number in the field's "default_region", trimmed. */
+    public function test_phone_reads_a_national_number_in_the_fields_default_region(): void
+    {
+        $value = $this->value('phone');
+        $field = new TypeFieldDefinition('phone', 'phone', config: ['default_region' => 'CH']);
+
+        $this->assertSame(['as_typed' => '044 123 45 67', 'e164' => '+41441234567'], $value->toStored(' 044 123 45 67 ', $field));
+        $this->assertSame(['as_typed' => '044 123 45 67', 'e164' => null], $value->toStored('044 123 45 67', $this->field('phone')), 'without a region: no E.164 form');
+        $this->assertSame(['as_typed' => '+33 1 23 45 67 89', 'e164' => '+33123456789'], $value->toStored('+33 1 23 45 67 89', $field), 'an international number is its own');
+        // 0.92 stored values pass through unchanged, so a re-save changes no bytes.
+        $stored = ['as_typed' => '044 123 45 67', 'e164' => null];
+        $this->assertSame($stored, $value->toStored($stored, $field));
+        $this->assertSame($stored, $value->toStored(json_encode($stored), $field));
+    }
+
+    /** @since 0.93.0 as Folio's form stores it: line ends as "\n", blank code is no value. */
+    public function test_code_normalises_line_ends_and_blank_is_null(): void
+    {
+        $value = $this->value('code');
+        $field = $this->field('code');
+
+        $this->assertSame("a\nb\nc", $value->toStored("a\r\nb\rc", $field));
+        $this->assertNull($value->toStored(" \n\t ", $field));
+        $this->assertSame("\tindented\n", $value->toStored("\tindented\n", $field), 'code is not trimmed: 0.92 stored code passes through unchanged');
+    }
+
     public function test_blank_email_is_empty_text(): void
     {
         // A text field: blank text is "" as for a string field (Folio's form stored "" in 0.92, so a

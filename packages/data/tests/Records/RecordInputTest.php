@@ -155,6 +155,26 @@ final class RecordInputTest extends TestCase
         $this->assertNull($this->input($dm)->create($dm->getTypeRegistry()->get('item'), [])->getId(), 'without "_id": none, the save gives one');
     }
 
+    public function test_a_readonly_field_given_its_stored_value_is_accepted(): void
+    {
+        $this->model('item', ['code' => ['type' => 'string', 'readonly' => true], 'keys' => ['type' => 'tags', 'readonly' => true], 'name' => ['type' => 'string', 'translatable' => true, 'readonly' => true]], ['label' => 'Items']);
+        $dm = $this->dm();
+        $dm->driver('json')->save('item', 'r1', ['uuid' => 'r1', 'code' => 'C-1', 'keys' => '["a","b"]', 'name' => ['en' => 'One', 'de' => 'Eins']]);
+        $record = $this->find($dm);
+        $before = $record->toArray();
+
+        // What a client read back, unchanged (tags read out as a list though stored as JSON text): no change, no refusal.
+        $same = $this->input($dm)->update($record, ['code' => 'C-1', 'keys' => ['a', 'b'], 'name' => ['de' => 'Eins']]);
+        $this->assertSame($before, $same->toArray(), 'the stored values stay as they are');
+
+        try {
+            $this->input($dm)->update($this->find($dm), ['code' => 'C-1', 'keys' => ['a'], 'name' => ['en' => 'Other']]);
+            self::fail('refused');
+        } catch (ValidationException $e) {
+            $this->assertSame(['keys' => ['The field "Keys" is read-only.'], 'name' => ['The field "Name" is read-only.']], $e->errors(), 'only a different value is refused');
+        }
+    }
+
     public function test_create_into_a_non_creatable_type_is_refused(): void
     {
         $dm = $this->dm();

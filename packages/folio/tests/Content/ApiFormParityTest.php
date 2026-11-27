@@ -97,14 +97,12 @@ final class ApiFormParityTest extends TestCase
         yield 'phone with a default region' => ['phone', ['default_region' => 'CH'], ['f' => ' 044 123 45 67 '], '044 123 45 67', ['f' => 'call me'], 'call me', [
             'stored' => ['as_typed' => '044 123 45 67', 'e164' => '+41441234567'],
             'error' => 'Must be a phone number: digits, optionally with a leading + and spaces, e.g. +41 44 123 45 67.',
-            'finding' => 'A national number with the field\'s "default_region": the form reads it in that region (PhoneFieldType::normalizeInput(), Phone::of($raw, region)), the core value does not (PhoneValue::toStored(): Phone::fromStored()), so the API stores "e164": null.',
         ]];
         yield 'email' => ['email', [], ['f' => "  a@example.org \n"], 'a@example.org', ['f' => 'nobody'], 'nobody', ['stored' => 'a@example.org', 'error' => 'Must be a valid email address.']];
         yield 'json' => ['json', [], ['f' => "  {\"a\": 1}\r\n"], '{"a": 1}', ['f' => '{"a":'], '{"a":', ['stored' => '{"a": 1}', 'error' => 'Must be valid JSON, such as {"name": "value"} or [1, 2, 3].']];
         yield 'code' => ['code', [], ['f' => "a\r\nb"], "a\nb", ['f' => ''], '', ['stored' => "a\nb"]];
         yield 'code blank and with CRLF' => ['code', [], ['f' => "a\r\nb"], "a\r\nb", ['f' => " \n "], " \n ", [
             'stored' => "a\nb",
-            'finding' => 'Code given with "\\r\\n" or as only blanks: the form turns line ends into "\\n" and blanks into null (CodeFieldType::normalizeInput()), the core value keeps both as given (CodeValue::toStored()), so the API stores "\\r\\n" and a blank code passes "required".',
         ]];
         yield 'daterange' => ['daterange', [], ['f' => ['start' => ' 2026-03-01 ', 'end' => '2026-03-07']], ['start' => '2026-03-01', 'end' => '2026-03-07'], ['f' => ['start' => '2026-03-07', 'end' => '2026-03-01']], ['start' => '2026-03-07', 'end' => '2026-03-01'], [
             'stored' => ['start' => '2026-03-01', 'end' => '2026-03-07'],
@@ -164,7 +162,6 @@ final class ApiFormParityTest extends TestCase
         $dm = $app->container()->get(DataManager::class);
         $dm->saveType($app->container()->get(RecordInput::class)->update($dm->findType('parity', 'api') ?? self::fail('no record'), ['f' => $body]));
 
-        $this->divergence($options, $this->row('form'), $this->row('api'));
         $this->assertSame($this->row('form'), $this->row('api'), 'the same stored row');
         if (array_key_exists('stored', $options)) {
             $this->assertSame($options['stored'], $this->row('form')['f'] ?? null, 'what both store');
@@ -180,7 +177,6 @@ final class ApiFormParityTest extends TestCase
         $request = (new Psr17Factory())->createServerRequest('POST', '/folio/parity/empty')->withParsedBody($wrongPost + ['_locale' => 'en']);
         $form = $this->errorsOf(static fn () => $c->get(RecordValidator::class)->validate($c->get(DraftRecordFactory::class)->build($def, $request, $record->toArray(), 'en')), false);
         $api = $this->errorsOf(static fn () => $dm->saveType($c->get(RecordInput::class)->update($record, ['f' => $wrongBody])), false);
-        $this->divergence($options, $form, $api);
         $this->assertSame($form, $api, 'the same refusal of the wrong value');
         $error = array_key_exists('error', $options) ? $options['error'] : 'This field is required.';
         if ($error === null) {
@@ -219,20 +215,6 @@ final class ApiFormParityTest extends TestCase
         $this->assertSame($form, $api, 'the same keys and messages');
         $this->assertSame(422, $this->post('/folio/checked/c1', $post + ['_locale' => 'en'])->getStatusCode(), 'the form\'s save refuses it');
         $this->assertSame('Kept', $this->stored('checked', 'c1')->get('title'));
-    }
-
-    /**
-     * A known difference between the form and the write class, found by this test and reported
-     * (option "finding"): marked incomplete with both sides, never loosened. Once the two agree,
-     * the test runs on and fails on nothing: drop the option then.
-     *
-     * @param array<string, mixed> $options
-     */
-    private function divergence(array $options, mixed $form, mixed $api): void
-    {
-        if (isset($options['finding']) && $form !== $api) {
-            $this->markTestIncomplete($options['finding'] . ' Form: ' . json_encode($form) . '; API: ' . json_encode($api));
-        }
     }
 
     /** @return array<string, list<string>> what $write was refused with ([] when $refused is false and it was not) */

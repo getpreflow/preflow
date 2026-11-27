@@ -48,8 +48,9 @@ use Preflow\Validation\ValidatorFactory;
  * Refused (ValidationException, all problems of the body in one, keyed as Folio's form keys
  * them; nothing merged): a key that is no field and no part's key ("<key>", validation.record.
  * unknown_field), a language the type lacks ("<field>.<locale>", validation.record.
- * unknown_locale), a field whose config has "readonly": true ("<field>", validation.record.
- * readonly), an "_id" other than the record's on update or one that is no id ("_id",
+ * unknown_locale), a field whose config has "readonly": true given another value than its
+ * stored one ("<field>", validation.record.readonly; its stored value given back, as a client
+ * read it, is kept), an "_id" other than the record's on update or one that is no id ("_id",
  * validation.record.id, validation.record.id_shape), and what a merging value or an input part
  * refuses (keyed by them). Types and fields are named by DataManager::labels(). Silently
  * dropping a client's data would lose it, so nothing is ignored.
@@ -148,7 +149,10 @@ final readonly class RecordInput
                 continue;
             }
             if (($field->config['readonly'] ?? false) === true) {
-                $problems[$key] = new Message('validation.record.readonly', ['field' => $this->dm->labels()->field($field, self::uiLocale(), $def)]);
+                // Given back as stored (a client sends what it read): kept, no change; another value is refused.
+                if (!$this->unchanged($def, $field, $stored[$key] ?? null, $given, $locale, isset($translatable[$key]))) {
+                    $problems[$key] = new Message('validation.record.readonly', ['field' => $this->dm->labels()->field($field, self::uiLocale(), $def)]);
+                }
                 continue;
             }
             try {
@@ -262,6 +266,28 @@ final readonly class RecordInput
         }
 
         return $map;
+    }
+
+    /**
+     * Whether $given is the field's stored value: compared as read out (FieldValue::toOutput()),
+     * so a value in its output shape (tags as a list, stored as JSON text) is the same; a
+     * translatable field per language given, an object of languages or one value of $locale.
+     */
+    private function unchanged(TypeDefinition $def, TypeFieldDefinition $field, mixed $stored, mixed $given, string $locale, bool $translatable): bool
+    {
+        $value = $this->dm->fieldKinds()->valueOf($field);
+        $same = static fn (mixed $was, mixed $now): bool => $value->toOutput($was, $field) === $value->toOutput($value->toStored($now, $field), $field);
+        if (!$translatable) {
+            return $same(LocaleValue::default($stored, $def->locales), $given);
+        }
+        $map = LocaleValue::map($stored, $def->locales);
+        foreach (self::isLocaleObject($given) ? $given : [$locale => $given] as $one => $now) {
+            if (!$same($map[(string) $one] ?? null, $now)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /** An object whose keys all look like language codes: a value per language. */

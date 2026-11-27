@@ -11,7 +11,8 @@ use Preflow\Fields\Values\Code;
 
 /**
  * A "code" field's value, shape "string": the code as it is written (not trimmed: indentation is
- * code); an empty text is null; other than text passes through for the rule.
+ * code), its line ends as "\n"; an empty or blank text is null (as Folio's form stores it, since
+ * 0.93.0); other than text passes through for the rule.
  *
  * @since 0.93.0
  */
@@ -21,6 +22,12 @@ final class CodeValue implements FieldValue, DescribesShapes
     {
         if ($input === null || $input === '' || $input === []) {
             return null;
+        }
+        if (is_string($input)) {
+            $input = str_replace(["\r\n", "\r"], "\n", $input);
+            if (trim($input) === '') {
+                return null;
+            }
         }
 
         return Code::fromStored($input)?->toStored() ?? $input;
