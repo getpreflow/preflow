@@ -256,7 +256,13 @@ Layouts are found like blocks: in `app/Layouts`, in `config/blocks.php` `'layout
 classes) and in installed packages (`extra.preflow.layouts` in their `composer.json`). The result
 is cached (`layouts.cache`, the boot manifest). A type with `"layouts"` gets two columns,
 `_layout` and `_areas` (Folio's `preflow migrate` adds them; without Folio add them yourself). A
-class-backed type sets `layouts` in its admin file, like a model file does.
+class-backed type declares them in code with the same keys (since 0.93), checked at boot the same way:
+
+```php
+#[Entity(table: 'pages', type: 'page', layouts: ['allowed' => ['landing', 'standard'], 'default' => 'standard', 'pinned' => ['home' => 'landing']])]
+```
+
+or in its admin file, like a model file does; not in both (the boot stops naming the file and the class).
 
 ### Rendering: you pass the areas yourself
 

@@ -94,6 +94,9 @@ final class ModelSchema
         if (!$entity->creatable) {
             $schema['creatable'] = false;
         }
+        if ($entity->layouts !== null) {
+            $schema['layouts'] = $entity->layouts; // the JSON option's shape, unread here: preflow/blocks checks it
+        }
 
         return $schema;
     }
@@ -128,8 +131,8 @@ final class ModelSchema
     /**
      * A class's #[Entity(readonly:, creatable:, fullText:)] and its admin file's "readonly" /
      * "creatable" / "fullText" agree: the file may add an option the class leaves at its default,
-     * never contradict one the class sets. Run for every class-backed key when TypeRegistry is
-     * built (at boot).
+     * never contradict one the class sets. Its #[Entity(layouts:)] and the file's "layouts" may not
+     * both be set (0.93). Run for every class-backed key when TypeRegistry is built (at boot).
      *
      * @param array<string, mixed> $adminFile
      * @param class-string $modelClass
@@ -153,6 +156,23 @@ final class ModelSchema
                 throw new \RuntimeException('Type "' . $key . '" has "' . $option . '": ' . var_export($value, true) . ' on ' . $modelClass
                     . ' and ' . json_encode($adminFile[$option]) . ' in ' . basename($file) . ': set it in one place.');
             }
+        }
+        self::assertLayoutsOnce($entity->layouts !== null, $adminFile, $file, $key, $modelClass);
+    }
+
+    /**
+     * A class whose #[Entity(layouts:)] declares page layouts and its admin file's "layouts": only
+     * one may set them (the file's for a class without them keep working). Compares presence only:
+     * data does not read the option.
+     *
+     * @param array<string, mixed> $adminFile
+     * @throws \RuntimeException naming the file, the type and the class
+     */
+    private static function assertLayoutsOnce(bool $classDeclares, array $adminFile, string $file, string $key, string $modelClass): void
+    {
+        if ($classDeclares && array_key_exists('layouts', $adminFile)) {
+            throw new \RuntimeException('Model file ' . basename($file) . ' sets "layouts", but ' . $key . ' is defined by '
+                . ($modelClass !== '' ? $modelClass : 'its model class') . ', whose #[Entity(layouts:)] declares them; keep one.');
         }
     }
 
@@ -195,6 +215,7 @@ final class ModelSchema
     {
         $key = (string) ($classSchema['key'] ?? '');
         self::assertAdminOnly($adminFile, $file, $key, $modelClass);
+        self::assertLayoutsOnce(array_key_exists('layouts', $classSchema), $adminFile, $file, $key, $modelClass);
         $fields = is_array($adminFile['fields'] ?? null) ? $adminFile['fields'] : [];
         foreach ($fields as $name => $entry) {
             if (!isset($classSchema['fields'][$name])) {

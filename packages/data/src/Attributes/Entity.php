@@ -18,5 +18,13 @@ final class Entity
         public readonly bool $readonly = false,
         /** Editors and APIs may create its records; false: they change and delete only (a model file's `creatable`). @since 0.78 */
         public readonly bool $creatable = true,
+        /**
+         * The type's page layouts, the keys of a model file's "layouts" ({allowed, default, pinned,
+         * slug_field}); null: none. Data writes them into the schema unread; preflow/blocks checks them
+         * at boot. An admin file may not set them too. @since 0.93.0
+         *
+         * @var array<string, mixed>|null
+         */
+        public readonly ?array $layouts = null,
     ) {}
 }
