@@ -982,6 +982,24 @@ final class Job extends Model { … }
   for one release). `DataManager::fieldRules($def)` gives all the rules of a type's fields (the
   fields' `validate`, the field types' own and the select's), and `FieldKinds::hasRules($type)`
   says whether a field type registered some.
+- A field type's value (since 0.93): `FieldKinds::value($type, FieldValue $value)` says what a
+  field's value means without any adapter. `Preflow\Data\Values\FieldValue` has three methods:
+  `toStored($input, $field)` (one language's input value as `saveType()` stores it; it converts and
+  never refuses, so a value it cannot convert passes through and the rules refuse it),
+  `toOutput($stored, $field)` (a stored value, as a driver returns it, to a JSON-safe output value)
+  and `shape($field)` (the output shape's name, such as `string`, `id_list`). `valueOf($field)`
+  gives the registered value, or `RawValue` (unchanged, shape `raw`) for a type without one;
+  `hasValue()` and `values()` list them. Every `DataManager` starts with the core types' values
+  (`Values\CoreValues`: `string`, `text`, `number`, `boolean`, `date`, `select`, `tags`,
+  `relation`, `asset`), and `CoreValues::SHAPES` describes their shapes. Optional companions:
+  `DescribesShapes`, `CleansOnWrite`, `MergesInput`, `ListsReferences`.
+- A date's stored rule is the core's (since 0.93): every `DataManager` checks a `date` field on
+  save with `Validation\StoredDate`, which takes exactly what `Values\Core\DateValue::read()`
+  reads (`Y-m-d`, `Y-m-d\TH:i`, `Y-m-d\TH:i:s` and ISO 8601 with an offset, a real date and
+  time). **Upgrading to 0.93:** a site without Folio that stores another shape in a `date` field
+  (such as `Y-m-d H:i:s`) is refused on save, as a site with Folio already was in 0.92.1. A field
+  type whose form takes fewer shapes than it stores implements `Preflow\Data\HasStoredRules`
+  (moved from Folio; the old names stay as aliases until 0.95).
 
 ## Rules a package adds to a type's records: `RecordRules` (0.92)
 

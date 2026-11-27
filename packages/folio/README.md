@@ -1048,9 +1048,12 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   language, as its field type reads it; null without a record), and a field type whose rules need the record's other
   fields implements `HasRecordRules`. A field type's `rules()` reach the core at boot (since 0.92), so every write
   path checks them, each message once. A type whose form takes fewer shapes than the type stores
-  and reads implements `HasStoredRules` (since 0.92.1): its `storedRules()` reach the core instead,
-  and Folio's checks (`RecordValidator`: the form, `RecordWriter`, publishing) run its `rules()` in
-  their place for a record's own field (`date` does this).
+  and reads implements `Preflow\Data\HasStoredRules` (since 0.92.1; in preflow/data since 0.93,
+  the old name `Preflow\Folio\Field\HasStoredRules` stays as an alias until 0.95): its
+  `storedRules()` reach the core instead, and Folio's checks (`RecordValidator`: the form,
+  `RecordWriter`, publishing) run its `rules()` in their place for a record's own field (`date`
+  does this; its stored rule `StoredDate` is the core's since 0.93 and registered by preflow/data
+  itself).
 
   In a block (since 0.90) the source is another field of **the same block**, never the record's
   or another block's: `#[BlockField(type: 'select', config: ['options_from' => 'answers'])]`.

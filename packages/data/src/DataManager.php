@@ -505,9 +505,19 @@ final class DataManager
         return $this->typeRegistry ??= $registry;
     }
 
+    /**
+     * The field kinds of this manager's types, shared by every caller. Since 0.93.0 they start with
+     * the core types' values and date's stored rule (Values\CoreValues), so a site without any
+     * package reads, writes and checks those types like one with Folio.
+     */
     public function fieldKinds(): FieldKinds
     {
-        return $this->fieldKinds ??= new FieldKinds();
+        if ($this->fieldKinds === null) {
+            $this->fieldKinds = new FieldKinds();
+            Values\CoreValues::register($this->fieldKinds);
+        }
+
+        return $this->fieldKinds;
     }
 
     /**
@@ -1997,17 +2007,7 @@ final class DataManager
     /** Numeric text as a number (an int when whole and in range, else a float); anything else as it is. */
     private static function asNumber(mixed $value): mixed
     {
-        if (!is_string($value) || !is_numeric($value)) {
-            return $value;
-        }
-        $text = trim($value);
-        // Whole numbers of up to 18 digits fit an int on every 64-bit PHP; longer ones are floats.
-        if (preg_match('/^[+-]?\d+$/', $text) === 1 && strlen(ltrim(ltrim($text, '+-'), '0')) <= 18) {
-            return (int) $text;
-        }
-        $float = (float) $text;
-
-        return is_finite($float) ? $float : $value;
+        return Values\Core\NumberValue::number($value);
     }
 
     /** '1', '0', 1, 0, 'true' and 'false' as a bool; anything else as it is. */

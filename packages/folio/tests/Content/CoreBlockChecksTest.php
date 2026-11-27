@@ -222,6 +222,19 @@ final class CoreBlockChecksTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_the_date_stored_rule_is_the_cores_once(): void
+    {
+        $dm = $this->app()->container()->get(\Preflow\Data\DataManager::class);
+        $rules = $dm->fieldRules($dm->getTypeRegistry()->get('event'));
+
+        foreach (['day', 'starts'] as $field) {
+            $stored = array_values(array_filter($rules[$field] ?? [], static fn (mixed $rule): bool => $rule instanceof \Preflow\Data\Validation\StoredDate));
+            $this->assertCount(1, $stored, $field . ': registered by the core, not again by Folio');
+        }
+        $this->assertEquals([new \Preflow\Data\Validation\StoredDate()], $dm->fieldKinds()->rulesOf(new \Preflow\Data\TypeFieldDefinition('d', 'date')), 'the core\'s rule stays in place');
+    }
+
+    #[RunInSeparateProcess]
     public function test_the_form_still_takes_only_what_its_date_inputs_post(): void
     {
         $base = ['uuid' => 'e1', 'name' => 'Fair'];

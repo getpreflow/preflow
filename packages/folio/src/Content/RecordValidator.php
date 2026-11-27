@@ -12,7 +12,7 @@ use Preflow\Folio\Field\FieldRules;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\HasBlockRules;
 use Preflow\Folio\Field\HasRecordRules;
-use Preflow\Folio\Field\HasStoredRules;
+use Preflow\Data\HasStoredRules;
 use Preflow\Validation\ValidationException;
 use Preflow\Validation\ValidationRule;
 

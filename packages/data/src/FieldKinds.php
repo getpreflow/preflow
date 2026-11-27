@@ -6,11 +6,16 @@ namespace Preflow\Data;
 
 use Preflow\Data\Schema\ColumnKind;
 use Preflow\Data\Validation\MaxChars;
+use Preflow\Data\Values\Core\RelationValue;
+use Preflow\Data\Values\FieldValue;
+use Preflow\Data\Values\RawValue;
 
 /**
  * Which field types count as free text and which as a relation, which column kind each
- * type is stored as, and (since 0.91.0) which checks a type brings itself. Extensions register
- * their own types.
+ * type is stored as, (since 0.91.0) which checks a type brings itself and (since 0.93.0) what its
+ * value means (FieldValue: input to stored, stored to output, the output's shape). Extensions
+ * register their own types. DataManager::fieldKinds() starts with the core types' values and
+ * date's stored rule (CoreValues); a FieldKinds built by hand starts with none.
  */
 final class FieldKinds
 {
@@ -35,6 +40,11 @@ final class FieldKinds
     /** @var array<string, \Closure(array<string, mixed>): list<string|\Preflow\Validation\ValidationRule>> field type => its own rules for a field's config */
     private array $rules = [];
 
+    /** @var array<string, FieldValue> field type => its value */
+    private array $values = [];
+
+    private ?RawValue $raw = null;
+
     public function __construct()
     {
         $this->columns = [
@@ -52,7 +62,7 @@ final class FieldKinds
     /** @param array<string, mixed> $config */
     private static function multipleRelation(array $config): bool
     {
-        return is_array($config['relation'] ?? null) && (bool) ($config['relation']['multiple'] ?? false);
+        return RelationValue::multiple($config);
     }
 
     public function text(string ...$types): void
@@ -145,6 +155,47 @@ final class FieldKinds
     public function hasRules(string $fieldType): bool
     {
         return isset($this->rules[$fieldType]);
+    }
+
+    /**
+     * What a field type's value means (FieldValue): how an input value is stored, how a stored
+     * value reads out and the output's shape. Every adapter (Folio's form, an API's read and write
+     * classes, imports) converts through it. Replaces an earlier registration for the type (a
+     * package that brings a core type's richer value replaces the core one).
+     *
+     * @since 0.93.0
+     */
+    public function value(string $fieldType, FieldValue $value): void
+    {
+        $this->values[$fieldType] = $value;
+    }
+
+    /**
+     * The value registered for the field's type (value()), or RawValue (read and written
+     * unchanged, shape "raw") for a type without one.
+     *
+     * @since 0.93.0
+     */
+    public function valueOf(TypeFieldDefinition $field): FieldValue
+    {
+        return $this->values[$field->type] ?? ($this->raw ??= new RawValue());
+    }
+
+    /** @since 0.93.0 */
+    public function hasValue(string $fieldType): bool
+    {
+        return isset($this->values[$fieldType]);
+    }
+
+    /**
+     * Every registered value, by field type, in the order registered.
+     *
+     * @return array<string, FieldValue>
+     * @since 0.93.0
+     */
+    public function values(): array
+    {
+        return $this->values;
     }
 
     public function isText(string $type): bool
