@@ -40,6 +40,11 @@ return [
             '$context = Contexts::peek();' => 'outside every render a select\'s labels are read in English, as Folio\'s texts are outside the admin (the documented default)',
         ],
     ],
+    'data/src/Records/RecordInput.php' => [
+        'peek' => [
+            '$context = Contexts::peek();' => 'outside every render a write\'s refusals name types and fields in English, as a select\'s labels are (SelectRules; the documented default)',
+        ],
+    ],
     'core/src/Http/InternalRender.php' => [
         'peek' => [
             'return Contexts::peek()?->purpose->leavesNoTrace() === true;' => 'outside every render nothing is internal (the documented default)',
@@ -337,6 +342,11 @@ return [
         ],
         'peek' => [
             'if (Contexts::peek()?->surface->admin === true && self::$source !== null) {' => 'outside every render there is no admin surface: Folio\'s own English texts (the documented default)',
+        ],
+    ],
+    'data/src/Html/SymfonyHtmlCleaner.php' => [
+        'static-state' => [
+            'public static int $built = 0;' => 'a test hook: how many real sanitizers were built',
         ],
     ],
     'folio/src/Field/LazyHtmlSanitizer.php' => [

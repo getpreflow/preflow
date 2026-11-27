@@ -63,7 +63,8 @@ final class AiDraftController
         private readonly DraftWriter $writer,
         private readonly TypeCatalog $catalog,
         private readonly TypeRegistry $registry,
-        private readonly HtmlSanitizerInterface $sanitizer,
+        /** What cleans the draft's HTML: the core's cleaner (since 0.93, Folio gives the DataManager's); a Symfony sanitizer still works. */
+        private readonly HtmlSanitizerInterface|\Preflow\Data\Html\HtmlCleaner $sanitizer,
         private readonly DataManager $dm,
         private readonly ?Access $access = null,
         private readonly ?LoggerInterface $logger = null,
@@ -138,7 +139,7 @@ final class AiDraftController
             return self::error(502, 'failed');
         }
 
-        $html = trim($this->sanitizer->sanitize($draft->html));
+        $html = trim($this->sanitizer instanceof HtmlSanitizerInterface ? $this->sanitizer->sanitize($draft->html) : $this->sanitizer->clean($draft->html));
         if (trim(html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8')) === '') {
             return self::error(502, 'empty');
         }

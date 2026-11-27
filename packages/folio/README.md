@@ -1000,6 +1000,39 @@ A value that is not a list of section names is ignored (every section starts ope
 `email`, `phone`, `color`, `code`, `json`, `datetime`, `time`, `daterange`, `embed`, `table` and
 `location` (all since 0.91; their values, checks and storage are preflow/fields', see its [README](../fields/README.md)).
 
+What a field holds is the core's (since 0.93): every type reads and writes its value through the
+value registered for it on the DataManager's field kinds (`FieldKinds::value()`; preflow/data's
+for the core types, preflow/blocks' for `blocks` and `areas`, preflow/fields' for its twelve), the
+same value an API write or an import uses, so the admin form and those paths store the same. The
+editor only turns its post into the input first (a date and time in the field's zone, a
+location's three inputs, a link's parts). Folio registers the values of its own types: `matrix`
+(its references, stored as their JSON text), `env` (nothing stored), the codes and rbac admins'
+`codes_purpose`, `rbac_permissions` and `rbac_roles`, and `int`, `integer` and `float` as
+`number`'s. A field type of your own takes part by implementing `Preflow\Folio\Field\UsesFieldKinds`.
+Rich text is cleaned with the core's `HtmlCleaner` (`DataManager::htmlCleaner()`): bind your own
+in the container and the form, "Write a draft", every write and the templates use it.
+`SafeRichText` and `LazyHtmlSanitizer` are deprecated (0.93; removed no earlier than 0.95).
+
+**What moved to the core in 0.93, and why.** Folio used to be the only place that knew what a field
+holds, how rich text is cleaned, which rules a publish runs and what a type's permissions are
+called. An API, an import or a site without Folio then had to copy that knowledge, and got it
+slightly wrong. Since 0.93 each of these lives in a core package, and Folio is one caller of it:
+
+| What | Now in | Folio keeps |
+|---|---|---|
+| A field's value: input to stored, stored to output | preflow/data `FieldValue` on `FieldKinds` (blocks' and fields' values for their types) | the editors, `normalizeInput()`'s form parsing, `renderFrontend()`, the values of `matrix`, `env`, `codes_purpose`, `rbac_permissions`, `rbac_roles` |
+| Rich text cleaning | preflow/data `HtmlCleaner`, run on every typed write (`DataManager::storageValues()`) | `SafeRichText`, `LazyHtmlSanitizer` as deprecated delegates |
+| The date's stored rule | preflow/data `Validation\StoredDate`, `HasStoredRules`, `DateValue::read()` | aliases of the old names until 0.95; `DateFieldType::read()` delegates |
+| The rules a publish runs | preflow/publishing `CoreRecordChecks` | `FolioRecordChecks` (the core's plus its address rules), `FolioFormChecks` (the form's input rules, for its own save) |
+| Labels of types and fields | preflow/data `DeclaredLabels`, `DataManager::labels()` | `DisplayTypeLabels`, bound, with its derived `site.types.*` keys |
+| Per-type permission names | preflow/rbac `TypePermissions` | `TypeActions::declare()` (through `TypePermissions` where rbac is installed, the same declaration without it) and `TypeActions::VERBS`, kept equal to `TypePermissions::VERBS` by a test, because Folio does not require rbac |
+| Reading, writing and describing records as JSON | preflow/data `RecordOutput`, `RecordInput`, `Description` | nothing: the admin does not use them, an API does |
+
+Nothing changes in the stored bytes: a record Folio saved in 0.92 is saved again unchanged, with
+the same change date. With rbac installed Folio declares the type permissions through
+`TypePermissions` with its catalog labels; rbac also declares them for every other data type, so
+Settings → Roles may list a few more types (an API needs their names).
+
 How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` runs the controls):
 
 - `string`: a route parameter of the record's address (`slug`) has the static path before it as a
@@ -1048,9 +1081,12 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   language, as its field type reads it; null without a record), and a field type whose rules need the record's other
   fields implements `HasRecordRules`. A field type's `rules()` reach the core at boot (since 0.92), so every write
   path checks them, each message once. A type whose form takes fewer shapes than the type stores
-  and reads implements `HasStoredRules` (since 0.92.1): its `storedRules()` reach the core instead,
-  and Folio's checks (`RecordValidator`: the form, `RecordWriter`, publishing) run its `rules()` in
-  their place for a record's own field (`date` does this).
+  and reads implements `Preflow\Data\HasStoredRules` (since 0.92.1; in preflow/data since 0.93,
+  the old name `Preflow\Folio\Field\HasStoredRules` stays as an alias until 0.95): its
+  `storedRules()` reach the core instead, and Folio's checks (`RecordValidator`: the form,
+  `RecordWriter`, publishing) run its `rules()` in their place for a record's own field (`date`
+  does this; its stored rule `StoredDate` is the core's since 0.93 and registered by preflow/data
+  itself).
 
   In a block (since 0.90) the source is another field of **the same block**, never the record's
   or another block's: `#[BlockField(type: 'select', config: ['options_from' => 'answers'])]`.
@@ -3287,7 +3323,7 @@ translated: it is your text once you insert it.
 - It asks only for the elements Folio's Trix editor keeps (`RichTextFieldType::EDITOR_ELEMENTS`:
   `p, h1, blockquote, pre, ul, ol, li, strong, em, del, a, br`), so a heading arrives as Trix's
   heading, not as bold text.
-- The server sanitises the answer (`LazyHtmlSanitizer::standard()`, as rich text on save) before
+- The server cleans the answer (the core's `HtmlCleaner`, as rich text on save) before
   it reaches the page, and the dialog copies it into the preview element by element.
 - The writer is `Preflow\Ai\Draft\DraftWriter` from `preflow/ai` (see "Drafts" there), so it
   works with any provider and a site can swap it (`config/ai.php` `draft.writer`); the button

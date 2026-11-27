@@ -70,4 +70,11 @@ return [
         'set_layout' => 'El diseño ":key" no es uno de los diseños del conjunto ":set" (:layouts). Elige uno de ellos.',
         'areas_value' => 'Debe ser un objeto con "layout" (la clave de uno de los diseños del conjunto, o null) y "areas" (nombres de áreas, cada uno con una lista de bloques), como {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
+    'record' => [
+        'unknown_field' => 'El tipo ":type" no tiene el campo ":field".',
+        'unknown_locale' => 'El tipo ":type" no tiene el idioma ":locale". Usa uno de estos: :locales.',
+        'readonly' => 'El campo ":field" es de solo lectura.',
+        'id' => 'El id de este registro es ":id": omite "_id" o indica este id.',
+        'id_shape' => 'Debe ser el id del registro como texto, por ejemplo "j1".',
+    ],
 ];

@@ -27,16 +27,26 @@ use Preflow\Blocks\Layouts\Rules\AreaContents;
 use Preflow\Blocks\Layouts\Rules\LayoutChoice;
 use Preflow\Blocks\Layouts\Rules\MessageRule;
 use Preflow\Blocks\Layouts\Rules\PinnedSlug;
+use Preflow\Blocks\Values\AreasFieldValue;
+use Preflow\Blocks\Values\BlocksFieldValue;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Data\DataManager;
+use Preflow\Data\Describe\DescriptionContributors;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\FieldKinds;
+use Preflow\Data\Html\HtmlCleaner;
+use Preflow\Data\Html\SymfonyHtmlCleaner;
 use Preflow\Data\Locales;
 use Preflow\Data\Migration\MigrationRegistry;
+use Preflow\Data\Records\InputPart;
+use Preflow\Data\Records\OutputPart;
+use Preflow\Data\Records\RecordParts;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Data\TypeRegistry;
 use Preflow\Data\Schema\ColumnKind;
+use Preflow\Data\Values\CoreValues;
+use Preflow\Data\Values\StoredCleaning;
 use Preflow\Validation\RuleFactory;
 use Preflow\Validation\ValidationContext;
 use Preflow\Validation\ValidatorFactory;
@@ -63,11 +73,19 @@ use Preflow\View\TemplateFunctionDefinition;
  *
  * For APIs (since 0.92): ContentDescription (blocks, layouts, area layout sets and type layouts as
  * data for a schema builder) and, with page layouts, LayoutResource and LayoutInput — a page's
- * layout and areas read and written as JSON under the same core rules as Folio's form.
+ * layout and areas read and written as JSON under the same core rules as Folio's form. Since 0.93
+ * LayoutResource is the blocks package's output part of the one read class (RecordParts:
+ * "_layout", "_areas", "_unplaced" in RecordOutput::toArray()).
  *
  * Block values (since 0.92): with a DataManager, BlockValueChecks runs on every validated write of
  * a typed record (a RecordRules check), so a seed, an import or a REST save is refused for a block
  * value Folio's form refuses, with the same keys and messages.
+ *
+ * Field values (since 0.93): with a DataManager, BlocksFieldValue and AreasFieldValue on its
+ * FieldKinds (read, written and cleaned through each block field's own value), and a page's
+ * "_areas" cleaned on every typed write for the types with layouts (StoredCleaning::systemKey()).
+ * The default BlockTextCleaner is CoreBlockTextCleaner: rich text is cleaned on render without
+ * Folio too.
  *
  * Listed in config/providers.php by a site without Folio; Folio registers it itself.
  */
@@ -160,8 +178,10 @@ final class BlocksServiceProvider extends ServiceProvider
         if (!$container->bound(BlockLocale::class)) {
             $container->singleton(BlockLocale::class, static fn (Container $c): BlockLocale => new DefaultBlockLocale($c->get(Locales::class)));
         }
+        // The core cleaner (0.93; DefaultBlockTextCleaner before): sites without Folio get rich text
+        // cleaned on its way to the template too.
         if (!$container->bound(BlockTextCleaner::class)) {
-            $container->singleton(BlockTextCleaner::class, static fn (): BlockTextCleaner => new DefaultBlockTextCleaner());
+            $container->singleton(BlockTextCleaner::class, static fn (Container $c): BlockTextCleaner => new CoreBlockTextCleaner(self::cleaningOf($c), $c->get(BlockRegistry::class)));
         }
         if (!$container->bound(BlockPreviewMarks::class)) {
             $container->singleton(BlockPreviewMarks::class, static fn (): BlockPreviewMarks => new DefaultBlockPreviewMarks());
@@ -348,6 +368,12 @@ final class BlocksServiceProvider extends ServiceProvider
         if ($data === null) {
             return;
         }
+        // A page's areas are cleaned on every typed write (0.93), as its fields: rich text in their blocks.
+        $data->cleaning()->systemKey(PageLayouts::AREAS, static function (mixed $value, TypeDefinition $def) use ($container, $data): mixed {
+            return $container->get(PageLayouts::class)->forType($def->key) === null
+                ? $value
+                : self::blocksValue($container, $data->fieldKinds())->cleanAreaMap($value);
+        });
         // `preflow migrate` and `db:check` print what needs a person: layouts without a class, pins without a page, pages on an unavailable layout.
         $container->get(MigrationRegistry::class)->warning('blocks.layouts', static fn (): array => (new LayoutReport(
             $container->get(PageLayouts::class),
@@ -416,7 +442,8 @@ final class BlocksServiceProvider extends ServiceProvider
     }
 
     /**
-     * What an API controller calls (since 0.92): ContentDescription always, and with page layouts
+     * What an API controller calls (since 0.92): ContentDescription always (since 0.93 also added to
+     * the one Description as its contributor), and with page layouts
      * LayoutResource (a page's layout and areas as JSON) and LayoutInput (a body merged under the
      * core rules). In boot: PageLayouts is bound in boot.
      */
@@ -430,6 +457,10 @@ final class BlocksServiceProvider extends ServiceProvider
             $c->bound(PageLayouts::class) ? $c->get(PageLayouts::class) : null,
             $c->bound(TypeRegistry::class) ? $c->get(TypeRegistry::class) : ($c->bound(DataManager::class) ? $c->get(DataManager::class)->getTypeRegistry() : null),
         ));
+        // Its part of the one description of every type (0.93): blocks, layouts, area layout sets, type layouts.
+        if ($container->bound(DescriptionContributors::class)) {
+            $container->get(DescriptionContributors::class)->add(static fn (): ContentDescription => $container->get(ContentDescription::class));
+        }
         if (!$container->bound(PageLayouts::class)) {
             return;
         }
@@ -437,13 +468,22 @@ final class BlocksServiceProvider extends ServiceProvider
             $c->get(PageLayouts::class),
             $c->get(BlockRegistry::class),
             $c->get(AreaLayoutSets::class),
+            $c->bound(DataManager::class) ? self::blocksValue($c, $c->get(DataManager::class)->fieldKinds()) : null,
         ));
+        // Its part of the one read output (0.93): a page's layout and areas beside its fields.
+        if ($container->bound(RecordParts::class)) {
+            $container->get(RecordParts::class)->output(static fn (): OutputPart => $container->get(LayoutResource::class));
+        }
         $container->singleton(LayoutInput::class, static fn (Container $c): LayoutInput => new LayoutInput(
             $c->get(PageLayouts::class),
             $c->get(BlockRegistry::class),
             $c->bound(ValidatorFactory::class) ? $c->get(ValidatorFactory::class) : new ValidatorFactory(new RuleFactory()),
             $c->get(AreaLayoutSets::class),
         ));
+        // Its part of the one write class (0.93): a page's layout and areas beside its fields.
+        if ($container->bound(RecordParts::class)) {
+            $container->get(RecordParts::class)->input(static fn (): InputPart => $container->get(LayoutInput::class));
+        }
     }
 
     /**
@@ -471,6 +511,8 @@ final class BlocksServiceProvider extends ServiceProvider
 
         // The areas field (0.92): a layout from a named set and its areas, stored as JSON text on SQL.
         $data->fieldKinds()->column(BlockLists::AREAS, ColumnKind::Text);
+        // What a blocks and an areas field's values mean (0.93): read, written and cleaned on every typed write.
+        self::registerValues($container, $data->fieldKinds());
         // What the areas of every areas field hold (AreaContents::forField(), against the stored
         // value), keyed by the area that is wrong ("<field>.areas.<area>", nested under the block).
         $data->recordRules()->check(static function (DynamicRecord $record, array $given) use ($container, $data): array {
@@ -487,6 +529,50 @@ final class BlocksServiceProvider extends ServiceProvider
 
             return self::errorsOf($container, $checks->problems($def, $values, $stored, $given));
         });
+    }
+
+    /**
+     * The values of the blocks and areas field types (0.93) on $kinds: BlocksFieldValue (shape
+     * "blocks") and AreasFieldValue (shape "areas_value"), each block field through its own value
+     * of $kinds. The registry, LayoutResource and LayoutInput are asked on use.
+     */
+    private static function registerValues(Container $container, FieldKinds $kinds): void
+    {
+        $blocks = self::blocksValue($container, $kinds);
+        $kinds->value(BlockLists::BLOCKS, $blocks);
+        $kinds->value(BlockLists::AREAS, new AreasFieldValue(
+            $blocks,
+            static fn (): LayoutResource => $container->get(LayoutResource::class),
+            static fn (): LayoutInput => $container->get(LayoutInput::class),
+        ));
+    }
+
+    /** A BlocksFieldValue over $kinds, the registry asked on use. */
+    private static function blocksValue(Container $container, FieldKinds $kinds): BlocksFieldValue
+    {
+        $value = $kinds->valueOf(new TypeFieldDefinition(PageLayouts::AREAS, BlockLists::BLOCKS));
+
+        return $value instanceof BlocksFieldValue ? $value : new BlocksFieldValue(static fn (): BlockRegistry => $container->get(BlockRegistry::class), $kinds);
+    }
+
+    /**
+     * What the core cleaner of blocks cleans with: the DataManager's StoredCleaning (its rich text
+     * cleaner, a site's bound HtmlCleaner), or without a DataManager the core values over the
+     * bound HtmlCleaner, else the core's.
+     */
+    private static function cleaningOf(Container $container): StoredCleaning
+    {
+        if ($container->bound(DataManager::class)) {
+            return $container->get(DataManager::class)->cleaning();
+        }
+        $kinds = new FieldKinds();
+        $default = null;
+        CoreValues::register($kinds, static function () use ($container, &$default): HtmlCleaner {
+            return $container->bound(HtmlCleaner::class) ? $container->get(HtmlCleaner::class) : ($default ??= SymfonyHtmlCleaner::standard());
+        });
+        self::registerValues($container, $kinds);
+
+        return new StoredCleaning($kinds);
     }
 
     /**

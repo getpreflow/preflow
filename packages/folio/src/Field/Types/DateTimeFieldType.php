@@ -30,6 +30,12 @@ final class DateTimeFieldType extends AbstractScalarFieldType implements Display
         return 'datetime';
     }
 
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Fields\Values\Field\DateTimeValueKind();
+    }
+
     protected function inputType(): string
     {
         return 'datetime-local';
@@ -84,19 +90,16 @@ final class DateTimeFieldType extends AbstractScalarFieldType implements Display
         }
         $raw = trim($raw);
 
-        return DateTimeValue::fromLocal($raw, DateOptions::fromConfig($config)->zone())?->toStored()
-            ?? $raw;
+        return $this->stored(DateTimeValue::fromLocal($raw, DateOptions::fromConfig($config)->zone())?->toStored() ?? $raw, $config);
     }
 
-    /** The stored UTC text; text that is no date and time is kept as typed (the check refuses it); null for none. */
-    public function toStorage(mixed $value): mixed
-    {
-        return DateTimeValue::fromStored($value)?->toStored() ?? (is_string($value) && trim($value) !== '' ? trim($value) : null);
-    }
-
+    /**
+     * The stored UTC text as the core stores it; text that is no date and time is kept as typed,
+     * so the editor shows it and the check refuses it; null for none.
+     */
     public function fromStorage(mixed $value): mixed
     {
-        return $this->toStorage($value);
+        return $this->stored($value);
     }
 
     /** `<time datetime="2026-03-29T12:30:00Z">2026-03-29 14:30</time>`, the text in the field's zone. */

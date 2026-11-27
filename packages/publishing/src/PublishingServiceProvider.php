@@ -163,7 +163,7 @@ final class PublishingServiceProvider extends ServiceProvider
             $container->singleton(PublishingTypes::class, static fn (Container $c): PublishingTypes => new SchemaPublishingTypes($c->get(DataManager::class)));
         }
         if (!$container->bound(RecordChecks::class)) {
-            $container->singleton(RecordChecks::class, static fn (): RecordChecks => new NoRecordChecks());
+            $container->singleton(RecordChecks::class, static fn (Container $c): RecordChecks => new CoreRecordChecks($c->get(DataManager::class)));
         }
         if (!$container->bound(LanguageChecks::class)) {
             $container->singleton(LanguageChecks::class, static fn (): LanguageChecks => new NoLanguageChecks());

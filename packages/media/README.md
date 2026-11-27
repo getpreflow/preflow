@@ -842,6 +842,36 @@ MySQL) and every other field a nullable text column (TEXT on SQLite, LONGTEXT on
 it adds later are typed the same way; existing columns are never altered. Run `preflow migrate`
 when you upgrade: queries read `derived_from` and `binned_at`.
 
+## Over an API (0.93)
+
+A record points at its images by id: a media field holds `"i1"`, a block's poster `"i7"`. A client
+that shows the record needs more: the URL, the size, the alt text in its language and the smaller
+files for a phone. Writing that by hand per endpoint means every API resolves the ids its own way,
+and a private file's URL slips out of one of them.
+
+The media package adds it to the core's read class (preflow/data's `RecordOutput`) as an output
+part, `Preflow\Media\Api\MediaOutputPart`, registered by `MediaServiceProvider`. It adds
+nothing unless a read asks for it:
+
+```php
+$output->toArray($record, new ReadOptions(with: ['media']));
+```
+
+| Key in `"_media"` (asset id => object) | Holds |
+|---|---|
+| `url` | the asset's URL (`MediaLibrary::url()`; a private asset's is gated) |
+| `kind`, `mime` | `image`, `video` or `document`, and its MIME type |
+| `width`, `height` | in pixels, or `null` (a document) |
+| `alt` | the alt text: one per language on a site with more than one (or the one `ReadOptions(locale:)` asks for), else the text |
+| `sizes` | width => URL of the WebP files the `<picture>` lists (`ImageTag::sizes($asset, $preset)`), narrow to wide; `{}` for a video, a document or a private asset |
+
+- Every asset the record references is listed: its media fields, the blocks and columns of its
+  blocks fields, a page's areas (`RecordOutput::references()`), but not those of a field its
+  `show_when` hides.
+- The fields keep their ids, so a field's shape never depends on the query; a client looks the id
+  up in `"_media"`.
+- An id no asset has (deleted, or never one) is left out.
+
 ## Use without Folio
 
 List `MediaServiceProvider`, add `config/media.php` if the defaults do not fit, call

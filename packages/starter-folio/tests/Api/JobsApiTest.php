@@ -45,20 +45,26 @@ final class JobsApiTest extends TestCase
         $this->assertCount(12, $all->json('data'));
 
         $first = $all->json('data.0');
+        // The core read output (RecordOutput) of the published copy: "_id", the type's fields in
+        // declared order (not createdAt and updatedAt: declared "hidden", never read out), then what
+        // the controller adds: when it went live and the job's page. The publish state is only for
+        // token-authenticated responses.
         $this->assertSame(
-            ['id', 'slug', 'title', 'company', 'place', 'employment_type', 'remote', 'salary', 'description', 'published_at', 'url'],
+            ['_id', 'title', 'slug', 'company', 'place', 'employmentType', 'remote', 'salaryFrom', 'salaryTo', 'description', 'postedOn', '_published_at', '_url'],
             array_keys($first),
-            'status is only for token-authenticated responses',
         );
-        $this->assertSame(['id', 'slug', 'name'], array_keys($first['company']));
-        $this->assertStringStartsWith('http://localhost:8080/jobs/', $first['url']);
+        // A relation is the related record's id (GET /api/content/company/{id} reads it).
+        $this->assertSame(32, strlen($first['company']));
+        $this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}$/', $first['postedOn']);
+        $this->assertNotNull($first['_published_at']);
+        $this->assertStringStartsWith('http://localhost:8080/jobs/', $first['_url']);
 
         $filtered = $this->json('GET', '/api/jobs?type=contract&remote=full');
         $filtered->assertOk();
         $this->assertGreaterThan(0, $filtered->json('meta.total'));
         $this->assertLessThan(34, $filtered->json('meta.total'));
         foreach ($filtered->json('data') as $job) {
-            $this->assertSame('contract', $job['employment_type']);
+            $this->assertSame('contract', $job['employmentType']);
             $this->assertSame('full', $job['remote']);
         }
     }
@@ -100,10 +106,11 @@ final class JobsApiTest extends TestCase
         $response = $this->json('GET', '/api/jobs/' . $job->uuid);
 
         $response->assertOk();
-        $this->assertSame($job->uuid, $response->json('data.id'));
+        $this->assertSame($job->uuid, $response->json('data._id'));
         $this->assertSame('Frontend Developer', $response->json('data.title'));
         $this->assertSame($job->description, $response->json('data.description'));
-        $this->assertArrayNotHasKey('status', $response->json('data'));
+        $this->assertSame($job->company, $response->json('data.company'));
+        $this->assertArrayNotHasKey('_status', $response->json('data'));
     }
 
     public function test_draft_is_404_json(): void

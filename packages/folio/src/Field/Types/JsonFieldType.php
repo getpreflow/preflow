@@ -27,6 +27,12 @@ final class JsonFieldType extends AbstractScalarFieldType implements DisplaysInA
         return 'json';
     }
 
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Fields\Values\Field\JsonValue();
+    }
+
     protected function inputType(): string
     {
         return 'textarea';
@@ -48,16 +54,13 @@ final class JsonFieldType extends AbstractScalarFieldType implements DisplaysInA
         ));
     }
 
+    /** The posted text with "\n" line breaks (nothing else is taken), as the core stores it (JsonValue: trimmed, blank is null). */
     public function normalizeInput(mixed $raw, array $config): mixed
     {
-        return is_string($raw) && trim($raw) !== '' ? trim(str_replace("\r\n", "\n", $raw)) : null;
+        return $this->stored(is_string($raw) ? str_replace("\r\n", "\n", $raw) : null, $config);
     }
 
-    public function toStorage(mixed $value): mixed
-    {
-        return JsonText::fromStored($value);
-    }
-
+    /** The JSON as text for the editor (the core's output is the decoded value). */
     public function fromStorage(mixed $value): mixed
     {
         return JsonText::fromStored($value);

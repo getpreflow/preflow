@@ -23,8 +23,10 @@ use Preflow\Folio\FolioText;
  * as numbers (a decimal comma is read as a point), or null when nothing is filled in. What is no
  * number is kept as typed for the core check to refuse. The check is the core's: rules() adds none.
  */
-final class LocationFieldType implements FieldType, DisplaysInAdmin
+final class LocationFieldType implements FieldType, DisplaysInAdmin, \Preflow\Folio\Field\UsesFieldKinds
 {
+    use \Preflow\Folio\Field\Types\CoreValue;
+
     /** @param (\Closure(): ?LocationPicker)|null $picker the bound LocationPicker, if any */
     public function __construct(
         private readonly ?\Closure $picker = null,
@@ -33,6 +35,12 @@ final class LocationFieldType implements FieldType, DisplaysInAdmin
     public function key(): string
     {
         return 'location';
+    }
+
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Fields\Values\Field\LocationValue();
     }
 
     public function renderEditor(FieldContext $ctx): string
@@ -102,18 +110,18 @@ final class LocationFieldType implements FieldType, DisplaysInAdmin
         $lng = $part($raw['lng'] ?? null);
         $address = is_string($raw['address'] ?? null) && trim($raw['address']) !== '' ? trim($raw['address']) : null;
 
-        return $lat === null && $lng === null && $address === null ? null : ['lat' => $lat, 'lng' => $lng, 'address' => $address];
+        return $this->stored($lat === null && $lng === null && $address === null ? null : ['lat' => $lat, 'lng' => $lng, 'address' => $address], $config);
     }
 
-    /** The stored object (SQL storage writes JSON text of it): a place as Location stores it; what is no place as it is, for the check. */
+    /** The stored object as the core stores it (SQL storage writes JSON text of it): a place as Location stores it; what is no place as it is, for the check. */
     public function toStorage(mixed $value): mixed
     {
-        return Location::fromStored($value)?->toStored() ?? Link::decode($value);
+        return $this->stored($value);
     }
 
     public function fromStorage(mixed $value): mixed
     {
-        return Location::fromStored($value)?->toStored();
+        return $this->output($value);
     }
 
     /** The address (or the coordinates) linked to the place's `geo:` address. */

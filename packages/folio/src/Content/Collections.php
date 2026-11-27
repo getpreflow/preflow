@@ -26,7 +26,8 @@ final class Collections
         private readonly LiveContent $live,
         private readonly TypeCatalog $catalog,
         private readonly ContentLocale $locale,
-        private readonly ?SafeRichText $richText = null,
+        /** What cleans rich text on its way to a template: the core's (StoredCleaning, since 0.93); SafeRichText still works. */
+        private readonly SafeRichText|\Preflow\Data\Values\StoredCleaning|null $richText = null,
         private readonly ?FrontendGate $gate = null,
         private readonly ?\Preflow\Blocks\BlockRegistry $blocks = null,
     ) {}

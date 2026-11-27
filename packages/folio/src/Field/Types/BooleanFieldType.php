@@ -17,6 +17,12 @@ final class BooleanFieldType extends AbstractScalarFieldType implements \Preflow
         return 'boolean';
     }
 
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Data\Values\Core\BooleanValue();
+    }
+
     public function columnKind(array $config): \Preflow\Data\Schema\ColumnKind
     {
         return \Preflow\Data\Schema\ColumnKind::Boolean;
@@ -72,18 +78,19 @@ final class BooleanFieldType extends AbstractScalarFieldType implements \Preflow
         return $display;
     }
 
+    /** A checkbox posts its value when checked and nothing when not: checked or not, as the core stores it. */
     public function normalizeInput(mixed $raw, array $config): bool
     {
-        if (is_bool($raw)) {
-            return $raw;
-        }
-
-        return in_array(is_string($raw) ? strtolower($raw) : $raw, ['1', 'on', 'true', 1], true);
+        return $this->stored($raw, $config) === true;
     }
 
+    /**
+     * The core's reading of the stored value (BooleanValue); no value reads as unchecked here,
+     * as before 0.93 (the core's output keeps it null).
+     */
     public function fromStorage(mixed $value): bool
     {
-        return $this->normalizeInput($value, []);
+        return $this->output($value) === true;
     }
 
     /** Yes / No in the interface language; nothing stored (null or '') shows as empty rather than "No". */

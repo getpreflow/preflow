@@ -40,6 +40,12 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
         return 'select';
     }
 
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Data\Values\Core\SelectValue();
+    }
+
     public function columnKind(array $config): \Preflow\Data\Schema\ColumnKind
     {
         return \Preflow\Data\Schema\ColumnKind::Short;
@@ -96,11 +102,12 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
         return $this->renderer->renderField($ctx->name, $field);
     }
 
+    /** The posted option key (nothing posted is none), as the core stores it (SelectValue: none is null). */
     public function normalizeInput(mixed $raw, array $config): ?string
     {
-        $value = is_scalar($raw) ? (string) $raw : '';
+        $value = $this->stored(is_scalar($raw) ? (string) $raw : '', $config);
 
-        return $value === '' ? null : $value;
+        return is_string($value) ? $value : null;
     }
 
     public function renderFrontend(mixed $value, array $config): string

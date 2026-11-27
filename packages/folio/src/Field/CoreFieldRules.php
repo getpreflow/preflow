@@ -7,6 +7,7 @@ namespace Preflow\Folio\Field;
 use Preflow\Blocks\BlockDefinition;
 use Preflow\Blocks\BlockValueChecks;
 use Preflow\Data\FieldKinds;
+use Preflow\Data\HasStoredRules;
 use Preflow\Data\RecordRules;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
@@ -18,9 +19,10 @@ use Preflow\Data\TypeFieldDefinition;
  * - a type's rules() (number's step, tags' limits, a blocks field's min/max, a site's own field
  *   types) as the core checks of its kind (FieldKinds::rules()), where no core package registered
  *   checks for that kind already; a type whose form takes fewer shapes than it stores and reads
- *   (HasStoredRules, 0.92.1: date) gives its storedRules() instead, so saveType() from server
- *   code, imports and seeds refuse only a value the type cannot read (Folio's RecordValidator
- *   runs its rules() in their place);
+ *   (Preflow\Data\HasStoredRules, 0.92.1) gives its storedRules() instead, so saveType() from
+ *   server code, imports and seeds refuse only a value the type cannot read (Folio's
+ *   RecordValidator runs its rules() in their place). Date's stored rule is the core's since
+ *   0.93 (preflow/data's CoreValues, on every DataManager's kinds): this leaves it in place;
  * - a type whose rules read the other fields (HasRecordRules, HasBlockRules) not as a kind: its
  *   recordRules() as rules the core adds for the records' fields (RecordRules::add()), its
  *   blockRules() (or rules()) for a block's field through BlockValueChecks::extraRules().

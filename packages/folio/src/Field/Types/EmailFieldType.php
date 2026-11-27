@@ -23,6 +23,12 @@ final class EmailFieldType extends AbstractScalarFieldType implements Searchable
         return 'email';
     }
 
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Fields\Values\Field\EmailValue();
+    }
+
     protected function inputType(): string
     {
         return 'email';
@@ -33,9 +39,10 @@ final class EmailFieldType extends AbstractScalarFieldType implements Searchable
         return ['autocomplete' => 'off', 'spellcheck' => 'false', 'inputmode' => 'email'];
     }
 
+    /** The posted text (nothing posted is ""), as the core stores it (EmailValue: trimmed). */
     public function normalizeInput(mixed $raw, array $config): mixed
     {
-        return is_string($raw) ? trim($raw) : '';
+        return $this->stored(is_string($raw) ? $raw : '', $config);
     }
 
     public function renderFrontend(mixed $value, array $config): string

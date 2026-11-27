@@ -7,6 +7,10 @@ namespace Preflow\Folio\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.93.0: data 0.93.0 (HasStoredRules, Validation\StoredDate and Values\Core\DateValue::read(), moved from Folio:
+ * DateFieldType and RecordValidator use them, and the core registers date's stored rule itself); publishing 0.93.0
+ * (CoreRecordChecks, which RecordValidator and FolioRecordChecks build on, and SaveOptions::$checks, with which the
+ * form passes FolioFormChecks).
  * Since 0.92.0: data 0.92.0 (DataManager::fieldRules(), RecordRules, FieldKinds::hasRules(), Validation\SelectRules and
  * OptionsFrom: the core checks select options and Folio's field rules on every write, and RecordValidator starts from
  * its rules); blocks 0.92.0 (BlockValueChecks and BlockLists: the core walks the block values Folio walked before).
@@ -83,6 +87,8 @@ use PHPUnit\Framework\TestCase;
  * preflow/blocks (required since 0.70: the block classes, registry and renderer that were Folio's own; BlockLocale,
  * BlockTextCleaner and BlockPreviewMarks, which ContentLocale, SafeRichText and FolioBlockPreviewMarks implement)
  * conflicts below 0.75 (BlockDefinition::$family, see above).
+ * Since 0.93 Folio's field types read and write through the core values (preflow/blocks' BlocksFieldValue and
+ * CoreBlockTextCleaner, preflow/fields' twelve values, all new in 0.93.0), so blocks and fields conflict below 0.93.0.
  * preflow/publishing (required since 0.71: the Publisher, LiveContent and the other publishing classes that were Folio's own;
  * PublishingTypes, RecordChecks, LanguageChecks, RecordIndex and RecordAddresses, which Folio's adapters implement)
  * conflicts below 0.72: 0.71 still carries the config/folio.php fallback and the shadow-table index rules 0.72 changed.
@@ -90,7 +96,8 @@ use PHPUnit\Framework\TestCase;
  * site.view_as (PreviewGate::VIEW_AS), which the whole-page preview's View as asks for (before 0.69 it still ships
  * that admin itself, its own extension "rbac", field types and texts, and lacks StaffAccounts, StaffLinks::available()
  * and StaffMail::sendTo(), which Folio's rbac admin and staff mails call; before 0.84.0 it lacks RoleStore::hasRoles(),
- * which tells Folio whether a site held roles before), so it conflicts.
+ * which tells Folio whether a site held roles before; before 0.93.0 it lacks TypePermissions, which Folio declares
+ * the type permissions through where rbac is installed), so it conflicts.
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -99,7 +106,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/ai' => '<0.78', 'preflow/auth' => '<0.83.0', 'preflow/blocks' => '<0.92.0', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.82.0', 'preflow/data' => '<0.92.0', 'preflow/devtools' => '<0.85.0', 'preflow/fields' => '<0.91.0', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.83.0', 'preflow/media' => '<0.89.0', 'preflow/members' => '<0.77', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.81.0', 'preflow/rbac' => '<0.84.0', 'preflow/routing' => '<0.78.2', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
+            ['preflow/ai' => '<0.78', 'preflow/auth' => '<0.83.0', 'preflow/blocks' => '<0.93.0', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.82.0', 'preflow/data' => '<0.93.0', 'preflow/devtools' => '<0.85.0', 'preflow/fields' => '<0.93.0', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.83.0', 'preflow/media' => '<0.89.0', 'preflow/members' => '<0.77', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.93.0', 'preflow/rbac' => '<0.93.0', 'preflow/routing' => '<0.78.2', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; ai, members, codes and rbac are suggested, not required.
@@ -110,6 +117,14 @@ final class ComposerConstraintsTest extends TestCase
         foreach (array_diff_key($composer['conflict'], ['preflow/ai' => true, 'preflow/members' => true, 'preflow/codes' => true, 'preflow/rbac' => true]) as $package => $below) {
             $this->assertSame('^' . substr($below, 1) . ' || @dev', $composer['require'][$package] ?? null, $package);
         }
+    }
+
+    /** Its suite's TypeActionsVerbsTest pins TypeActions::VERBS to rbac's TypePermissions::VERBS: a split run installs rbac. */
+    public function test_its_suite_installs_rbac(): void
+    {
+        $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
+
+        $this->assertSame('^0.93.0 || @dev', $composer['require-dev']['preflow/rbac'] ?? null);
     }
 
     public function test_declares_its_extensions_file_as_a_runtime_file(): void

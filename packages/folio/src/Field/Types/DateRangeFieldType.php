@@ -23,11 +23,19 @@ use Preflow\Folio\View\InlineIcon;
  *
  * Not sortable by value (the list sorts the stored text).
  */
-final class DateRangeFieldType implements FieldType, DisplaysInAdmin
+final class DateRangeFieldType implements FieldType, DisplaysInAdmin, \Preflow\Folio\Field\UsesFieldKinds
 {
+    use \Preflow\Folio\Field\Types\CoreValue;
+
     public function key(): string
     {
         return 'daterange';
+    }
+
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Fields\Values\Field\DateRangeValue();
     }
 
     public function renderEditor(FieldContext $ctx): string
@@ -85,20 +93,19 @@ final class DateRangeFieldType implements FieldType, DisplaysInAdmin
             }
         }
 
-        return $parts;
+        return $this->stored($parts, $config);
     }
 
     /** {start, end} as it is (SQL storage writes JSON text of it): what is wrong with it is the check's to say. */
     public function toStorage(mixed $value): mixed
     {
-        $parts = DateRange::parts($value);
-
-        return $parts === null ? null : ['start' => $parts['start'], 'end' => $parts['end']];
+        return $this->stored($value);
     }
 
+    /** As stored, half a range included (the core's output reads only a valid range, else null): the editor shows what is stored, as in 0.92. */
     public function fromStorage(mixed $value): mixed
     {
-        return $this->toStorage($value);
+        return $this->stored($value);
     }
 
     public function renderFrontend(mixed $value, array $config): string

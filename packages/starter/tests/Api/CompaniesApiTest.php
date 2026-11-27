@@ -45,8 +45,10 @@ final class CompaniesApiTest extends TestCase
         $this->assertCount($company['open_jobs'], $company['jobs']);
         $this->assertGreaterThan(0, $company['open_jobs']);
         foreach ($company['jobs'] as $job) {
-            $this->assertSame('northwind-labs', $job['company']['slug']);
-            $this->assertArrayNotHasKey('status', $job);
+            // As /api/jobs reads a job: the core read output, the company as its id.
+            $this->assertSame($company['id'], $job['company']);
+            $this->assertSame('published', $job['status']);
+            $this->assertStringStartsWith('http://localhost:8080/jobs/', $job['_url']);
         }
 
         $this->assertSame(404, $this->json('GET', '/api/companies/nope')->status());

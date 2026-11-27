@@ -83,9 +83,10 @@ final class PublishingTest extends TestCase
         }
         $this->get('/jobs/' . $slug)->assertOk()->assertSee('Folio Published Engineer');
         $api = $this->json('GET', '/api/jobs');
-        $this->assertSame((string) $record->getId(), $api->json('data.0.id'), 'the newest job comes first');
+        $this->assertSame((string) $record->getId(), $api->json('data.0._id'), 'the newest job comes first');
         $this->assertSame(35, $api->json('meta.total'));
-        $this->assertNotNull($api->json('data.0.published_at'));
+        $this->assertNotNull($api->json('data.0.postedOn'));
+        $this->assertNotNull($api->json('data.0._published_at'));
     }
 
     public function test_unpublished_job_disappears(): void

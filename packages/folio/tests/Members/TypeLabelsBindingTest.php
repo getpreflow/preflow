@@ -39,4 +39,15 @@ final class TypeLabelsBindingTest extends TestCase
         $this->assertSame('Mitglieder', $labels->label('member', 'de'));
         $this->assertSame('Unknown', $labels->label('unknown', 'de'), 'the key, capitalised, for a type without a label');
     }
+
+    #[RunInSeparateProcess]
+    public function test_bound_type_labels_win_through_data_labels(): void
+    {
+        $this->scaffold();
+        $this->migrateAndApply();
+
+        $labels = $this->container()->get(\Preflow\Data\DataManager::class)->labels();
+
+        $this->assertSame('Mitglieder', $labels->type('member', 'de'), 'Folio\'s display labels, not the declared ones');
+    }
 }

@@ -185,6 +185,26 @@ You write none of this: `BlocksServiceProvider` runs `Preflow\Blocks\BlockValueC
 adapter adds rules for block fields with `BlockValueChecks::extraRules()`; `BlockLists` is the one
 place that knows which field types hold blocks.
 
+### Cleaned on every write (0.93)
+
+Rich text inside blocks is cleaned when the record is stored, on every typed write, with or without
+validation: a `richtext` field of a block (every language), in nested blocks, in the columns of an
+`areas` field and in a page's `_areas`. It is the same cleaning a record's own rich text gets
+(`DataManager::storageValues()`), so an import or an API body stores the same safe HTML Folio's form
+stores. Clean HTML keeps its bytes, so saving a record again does not move its change date. A block
+whose class is gone, and a key its block does not declare, are stored as given. Rows a script
+writes straight to a driver are not cleaned; rendering cleans them again (`CoreBlockTextCleaner`).
+
+### Field values (0.93)
+
+`BlocksServiceProvider` registers what a `blocks` and an `areas` field's values mean on the
+DataManager's `FieldKinds` (`FieldKinds::valueOf()`), for readers and writers of any type:
+
+| Value | Shape | Does |
+|---|---|---|
+| `Values\BlocksFieldValue` | `blocks` | each block field read and written through its own value (a number stored as `"3"` reads `3`, rich text cleaned, locale maps kept), a field its `show_when` hides read as `null`; `references()` lists the records and assets every block points at |
+| `Values\AreasFieldValue` | `areas_value` | read as `LayoutResource::areasField()`, each block as above; `merge()` is `LayoutInput::mergeField()` |
+
 ## Page layouts (0.92)
 
 ### The problem it solves
@@ -236,7 +256,13 @@ Layouts are found like blocks: in `app/Layouts`, in `config/blocks.php` `'layout
 classes) and in installed packages (`extra.preflow.layouts` in their `composer.json`). The result
 is cached (`layouts.cache`, the boot manifest). A type with `"layouts"` gets two columns,
 `_layout` and `_areas` (Folio's `preflow migrate` adds them; without Folio add them yourself). A
-class-backed type sets `layouts` in its admin file, like a model file does.
+class-backed type declares them in code with the same keys (since 0.93), checked at boot the same way:
+
+```php
+#[Entity(table: 'pages', type: 'page', layouts: ['allowed' => ['landing', 'standard'], 'default' => 'standard', 'pinned' => ['home' => 'landing']])]
+```
+
+or in its admin file, like a model file does; not in both (the boot stops naming the file and the class).
 
 ### Rendering: you pass the areas yourself
 
@@ -310,8 +336,24 @@ first layout (`AreaLayoutSet::resolve($key, $count)`).
 
 ### For APIs
 
-Everything above can be read and written as JSON through core classes, with or without Folio. No
-REST package is part of 0.92: you call these from your own controller.
+Everything above can be read and written as JSON through core classes, with or without Folio.
+
+Since 0.93 you don't call these yourself for a record: the blocks package plugs them into the
+core's read, write and describe classes (preflow/data's `RecordOutput`, `RecordInput` and
+`Description`, see "Records over an API" in its README). `BlocksServiceProvider` registers them:
+
+| Registered as | Class | Adds |
+|---|---|---|
+| an output part (`RecordParts::output()`) | `LayoutResource` | `_layout`, `_areas` and `_unplaced` to a read of a type with layouts; `references()` lists what the area blocks point at, so `_media` covers them |
+| an input part (`RecordParts::input()`) | `LayoutInput` | takes `_layout` and `_areas` from a write body, merged as below |
+| a description contributor (`DescriptionContributors::add()`) | `ContentDescription` | the sections `blocks`, `layouts`, `area_layout_sets`, and per type with layouts `layouts` with its `output` map: `{"_layout": "resolved_layout", "_areas": "area_map", "_unplaced": "area_map"}` |
+| field values (`FieldKinds::value()`) | `BlocksFieldValue`, `AreasFieldValue` | a `blocks` and an `areas` field read and written block by block (above) |
+
+So a controller reads a page with `$output->toArray($record)` and gets the layout keys beside the
+fields, and `$input->update($record, $body)` takes them from the body. The direct calls below stay
+for 0.92 code: `LayoutResource::toArray()`, `areasField()` and `LayoutInput::mergeField()` are
+deprecated since 0.93.0 (removed no earlier than 0.95), their output unchanged; `ContentDescription::toArray()`
+keeps its version 1 output byte for byte.
 
 | Class | Does |
 |---|---|
@@ -385,12 +427,14 @@ in a provider's `register()`:
 | Interface | Asks | Default | Folio binds |
 |---|---|---|---|
 | `BlockLocale` | the locale to render in (`localeOf(RenderContext $ctx)`, `locales()`; since 0.83 `localeOf()` is part of `BlockLocale`, which was `ContextBlockLocale`'s in 0.81 and 0.82, and `get()` is gone) | the render context's locale when it is a content locale, else the default | its content locale (the page's; the editing locale in a preview) |
-| `BlockTextCleaner` | `block(array $block): array`, the values on their way to the template | as stored | its rich-text sanitizer (nested blocks included) |
+| `BlockTextCleaner` | `block(array $block): array`, the values on their way to the template | the core cleaner (`CoreBlockTextCleaner`, 0.93): rich text cleaned, nested blocks and columns included | its rich-text sanitizer (nested blocks included) |
 | `BlockPreviewMarks` | the root attributes of a block in preview (`data-…` only) | `data-block`, `data-block-label` | `data-folio-block`, `data-folio-label` |
 | `RecordPreviewMarks` (0.92) | the attributes of a linked record's element in preview (`attributes($type, $id)`, `data-…` only) | `data-record-type`, `data-record-id` | `data-folio-record`, `data-folio-record-id`, `data-folio-label` |
 
-Without Folio, rich-text values are rendered as stored: the default cleaner changes nothing, so bind a
-`BlockTextCleaner` to clean them (below).
+Since 0.93 blocks render their rich text cleaned without Folio too: the default `CoreBlockTextCleaner`
+cleans it with the core's HTML cleaner (`Preflow\Data\Html\HtmlCleaner`; bind your own to make it
+stricter or looser), as every save does. Before 0.93 the default changed nothing. Bind a
+`BlockTextCleaner` to do something else with a block's values (below).
 
 ```php
 $container->singleton(Preflow\Blocks\BlockTextCleaner::class, fn () => new App\Content\MarkdownBlocks());

@@ -7,6 +7,9 @@ namespace Preflow\Blocks\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.93.0: data 0.93.0 (Values\FieldValue and its companions, FieldKinds::value(), StoredCleaning and
+ * DataManager::cleaning(): the blocks and areas values, block rich text cleaned on write, the "_areas" system key's
+ * cleaning, and CoreBlockTextCleaner over the core cleaner).
  * Since 0.92.1: validation 0.92.1 (Message's count, which chooses the plural form of the area limits' messages;
  * an older validation has no count, and its texts have one form).
  * Since 0.92.0: data 0.92.0 (RecordRules, DataManager::recordRules(): the page layout rules run on every
@@ -40,13 +43,13 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame('^0.92.0 || @dev', $composer['require']['preflow/data'] ?? null);
+        $this->assertSame('^0.93.0 || @dev', $composer['require']['preflow/data'] ?? null);
         $this->assertSame('^0.81.0 || @dev', $composer['require']['preflow/core'] ?? null);
         $this->assertSame('^0.92.1 || @dev', $composer['require']['preflow/validation'] ?? null);
         $this->assertSame([
             'preflow/components' => '<0.70',
             'preflow/core' => '<0.81.0',
-            'preflow/data' => '<0.92.0',
+            'preflow/data' => '<0.93.0',
             'preflow/folio' => '<0.92.0',
             'preflow/validation' => '<0.92.1',
             'preflow/view' => '<0.70',

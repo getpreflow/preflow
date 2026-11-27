@@ -4,25 +4,42 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Content;
 
-use Preflow\Blocks\BlockLists;
 use Preflow\Blocks\BlockRegistry;
 use Preflow\Blocks\BlockTextCleaner;
+use Preflow\Blocks\CoreBlockTextCleaner;
+use Preflow\Blocks\Values\BlocksFieldValue;
+use Preflow\Data\FieldKinds;
+use Preflow\Data\Html\HtmlCleaner;
 use Preflow\Data\TypeFieldDefinition;
+use Preflow\Data\Values\CoreValues;
+use Preflow\Data\Values\StoredCleaning;
 use Preflow\Folio\Field\FieldTypeRegistry;
 
 /**
- * Rich text on its way to a template: every richtext field of a record or block,
- * nested blocks included (a blocks field's, an areas field's columns: BlockLists), through the
- * richtext field type's sanitizer. Values are
- * sanitized when the admin saves them, but content can also arrive by import, app
- * code or older data, and templates print rich text with |raw. Blocks ask it as their BlockTextCleaner.
+ * Rich text on its way to a template: every richtext field of a record or block, nested blocks
+ * included (a blocks field's, an areas field's columns). Since 0.93 a thin delegate to the core:
+ * fields() is StoredCleaning::fields() (the DataManager's, given as $cleaning: a site's bound
+ * HtmlCleaner), block() is CoreBlockTextCleaner::block(). Folio itself uses those; given no
+ * StoredCleaning (the 0.92 constructor), it cleans with the richtext field type's frontend
+ * output, as before.
+ *
+ * @deprecated since 0.93.0, removed no earlier than 0.95: use DataManager::cleaning()
+ *             (StoredCleaning::fields()) for a record's values and CoreBlockTextCleaner for a block.
  */
 final class SafeRichText implements BlockTextCleaner
 {
+    private readonly StoredCleaning $cleaning;
+
+    private readonly CoreBlockTextCleaner $core;
+
     public function __construct(
-        private readonly FieldTypeRegistry $fieldTypes,
-        private readonly BlockRegistry $blocks,
-    ) {}
+        FieldTypeRegistry $fieldTypes,
+        BlockRegistry $blocks,
+        ?StoredCleaning $cleaning = null,
+    ) {
+        $this->cleaning = $cleaning ?? self::cleaningOver($fieldTypes, $blocks);
+        $this->core = new CoreBlockTextCleaner($this->cleaning, $blocks);
+    }
 
     /**
      * @param array<string, mixed> $values a record's or block's values (localized or locale maps)
@@ -31,20 +48,12 @@ final class SafeRichText implements BlockTextCleaner
      */
     public function fields(array $values, array $fields): array
     {
+        $definitions = [];
         foreach ($fields as $name => $field) {
-            if (!array_key_exists($name, $values)) {
-                continue;
-            }
-            $type = (string) ($field->type ?? '');
-            if ($type === 'richtext') {
-                $values[$name] = $this->sanitize($values[$name]);
-            } elseif ($field instanceof TypeFieldDefinition && BlockLists::holds($field) && is_array($values[$name])) {
-                // Every list of blocks the field holds (a blocks field, the areas of an areas field).
-                $values[$name] = BlockLists::map($field, $values[$name], fn (array $list): array => array_map($this->block(...), $list));
-            }
+            $definitions[$name] = $field instanceof TypeFieldDefinition ? $field : new TypeFieldDefinition((string) $name, (string) ($field->type ?? ''));
         }
 
-        return $values;
+        return $this->cleaning->fields($values, $definitions);
     }
 
     /**
@@ -53,21 +62,29 @@ final class SafeRichText implements BlockTextCleaner
      */
     public function block(array $block): array
     {
-        $definition = $this->blocks->get((string) ($block['_block'] ?? ''));
-
-        return $definition !== null ? $this->fields($block, $definition->fields) : $block;
+        return $this->core->block($block);
     }
 
-    /** A string, or a locale map of strings (blocks rendered before locale resolution). */
-    private function sanitize(mixed $value): mixed
+    /**
+     * The 0.92 constructor's cleaning: rich text through the registry's richtext field type
+     * (renderFrontend()), nested blocks and areas through the core's blocks value.
+     */
+    private static function cleaningOver(FieldTypeRegistry $fieldTypes, BlockRegistry $blocks): StoredCleaning
     {
-        if (is_string($value)) {
-            return $this->fieldTypes->get('richtext')->renderFrontend($value, []);
-        }
-        if (is_array($value)) {
-            return array_map(fn (mixed $v): mixed => is_string($v) ? $this->sanitize($v) : $v, $value);
-        }
+        $kinds = new FieldKinds();
+        CoreValues::register($kinds, static fn (): HtmlCleaner => new class ($fieldTypes) implements HtmlCleaner {
+            public function __construct(private readonly FieldTypeRegistry $fieldTypes) {}
 
-        return $value;
+            public function clean(string $html): string
+            {
+                return $this->fieldTypes->get('richtext')->renderFrontend($html, []);
+            }
+        });
+        // Cleaning walks an areas field's columns as a blocks field's lists (BlockLists::map()).
+        $value = new BlocksFieldValue(static fn (): BlockRegistry => $blocks, $kinds);
+        $kinds->value('blocks', $value);
+        $kinds->value('areas', $value);
+
+        return new StoredCleaning($kinds);
     }
 }

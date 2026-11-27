@@ -669,8 +669,10 @@ final class FolioServiceProvider extends ServiceProvider
                 static fn (): \Preflow\Folio\Field\AreasEditor => new \Preflow\Folio\Field\AreasEditor($c->get(\Preflow\Folio\View\FolioEngine::class), $blocksType, $c->get(BlockRegistry::class), $prefix),
                 $c->get(\Preflow\Folio\View\FolioEngine::class),
             ));
-            // The sanitizer is built on the first sanitize call, not on every request.
-            $registry->register(new RichTextFieldType(\Preflow\Folio\Field\LazyHtmlSanitizer::standard()));
+            // Rich text is cleaned with the core's cleaner (0.93): the DataManager's (a site's bound
+            // HtmlCleaner, else the core's), the one every typed write cleans with, asked on each clean
+            // (built on the first one, not on every request).
+            $registry->register(new RichTextFieldType(self::htmlCleaner($c)));
             // Editors render only the controls the user may use (the routes check again).
             $can = self::can($c);
             $registry->register(new AssetFieldType(
@@ -816,6 +818,8 @@ final class FolioServiceProvider extends ServiceProvider
             // A page's layout picker and areas (0.92); without page layouts no type has any.
             pageLayouts: self::pageLayouts($c),
             areasEditor: self::areasEditor($c, $prefix),
+            // The form's own checks (0.93): its input rules; RecordWriter's other saves and publishing run the bound RecordChecks.
+            formChecks: new \Preflow\Folio\Publishing\FolioFormChecks($c->get(\Preflow\Folio\Content\RecordValidator::class)),
             reviewIndex: $c->get(\Preflow\I18n\Machine\ReviewIndex::class),
             worker: $c->get(\Preflow\I18n\Machine\TranslationWorker::class),
             seo: $c->bound(\Preflow\View\Seo\SeoConfig::class) ? $c->get(\Preflow\View\Seo\SeoConfig::class) : null,
@@ -962,7 +966,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TypeCatalog::class),
             $c->get(ContentLocale::class),
             $c->get(\Preflow\Publishing\LiveContent::class),
-            $c->get(\Preflow\Folio\Content\SafeRichText::class),
+            // Rich text on its way to a template, cleaned by the core (0.93), as every write cleans it.
+            $c->get(DataManager::class)->cleaning(),
             $c->get(BlockRegistry::class),
         ));
         $container->singleton(ExtensionSettings::class, fn (Container $c) => new ExtensionSettings(
@@ -978,17 +983,23 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Publishing\LiveContent::class),
             $c->get(TypeCatalog::class),
             $c->get(ContentLocale::class),
-            $c->get(\Preflow\Folio\Content\SafeRichText::class),
+            $c->get(DataManager::class)->cleaning(),
             $c->get(\Preflow\Folio\Content\FrontendGate::class),
             $c->get(BlockRegistry::class),
         ));
+        // Deprecated since 0.93 (a thin delegate to the core's cleaning), kept for code that asks for it.
         $container->singleton(\Preflow\Folio\Content\SafeRichText::class, fn (Container $c) => new \Preflow\Folio\Content\SafeRichText(
             $c->get(FieldTypeRegistry::class),
             $c->get(BlockRegistry::class),
+            $c->get(DataManager::class)->cleaning(),
         ));
-        // Blocks get their rich text sanitized on the way to their templates.
+        // Blocks get their rich text cleaned on the way to their templates by the core (0.93:
+        // CoreBlockTextCleaner over the DataManager's cleaning, a site's bound HtmlCleaner included).
         if (!$container->bound(\Preflow\Blocks\BlockTextCleaner::class)) {
-            $container->singleton(\Preflow\Blocks\BlockTextCleaner::class, static fn (Container $c): \Preflow\Blocks\BlockTextCleaner => $c->get(\Preflow\Folio\Content\SafeRichText::class));
+            $container->singleton(\Preflow\Blocks\BlockTextCleaner::class, static fn (Container $c): \Preflow\Blocks\BlockTextCleaner => new \Preflow\Blocks\CoreBlockTextCleaner(
+                $c->get(DataManager::class)->cleaning(),
+                $c->get(BlockRegistry::class),
+            ));
         }
         $container->bind(\Preflow\Folio\Http\BlockEditorController::class, fn (Container $c) => new \Preflow\Folio\Http\BlockEditorController(
             $c->get(FieldTypeRegistry::class),
@@ -2076,7 +2087,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Ai\Draft\DraftWriter::class),
             $c->get(TypeCatalog::class),
             $c->get(TypeRegistry::class),
-            \Preflow\Folio\Field\LazyHtmlSanitizer::standard(),
+            // The core's cleaner (0.93), as the rich text field's: a site's bound HtmlCleaner counts.
+            $c->get(DataManager::class)->htmlCleaner(),
             $c->get(DataManager::class),
             $c->get(\Preflow\Auth\Access\Access::class),
             $c->bound(\Psr\Log\LoggerInterface::class) ? $c->get(\Psr\Log\LoggerInterface::class) : null,
@@ -2156,7 +2168,8 @@ final class FolioServiceProvider extends ServiceProvider
     /**
      * Folio's answers to the publishing core's questions, unless the app bound its own
      * (preflow/publishing binds the plain defaults for the rest at boot): which types publish
-     * (the catalog), the rules (RecordValidator), the languages (TranslationStatus), the review
+     * (the catalog), the rules (FolioRecordChecks: the core's plus the address rules; the form's
+     * input rules only on the form's saves, FolioFormChecks), the languages (TranslationStatus), the review
      * index, the addresses (redirects, page-cache tags), the columns Folio adds to the record
      * tables, the legacy drafts `publish` skips, and for RecordWriter and RecordDeleter the save
      * and delete hooks of the type customizations and the orderable listings. The Publisher is
@@ -2275,11 +2288,10 @@ final class FolioServiceProvider extends ServiceProvider
         foreach (['ai.translate' => 'Use AI translation', 'ai.draft' => 'Write drafts with AI', 'ai.settings' => 'AI settings'] as $name => $label) {
             $offered[$name] ? $registry->declare($name, $label, 'AI') : $registry->disable($name, $missing[$name]);
         }
+        // Every catalog type's five names with Folio's catalog labels (through rbac's TypePermissions
+        // where it is installed; they replace rbac's, which declares only what nobody declared).
         foreach ($container->get(TypeCatalog::class)->all() as $listing) {
-            $registry->declarePattern($listing->key . '.*');
-            foreach (['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete'] as $action => $verb) {
-                $registry->declare($listing->key . '.' . $action, $verb, $listing->label);
-            }
+            \Preflow\Folio\Content\TypeActions::declare($registry, $listing->key, $listing->label);
         }
         $registry->declarePattern('assets.*');
         foreach (['view' => 'View', 'upload' => 'Upload', 'edit' => 'Edit', 'delete' => 'Delete'] as $action => $verb) {
@@ -2562,6 +2574,10 @@ final class FolioServiceProvider extends ServiceProvider
         $registry = $container->get(FieldTypeRegistry::class);
         $tell = static function (FieldType $type) use ($kinds, $registry): void {
             $key = $type->key();
+            // Its value is the core's (0.93): the kinds' value for its key, the one an API write uses.
+            if ($type instanceof \Preflow\Folio\Field\UsesFieldKinds) {
+                $type->useFieldKinds($kinds);
+            }
             // Its rules as the core's checks of the kind (0.92), so every write path runs them once.
             \Preflow\Folio\Field\CoreFieldRules::registerType($type, $registry, $kinds);
             if ($type instanceof \Preflow\Folio\Field\SearchableText) {
@@ -2582,6 +2598,7 @@ final class FolioServiceProvider extends ServiceProvider
         // Types registered later (a package's provider booting after Folio) get the same treatment.
         $registry->whenRegistered($tell);
         $kinds->relation('relation');
+        self::registerFieldValues($registry, $kinds);
         // The aliases' kinds, the rules of types that read other fields (on the records' fields and in
         // blocks) — builder's call 23 of 0.92: Folio's RecordValidator merges none of these itself.
         \Preflow\Folio\Field\CoreFieldRules::register(
@@ -2590,6 +2607,57 @@ final class FolioServiceProvider extends ServiceProvider
             $dm->recordRules(),
             $container->bound(\Preflow\Blocks\BlockValueChecks::class) ? $container->get(\Preflow\Blocks\BlockValueChecks::class) : null,
         );
+    }
+
+    /**
+     * The values of Folio's own field types (0.93, builder's call 2): matrix and env, the codes and
+     * rbac admins' types where they are registered, and the aliases int, integer and float as the
+     * number's value (as Folio's registry aliases them), so an API write reads and writes them as
+     * Folio's form does.
+     */
+    private static function registerFieldValues(FieldTypeRegistry $registry, \Preflow\Data\FieldKinds $kinds): void
+    {
+        // A value a site (or a package) registered first is kept: Folio's are the defaults.
+        $values = [
+            'matrix' => static fn (): \Preflow\Data\Values\FieldValue => new \Preflow\Folio\Field\Values\MatrixValue(),
+            'env' => static fn (): \Preflow\Data\Values\FieldValue => new \Preflow\Folio\Field\Values\EnvValue(),
+        ];
+        if ($registry->has('codes_purpose')) {
+            $values['codes_purpose'] = static fn (): \Preflow\Data\Values\FieldValue => new \Preflow\Folio\Codes\Fields\PurposeValue();
+        }
+        if ($registry->has('rbac_permissions')) {
+            $values['rbac_permissions'] = static fn (): \Preflow\Data\Values\FieldValue => new \Preflow\Folio\Rbac\Fields\PermissionsValue();
+            $values['rbac_roles'] = static fn (): \Preflow\Data\Values\FieldValue => new \Preflow\Folio\Rbac\Fields\RolesValue();
+        }
+        foreach ($values as $key => $value) {
+            if (!$kinds->hasValue($key)) {
+                $kinds->value($key, $value());
+            }
+        }
+        foreach (['int', 'integer', 'float'] as $alias) {
+            if (!$kinds->hasValue($alias) && $kinds->hasValue('number')) {
+                $kinds->value($alias, $kinds->valueOf(new \Preflow\Data\TypeFieldDefinition($alias, 'number')));
+            }
+        }
+    }
+
+    /**
+     * Rich text's cleaner for the field type: the DataManager's (a site's bound HtmlCleaner, else
+     * the core's), asked on each clean; without a DataManager the core's standard one.
+     *
+     * @return \Closure(): \Preflow\Data\Html\HtmlCleaner
+     */
+    private static function htmlCleaner(Container $c): \Closure
+    {
+        $default = null;
+
+        return static function () use ($c, &$default): \Preflow\Data\Html\HtmlCleaner {
+            if ($c->bound(DataManager::class)) {
+                return $c->get(DataManager::class)->htmlCleaner();
+            }
+
+            return $c->bound(\Preflow\Data\Html\HtmlCleaner::class) ? $c->get(\Preflow\Data\Html\HtmlCleaner::class) : ($default ??= \Preflow\Data\Html\SymfonyHtmlCleaner::standard());
+        };
     }
 
     /**

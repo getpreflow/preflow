@@ -84,6 +84,32 @@ population), a label, a population (`staff` or `members`) and permissions.
   `config/roles.php: "job.view" (staff role "editor") is not a declared permission; granted anyway.`
 - Roles stored as a JSON string (as SQL returns a list) or a comma-separated string work.
 
+## Type permissions (0.93)
+
+Every content type has five permissions: `{type}.view`, `.create`, `.edit`, `.publish` and
+`.delete`. rbac declares them for every type once all providers booted (an admin that declares
+them first, such as Folio with its own labels, keeps its labels). A controller of your own (a REST
+or GraphQL endpoint) asks the same question Folio's screens ask, without Folio:
+
+```php
+use Preflow\Rbac\TypePermissions;
+
+$def = $data->getTypeRegistry()->get('job');
+if (!TypePermissions::allows($access, $def, 'create')) {   // $access: Preflow\Auth\Access\Access
+    throw new \Preflow\Core\Exceptions\ForbiddenHttpException();
+}
+```
+
+`allows()` needs both: the user's permission (`job.create`) and the type's own answer (data's
+`"readonly": true` refuses create, edit, publish and delete even to `*`; `"creatable": false`
+refuses create). `view` is never restricted by the type. `TypePermissions::VERBS` maps each verb
+to data's `TypeAction`; `TypePermissions::name('job', 'edit')` is `"job.edit"`.
+
+The names are declared for every data type, also those an admin does not list (a type only an API
+serves, an extension model not switched on), because a controller needs them. In Folio's Roles
+screen that can show a few more rows than before 0.93. Grant them as usual: `config/roles.php`
+(`'job.create'`), or `*` for everything.
+
 ## User types
 
 A user type gives its users roles with an `rbac_roles` field:

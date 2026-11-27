@@ -21,6 +21,18 @@ use Preflow\Fields\Rules\ValidLocation;
 use Preflow\Fields\Rules\ValidPhone;
 use Preflow\Fields\Rules\ValidTable;
 use Preflow\Fields\Rules\ValidTime;
+use Preflow\Fields\Values\Field\CodeValue;
+use Preflow\Fields\Values\Field\ColorValue;
+use Preflow\Fields\Values\Field\DateRangeValue;
+use Preflow\Fields\Values\Field\DateTimeValueKind;
+use Preflow\Fields\Values\Field\EmailValue;
+use Preflow\Fields\Values\Field\EmbedValue;
+use Preflow\Fields\Values\Field\JsonValue;
+use Preflow\Fields\Values\Field\LinkValue;
+use Preflow\Fields\Values\Field\LocationValue;
+use Preflow\Fields\Values\Field\PhoneValue;
+use Preflow\Fields\Values\Field\TableValue;
+use Preflow\Fields\Values\Field\TimeValue;
 use Preflow\Validation\Rules\Color;
 use Preflow\Validation\Rules\Email;
 use Preflow\Validation\Rules\Json;
@@ -147,15 +159,18 @@ final class FieldsServiceProvider extends ServiceProvider
         // link: an object ({kind, target, label, new_tab}), JSON text in an SQL column.
         $kinds->column('link', ColumnKind::Text);
         $kinds->rules('link', static fn (array $config): array => [new ValidLink(LinkOptions::fromConfig($config))]);
+        $kinds->value('link', new LinkValue());
 
         // email: text (loose search covers it), checked as an email address.
         $kinds->column('email', ColumnKind::Short);
         $kinds->text('email');
         $kinds->rules('email', static fn (array $config): array => [new Email()]);
+        $kinds->value('email', new EmailValue());
 
         // phone: an object ({as_typed, e164}), JSON text in an SQL column; not searchable, like a link.
         $kinds->column('phone', ColumnKind::Text);
         $kinds->rules('phone', static fn (array $config): array => [new ValidPhone(PhoneOptions::fromConfig($config))]);
+        $kinds->value('phone', new PhoneValue());
 
         // color: "#rrggbb" or "#rrggbbaa" text; with "palette_only" only the palette's colours.
         $kinds->column('color', ColumnKind::Short);
@@ -164,38 +179,47 @@ final class FieldsServiceProvider extends ServiceProvider
 
             return [new Color($options->paletteOnly ? $options->values() : null)];
         });
+        $kinds->value('color', new ColorValue());
 
         // code: plain text (the language is the field's setting), so loose search covers it; nothing to check.
         $kinds->column('code', ColumnKind::Text);
         $kinds->text('code');
+        $kinds->value('code', new CodeValue());
 
         // json: JSON as text, as the editor wrote it; not searchable.
         $kinds->column('json', ColumnKind::Text);
         $kinds->rules('json', static fn (array $config): array => [new Json()]);
+        $kinds->value('json', new JsonValue());
 
         // datetime: UTC ISO text ("2026-03-29T12:30:00Z"), which sorts as text: a date column.
         $kinds->column('datetime', ColumnKind::Date);
         $kinds->rules('datetime', static fn (array $config): array => [new ValidDateTime(DateOptions::fromConfig($config))]);
+        $kinds->value('datetime', new DateTimeValueKind());
 
         // time: "HH:MM" text.
         $kinds->column('time', ColumnKind::Short);
         $kinds->rules('time', static fn (array $config): array => [new ValidTime()]);
+        $kinds->value('time', new TimeValue());
 
         // daterange: an object ({start, end}), JSON text in an SQL column; not searchable, like a link.
         $kinds->column('daterange', ColumnKind::Text);
         $kinds->rules('daterange', static fn (array $config): array => [new ValidDateRange(DateOptions::fromConfig($config))]);
+        $kinds->value('daterange', new DateRangeValue());
 
         // embed: an object ({provider, id, url, poster}), JSON text in an SQL column; not searchable.
         $kinds->column('embed', ColumnKind::Text);
         $kinds->rules('embed', static fn (array $config): array => [new ValidEmbed(EmbedOptions::fromConfig($config), $embedProviders(), $images !== null ? $images() : null)]);
+        $kinds->value('embed', new EmbedValue($embedProviders));
 
         // table: an object ({head, rows}, a cell a text or a text per language), JSON text in an SQL
         // column; not searchable in 0.91 (a structured value, like a link's label or a block).
         $kinds->column('table', ColumnKind::Text);
         $kinds->rules('table', static fn (array $config): array => [new ValidTable(TableOptions::fromConfig($config))]);
+        $kinds->value('table', new TableValue());
 
         // location: an object ({lat, lng, address}), JSON text in an SQL column; not searchable.
         $kinds->column('location', ColumnKind::Text);
         $kinds->rules('location', static fn (array $config): array => [new ValidLocation()]);
+        $kinds->value('location', new LocationValue());
     }
 }

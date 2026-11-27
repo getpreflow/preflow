@@ -1382,6 +1382,37 @@ final class Application
             $this->container->instance(\Preflow\Data\Schema\DeclaredTables::class, $declared);
         }
 
+        // The one description of every type and field (0.93), for an API's schema builder: bound
+        // without config/data.php too, so packages always add their parts to it. Without a type
+        // registry (no model files, no model classes) it reads the app's model folder: no types.
+        if (class_exists(\Preflow\Data\Describe\Description::class)) {
+            $this->container->singleton(\Preflow\Data\Describe\DescriptionContributors::class, static fn (): \Preflow\Data\Describe\DescriptionContributors => new \Preflow\Data\Describe\DescriptionContributors());
+            $modelsDir = $this->basePath('config/models');
+            $this->container->singleton(\Preflow\Data\Describe\Description::class, static fn (Container $c): \Preflow\Data\Describe\Description => new \Preflow\Data\Describe\Description(
+                $c->bound(\Preflow\Data\TypeRegistry::class)
+                    ? $c->get(\Preflow\Data\TypeRegistry::class)
+                    : (($c->bound(\Preflow\Data\DataManager::class) ? $c->get(\Preflow\Data\DataManager::class)->getTypeRegistry() : null)
+                        ?? new \Preflow\Data\TypeRegistry($modelsDir, $c->get(\Preflow\Data\Locales::class))),
+                $c->bound(\Preflow\Data\DataManager::class) ? $c->get(\Preflow\Data\DataManager::class)->fieldKinds() : new \Preflow\Data\FieldKinds(),
+                $c->get(\Preflow\Data\Describe\DescriptionContributors::class),
+            ));
+        }
+        // The one read class and the one write class of every type (0.93) and the packages' output
+        // and input parts: the parts are bound without config/data.php too, so packages always add
+        // theirs; reading and writing need the DataManager.
+        if (class_exists(\Preflow\Data\Records\RecordOutput::class)) {
+            $this->container->singleton(\Preflow\Data\Records\RecordParts::class, static fn (): \Preflow\Data\Records\RecordParts => new \Preflow\Data\Records\RecordParts());
+            $this->container->singleton(\Preflow\Data\Records\RecordOutput::class, static fn (Container $c): \Preflow\Data\Records\RecordOutput => new \Preflow\Data\Records\RecordOutput(
+                $c->get(\Preflow\Data\DataManager::class),
+                $c->get(\Preflow\Data\Records\RecordParts::class),
+            ));
+            $this->container->singleton(\Preflow\Data\Records\RecordInput::class, static fn (Container $c): \Preflow\Data\Records\RecordInput => new \Preflow\Data\Records\RecordInput(
+                $c->get(\Preflow\Data\DataManager::class),
+                $c->get(\Preflow\Data\Records\RecordParts::class),
+                $c->bound(\Preflow\Validation\ValidatorFactory::class) ? $c->get(\Preflow\Validation\ValidatorFactory::class) : new \Preflow\Validation\ValidatorFactory(new \Preflow\Validation\RuleFactory()),
+            ));
+        }
+
         $dataConfig = $this->configFile('data');
         if ($dataConfig === null) {
             return;
@@ -1471,6 +1502,8 @@ final class Application
         // Messages that name a field use the bound type labels (Folio's display labels), resolved on use (0.92).
         $container = $this->container;
         $dataManager->labelsFrom(static fn (): ?\Preflow\Data\TypeLabels => $container->bound(\Preflow\Data\TypeLabels::class) ? $container->get(\Preflow\Data\TypeLabels::class) : null);
+        // Rich text is cleaned on every write with the bound HtmlCleaner (a site's own), else the core's (0.93).
+        $dataManager->htmlCleanerFrom(static fn (): ?\Preflow\Data\Html\HtmlCleaner => $container->bound(\Preflow\Data\Html\HtmlCleaner::class) ? $container->get(\Preflow\Data\Html\HtmlCleaner::class) : null);
         // Cross-type record search (the admin's palette, a site's own search box); built on first use.
         $this->container->singleton(
             \Preflow\Data\Search\RecordSearch::class,
@@ -2826,6 +2859,13 @@ final class Application
 
         $translator = new \Preflow\I18n\Translator($langDir, $locale, $fallback);
         $this->container->instance(\Preflow\I18n\Translator::class, $translator);
+        // Key-shaped labels of types and fields are translated (0.93); without i18n the declared text stays.
+        if ($this->container->bound(\Preflow\Data\DataManager::class)) {
+            $this->container->get(\Preflow\Data\DataManager::class)->translateLabelsWith(
+                static fn (string $key, string $locale): ?string => $translator->has($key, $locale) ? $translator->get($key, [], $locale) : null,
+                $translator->getFallbackLocale(),
+            );
+        }
         if (class_exists(\Preflow\I18n\TranslationRegistry::class)) {
             $registry = $this->translationRegistry();
             $registry->apply($translator);

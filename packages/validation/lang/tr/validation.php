@@ -70,4 +70,11 @@ return [
         'set_layout' => '":key" düzeni ":set" kümesinin düzenlerinden (:layouts) biri değil. Bunlardan birini seçin.',
         'areas_value' => '"layout" (kümenin düzenlerinden birinin anahtarı veya null) ve "areas" (her biri bir blok listesi olan alan adları) içeren bir nesne olmalıdır, örneğin {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
+    'record' => [
+        'unknown_field' => '":type" türünde ":field" alanı yok.',
+        'unknown_locale' => '":type" türünde ":locale" dili yok. Şunlardan birini kullanın: :locales.',
+        'readonly' => '":field" alanı salt okunurdur.',
+        'id' => 'Bu kaydın kimliği ":id": "_id" alanını çıkarın ya da bu kimliği verin.',
+        'id_shape' => 'Kaydın kimliği metin olarak verilmeli, örneğin "j1".',
+    ],
 ];

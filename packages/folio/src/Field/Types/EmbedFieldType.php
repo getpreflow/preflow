@@ -34,8 +34,10 @@ use Preflow\Folio\FolioText;
  * The page gets the core's privacy player (EmbedOutput: the bound EmbedPlayer, nothing loaded from
  * the video's host before a click). The check is the core's: rules() adds none.
  */
-final class EmbedFieldType implements FieldType, StructuredFieldType, DisplaysInAdmin, ReferencesAssets
+final class EmbedFieldType implements FieldType, StructuredFieldType, DisplaysInAdmin, ReferencesAssets, \Preflow\Folio\Field\UsesFieldKinds
 {
+    use \Preflow\Folio\Field\Types\CoreValue;
+
     /** One image, public: what the poster picker takes. */
     private const array POSTER_CONFIG = ['asset' => ['multiple' => false, 'accept' => 'image/*']];
 
@@ -57,6 +59,12 @@ final class EmbedFieldType implements FieldType, StructuredFieldType, DisplaysIn
     public function key(): string
     {
         return 'embed';
+    }
+
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Fields\Values\Field\EmbedValue($this->providers);
     }
 
     public function renderEditor(FieldContext $ctx): string
@@ -165,10 +173,10 @@ final class EmbedFieldType implements FieldType, StructuredFieldType, DisplaysIn
         return $this->buildValue($raw, null, [], new BuildContext(Locales::single('en'), 'en', false), $config);
     }
 
-    /** The stored object as it is (SQL storage writes JSON text of it); a plain address stays text; null for no video. */
+    /** The stored object as the core stores it (EmbedValue; SQL storage writes JSON text of it); null for no video. */
     public function toStorage(mixed $value): mixed
     {
-        return is_string($value) && !str_starts_with(ltrim($value), '{') ? (trim($value) === '' ? null : trim($value)) : self::decode($value);
+        return $this->stored($value);
     }
 
     public function fromStorage(mixed $value): mixed

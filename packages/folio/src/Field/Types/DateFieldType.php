@@ -6,6 +6,8 @@ namespace Preflow\Folio\Field\Types;
 
 use Preflow\Folio\Field\DisplaysInAdmin;
 use Preflow\Folio\Field\FieldContext;
+use Preflow\Data\Validation\StoredDate;
+use Preflow\Data\Values\Core\DateValue;
 use Preflow\Folio\Http\AdminFormat;
 
 /**
@@ -14,15 +16,24 @@ use Preflow\Folio\Http\AdminFormat;
  * ISO 8601 with an offset (gmdate(DATE_ATOM)), which the type reads too (read()). Empty is
  * allowed unless required.
  *
- * The core's writes (saveType(), imports, seeds, the API) check the stored shapes (storedRules(),
- * since 0.92.1); Folio's checks (RecordValidator: its form, RecordWriter, publishing) check the
- * shapes its input posts (rules()), as since 0.91.
+ * The core's writes (saveType(), imports, seeds, the API) check the stored shapes: the core's date
+ * rule (StoredDate, registered by preflow/data's CoreValues since 0.93; storedRules() names it so
+ * Folio's checks can find it), and since 0.93 so do RecordWriter's saves and publishing while
+ * Folio is installed (FolioRecordChecks). Only Folio's own form checks the shapes its input posts
+ * (rules(); FolioFormChecks, RecordValidator), as since 0.91. Reading a stored value is the core's
+ * (DateValue::read()).
  */
-final class DateFieldType extends AbstractScalarFieldType implements DisplaysInAdmin, \Preflow\Folio\Field\HasColumnKind, \Preflow\Folio\Field\HasStoredRules
+final class DateFieldType extends AbstractScalarFieldType implements DisplaysInAdmin, \Preflow\Folio\Field\HasColumnKind, \Preflow\Data\HasStoredRules
 {
     public function key(): string
     {
         return 'date';
+    }
+
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new DateValue();
     }
 
     public function columnKind(array $config): \Preflow\Data\Schema\ColumnKind
@@ -78,7 +89,7 @@ final class DateFieldType extends AbstractScalarFieldType implements DisplaysInA
      */
     private static function inputValue(string $value, bool $time): string
     {
-        $date = self::read($value);
+        $date = DateValue::read($value);
         if ($date === null) {
             return $value;
         }
@@ -95,7 +106,7 @@ final class DateFieldType extends AbstractScalarFieldType implements DisplaysInA
     public function renderAdmin(mixed $value, array $config): string
     {
         $raw = is_scalar($value) ? trim((string) $value) : '';
-        $date = self::read($raw);
+        $date = DateValue::read($raw);
         $text = $date !== null
             ? (new AdminFormat())->date($date, ($config['time'] ?? false) === true ? 'datetime' : 'date')
             : $raw;
@@ -104,43 +115,29 @@ final class DateFieldType extends AbstractScalarFieldType implements DisplaysInA
     }
 
     /**
-     * The date a stored value holds, in the app timezone, or null when the type does not read it.
-     * It reads exactly "Y-m-d", "Y-m-d\TH:i" and "Y-m-d\TH:i:s" (what the inputs post; a real
-     * calendar date and time, in the app timezone) and ISO 8601 with an offset ("Y-m-d\TH:i:sP",
-     * "Y-m-d\TH:i:s.uP", "Y-m-d\TH:iP"), also a real date and time (since 0.92.1 no overflow:
-     * "2026-02-30T05:00:00+00:00" or an hour 25 is not read). Nothing around the value: a padded
-     * one (" 2026-11-27 ") is not read (renderAdmin() trims before it reads).
+     * The date a stored value holds, in the app timezone, or null when the type does not read it:
+     * DateValue::read() of preflow/data, where the rule moved.
      *
      * @since 0.92.1
+     * @deprecated since 0.93.0, removed no earlier than 0.95: use \Preflow\Data\Values\Core\DateValue::read()
      */
     public static function read(string $value): ?\DateTimeImmutable
     {
-        $zone = new \DateTimeZone(date_default_timezone_get());
-        foreach (['Y-m-d|' => 'Y-m-d', 'Y-m-d\TH:i|' => 'Y-m-d\TH:i', 'Y-m-d\TH:i:s|' => 'Y-m-d\TH:i:s'] as $format => $shape) {
-            $date = \DateTimeImmutable::createFromFormat($format, $value, $zone);
-            if ($date !== false && $date->format($shape) === $value) {
-                return $date;
-            }
-        }
-        foreach (['Y-m-d\TH:i:sP', 'Y-m-d\TH:i:s.uP', 'Y-m-d\TH:iP'] as $format) {
-            $date = \DateTimeImmutable::createFromFormat($format, $value);
-            $problems = \DateTimeImmutable::getLastErrors();
-            if ($date !== false && ($problems === false || ($problems['warning_count'] === 0 && $problems['error_count'] === 0))) {
-                return $date->setTimezone($zone);
-            }
-        }
-
-        return null;
+        return DateValue::read($value);
     }
 
-    /** What every write checks (since 0.92.1): a value read() reads, with or without "time". */
+    /**
+     * What every write checks (since 0.92.1): a value the type reads, with or without "time". The
+     * core registers this rule itself (CoreValues, 0.93); Folio's RecordValidator finds it by value
+     * to put its form's input rule in its place.
+     */
     public function storedRules(array $config): array
     {
         return [new StoredDate()];
     }
 
     /**
-     * What Folio's form checks: the shape its input posts ("Y-m-d", or with "time" "Y-m-d\TH:i"
+     * What Folio's form checks (only its own saves since 0.93): the shape its input posts ("Y-m-d", or with "time" "Y-m-d\TH:i"
      * and optional seconds).
      */
     public function rules(array $config): array

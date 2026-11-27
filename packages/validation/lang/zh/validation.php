@@ -70,4 +70,11 @@ return [
         'set_layout' => '布局 ":key" 不属于集合 ":set" 的布局（:layouts）。请选择其中之一。',
         'areas_value' => '必须是一个对象，包含 "layout"（集合中某个布局的键，或 null）和 "areas"（区域名称，每个对应一个区块列表），例如 {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}。',
     ],
+    'record' => [
+        'unknown_field' => '类型“:type”没有字段“:field”。',
+        'unknown_locale' => '类型“:type”没有语言“:locale”。请使用以下之一：:locales。',
+        'readonly' => '字段“:field”为只读。',
+        'id' => '此记录的 ID 为“:id”：请省略 "_id"，或给出此 ID。',
+        'id_shape' => '必须是以文本表示的记录 ID，例如 "j1"。',
+    ],
 ];

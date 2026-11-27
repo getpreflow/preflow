@@ -46,6 +46,15 @@ final class LegacyAliasesTest extends TestCase
         $this->assertFalse(class_exists($old), $old);
     }
 
+    public function test_the_date_rule_names_of_0_92_1_are_aliases_of_the_cores(): void
+    {
+        $this->assertTrue(interface_exists('Preflow\\Folio\\Field\\HasStoredRules'));
+        $this->assertSame(\Preflow\Data\HasStoredRules::class, (new \ReflectionClass('Preflow\\Folio\\Field\\HasStoredRules'))->getName());
+        $this->assertInstanceOf('Preflow\\Folio\\Field\\HasStoredRules', new \Preflow\Folio\Field\Types\DateFieldType(), 'a 0.92.1 check still finds date');
+        $this->assertInstanceOf(\Preflow\Data\Validation\StoredDate::class, new \Preflow\Folio\Field\Types\StoredDate());
+        $this->assertSame(\Preflow\Data\Values\Core\DateValue::read('2026-11-27')?->format(DATE_ATOM), \Preflow\Folio\Field\Types\DateFieldType::read('2026-11-27')?->format(DATE_ATOM), 'read() delegates');
+    }
+
     public function test_asset_references_stays_in_folio(): void
     {
         $this->assertTrue(class_exists('Preflow\\Folio\\Assets\\AssetReferences'), 'a Folio class, not an alias');

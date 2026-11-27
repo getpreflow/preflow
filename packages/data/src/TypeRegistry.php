@@ -293,6 +293,16 @@ final class TypeRegistry
         return $keys;
     }
 
+    /**
+     * The content languages its types get (a single "en" when none were given).
+     *
+     * @since 0.93.0
+     */
+    public function locales(): Locales
+    {
+        return $this->locales ?? Locales::single('en');
+    }
+
     public function has(string $type): bool
     {
         return isset($this->cache[$type]) || isset($this->classes[$type]) || $this->hasFile($type);

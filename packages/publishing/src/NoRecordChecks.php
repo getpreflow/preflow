@@ -6,7 +6,7 @@ namespace Preflow\Publishing;
 
 use Preflow\Data\DynamicRecord;
 
-/** The default RecordChecks: every record may be published. */
+/** RecordChecks that check nothing: every record may be published (the default before 0.93; now CoreRecordChecks). */
 final class NoRecordChecks implements RecordChecks
 {
     public function validate(DynamicRecord $record): void {}

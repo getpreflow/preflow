@@ -19,7 +19,9 @@ use Preflow\Core\Application;
 use Preflow\Core\Container\Container;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Data\DataManager;
+use Preflow\Data\Labels\DeclaredLabels;
 use Preflow\Data\Locales;
+use Preflow\Data\TypeRegistry;
 use Preflow\Notify\Mail\Mailer;
 use Preflow\Notify\Mail\MailText;
 use Preflow\Rbac\Staff\StaffAccounts;
@@ -37,7 +39,8 @@ use Preflow\Rbac\Staff\StaffType;
  * (PermissionCoverage) and the rbac strings (Messages) are container singletons from register()
  * on, so an admin booting before this provider (Folio's rbac admin) can use them; the staff
  * accounts (StaffAccounts; the type "staff" when config/auth.php signs staff in with it,
- * StaffType) and their mails (StaffMail) are built on first use.
+ * StaffType) and their mails (StaffMail) are built on first use. Every type's permissions
+ * (TypePermissions) are declared once every provider booted, for types nobody declared.
  */
 final class RbacServiceProvider extends ServiceProvider
 {
@@ -86,6 +89,27 @@ final class RbacServiceProvider extends ServiceProvider
         $container->get(Messages::class); // rbac's strings with the translator from now on
         StaffType::define($container);
         $this->staff($container);
+        // Every type's permissions ("{type}.view" … ".delete", TypePermissions), so a site's own
+        // controller can check them without an admin: once every provider booted (types other
+        // packages define in their boot() included), for the types nobody declared. An admin
+        // that declares them (Folio, with its catalog labels) keeps its labels in either order.
+        $container->get(Application::class)->onProvidersBooted(static function () use ($container): void {
+            self::declareTypePermissions($container->get(Access::class)->registry(), $container->get(DataManager::class)->getTypeRegistry());
+        });
+    }
+
+    /**
+     * The permissions of every type of $types that has none declared yet, grouped under the type's
+     * declared label (its English one, as written: a role editor translates it), else its key.
+     */
+    private static function declareTypePermissions(PermissionRegistry $registry, TypeRegistry $types): void
+    {
+        $labels = new DeclaredLabels($types);
+        foreach ($types->keys() as $type) {
+            if (!$registry->isDeclared(TypePermissions::name($type, 'view'))) {
+                TypePermissions::declare($registry, $type, $labels->label($type, 'en'));
+            }
+        }
     }
 
     /**

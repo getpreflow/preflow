@@ -32,7 +32,8 @@ use Psr\Log\LoggerInterface;
  *    (Publisher::saveDraft(), no rules), then Publisher::publish() when asked. SaveHooks::after()
  *    runs once the working copy is stored, also when the publish fails (then PublishFailed is
  *    thrown, with the stored draft);
- * 3. any other type: RecordChecks::validate(), the type's own save (SaveHooks::replacesSave()) or
+ * 3. any other type: RecordChecks::validate() (SaveOptions::$checks when given, else the bound
+ *    ones), the type's own save (SaveHooks::replacesSave()) or
  *    the storage's, RecordIndex::refresh(), RecordAddresses::sync() (did an address leave the
  *    site?), SaveHooks::after().
  *
@@ -445,7 +446,7 @@ final class RecordWriter
             return new SaveOutcome($record, false);
         }
 
-        $this->checks->validate($record);
+        ($options->checks ?? $this->checks)->validate($record);
         $this->store->write($record);
         if (!$after) {
             return new SaveOutcome($record, false);

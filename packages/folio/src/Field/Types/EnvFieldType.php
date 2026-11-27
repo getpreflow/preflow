@@ -13,11 +13,19 @@ use Preflow\Form\FieldRenderer;
  * shows the name and whether it is set, never the value; nothing is read from the request or
  * stored (DraftRecordFactory writes no key). ExtensionSettings::get() reads getenv(NAME).
  */
-final class EnvFieldType implements FieldType, \Preflow\Folio\Field\HasColumnKind
+final class EnvFieldType implements FieldType, \Preflow\Folio\Field\HasColumnKind, \Preflow\Folio\Field\UsesFieldKinds
 {
+    use \Preflow\Folio\Field\Types\CoreValue;
+
     public function key(): string
     {
         return 'env';
+    }
+
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Folio\Field\Values\EnvValue();
     }
 
     public function columnKind(array $config): \Preflow\Data\Schema\ColumnKind
@@ -52,12 +60,12 @@ final class EnvFieldType implements FieldType, \Preflow\Folio\Field\HasColumnKin
 
     public function toStorage(mixed $value): mixed
     {
-        return null;
+        return $this->stored($value);
     }
 
     public function fromStorage(mixed $value): mixed
     {
-        return null;
+        return $this->output($value);
     }
 
     public function renderFrontend(mixed $value, array $config): string

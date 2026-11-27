@@ -13,8 +13,10 @@ use Preflow\Folio\Field\Types\SelectFieldType;
  * A code's purpose ("codes_purpose"): a select whose options are the purposes of
  * config/codes.php, so the model JSON needs no copy of them.
  */
-final class PurposeFieldType implements FieldType, \Preflow\Folio\Field\HasColumnKind
+final class PurposeFieldType implements FieldType, \Preflow\Folio\Field\HasColumnKind, \Preflow\Folio\Field\UsesFieldKinds
 {
+    use \Preflow\Folio\Field\Types\CoreValue;
+
     private readonly SelectFieldType $select;
 
     /** @param array<string, Purpose> $purposes */
@@ -27,6 +29,12 @@ final class PurposeFieldType implements FieldType, \Preflow\Folio\Field\HasColum
     public function key(): string
     {
         return 'codes_purpose';
+    }
+
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new PurposeValue();
     }
 
     public function columnKind(array $config): \Preflow\Data\Schema\ColumnKind
@@ -53,19 +61,20 @@ final class PurposeFieldType implements FieldType, \Preflow\Folio\Field\HasColum
         ));
     }
 
+    /** The posted key as a select takes it, as the core stores it (PurposeValue). */
     public function normalizeInput(mixed $raw, array $config): mixed
     {
-        return $this->select->normalizeInput($raw, $this->config($config));
+        return $this->stored($this->select->normalizeInput($raw, $this->config($config)), $config);
     }
 
     public function toStorage(mixed $value): mixed
     {
-        return $this->select->toStorage($value);
+        return $this->stored($value);
     }
 
     public function fromStorage(mixed $value): mixed
     {
-        return $this->select->fromStorage($value);
+        return $this->output($value);
     }
 
     public function renderFrontend(mixed $value, array $config): string

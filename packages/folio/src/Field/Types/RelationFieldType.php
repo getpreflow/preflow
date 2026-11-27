@@ -14,8 +14,10 @@ use Preflow\Folio\Field\FieldType;
  * Relation field: the linked target id(s), edited as rows with a search (rows()). No data-layer
  * relation model: ids are resolved to records on demand for display.
  */
-final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColumnKind, \Preflow\Folio\Field\StoresListFor
+final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColumnKind, \Preflow\Folio\Field\StoresListFor, \Preflow\Folio\Field\UsesFieldKinds
 {
+    use \Preflow\Folio\Field\Types\CoreValue;
+
     /** Up to this many target records the picker lists them all; above, it searches. */
     public const INLINE_LIMIT = 200;
 
@@ -41,6 +43,12 @@ final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColu
     public function key(): string
     {
         return 'relation';
+    }
+
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Data\Values\Core\RelationValue();
     }
 
     public function columnKind(array $config): \Preflow\Data\Schema\ColumnKind
@@ -294,24 +302,39 @@ final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColu
         return count($this->dm->queryType($cfg['to'])->limit(self::INLINE_LIMIT + 1)->get()->items()) > self::INLINE_LIMIT;
     }
 
+    /**
+     * The posted ids as the core stores them (RelationValue): a multiple field's picks (name[]; no
+     * list posted is none) as a list, here [] for none; a single field's id as text ("" for none).
+     */
     public function normalizeInput(mixed $raw, array $config): mixed
     {
         if ($this->relationConfig($config)['multiple']) {
-            return is_array($raw)
-                ? array_values(array_filter($raw, static fn ($v) => is_string($v) && $v !== ''))
-                : [];
+            $ids = is_array($raw) ? array_values(array_filter($raw, static fn ($v) => is_string($v) && $v !== '')) : [];
+
+            return $this->stored($ids, $config) ?? [];
         }
-        return is_string($raw) ? $raw : '';
+        return $this->stored(is_string($raw) ? $raw : '', $config);
     }
 
-    /** A multiple field's ids as a list (0.89; SQL storage keeps JSON text), a single field's id as text. */
+    /**
+     * A multiple field's ids as a list (0.89; SQL storage keeps JSON text), a single field's id as
+     * text, as the core stores them (RelationValue; an empty list is no value: null, so "required"
+     * refuses it, 0.77). Without the config here, a list is a multiple field's value.
+     */
     public function toStorage(mixed $value): mixed
     {
-        if (is_array($value)) {
-            // An empty list is no value: stored as null, so "required" refuses it (0.77).
-            return $value === [] ? null : array_values($value);
-        }
-        return (string) ($value ?? '');
+        return $this->stored($value ?? '', self::shapeConfig(is_array($value)));
+    }
+
+    /**
+     * The config that tells the core value whether the field holds a list, where the caller gives
+     * only the value (toStorage(), fromStorage()).
+     *
+     * @return array<string, mixed>
+     */
+    private static function shapeConfig(bool $multiple): array
+    {
+        return ['relation' => ['multiple' => $multiple]];
     }
 
     /** A multiple field holds a list of ids, a single one one id (0.89). */
@@ -320,15 +343,14 @@ final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColu
         return $this->relationConfig($config)['multiple'];
     }
 
+    /**
+     * The stored id, or a multiple field's list (a list stored as JSON text decoded), as the core
+     * reads it out (RelationValue). Without the config here, a list or its JSON text is a multiple
+     * field's value.
+     */
     public function fromStorage(mixed $value): mixed
     {
-        if (is_string($value) && str_starts_with($value, '[')) {
-            $decoded = json_decode($value, true);
-            if (is_array($decoded)) {
-                return $decoded;
-            }
-        }
-        return $value;
+        return $this->output($value, self::shapeConfig(is_array($value) || (is_string($value) && str_starts_with($value, '['))));
     }
 
     public function renderFrontend(mixed $value, array $config): string

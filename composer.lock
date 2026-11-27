@@ -3335,16 +3335,16 @@
                 "php": ">=8.4",
                 "preflow/components": "^0.70 || @dev",
                 "preflow/core": "^0.81.0 || @dev",
-                "preflow/data": "^0.92.0 || @dev",
-                "preflow/validation": "^0.92.0 || @dev",
+                "preflow/data": "^0.93.0 || @dev",
+                "preflow/validation": "^0.92.1 || @dev",
                 "preflow/view": "^0.70 || @dev"
             },
             "conflict": {
                 "preflow/components": "<0.70",
                 "preflow/core": "<0.81.0",
-                "preflow/data": "<0.92.0",
+                "preflow/data": "<0.93.0",
                 "preflow/folio": "<0.92.0",
-                "preflow/validation": "<0.92.0",
+                "preflow/validation": "<0.92.1",
                 "preflow/view": "<0.70"
             },
             "require-dev": {
@@ -3479,7 +3479,7 @@
                 "preflow/auth": "<0.81.0",
                 "preflow/blade": "<0.60",
                 "preflow/components": "<0.86.0",
-                "preflow/data": "<0.84.0",
+                "preflow/data": "<0.93.0",
                 "preflow/folio": "<0.67",
                 "preflow/htmx": "<0.88.0",
                 "preflow/i18n": "<0.83.0",
@@ -3526,14 +3526,17 @@
                 "ext-pdo_sqlite": "*",
                 "php": ">=8.4",
                 "preflow/core": "^0.84.0 || @dev",
-                "preflow/validation": "^0.92.0 || @dev"
+                "preflow/validation": "^0.93.0 || @dev",
+                "symfony/html-sanitizer": "^7.0"
             },
             "conflict": {
+                "preflow/blocks": "<0.93.0",
                 "preflow/core": "<0.84.0",
                 "preflow/devtools": "<0.80",
-                "preflow/folio": "<0.92.0",
-                "preflow/publishing": "<0.72",
-                "preflow/validation": "<0.92.0"
+                "preflow/fields": "<0.93.0",
+                "preflow/folio": "<0.93.0",
+                "preflow/publishing": "<0.93.0",
+                "preflow/validation": "<0.93.0"
             },
             "require-dev": {
                 "phpunit/phpunit": "^11.0",
@@ -3570,13 +3573,13 @@
             "require": {
                 "php": ">=8.4",
                 "preflow/core": "^0.85.0 || @dev",
-                "preflow/data": "^0.89.0 || @dev",
+                "preflow/data": "^0.92.0 || @dev",
                 "preflow/routing": "^0.1 || @dev"
             },
             "conflict": {
                 "preflow/auth": "<0.62",
                 "preflow/core": "<0.85.0",
-                "preflow/data": "<0.89.0"
+                "preflow/data": "<0.92.0"
             },
             "require-dev": {
                 "phpunit/phpunit": "^11.0"
@@ -3618,14 +3621,14 @@
             "require": {
                 "php": ">=8.4",
                 "preflow/core": "^0.84.0 || @dev",
-                "preflow/data": "^0.91.0 || @dev",
+                "preflow/data": "^0.93.0 || @dev",
                 "preflow/validation": "^0.91.0 || @dev",
                 "preflow/view": "^0.91.0 || @dev"
             },
             "conflict": {
                 "preflow/blocks": "<0.91.0",
                 "preflow/core": "<0.84.0",
-                "preflow/data": "<0.91.0",
+                "preflow/data": "<0.93.0",
                 "preflow/validation": "<0.91.0",
                 "preflow/view": "<0.91.0"
             },
@@ -3669,18 +3672,18 @@
                 "nyholm/psr7": "^1.8",
                 "php": ">=8.4",
                 "preflow/auth": "^0.83.0 || @dev",
-                "preflow/blocks": "^0.92.0 || @dev",
+                "preflow/blocks": "^0.93.0 || @dev",
                 "preflow/components": "^0.1 || @dev",
                 "preflow/core": "^0.82.0 || @dev",
-                "preflow/data": "^0.92.0 || @dev",
+                "preflow/data": "^0.93.0 || @dev",
                 "preflow/devtools": "^0.85.0 || @dev",
-                "preflow/fields": "^0.91.0 || @dev",
+                "preflow/fields": "^0.93.0 || @dev",
                 "preflow/form": "^0.75 || @dev",
                 "preflow/htmx": "^0.65 || @dev",
                 "preflow/i18n": "^0.83.0 || @dev",
                 "preflow/media": "^0.89.0 || @dev",
                 "preflow/notify": "^0.69 || @dev",
-                "preflow/publishing": "^0.81.0 || @dev",
+                "preflow/publishing": "^0.93.0 || @dev",
                 "preflow/routing": "^0.78.2 || @dev",
                 "preflow/twig": "^0.65 || @dev",
                 "preflow/validation": "^0.52 || @dev",
@@ -3690,20 +3693,20 @@
             "conflict": {
                 "preflow/ai": "<0.78",
                 "preflow/auth": "<0.83.0",
-                "preflow/blocks": "<0.92.0",
+                "preflow/blocks": "<0.93.0",
                 "preflow/codes": "<0.68",
                 "preflow/core": "<0.82.0",
-                "preflow/data": "<0.92.0",
+                "preflow/data": "<0.93.0",
                 "preflow/devtools": "<0.85.0",
-                "preflow/fields": "<0.91.0",
+                "preflow/fields": "<0.93.0",
                 "preflow/form": "<0.75",
                 "preflow/htmx": "<0.65",
                 "preflow/i18n": "<0.83.0",
                 "preflow/media": "<0.89.0",
                 "preflow/members": "<0.77",
                 "preflow/notify": "<0.69",
-                "preflow/publishing": "<0.81.0",
-                "preflow/rbac": "<0.84.0",
+                "preflow/publishing": "<0.93.0",
+                "preflow/rbac": "<0.93.0",
                 "preflow/routing": "<0.78.2",
                 "preflow/twig": "<0.65",
                 "preflow/validation": "<0.52",
@@ -3712,7 +3715,8 @@
             "require-dev": {
                 "phpunit/phpunit": "^11.0",
                 "preflow/ai": "^0.78 || @dev",
-                "preflow/block-library": "^0.92.0 || @dev"
+                "preflow/block-library": "^0.92.0 || @dev",
+                "preflow/rbac": "^0.93.0 || @dev"
             },
             "suggest": {
                 "openspout/openspout": "^4 — Excel export of admin lists (the Export button shows once it is installed)",
@@ -3942,13 +3946,13 @@
                 "nyholm/psr7": "^1.8",
                 "php": ">=8.4",
                 "preflow/core": "^0.81.0 || @dev",
-                "preflow/data": "^0.78 || @dev",
+                "preflow/data": "^0.93.0 || @dev",
                 "preflow/routing": "^0.59 || @dev",
                 "preflow/view": "^0.67 || @dev"
             },
             "conflict": {
                 "preflow/core": "<0.81.0",
-                "preflow/data": "<0.78",
+                "preflow/data": "<0.93.0",
                 "preflow/folio": "<0.83.0",
                 "preflow/i18n": "<0.77",
                 "preflow/routing": "<0.59",
@@ -3956,6 +3960,7 @@
             },
             "require-dev": {
                 "phpunit/phpunit": "^11.0",
+                "preflow/blocks": "^0.93.0 || @dev",
                 "preflow/devtools": "^0.34 || @dev",
                 "preflow/i18n": "^0.77 || @dev"
             },
@@ -4132,12 +4137,12 @@
             "require": {
                 "php": ">=8.4",
                 "preflow/core": "^0.81.0 || @dev",
-                "preflow/data": "^0.89.0 || @dev",
+                "preflow/data": "^0.93.0 || @dev",
                 "preflow/validation": "^0.70 || @dev"
             },
             "conflict": {
                 "preflow/core": "<0.81.0",
-                "preflow/data": "<0.89.0",
+                "preflow/data": "<0.93.0",
                 "preflow/devtools": "<0.81.0",
                 "preflow/folio": "<0.72",
                 "preflow/testing": "<0.83.0",
@@ -4199,7 +4204,7 @@
                 "php": ">=8.4",
                 "preflow/auth": "^0.81.0 || @dev",
                 "preflow/core": "^0.81.0 || @dev",
-                "preflow/data": "^0.78 || @dev",
+                "preflow/data": "^0.93.0 || @dev",
                 "preflow/i18n": "^0.37 || @dev",
                 "preflow/notify": "^0.69 || @dev",
                 "psr/log": "^3.0"
@@ -4207,7 +4212,7 @@
             "conflict": {
                 "preflow/auth": "<0.81.0",
                 "preflow/core": "<0.81.0",
-                "preflow/data": "<0.78",
+                "preflow/data": "<0.93.0",
                 "preflow/devtools": "<0.26",
                 "preflow/folio": "<0.69",
                 "preflow/i18n": "<0.37",
@@ -4364,7 +4369,7 @@
                 "preflow/auth": "^0.1 || @dev",
                 "preflow/components": "^0.86.0 || @dev",
                 "preflow/core": "^0.88.0 || @dev",
-                "preflow/data": "^0.90.0 || @dev",
+                "preflow/data": "^0.93.0 || @dev",
                 "preflow/htmx": "^0.88.0 || @dev",
                 "preflow/i18n": "^0.1 || @dev",
                 "preflow/routing": "^0.1 || @dev",
@@ -4374,7 +4379,7 @@
                 "preflow/auth": "<0.81.0",
                 "preflow/components": "<0.86.0",
                 "preflow/core": "<0.88.0",
-                "preflow/data": "<0.90.0",
+                "preflow/data": "<0.93.0",
                 "preflow/htmx": "<0.88.0",
                 "preflow/view": "<0.86.0"
             },
@@ -4453,12 +4458,13 @@
                 "ext-mbstring": "*",
                 "php": ">=8.4",
                 "preflow/core": "^0.81.0 || @dev",
-                "preflow/i18n": "^0.81.0 || @dev",
+                "preflow/i18n": "^0.92.1 || @dev",
                 "preflow/view": "^0.1 || @dev"
             },
             "conflict": {
+                "preflow/blocks": "<0.92.1",
                 "preflow/core": "<0.81.0",
-                "preflow/i18n": "<0.81.0"
+                "preflow/i18n": "<0.92.1"
             },
             "require-dev": {
                 "phpunit/phpunit": "^11.0"

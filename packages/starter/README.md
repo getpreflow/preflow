@@ -30,11 +30,12 @@ This password is public demo data. `APP_DEBUG=0` only stops the seeder from runn
 | `/companies/<slug>` | A company and its open jobs | `app/Controllers/Site/CompanyController.php`, `app/pages/_views/company.twig` |
 | `/employer` | Sign in, then add, edit, publish and unpublish your jobs | `app/Controllers/Site/EmployerAuthController.php`, `EmployerJobController.php`, `app/pages/_views/employer/` |
 | `/api/jobs` | The same jobs as JSON | `app/Controllers/Api/JobsController.php` |
+| `/api/content/company` | Any type you list, read and written by the core classes | `app/Controllers/Api/ContentController.php` |
 
 A few more things to know:
 
-- Both the pages and the API read through `app/Jobs/JobSearch.php` and write through `app/Jobs/JobWriter.php`. The rules for a job live once, in `app/Models/Job.php`.
-- `app/Jobs/JobResource.php` is the one place that decides how a job looks as an array, for the job cards and for JSON.
+- Both the pages and the API search through `app/Jobs/JobSearch.php`. The rules for a job live once, in `app/Models/Job.php`: the employer area's form saves through `app/Jobs/JobWriter.php`, the API through the core's write class and `saveType()`, and both run them.
+- `app/Jobs/JobResource.php` decides how a job looks on the site's pages (the job cards). The API reads a job with the core's read class instead (`Preflow\Data\Records\RecordOutput`), so it names each field as the model does.
 - `php preflow routes:list` lists the routed paths. What middleware answers, such as `/sitemap.xml` and `/robots.txt`, isn't listed.
 - Employers sign in on the `employers` guard (`config/auth.php`), the default one, with `'population' => 'employers'`: they are no staff. Adding `preflow/folio` to this starter as it is stops the boot with a message, so the content admin never opens to employers. Folio needs a staff guard of its own; `preflow/starter-folio` is this starter with one, and Folio's README ("Staff login") shows how to set one up. **An app made from this starter before 0.65 that added Folio:** add `'population' => 'employers'` to the employers guard in your `config/auth.php` (your copy doesn't have it). Without it every employer keeps full access to the admin.
 
@@ -48,8 +49,8 @@ A few more things to know:
 **2. Add a field to Job, end to end.** For example `applyUrl`.
 - Add a column in a new migration, `php preflow make:migration`, then `php preflow migrate`.
 - Add the property with `#[Field]` and `#[Validate]` to `app/Models/Job.php`.
-- Add the name to `EDITABLE` in `app/Jobs/JobWriter.php`.
-- Add it to `API_FIELDS` and `toArray()` in `app/Jobs/JobResource.php`.
+- Add the name to `EDITABLE` in `app/Jobs/JobWriter.php` and to `WRITABLE` in `app/Controllers/Api/JobsController.php` (the API reads it without more work).
+- Add it to `toArray()` in `app/Jobs/JobResource.php`.
 - Add a form field in `app/pages/_views/employer/form.twig` and show it in `app/pages/_views/job.twig`.
 
 **3. Add an API endpoint.** For example `GET /api/places`, the list of places that have jobs.
@@ -59,7 +60,9 @@ A few more things to know:
 
 ## The API
 
-Everything is under `/api` and answers JSON. Keys are snake_case. A response is `{"data": ..., "meta": ...}`. An error is `{"message": "..."}`, and a validation error (422) adds `"errors": {"field": ["message"]}`. In debug mode errors also carry a `debug` key. With `APP_DEBUG=0` it is gone.
+Everything is under `/api` and answers JSON. A response is `{"data": ..., "meta": ...}`. An error is `{"message": "..."}`, and a validation error (422) adds `"errors": {"field": ["message"]}`. In debug mode errors also carry a `debug` key. With `APP_DEBUG=0` it is gone.
+
+A record reads as the core's read class gives it: `"_id"`, then each field by its name in the model (`employmentType`, `salaryFrom`), a relation as the related record's id (`"company": "<id>"`). The controller adds what the core does not know, such as a job's page (`"_url"`). A write sends the same names, and only what changes.
 
 Reading is public:
 
@@ -73,7 +76,14 @@ curl http://localhost:8080/api/jobs/782fa59586f012609c8e476cb0dee275
 # Companies, and one company with its open jobs
 curl http://localhost:8080/api/companies
 curl http://localhost:8080/api/companies/lumen-harbor
+
+# The generic API: what it serves, a page of companies, one company (?locale=de picks a language)
+curl http://localhost:8080/api/content
+curl http://localhost:8080/api/content/company
+curl http://localhost:8080/api/content/company/<id>
 ```
+
+`app/Controllers/Api/ContentController.php` serves the types in its `TYPES` list, nothing else, through the core's description, read and write classes. Its `mayWrite()` says who may write each type: an employer changes their own company (`PATCH /api/content/company/<id>`, with a token) and creates none.
 
 The list answers with a `meta` block: `page`, `per_page`, `total`, `last_page`. Odd filter values never cause an error: they fall back to the default, and a page past the last one is an empty list.
 
@@ -93,7 +103,7 @@ TOKEN=<the token>
 # Create a job. "status" is draft (the default) or published.
 curl -X POST http://localhost:8080/api/jobs \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"title":"Support Engineer","place":"Zurich","employment_type":"full_time","remote":"hybrid","description":"Help our customers get unstuck, kindly and quickly.","status":"published"}'
+  -d '{"title":"Support Engineer","place":"Zurich","employmentType":"full_time","remote":"hybrid","description":"Help our customers get unstuck, kindly and quickly.","status":"published"}'
 
 # Change a job, or publish and unpublish it
 curl -X PATCH http://localhost:8080/api/jobs/<id> \
@@ -104,7 +114,8 @@ curl -X PATCH http://localhost:8080/api/jobs/<id> \
 curl -X DELETE http://localhost:8080/api/jobs/<id> -H "Authorization: Bearer $TOKEN"
 ```
 
-- `employment_type` is `full_time`, `part_time`, `contract` or `internship`. `remote` is `no`, `hybrid` or `full`. `description` is Markdown, at least 30 characters.
+- `employmentType` is `full_time`, `part_time`, `contract` or `internship`. `remote` is `no`, `hybrid` or `full`. `description` is Markdown, at least 30 characters.
+- The server sets `company` (the token's), `slug` and the dates. A body that names one of them, or a key that is no field, gets a 422 naming it: nothing is dropped without a word.
 - No token gives 401. A missing job gives 404. A job of another company gives 403, not 404. That is on purpose: the ids of jobs you create are random and unguessable, so the answer reveals nothing, and a client gets a clearer message. (The demo seed's ids are not random: they are fixed md5 values, so the demo data is the same on every install.)
 - A draft is not visible on the public read routes. Only its owner sees it, in the answer to a write.
 

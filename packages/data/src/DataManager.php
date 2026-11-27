@@ -55,8 +55,19 @@ final class DataManager
 
     private ?RecordRules $recordRules = null;
 
+    /** @var (\Closure(): ?Html\HtmlCleaner)|null */
+    private ?\Closure $htmlCleaner = null;
+
+    private ?Html\HtmlCleaner $defaultHtmlCleaner = null;
+
+    private ?Values\StoredCleaning $cleaning = null;
+
     /** @var (\Closure(): ?TypeLabels)|null */
     private ?\Closure $labels = null;
+
+    /** @var (\Closure(string, string): ?string)|null */
+    private ?\Closure $translateLabels = null;
+    private string $labelFallback = 'en';
 
     private ?DataObserver $observer = null;
 
@@ -505,9 +516,58 @@ final class DataManager
         return $this->typeRegistry ??= $registry;
     }
 
+    /**
+     * The field kinds of this manager's types, shared by every caller. Since 0.93.0 they start with
+     * the core types' values and date's stored rule (Values\CoreValues), richtext's over
+     * htmlCleaner(), so a site without any package reads, writes and checks those types like one
+     * with Folio.
+     */
     public function fieldKinds(): FieldKinds
     {
-        return $this->fieldKinds ??= new FieldKinds();
+        if ($this->fieldKinds === null) {
+            $this->fieldKinds = new FieldKinds();
+            Values\CoreValues::register($this->fieldKinds, fn (): Html\HtmlCleaner => $this->htmlCleaner());
+        }
+
+        return $this->fieldKinds;
+    }
+
+    /**
+     * Where the rich text cleaner comes from: $cleaner gives the bound HtmlCleaner (a site's own),
+     * or null for the default; asked on each use (htmlCleaner()). The application sets it to its
+     * container's binding.
+     *
+     * @param \Closure(): ?Html\HtmlCleaner $cleaner
+     * @since 0.93.0
+     */
+    public function htmlCleanerFrom(\Closure $cleaner): void
+    {
+        $this->htmlCleaner = $cleaner;
+    }
+
+    /**
+     * The cleaner rich text is cleaned with on every write and read: the one htmlCleanerFrom()
+     * gives, else Html\SymfonyHtmlCleaner::standard() (built once per manager, its sanitizer on the
+     * first clean).
+     *
+     * @since 0.93.0
+     */
+    public function htmlCleaner(): Html\HtmlCleaner
+    {
+        return ($this->htmlCleaner !== null ? ($this->htmlCleaner)() : null)
+            ?? ($this->defaultHtmlCleaner ??= Html\SymfonyHtmlCleaner::standard());
+    }
+
+    /**
+     * What every typed write cleans before the driver (storageValues()): the fields whose value
+     * cleans on write (rich text) and the system keys packages register on it
+     * (Values\StoredCleaning::systemKey()).
+     *
+     * @since 0.93.0
+     */
+    public function cleaning(): Values\StoredCleaning
+    {
+        return $this->cleaning ??= new Values\StoredCleaning($this->fieldKinds());
     }
 
     /**
@@ -545,6 +605,35 @@ final class DataManager
         $labels = $this->labels !== null ? ($this->labels)() : null;
 
         return $labels instanceof FieldLabels ? $labels : null;
+    }
+
+    /**
+     * The names of types and fields for people: the bound TypeLabels (and FieldLabels) where one
+     * is bound, else the schema's declared labels, translated when translateLabelsWith() was given
+     * a translator. Works without an admin package.
+     *
+     * @since 0.93.0
+     */
+    public function labels(): Labels\DataLabels
+    {
+        return new Labels\DataLabels(
+            $this->labels !== null ? ($this->labels)() : null,
+            new Labels\DeclaredLabels($this->typeRegistry, $this->translateLabels, $this->labelFallback),
+        );
+    }
+
+    /**
+     * How a key-shaped label ("site.types.job") is translated: $translate gives the text in the
+     * locale, null for an unknown key; $fallbackLocale is the language a label given per language
+     * falls back to. The application sets it when preflow/i18n is installed.
+     *
+     * @param \Closure(string, string): ?string $translate
+     * @since 0.93.0
+     */
+    public function translateLabelsWith(\Closure $translate, string $fallbackLocale): void
+    {
+        $this->translateLabels = $translate;
+        $this->labelFallback = $fallbackLocale;
     }
 
     /**
@@ -1875,6 +1964,9 @@ final class DataManager
     /**
      * A row of this type as it is written, the same whoever saves it (Folio, the CLI, a script),
      * so an unchanged record is written to the same bytes:
+     * - first cleaned (cleaning(), since 0.93.0): rich text (every locale of a translatable field)
+     *   through htmlCleaner(), and the system keys packages register; idempotent, so clean values
+     *   keep their bytes;
      * - the keys in the type's field order, then the system keys (the id field when it is no
      *   field, then the keys starting with "_", in their given order but the change date last,
      *   ChangeDates::FIELD, since 0.84), then any other key in its
@@ -1895,6 +1987,7 @@ final class DataManager
      */
     public function storageValues(TypeDefinition $def, array $data): array
     {
+        $data = $this->cleaning()->apply($def, $data);
         $kinds = $this->fieldKinds();
         foreach ($def->fields as $name => $field) {
             if (!array_key_exists($name, $data)) {
@@ -1997,17 +2090,7 @@ final class DataManager
     /** Numeric text as a number (an int when whole and in range, else a float); anything else as it is. */
     private static function asNumber(mixed $value): mixed
     {
-        if (!is_string($value) || !is_numeric($value)) {
-            return $value;
-        }
-        $text = trim($value);
-        // Whole numbers of up to 18 digits fit an int on every 64-bit PHP; longer ones are floats.
-        if (preg_match('/^[+-]?\d+$/', $text) === 1 && strlen(ltrim(ltrim($text, '+-'), '0')) <= 18) {
-            return (int) $text;
-        }
-        $float = (float) $text;
-
-        return is_finite($float) ? $float : $value;
+        return Values\Core\NumberValue::number($value);
     }
 
     /** '1', '0', 1, 0, 'true' and 'false' as a bool; anything else as it is. */

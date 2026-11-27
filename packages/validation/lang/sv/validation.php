@@ -70,4 +70,11 @@ return [
         'set_layout' => 'Layouten ":key" är inte en av layouterna i uppsättningen ":set" (:layouts). Välj en av dem.',
         'areas_value' => 'Måste vara ett objekt med "layout" (nyckeln till en av uppsättningens layouter, eller null) och "areas" (områdesnamn, vart och ett med en lista block), till exempel {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
+    'record' => [
+        'unknown_field' => 'Typen ":type" har inget fält ":field".',
+        'unknown_locale' => 'Typen ":type" har inget språk ":locale". Använd ett av: :locales.',
+        'readonly' => 'Fältet ":field" är skrivskyddat.',
+        'id' => 'Den här postens id är ":id": utelämna "_id" eller ange detta id.',
+        'id_shape' => 'Måste vara postens id som text, till exempel "j1".',
+    ],
 ];

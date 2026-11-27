@@ -982,6 +982,168 @@ final class Job extends Model { … }
   for one release). `DataManager::fieldRules($def)` gives all the rules of a type's fields (the
   fields' `validate`, the field types' own and the select's), and `FieldKinds::hasRules($type)`
   says whether a field type registered some.
+- A field type's value (since 0.93): `FieldKinds::value($type, FieldValue $value)` says what a
+  field's value means without any adapter. `Preflow\Data\Values\FieldValue` has three methods:
+  `toStored($input, $field)` (one language's input value as `saveType()` stores it; it converts and
+  never refuses, so a value it cannot convert passes through and the rules refuse it),
+  `toOutput($stored, $field)` (a stored value, as a driver returns it, to a JSON-safe output value)
+  and `shape($field)` (the output shape's name, such as `string`, `id_list`). `valueOf($field)`
+  gives the registered value, or `RawValue` (unchanged, shape `raw`) for a type without one;
+  `hasValue()` and `values()` list them. Every `DataManager` starts with the core types' values
+  (`Values\CoreValues`: `string`, `text`, `number`, `boolean`, `date`, `select`, `tags`,
+  `relation`, `asset`, and `richtext`), and `CoreValues::SHAPES` describes their shapes. Optional
+  companions: `DescribesShapes`, `CleansOnWrite`, `MergesInput`, `ListsReferences`. Stored values
+  keep the bytes 0.92 stored: `number` and `date` store their input as given (numeric text and
+  `""` stay, inside a block and in a translatable field too; a record-level field's text is a
+  number, `""` none, in `storageValues()` as before), and only `toOutput()` gives typed values.
+- Rich text is cleaned on every typed write (since 0.93): `DataManager::storageValues()` first
+  runs `cleaning()` (`Values\StoredCleaning`), so `saveType()` with or without validation,
+  `saveTypeIfVersion()`, class-backed types, `updateWhen()`, `updateIf()`,
+  `updateFieldsIfVersion()` and an import that calls `storageValues()` store the same safe HTML
+  on every driver: no scripts, no event handlers, no unsafe links, every language of a
+  translatable field. The cleaner is `Html\HtmlCleaner`; the default,
+  `Html\SymfonyHtmlCleaner::standard()` (symfony/html-sanitizer, built on the first clean;
+  `sanitizer()` gives that Symfony sanitizer to code that needs its interface), has the
+  config Folio's rich text field used, so HTML Folio saved keeps its bytes and its change date.
+  A site binds its own `HtmlCleaner` in the container (the application hands the binding to
+  `DataManager::htmlCleanerFrom()`). A package cleans a system key of its own on every write with
+  `cleaning()->systemKey('_key', fn ($value, $def) => …)`. Rows a script writes straight to a
+  driver are not cleaned; the read side cleans rich text again. **Upgrading to 0.93:** HTML that is
+  safe but not in the cleaner's canonical form (`<br>` instead of `<br />`) is rewritten once on its
+  next save, which moves that record's change date once.
+- A date's stored rule is the core's (since 0.93): every `DataManager` checks a `date` field on
+  save with `Validation\StoredDate`, which takes exactly what `Values\Core\DateValue::read()`
+  reads (`Y-m-d`, `Y-m-d\TH:i`, `Y-m-d\TH:i:s` and ISO 8601 with an offset, a real date and
+  time). **Upgrading to 0.93:** a site without Folio that stores another shape in a `date` field
+  (such as `Y-m-d H:i:s`) is refused on save, as a site with Folio already was in 0.92.1. A field
+  type whose form takes fewer shapes than it stores implements `Preflow\Data\HasStoredRules`
+  (moved from Folio; the old names stay as aliases until 0.95).
+
+## Records over an API: describe, read, write (0.93)
+
+### The problem it solves
+
+Sooner or later someone wants a site's content as JSON: a mobile app, a static site generator, a
+partner's import, a GraphQL client. Without help each API answers in its own shape, and the same
+mistakes come back:
+- a number stored as `"3"` on SQL comes out as text, tags stored as `"a,b"` as one string, a
+  relation list as JSON text: the answer depends on the driver and on how old the record is;
+- a PATCH of the German title replaces the whole title map, and the English text is gone;
+- a field the client mistyped is dropped without a word, so the client thinks it was saved;
+- the API checks less than the admin form, so a client stores a select value outside its options;
+- the client's developers write down by hand which types and fields exist, and that list is out
+  of date after the next release.
+
+### The idea: three classes, the same rules as Folio's form
+
+preflow/data gives an API three classes that need no admin package. Your controller keeps its
+routes, its permissions and its list of the types it serves; it hands the data part to these:
+
+| Question | Class | Gives |
+|---|---|---|
+| What could a client read and send? | `Describe\Description::toArray()` | every type, its fields and their output shapes, `"version": 1` |
+| What does this record hold? | `Records\RecordOutput::toArray($record, ReadOptions)` | `{"_id": …, <field>: …}` in fixed shapes, the same on every driver |
+| What does a write change? | `Records\RecordInput::create($def, $body)`, `update($record, $body)` | the record with the body merged in, not saved |
+| Is the result allowed? | `DataManager::saveType($record)` (or publishing's `RecordWriter`) | the core's rules, the same refusal Folio's form gives |
+
+The application binds the three as singletons; ask the container for them. A read is one line:
+
+```php
+return Json::data($this->output->toArray($record, new ReadOptions(locale: $locale)));
+```
+
+A write is two:
+
+```php
+$this->input->update($record, $body, $locale);   // refuses what is wrong with the body itself (422)
+$this->data->saveType($record);                   // the core's rules, then the save
+```
+
+### Reading: `RecordOutput`
+
+- `"_id"` first (always a string), then each field in declared order, through its field type's
+  value (`FieldKinds::valueOf()`, `FieldValue::toOutput()`), in the shape the description names.
+  Numbers are numbers, an empty value is `null`, tags are a list, relations and media fields are
+  ids, rich text is cleaned again on the way out.
+- A translatable field is an object of each language (`{"en": …, "de": …}`, `null` where none is
+  written); `new ReadOptions(locale: 'de')` gives that language through the type's fallback chain.
+  On a site with one language it is a plain value.
+- A field its `show_when` hides is `null`; its stored value stays.
+- Packages add system keys through output parts (`OutputPart`, registered on `RecordParts`):
+  preflow/blocks `_layout`, `_areas` and `_unplaced`, preflow/media `_media` (URLs and sizes),
+  but only when a read asks for it with `new ReadOptions(with: ['media'])`.
+- `references($record)` lists the records and assets a record points at, by type, each once.
+- Reading never writes. `RecordOutput::VERSION` is 1: a new key may come within a version; a key
+  that changes or goes bumps it.
+
+### Writing: `RecordInput`
+
+- The body has the shape the read gives, and only what changes: a field the body does not name
+  keeps its value, so `{"title": {"de": "Gärtnerin"}}` changes the German title and keeps the
+  English. One plain value for a translatable field is the language `$locale` names (default:
+  the type's default language).
+- Each value is converted by its field type's value (`FieldValue::toStored()`, or
+  `MergesInput::merge()` where a value merges, such as an areas field); input parts take their
+  keys (`InputPart`: preflow/blocks' `_layout` and `_areas`).
+- Refused at once, all problems in one `ValidationException`, nothing merged: a key that is no
+  field (`<key>`), a language the type lacks (`<field>.<locale>`), a `"readonly": true` field given
+  another value than its stored one (`<field>`), an `_id` other than the record's (`_id`). Nothing
+  is ever dropped silently.
+- Everything else (required, a select's options, a link's address, a layout's limits) is the
+  core's, on save: there is no second set of rules.
+- `create()` and `update()` ask the type first (`TypeDefinition::assertAllows()`): a
+  `"creatable": false` type throws `TypeActionRefused` on create, a `"readonly": true` one on every
+  write. Who may write is your controller's question (preflow/rbac's `TypePermissions`).
+
+### Describing: `Description`
+
+`toArray()` gives `version`, `types` (per type `label`, `id`, `actions`, `locales`,
+`title_field`, `fields`; per field `type`, `label`, `help`, `required`, `list`, `translatable`,
+`unique`, `value`, `config`, and `target` on a relation field) and `values`, each output shape a
+field names with what it is. Packages add sections (`DescriptionContributor` on
+`DescriptionContributors`; preflow/blocks: `blocks`, `layouts`, `area_layout_sets`). It is
+declared data only: no class names, no template paths, labels as declared. The shapes named in
+`"values"` are frozen in version 1.
+
+### Labels without an admin
+
+`DataManager::labels()` names types and fields for people: the bound `TypeLabels` (Folio's display
+labels) where one is bound, else `Labels\DeclaredLabels`, which reads the schema: a plain label, a
+label per language (then the fallback, then English), a key such as `site.types.job` translated
+through preflow/i18n when it is installed (the application wires it with `translateLabelsWith()`),
+else the type's key capitalised or the field's name humanized. The write class names types this
+way in its messages.
+
+### What you don't write
+
+The conversion of every stored shape (JSON text on SQL, tags as a comma string, numeric text), the
+language maps and fallbacks, `show_when`, the merge of a partial body, the rich text cleaning, the
+error keys, the checks and the list of types and fields for the client. Nothing is served by
+convention either: there are no automatic routes; a type is on your API once your controller
+serves it.
+
+### What it enables
+
+- **A simple REST API** for a few types: one controller with an explicit list of types (the
+  starters' `App\Controllers\Api\ContentController`).
+- **A versioned API with links:** the description's `target` says where each relation points, so
+  `_links` come from data, not from field names.
+- **GraphQL:** a schema built from the description's shapes, resolved with `RecordOutput`.
+- **Imports and sync jobs** that write through `RecordInput` and get the form's refusals.
+
+### Why it's worth it
+
+- **One shape everywhere.** The answer is the same on JSON files, SQLite and MySQL, for a record
+  saved today or in 0.80, because every value goes through its field type's value.
+- **No second set of rules.** A write is checked by `saveType()`, the same rules Folio's form runs,
+  so an API can't store what the admin would refuse.
+- **No lost data.** A partial body keeps what it does not name; a mistyped key is a 422, not a
+  silent drop.
+- **Easy to test.** Each class takes a record and gives plain arrays.
+
+**One sentence to remember:** describe with `Description`, read with `RecordOutput`, merge with
+`RecordInput`, save with `saveType()`: your controller decides what is served and who may write,
+the core decides what the data looks like and what is allowed.
 
 ## Rules a package adds to a type's records: `RecordRules` (0.92)
 

@@ -74,4 +74,11 @@ return [
         'set_layout' => 'Das Layout ":key" gehört nicht zu den Layouts der Gruppe ":set" (:layouts). Wähle eines davon.',
         'areas_value' => 'Muss ein Objekt mit "layout" (der Schlüssel eines Layouts der Gruppe, oder null) und "areas" (Bereichsnamen mit je einer Liste von Blöcken) sein, etwa {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
+    'record' => [
+        'unknown_field' => 'Der Typ ":type" hat kein Feld ":field".',
+        'unknown_locale' => 'Der Typ ":type" hat keine Sprache ":locale". Verwende eine davon: :locales.',
+        'readonly' => 'Das Feld ":field" ist schreibgeschützt.',
+        'id' => 'Die ID dieses Eintrags ist ":id": lass "_id" weg oder gib diese ID an.',
+        'id_shape' => 'Muss die ID des Eintrags als Text sein, etwa "j1".',
+    ],
 ];

@@ -70,4 +70,11 @@ return [
         'set_layout' => 'レイアウト ":key" はセット ":set" のレイアウト (:layouts) にありません。いずれかを選んでください。',
         'areas_value' => '"layout"（セットのいずれかのレイアウトのキー、または null）と "areas"（エリア名ごとのブロックのリスト）を持つオブジェクトにしてください。例: {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}。',
     ],
+    'record' => [
+        'unknown_field' => 'タイプ「:type」にはフィールド「:field」がありません。',
+        'unknown_locale' => 'タイプ「:type」には言語「:locale」がありません。次のいずれかを使ってください: :locales。',
+        'readonly' => 'フィールド「:field」は読み取り専用です。',
+        'id' => 'このレコードの ID は「:id」です。"_id" を省略するか、この ID を指定してください。',
+        'id_shape' => 'レコードの ID をテキストで指定してください（例: "j1"）。',
+    ],
 ];
