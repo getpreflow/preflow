@@ -67,7 +67,7 @@ final class RecordValidatorAddressTest extends TestCase
             FrontendRoute::fromConfig('locked', ['route' => '/locked/{slug}']),
         ]);
 
-        return new RecordValidator($fieldTypes, $this->dm, $frontend);
+        return new RecordValidator($this->dm, $frontend);
     }
 
     /** @param array<string, mixed> $data @return array<string, list<string>> */
@@ -146,7 +146,7 @@ final class RecordValidatorAddressTest extends TestCase
     {
         $fieldTypes = new FieldTypeRegistry();
         $fieldTypes->register(new StringFieldType());
-        $rules = (new RecordValidator($fieldTypes, $this->dm))->rules($this->registry->get('page'));
+        $rules = (new RecordValidator($this->dm))->rules($this->registry->get('page'));
 
         $this->assertArrayNotHasKey('slug', $rules);
     }

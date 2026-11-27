@@ -193,6 +193,37 @@ final class BlocksFieldTypeTest extends TestCase
         $this->assertArrayHasKey(self::A . '.tradeoff', $errors); // nested max 1
     }
 
+    public function test_validate_blocks_checks_only_the_columns_the_layout_shows(): void
+    {
+        $sets = new \Preflow\Blocks\Layouts\AreaLayoutSets();
+        $sets->add('grid', static fn (): \Preflow\Blocks\Layouts\AreaLayoutSet => new \Preflow\Blocks\Layouts\AreaLayoutSet('grid', [
+            new \Preflow\Blocks\Layouts\AreaLayout('full', 'Full width', ['c1' => new \Preflow\Blocks\Layouts\AreaDefinition('c1', 'Column 1', width: 1)]),
+            new \Preflow\Blocks\Layouts\AreaLayout('1-1', 'Two columns', [
+                'c1' => new \Preflow\Blocks\Layouts\AreaDefinition('c1', 'Column 1', width: 1),
+                'c2' => new \Preflow\Blocks\Layouts\AreaDefinition('c2', 'Column 2', width: 1),
+            ]),
+        ], fallback: 'full'));
+        $fields = new FieldTypeRegistry();
+        $fields->register(new StringFieldType());
+        $fields->register(new TextFieldType());
+        $type = new BlocksFieldType(
+            new BlockRegistry([HeroBlock::class, \Preflow\Folio\Tests\Fixtures\Blocks\GridBlock\GridBlock::class]),
+            $fields,
+            4,
+            new ValidatorFactory(new RuleFactory()),
+            sets: $sets,
+        );
+        $fields->register($type);
+        $value = [['_uid' => self::A, '_block' => 'grid', 'columns' => ['layout' => 'full', 'areas' => [
+            'c1' => [['_uid' => self::B, '_block' => 'hero']],
+            'c2' => [['_uid' => self::C, '_block' => 'hero']],
+        ]]]];
+
+        $keys = array_keys($type->validateBlocks($value, [], Locales::single('en')));
+
+        $this->assertSame([self::A . '.columns.areas.c1.' . self::B . '.headline'], $keys, 'the column "full" does not show (c2) is not checked');
+    }
+
     public function test_single_locale_stores_plain_leaves(): void
     {
         $value = $this->type()->buildValue([

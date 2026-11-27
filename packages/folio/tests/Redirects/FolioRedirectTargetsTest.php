@@ -65,7 +65,7 @@ final class FolioRedirectTargetsTest extends TestCase
         $catalog = new TypeCatalog($this->dir . '/models');
         $fieldTypes = new FieldTypeRegistry();
         $fieldTypes->register(new StringFieldType());
-        $this->publisher = FolioPublisher::make($this->dm, $catalog, new RecordValidator($fieldTypes, $this->dm));
+        $this->publisher = FolioPublisher::make($this->dm, $catalog, new RecordValidator($this->dm));
         $resolver = FrontendResolver::fromCatalog($catalog, $this->dm);
         $this->live = new LiveRecords($this->dm, $this->publisher, $resolver);
         $this->targets = new FolioRedirectTargets($this->live, $resolver);

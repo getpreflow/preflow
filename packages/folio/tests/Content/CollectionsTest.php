@@ -53,7 +53,7 @@ final class CollectionsTest extends TestCase
         $fieldTypes = new FieldTypeRegistry();
         $fieldTypes->register(new StringFieldType());
         $catalog = new TypeCatalog($this->dir . '/models');
-        $this->publisher = FolioPublisher::make($this->dm, $catalog, new RecordValidator($fieldTypes, $this->dm));
+        $this->publisher = FolioPublisher::make($this->dm, $catalog, new RecordValidator($this->dm));
         $this->live = new LiveContent($this->dm, new \Preflow\Folio\Publishing\FolioPublishingTypes($catalog));
         $this->locale = new ContentLocale(new Locales(['en', 'de'], 'en'));
     }

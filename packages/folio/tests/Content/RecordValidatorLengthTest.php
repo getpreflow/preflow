@@ -40,7 +40,7 @@ final class RecordValidatorLengthTest extends TestCase
             );
             $fieldTypes = new FieldTypeRegistry();
             $fieldTypes->register(new StringFieldType());
-            $validator = new RecordValidator($fieldTypes, $dm);
+            $validator = new RecordValidator($dm);
             $def = $registry->get('page');
             foreach (['2024', '500'] as $i => $slug) {
                 $validator->validate(DynamicRecord::fromArray($def, ['uuid' => 'u' . $i, 'slug' => $slug]));
@@ -86,7 +86,7 @@ final class RecordValidatorLengthTest extends TestCase
             );
             $fieldTypes = new FieldTypeRegistry();
             $fieldTypes->register(new StringFieldType());
-            $rules = (new RecordValidator($fieldTypes, $dm))->rules($registry->get('page'));
+            $rules = (new RecordValidator($dm))->rules($registry->get('page'));
         } finally {
             unlink($dir . '/page.json');
             rmdir($dir);

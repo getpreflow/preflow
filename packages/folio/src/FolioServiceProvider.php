@@ -657,6 +657,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $this->dataManager($c, $c->get(Application::class))?->fieldKinds(),
                 // The core's block value checks (0.92), which every write of a record runs too.
                 $c->bound(\Preflow\Blocks\BlockValueChecks::class) ? $c->get(\Preflow\Blocks\BlockValueChecks::class) : null,
+                $c->bound(\Preflow\Blocks\Layouts\AreaLayoutSets::class) ? $c->get(\Preflow\Blocks\Layouts\AreaLayoutSets::class) : null,
             ));
             // The areas field (0.92: the columns block's columns): a layout from a set preflow/blocks
             // holds, its areas drawn by the page layout editor.
@@ -757,7 +758,6 @@ final class FolioServiceProvider extends ServiceProvider
         });
 
         $container->singleton(\Preflow\Folio\Content\RecordValidator::class, fn (Container $c) => new \Preflow\Folio\Content\RecordValidator(
-            $c->get(FieldTypeRegistry::class),
             $c->get(DataManager::class),
             $c->get(FrontendResolver::class),
         ));

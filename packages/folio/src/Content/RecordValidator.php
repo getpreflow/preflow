@@ -7,7 +7,6 @@ namespace Preflow\Folio\Content;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeDefinition;
-use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Validation\ValidationException;
 
 /**
@@ -22,8 +21,8 @@ use Preflow\Validation\ValidationException;
  */
 final class RecordValidator
 {
+    /** Since 0.92 without the FieldTypeRegistry: the block walk and the field types' rules are the core's. */
     public function __construct(
-        private readonly FieldTypeRegistry $fieldTypes,
         private readonly DataManager $dm,
         private readonly ?FrontendResolver $frontend = null,
     ) {}

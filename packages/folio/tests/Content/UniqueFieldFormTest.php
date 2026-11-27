@@ -201,7 +201,7 @@ final class UniqueFieldFormTest extends TestCase
             public function getTemplateExtension(): string { return 'twig'; }
             public function addNamespace(string $n, string $p): void {}
         };
-        $validator = new RecordValidator($fields, $this->dm);
+        $validator = new RecordValidator($this->dm);
         $publisher = FolioPublisher::make($this->dm, $this->catalog, $validator);
 
         return new AdminController(

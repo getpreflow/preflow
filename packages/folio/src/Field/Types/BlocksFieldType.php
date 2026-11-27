@@ -42,6 +42,8 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         private readonly ?\Preflow\Data\FieldKinds $kinds = null,
         /** The core's block value checks (0.92), the app's instance; without it validateBlocks() builds its own. */
         private ?\Preflow\Blocks\BlockValueChecks $checks = null,
+        /** The app's area layout sets (0.92): the checks validateBlocks() builds see the columns a layout shows only. */
+        private readonly ?\Preflow\Blocks\Layouts\AreaLayoutSets $sets = null,
     ) {}
 
     public function key(): string
@@ -295,7 +297,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         foreach ($this->rules($config) as $rule) {
             $result = $rule->validate($list, new \Preflow\Validation\ValidationContext(rtrim($prefix, '.'), []));
             if ($result !== true) {
-                $errors[rtrim($prefix, '.')][] = $result;
+                $errors[rtrim($prefix, '.')][] = (string) $result;
             }
         }
         $checks = $this->valueChecks();
@@ -311,7 +313,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
     {
         if ($this->checks === null && $this->validators !== null) {
             $kinds = $this->kinds ?? new \Preflow\Data\FieldKinds();
-            $this->checks = new \Preflow\Blocks\BlockValueChecks($this->blocks, $kinds, $this->validators);
+            $this->checks = new \Preflow\Blocks\BlockValueChecks($this->blocks, $kinds, $this->validators, sets: $this->sets);
             \Preflow\Folio\Field\CoreFieldRules::register($this->fieldTypes, $kinds, blocks: $this->checks);
         }
 
@@ -825,7 +827,11 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         return ''; // rendered by blocks() through the block components
     }
 
-    /** The field's "min" and "max" (BlockCount); the values inside are the core's (BlockValueChecks). */
+    /**
+     * The field's "min" and "max" (BlockCount); the values inside are the core's (BlockValueChecks).
+     *
+     * @return list<\Preflow\Validation\ValidationRule>
+     */
     public function rules(array $config): array
     {
         $min = isset($config['min']) ? (int) $config['min'] : null;
