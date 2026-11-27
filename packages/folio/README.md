@@ -1246,8 +1246,9 @@ error. An impossible date (`2026-02-30`, `2026-02-30T05:00:00+00:00`) is not rea
 is shown trimmed, but no write accepts one. Since 0.92.1, `saveType()`, imports, seeds and the API accept exactly these shapes in a `date`
 field, with or without `"time"`, so server code may store `gmdate(DATE_ATOM)` that way. Folio's own
 checks still take only what its input posts (`Y-m-d`, or `Y-m-d\TH:i` with optional seconds for
-`"time": true`), as since 0.91: the admin form, `RecordWriter` saves while Folio is installed (an
-app's own code, a translation run) and publishing. The input shows a stored date in its own shape
+`"time": true`), as since 0.91: the admin form, `RecordWriter` saves of a type without publishing
+while Folio is installed (an app's own code, a translation run; a publishing type's draft save checks
+only what storage refuses) and publishing. The input shows a stored date in its own shape
 (the app timezone), so an admin save keeps a date stored with an offset and writes it in the
 form's shape (`2026-11-27T05:00:00+00:00` becomes `2026-11-27T06:00` with `"time"` in
 Europe/Zurich).
