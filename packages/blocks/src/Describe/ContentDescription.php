@@ -11,6 +11,7 @@ use Preflow\Blocks\Layouts\AreaDefinition;
 use Preflow\Blocks\Layouts\AreaLayout;
 use Preflow\Blocks\Layouts\AreaLayoutSets;
 use Preflow\Blocks\Layouts\LayoutRegistry;
+use Preflow\Blocks\Layouts\LayoutResource;
 use Preflow\Blocks\Layouts\PageLayouts;
 use Preflow\Blocks\Values\AreasFieldValue;
 use Preflow\Data\Describe\DescriptionContributor;
@@ -47,6 +48,12 @@ use Preflow\Data\Values\DescribesShapes;
  * - "area_map": an object of area name => list of blocks, each block an object with "_uid",
  *   "_block" (a key of "blocks") and its fields (a translatable one a map of locale => value).
  *
+ * In the one description (forType(), since 0.93) a type's "layouts" also has "output", the keys
+ * the read output gives (RecordOutput with LayoutResource as its part) and their shapes:
+ * {"_layout": "resolved_layout", "_areas": "area_map", "_unplaced": "area_map"}, where
+ * "resolved_layout" is {"key", "label", "pinned", "fallback", "stored"} or null
+ * (OUTPUT_SHAPES). toArray() keeps its 0.92 keys.
+ *
  * A field of the type "areas" (since 0.92: the columns block's columns) names its set in
  * "config.layouts" (a key of "area_layout_sets") and its value shape in "value":
  *
@@ -78,6 +85,17 @@ final readonly class ContentDescription implements DescriptionContributor, Descr
         'layout_key' => 'A key of "layouts" (a string), or null for the type\'s default.',
         'area_map' => 'An object of area name => list of blocks, each block an object with "_uid", "_block" (a key of "blocks") and its fields (a translatable one a map of locale => value).',
     ];
+
+    /**
+     * The shapes only the read output has (since 0.93; the one description's type "layouts"
+     * names them under "output"): what RecordOutput gives for a type with layouts.
+     */
+    public const array OUTPUT_SHAPES = [
+        'resolved_layout' => 'The layout a page shows with: an object {"key": a key of "layouts", "label", "pinned": true when the page is pinned to it, "fallback": true when the stored or pinned key could not be used, "stored": the key stored on the page or null}, or null when the type allows no layout that exists.',
+    ];
+
+    /** The read output's keys of a type with layouts and their shapes (the one description's "output"). */
+    private const array OUTPUT = [PageLayouts::LAYOUT => 'resolved_layout', PageLayouts::AREAS => 'area_map', LayoutResource::UNPLACED => 'area_map'];
 
     public function __construct(
         private BlockRegistry $blocks,
@@ -143,8 +161,11 @@ final readonly class ContentDescription implements DescriptionContributor, Descr
     }
 
     /**
-     * A type's "layouts" in the one description, as toArray() gives it under "types"; nothing for
-     * a type without layouts.
+     * A type's "layouts" in the one description, as toArray() gives it under "types", plus (only
+     * here, toArray() keeps 0.92's keys) "output": the keys the read output gives for the type
+     * (LayoutResource as RecordOutput's part) with their shapes, {"_layout": "resolved_layout",
+     * "_areas": "area_map", "_unplaced": "area_map"}; "values" names the keys as stored and
+     * written. Nothing for a type without layouts.
      *
      * @return array<string, mixed>
      * @since 0.93.0
@@ -153,12 +174,12 @@ final readonly class ContentDescription implements DescriptionContributor, Descr
     {
         $layouts = $this->typeLayouts($def->key);
 
-        return $layouts === null ? [] : ['layouts' => $layouts];
+        return $layouts === null ? [] : ['layouts' => $layouts + ['output' => self::OUTPUT]];
     }
 
     /**
-     * The shapes its sections and type entries name: "layout_key" and "area_map" when a type has
-     * layouts, "areas_value" when a block has an areas field.
+     * The shapes its sections and type entries name: "layout_key", "area_map" and (the read
+     * output's) "resolved_layout" when a type has layouts, "areas_value" when a block has an areas field.
      *
      * @return array<string, string>
      * @since 0.93.0
@@ -168,7 +189,7 @@ final readonly class ContentDescription implements DescriptionContributor, Descr
         $shapes = [];
         foreach ($this->types?->keys() ?? [] as $type) {
             if ($this->pageLayouts?->forType($type) !== null) {
-                $shapes = self::SHAPES;
+                $shapes = self::SHAPES + self::OUTPUT_SHAPES;
                 break;
             }
         }

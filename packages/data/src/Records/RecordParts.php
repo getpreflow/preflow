@@ -13,7 +13,8 @@ use Preflow\Data\TypeDefinition;
  *
  *     $container->get(RecordParts::class)->output(static fn (): OutputPart => $container->get(LayoutResource::class));
  *
- * outputKeys() and inputKeys() give a type's part keys, refusing those that cannot work.
+ * outputKeys() and inputKeys() give a type's part keys, refusing those that cannot work (two
+ * different parts claiming one key among them). A part class added twice counts once.
  *
  * @since 0.93.0
  */
@@ -46,26 +47,38 @@ final class RecordParts
         $this->inputFactories[] = $part;
     }
 
-    /** @return list<OutputPart> */
+    /**
+     * The parts, each class once: a second registration of a class (a provider registered again)
+     * is ignored, the first one counts.
+     *
+     * @return list<OutputPart>
+     */
     public function outputs(): array
     {
         $all = [];
         foreach ($this->outputFactories as $at => $factory) {
-            $all[] = $this->outputs[$at] ??= $factory();
+            $part = $this->outputs[$at] ??= $factory();
+            $all[$part::class] ??= $part;
         }
 
-        return $all;
+        return array_values($all);
     }
 
-    /** @return list<InputPart> */
+    /**
+     * The parts, each class once: a second registration of a class (a provider registered again)
+     * is ignored, the first one counts.
+     *
+     * @return list<InputPart>
+     */
     public function inputs(): array
     {
         $all = [];
         foreach ($this->inputFactories as $at => $factory) {
-            $all[] = $this->inputs[$at] ??= $factory();
+            $part = $this->inputs[$at] ??= $factory();
+            $all[$part::class] ??= $part;
         }
 
-        return $all;
+        return array_values($all);
     }
 
     /**

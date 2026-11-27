@@ -54,14 +54,18 @@ final class ContentContributorTest extends BlocksAppTestCase
         $this->assertEquals($old['area_layout_sets'], $description['area_layout_sets']);
 
         $types = $container->get(TypeRegistry::class);
-        $this->assertSame(['layouts' => $old['types']['page']['layouts']], $content->forType($types->get('page')));
+        // The one description adds "output" (0.93): the keys the read output gives and their shapes; toArray() keeps 0.92's.
+        $output = ['output' => ['_layout' => 'resolved_layout', '_areas' => 'area_map', '_unplaced' => 'area_map']];
+        $this->assertArrayNotHasKey('output', $old['types']['page']['layouts']);
+        $this->assertSame(['layouts' => $old['types']['page']['layouts'] + $output], $content->forType($types->get('page')));
         $this->assertSame([], $content->forType($types->get('note')), 'a type without layouts gets nothing');
-        $this->assertSame($old['types']['page']['layouts'], $description['types']['page']['layouts']);
+        $this->assertSame($old['types']['page']['layouts'] + $output, $description['types']['page']['layouts']);
         $this->assertArrayNotHasKey('layouts', $description['types']['note']);
         $this->assertSame(['title', 'path'], array_keys($description['types']['page']['fields']), 'the type itself, described by data');
 
         $this->assertArrayHasKey('layout_key', $description['values'], 'the shapes its type layouts name');
         $this->assertArrayHasKey('area_map', $description['values']);
+        $this->assertArrayHasKey('resolved_layout', $description['values'], 'the read shape of "_layout"');
         $this->assertArrayNotHasKey('areas_value', $description['values'], 'no areas field anywhere');
     }
 

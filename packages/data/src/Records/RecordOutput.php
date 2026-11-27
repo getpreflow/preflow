@@ -11,6 +11,7 @@ use Preflow\Data\LocaleValue;
 use Preflow\Data\Locales;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Data\Values\ListsReferences;
+use Preflow\Data\Values\ListsVisibleReferences;
 
 /**
  * A record of any type as an API answers with it (a REST resource, a GraphQL object): its id, its
@@ -107,7 +108,8 @@ final readonly class RecordOutput
      * The records the record's fields reference (ListsReferences: relations, media fields, the
      * blocks and columns inside a blocks field) and those the output parts' keys reference
      * (ListsRecordReferences: a page's areas), by target type, each id once. A field its
-     * show_when hides references nothing (it reads null).
+     * show_when hides references nothing (it reads null), also inside blocks and columns
+     * (ListsVisibleReferences): only what the output shows.
      *
      * @return array<string, list<string>> target type => ids
      */
@@ -128,7 +130,8 @@ final readonly class RecordOutput
             $raw = $stored[$name] ?? null;
             $values = isset($translatable[$name]) ? array_values(LocaleValue::map($raw, $def->locales)) : [LocaleValue::default($raw, $def->locales)];
             foreach ($values as $one) {
-                foreach ($value->references($one, $field) as $type => $ids) {
+                $references = $value instanceof ListsVisibleReferences ? $value->visibleReferences($one, $field) : $value->references($one, $field);
+                foreach ($references as $type => $ids) {
                     $found[$type] = [...$found[$type] ?? [], ...$ids];
                 }
             }

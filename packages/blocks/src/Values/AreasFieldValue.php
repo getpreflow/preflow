@@ -12,6 +12,7 @@ use Preflow\Data\Values\CleansOnWrite;
 use Preflow\Data\Values\DescribesShapes;
 use Preflow\Data\Values\FieldValue;
 use Preflow\Data\Values\ListsReferences;
+use Preflow\Data\Values\ListsVisibleReferences;
 use Preflow\Data\Values\MergesInput;
 
 /**
@@ -29,7 +30,7 @@ use Preflow\Data\Values\MergesInput;
  *
  * @since 0.93.0
  */
-final class AreasFieldValue implements FieldValue, CleansOnWrite, MergesInput, ListsReferences, DescribesShapes
+final class AreasFieldValue implements FieldValue, CleansOnWrite, MergesInput, ListsReferences, ListsVisibleReferences, DescribesShapes
 {
     public const array SHAPES = [
         'areas_value' => 'A layout and its areas: an object {"layout": a key of the field\'s area layout set or null, "resolved": {"key", "fallback"} or null, "areas": the shown areas, "unplaced": stored areas the layout lacks}, each area a list of blocks. Written as {"layout", "areas"}.',
@@ -91,5 +92,10 @@ final class AreasFieldValue implements FieldValue, CleansOnWrite, MergesInput, L
     public function references(mixed $stored, TypeFieldDefinition $field): array
     {
         return $this->blocks->references($stored, $field);
+    }
+
+    public function visibleReferences(mixed $stored, TypeFieldDefinition $field): array
+    {
+        return $this->blocks->visibleReferences($stored, $field);
     }
 }

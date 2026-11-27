@@ -238,7 +238,7 @@ final class RecordOutputTest extends TestCase
 
             return new FixedPart(['_extra', '_more'], ['_extra' => ['n' => 1], '_more' => 'yes']);
         });
-        $parts->output(static fn (): OutputPart => new FixedPart([], []));
+        $parts->output(static fn (): OutputPart => new OtherPart([], []));
         $this->assertSame(0, $built, 'a part is built on first use');
 
         $output = (new RecordOutput($dm, $parts))->toArray($this->find($dm, 'r1'));
@@ -282,14 +282,28 @@ final class RecordOutputTest extends TestCase
         $dm = $this->dm('json');
         $dm->driver('json')->save('items', 'r1', self::OLDER_ROW);
         $parts = new RecordParts();
-        foreach ($keys as $one) {
-            $parts->output(static fn (): OutputPart => new FixedPart($one, $read));
+        foreach ($keys as $at => $one) {
+            // Two different part classes: a second registration of one class is ignored.
+            $parts->output(static fn (): OutputPart => $at === 0 ? new FixedPart($one, $read) : new OtherPart($one, $read));
         }
         $type = $named === '"_title"' ? 'note' : 'item';
 
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage($named);
         (new RecordOutput($dm, $parts))->toArray($type === 'note' ? new DynamicRecord($dm->getTypeRegistry()->get('note'), ['uuid' => 'n1']) : $this->find($dm, 'r1'));
+    }
+
+    public function test_a_part_class_registered_twice_counts_once(): void
+    {
+        $dm = $this->dm('json');
+        $dm->driver('json')->save('items', 'r1', self::OLDER_ROW);
+        $parts = new RecordParts();
+        $parts->output(static fn (): OutputPart => new FixedPart(['_extra'], ['_extra' => 1]));
+        // A site that registers a package's provider again: the same part class once more.
+        $parts->output(static fn (): OutputPart => new FixedPart(['_extra'], ['_extra' => 2]));
+
+        $this->assertCount(1, $parts->outputs(), 'the second registration of the class is ignored');
+        $this->assertSame(1, (new RecordOutput($dm, $parts))->toArray($this->find($dm, 'r1'))['_extra'], 'the first one reads');
     }
 
     public function test_parts_list_the_records_their_keys_reference(): void
@@ -355,6 +369,26 @@ final class RecordOutputTest extends TestCase
 
 /** An output part that declares $keys and reads $read for every record. */
 final readonly class FixedPart implements OutputPart
+{
+    /**
+     * @param list<string> $keys
+     * @param array<string, mixed> $read
+     */
+    public function __construct(private array $keys, private array $read) {}
+
+    public function keys(TypeDefinition $def): array
+    {
+        return $this->keys;
+    }
+
+    public function read(DynamicRecord $record, ReadOptions $options): array
+    {
+        return $this->read;
+    }
+}
+
+/** Another part class with fixed keys (two different parts claiming one key). */
+final readonly class OtherPart implements OutputPart
 {
     /**
      * @param list<string> $keys

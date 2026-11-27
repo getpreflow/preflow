@@ -93,7 +93,8 @@ final readonly class LayoutResource implements OutputPart, ListsRecordReferences
 
     /**
      * What the blocks of every stored area of the record reference (placed or not, their columns
-     * included), by target type; [] for a type without "layouts" or without the blocks' values.
+     * included), as the read shows them: a block field its show_when hides references nothing
+     * (BlocksFieldValue::visibleReferences()), by target type; [] for a type without "layouts" or without the blocks' values.
      *
      * @return array<string, list<string>>
      */
@@ -108,7 +109,7 @@ final readonly class LayoutResource implements OutputPart, ListsRecordReferences
             return [];
         }
 
-        return $this->values->references(['layout' => null, 'areas' => $areas], new TypeFieldDefinition(PageLayouts::AREAS, BlockLists::AREAS));
+        return $this->values->visibleReferences(['layout' => null, 'areas' => $areas], new TypeFieldDefinition(PageLayouts::AREAS, BlockLists::AREAS));
     }
 
     /**

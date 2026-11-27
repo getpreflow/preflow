@@ -12,6 +12,7 @@ use Preflow\Data\Values\CleansOnWrite;
 use Preflow\Data\Values\DescribesShapes;
 use Preflow\Data\Values\FieldValue;
 use Preflow\Data\Values\ListsReferences;
+use Preflow\Data\Values\ListsVisibleReferences;
 use Preflow\Data\Values\StoredCleaning;
 
 /**
@@ -31,14 +32,16 @@ use Preflow\Data\Values\StoredCleaning;
  *   as given, the same array or the same JSON text, so its bytes and the change date stay; a
  *   cleaned JSON text stays JSON text.
  * - references(): the records every block field references (ListsReferences), by target type, each
- *   id once.
+ *   id once (a hidden field's too: media's usage check counts them). visibleReferences()
+ *   (ListsVisibleReferences, 0.93): the same without the fields their show_when hides, for the
+ *   read side.
  *
  * The same walk serves an areas field (AreasFieldValue) and a page's "_areas" through the methods
  * marked @internal.
  *
  * @since 0.93.0
  */
-final class BlocksFieldValue implements FieldValue, CleansOnWrite, ListsReferences, DescribesShapes
+final class BlocksFieldValue implements FieldValue, CleansOnWrite, ListsReferences, ListsVisibleReferences, DescribesShapes
 {
     public const array SHAPES = [
         'blocks' => 'A list of blocks: each an object with "_uid", "_block" (a key of "blocks") and its fields, each in its own shape (a translatable one a map of locale => value).',
@@ -105,10 +108,25 @@ final class BlocksFieldValue implements FieldValue, CleansOnWrite, ListsReferenc
 
     public function references(mixed $stored, TypeFieldDefinition $field): array
     {
+        return $this->walkReferences($stored, $field, visible: false);
+    }
+
+    /**
+     * references() without what a block field its show_when hides holds (it reads null), at any
+     * depth (nested blocks, columns): what the read side shows.
+     */
+    public function visibleReferences(mixed $stored, TypeFieldDefinition $field): array
+    {
+        return $this->walkReferences($stored, $field, visible: true);
+    }
+
+    /** @return array<string, list<string>> */
+    private function walkReferences(mixed $stored, TypeFieldDefinition $field, bool $visible): array
+    {
         $found = [];
         foreach (BlockLists::of($field, $stored) as $list) {
             foreach ($list as $block) {
-                $this->blockReferences($block, $found);
+                $this->blockReferences($block, $found, $visible);
             }
         }
 
@@ -207,14 +225,17 @@ final class BlocksFieldValue implements FieldValue, CleansOnWrite, ListsReferenc
      * @param array<string, mixed> $block
      * @param array<string, list<string>> $found
      */
-    private function blockReferences(array $block, array &$found): void
+    private function blockReferences(array $block, array &$found, bool $visible = false): void
     {
-        $definition = ($this->blocks)()->get(is_string($block['_block'] ?? null) ? $block['_block'] : '');
+        $registry = ($this->blocks)();
+        $key = is_string($block['_block'] ?? null) ? $block['_block'] : '';
+        $definition = $registry->get($key);
         if ($definition === null) {
             return;
         }
+        $hidden = $visible ? array_flip($registry->hiddenFieldsOf($key, $block)) : [];
         foreach ($definition->fields as $name => $field) {
-            if (!array_key_exists($name, $block)) {
+            if (!array_key_exists($name, $block) || isset($hidden[$name])) {
                 continue;
             }
             $value = $this->kinds->valueOf($field);
@@ -224,7 +245,8 @@ final class BlocksFieldValue implements FieldValue, CleansOnWrite, ListsReferenc
             $values = $field->translatable && is_array($block[$name]) && $block[$name] !== [] && !array_is_list($block[$name]) && !BlockLists::holds($field)
                 ? array_values($block[$name]) : [$block[$name]];
             foreach ($values as $one) {
-                foreach ($value->references($one, $field) as $type => $ids) {
+                $references = $visible && $value instanceof ListsVisibleReferences ? $value->visibleReferences($one, $field) : $value->references($one, $field);
+                foreach ($references as $type => $ids) {
                     $found[$type] ??= [];
                     array_push($found[$type], ...$ids);
                 }

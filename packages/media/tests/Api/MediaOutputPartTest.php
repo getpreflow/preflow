@@ -122,13 +122,16 @@ final class MediaOutputPartTest extends TestCase
     public function test_media_covers_block_and_column_assets(): void
     {
         [$a, $b, $c, $d] = [$this->image('a.png'), $this->image('b.png'), $this->image('c.png'), $this->image('d.png')];
+        [$shown, $hidden, $colHidden] = [$this->image('shown.png'), $this->image('hidden.png'), $this->image('col-hidden.png')];
         $record = $this->post([
             'kind' => 'text',
             'video' => $d->id, // hidden by its show_when: it reads null, so its asset is not listed
             'sections' => [
-                ['_uid' => 'aaaaaaaaaaaaaaaa', '_block' => 'media_card', 'image' => $a->id],
+                // A clip its kind does not show: hidden, so its asset is not in "_media".
+                ['_uid' => 'aaaaaaaaaaaaaaaa', '_block' => 'media_card', 'image' => $a->id, 'kind' => 'image', 'clip' => $hidden->id],
+                ['_uid' => 'dddddddddddddddd', '_block' => 'media_card', 'kind' => 'clip', 'clip' => $shown->id],
                 ['_uid' => 'bbbbbbbbbbbbbbbb', '_block' => 'media_columns', 'columns' => ['layout' => '1-1', 'areas' => [
-                    'c2' => [['_uid' => 'cccccccccccccccc', '_block' => 'media_card', 'gallery' => [$b->id, $c->id, $a->id]]],
+                    'c2' => [['_uid' => 'cccccccccccccccc', '_block' => 'media_card', 'gallery' => [$b->id, $c->id, $a->id], 'clip' => $colHidden->id]],
                 ]]],
             ],
         ]);
@@ -136,7 +139,9 @@ final class MediaOutputPartTest extends TestCase
         $out = $this->output->toArray($record, new ReadOptions(with: ['media']));
 
         $this->assertNull($out['video']);
-        $this->assertSame([$a->id, $b->id, $c->id], array_keys($out['_media']));
+        $this->assertSame([$a->id, $shown->id, $b->id, $c->id], array_keys($out['_media']), 'visible block, column and field assets only: a hidden one\'s URL, alt text and sizes are not given');
+        $this->assertArrayNotHasKey($d->id, $out['_media'], 'a top-level field its show_when hides');
+        $this->assertNull($out['sections'][0]['clip']);
         $this->assertSame($a->id, $out['sections'][0]['image'], 'block values stay ids too');
     }
 
