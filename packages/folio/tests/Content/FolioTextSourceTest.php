@@ -601,6 +601,46 @@ final class FolioTextSourceTest extends TestCase
         $this->assertNull($this->stored('article', 'a1')->get('summary'));
     }
 
+    /**
+     * 0.93.1: a machine's rich text is stored cleaned ("it's" as "it&#039;s", "<br>" as "<br />").
+     * The write compares and marks what is stored: a block's text counts as written and every
+     * text keeps its machine mark (it shows as unchecked), and a save of the same text again
+     * leaves the stamps and marks.
+     */
+    public function test_machine_rich_text_not_in_cleaned_form_is_written_and_marked(): void
+    {
+        $this->write('config/blocks.php', "<?php\nreturn ['classes' => [\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\QuoteBlock::class]];\n");
+        $this->writeModel('essay', [
+            'label' => 'Essays',
+            'publishing' => true,
+            'fields' => [
+                'title' => ['type' => 'string', 'translatable' => true],
+                'content' => ['type' => 'richtext', 'translatable' => true],
+                'sections' => ['type' => 'blocks'],
+            ],
+        ]);
+        $this->working('essay', 'e1', [
+            'title' => ['en' => 'Hello'],
+            'content' => ['en' => '<p>Hi</p>'],
+            'sections' => [['_uid' => self::A, '_block' => 'quote', 'text' => ['en' => '<p>Said</p>']]],
+        ]);
+        $quote = 'sections.' . self::A . '.text';
+
+        $outcome = $this->source('essay')->write('e1', 'de', ['content' => "<p>Hallo, it's<br>me</p>", $quote => "<p>Gesagt, it's<br>so</p>"]);
+
+        $this->assertSame(WriteOutcomeStatus::Written, $outcome->status);
+        $working = $this->stored('essay', 'e1');
+        $this->assertSame('<p>Hallo, it&#039;s<br />me</p>', $working->get('content')['de']);
+        $this->assertSame('<p>Gesagt, it&#039;s<br />so</p>', $working->get('sections')[0]['text']['de']);
+        $unchecked = fn (\Preflow\Data\DynamicRecord $r): array => array_map(static fn (TranslatableText $t): string => $t->path, $this->translationStatus()->unchecked($r->getType(), $r, 'de'));
+        $this->assertSame(['content', $quote], $unchecked($working), 'both machine texts are marked as unchecked');
+        $this->assertSame([], $this->translationStatus()->outdated($working->getType(), $working, 'de'));
+
+        $this->dm()->saveType($working, false);
+        $working = $this->stored('essay', 'e1');
+        $this->assertSame(['content', $quote], $unchecked($working), 'a plain re-save keeps the marks');
+    }
+
     private function factsArticle(string $type = 'facts', string $class = 'FactsFieldType'): void
     {
         $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'field_types' => [\\Preflow\\Folio\\Tests\\Fixtures\\Field\\{$class}::class]];\n");

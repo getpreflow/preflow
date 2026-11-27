@@ -528,6 +528,29 @@ final class ExportImportTest extends TestCase
         $this->assertSame('2026-03-05T08:00:00+00:00', $this->driver()->findOne('site', 'site')['_updated_at'] ?? null, 'the local date stays');
     }
 
+    /**
+     * 0.93.1: an archive of a site that stored its rich text uncleaned (written before 0.93.0)
+     * against the same text stored cleaned here is no change; another text still is one.
+     */
+    public function test_rich_text_uncleaned_in_the_archive_against_the_same_text_cleaned_is_no_change(): void
+    {
+        $this->writeModel('essay', ['label' => 'Essays', 'fields' => [
+            'body' => ['type' => 'richtext'],
+            'intro' => ['type' => 'richtext', 'translatable' => true],
+        ]]);
+        $this->driver()->save('essay', 'e1', ['body' => "<p>it's<br></p>", 'intro' => ['en' => "<p>it's<br></p>"], 'uuid' => 'e1', '_updated_at' => '2026-03-01T08:00:00+00:00']);
+        $this->driver()->save('essay', 'e2', ['body' => '<p>old</p>', 'uuid' => 'e2', '_updated_at' => '2026-03-01T08:00:00+00:00']);
+        $archive = $this->export();
+        $dm = $this->app()->container()->get(DataManager::class);
+        $dm->saveType($dm->findType('essay', 'e1') ?? $this->fail('stored'), false);
+        $this->assertSame('<p>it&#039;s<br /></p>', $this->driver()->findOne('essay', 'e1')['body'] ?? null, 'stored cleaned here');
+        $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($dm->getTypeRegistry()->get('essay'), ['uuid' => 'e2', 'body' => '<p>new</p>']), false);
+
+        $summary = $this->import($archive);
+
+        $this->assertSame(['e2'], $summary['tables']['essay']['changed']);
+    }
+
     /** A list stored as JSON text (an SQL site, a file from before 0.89) equals the same list. */
     public function test_a_list_as_json_text_against_the_same_list_is_no_change(): void
     {
