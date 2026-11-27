@@ -24,7 +24,7 @@ use Preflow\Data\Values\Core\TextValue;
  * them the same way. Packages register their own types' values in their service provider,
  * replacing a core one where they bring the type (FieldKinds::value()).
  *
- * register() also gives date its stored rule (StoredDate, on FieldKinds::rules()): every write
+ * register() also makes tags a list kind (FieldKinds::list()), and gives date its stored rule (StoredDate, on FieldKinds::rules()): every write
  * refuses a date the type cannot read, with or without Folio.
  *
  * @since 0.93.0
@@ -59,6 +59,9 @@ final class CoreValues
         $kinds->value('date', $date);
         $kinds->value('select', new SelectValue());
         $kinds->value('tags', new TagsValue());
+        // Its value is always a list (since 0.93 the core's say, as Folio's since 0.78): written as one
+        // (a comma string or JSON text becomes a list), no text index or text matching on its column.
+        $kinds->list('tags');
         $kinds->value('relation', new RelationValue());
         $kinds->value('asset', new AssetValue());
         if ($cleaner !== null) {

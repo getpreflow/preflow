@@ -50,8 +50,10 @@ use Preflow\Data\Values\DescribesShapes;
  * A field of the type "areas" (since 0.92: the columns block's columns) names its set in
  * "config.layouts" (a key of "area_layout_sets") and its value shape in "value":
  *
- * - "areas_value": an object {"layout": a key of that set's "layouts" or null, "areas": an
- *   "area_map" whose names are those of the set's layouts' areas}.
+ * - "areas_value": A layout and its areas: an object {"layout": a key of the field's area layout
+ *   set or null, "resolved": {"key", "fallback"} or null, "areas": the shown areas, "unplaced":
+ *   stored areas the layout lacks}, each area a list of blocks. Written as {"layout", "areas"}.
+ *   (AreasFieldValue::SHAPES, the text the one description's "values" gives.)
  *
  * An empty map is an object ({}), never a list. "version" grows when a key changes meaning or goes;
  * a new key may be added within a version.

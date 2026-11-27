@@ -6,7 +6,6 @@ namespace Preflow\Blocks\Tests\Describe;
 
 use Preflow\Blocks\Describe\ContentDescription;
 use Preflow\Blocks\Tests\BlocksAppTestCase;
-use Preflow\Data\DataManager;
 use Preflow\Data\Describe\Description;
 use Preflow\Data\Describe\DescriptionContributor;
 use Preflow\Data\TypeRegistry;
@@ -43,7 +42,6 @@ final class ContentContributorTest extends BlocksAppTestCase
     public function test_blocks_sections_and_type_layouts(): void
     {
         $container = $this->app()->container();
-        $container->get(DataManager::class)->fieldKinds()->list('tags');
         $content = $container->get(ContentDescription::class);
         $old = $content->toArray();
         $description = $container->get(Description::class)->toArray();
@@ -70,7 +68,6 @@ final class ContentContributorTest extends BlocksAppTestCase
     public function test_content_description_to_array_is_unchanged(): void
     {
         $container = $this->app()->container();
-        $container->get(DataManager::class)->fieldKinds()->list('tags');
         $container->get(\Preflow\Blocks\Layouts\AreaLayoutSets::class)->add('columns', static fn (): \Preflow\Blocks\Layouts\AreaLayoutSet => new \Preflow\Blocks\Layouts\AreaLayoutSet('columns', [
             new \Preflow\Blocks\Layouts\AreaLayout('full', 'One column', ['c1' => new \Preflow\Blocks\Layouts\AreaDefinition('c1', 'Column 1', width: 1)]),
             new \Preflow\Blocks\Layouts\AreaLayout('2-1', 'Wide and narrow', [

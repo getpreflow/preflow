@@ -206,9 +206,8 @@ final class DescriptionTest extends TestCase
     private function kinds(): FieldKinds
     {
         $kinds = new FieldKinds();
+        // The core alone: tags is a list by the core's own registration, not Folio's.
         CoreValues::register($kinds, static fn (): SymfonyHtmlCleaner => new SymfonyHtmlCleaner());
-        // What Folio registers for its tags field: a list of values.
-        $kinds->list('tags');
 
         return $kinds;
     }
