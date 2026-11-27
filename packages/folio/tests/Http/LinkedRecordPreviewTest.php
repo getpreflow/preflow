@@ -107,8 +107,16 @@ final class LinkedRecordPreviewTest extends TestCase
         $this->assertStringContainsString('Opening hours', $html);
         // A translatable record's other language opens in the drawer too.
         $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello']]);
-        $this->assertStringContainsString('/folio/post/p1/edit?_drawer=1&amp;locale=de"', (string) $this->send('GET', '/folio/post/p1/edit?_drawer=1')->getBody());
-        $this->assertStringContainsString('/folio/post/p1/edit?locale=de"', (string) $this->send('GET', '/folio/post/p1/edit')->getBody(), 'the full page as before');
+        $drawer = (string) $this->send('GET', '/folio/post/p1/edit?_drawer=1')->getBody();
+        $this->assertStringContainsString('/folio/post/p1/edit?_drawer=1&amp;locale=de"', $drawer);
+        // A type with a frontend route: the drawer shows no preview of its own, so nothing in it can open another drawer.
+        $this->assertStringNotContainsString('data-folio-stage', $drawer, 'no nested preview in the drawer');
+        $this->assertStringNotContainsString('data-folio-split', $drawer);
+        $this->assertStringNotContainsString('data-folio-record-type', $drawer);
+        $full = (string) $this->send('GET', '/folio/post/p1/edit')->getBody();
+        $this->assertStringContainsString('/folio/post/p1/edit?locale=de"', $full, 'the full page as before');
+        $this->assertStringContainsString('data-folio-stage', $full, 'with its preview');
+        $this->assertStringContainsString('data-folio-record-type="post" data-folio-record-id="p1"', $full, 'the record it has open: a click on it in the preview opens no drawer (admin.js)');
 
         $saved = $this->send('POST', '/folio/note/n1?_drawer=1', ['name' => 'Open daily', '_locale' => 'en']);
         $body = (string) $saved->getBody();
