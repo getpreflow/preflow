@@ -70,4 +70,11 @@ return [
         'set_layout' => 'De lay-out ":key" hoort niet bij de lay-outs van de set ":set" (:layouts). Kies er een van.',
         'areas_value' => 'Moet een object zijn met "layout" (de sleutel van een lay-out van de set, of null) en "areas" (namen van gebieden, elk met een lijst blokken), zoals {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
+    'record' => [
+        'unknown_field' => 'Het type ":type" heeft geen veld ":field".',
+        'unknown_locale' => 'Het type ":type" heeft geen taal ":locale". Gebruik een van: :locales.',
+        'readonly' => 'Het veld ":field" is alleen-lezen.',
+        'id' => 'De id van dit record is ":id": laat "_id" weg of geef deze id op.',
+        'id_shape' => 'Moet de id van het record als tekst zijn, zoals "j1".',
+    ],
 ];

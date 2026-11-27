@@ -38,6 +38,7 @@ use Preflow\Data\Html\HtmlCleaner;
 use Preflow\Data\Html\SymfonyHtmlCleaner;
 use Preflow\Data\Locales;
 use Preflow\Data\Migration\MigrationRegistry;
+use Preflow\Data\Records\InputPart;
 use Preflow\Data\Records\OutputPart;
 use Preflow\Data\Records\RecordParts;
 use Preflow\Data\TypeDefinition;
@@ -479,6 +480,10 @@ final class BlocksServiceProvider extends ServiceProvider
             $c->bound(ValidatorFactory::class) ? $c->get(ValidatorFactory::class) : new ValidatorFactory(new RuleFactory()),
             $c->get(AreaLayoutSets::class),
         ));
+        // Its part of the one write class (0.93): a page's layout and areas beside its fields.
+        if ($container->bound(RecordParts::class)) {
+            $container->get(RecordParts::class)->input(static fn (): InputPart => $container->get(LayoutInput::class));
+        }
     }
 
     /**

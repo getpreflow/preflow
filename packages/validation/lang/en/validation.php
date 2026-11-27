@@ -12,6 +12,8 @@
 // Page layouts' ("layout"): :key the refused layout key and :allowed the keys allowed, comma-separated;
 // :layout, :slug and :type a pin's layout, page slug and type; :area an area's name, :min and :max its
 // limits, :block the refused block key.
+// A record write's ("record", RecordInput): :type the type's label, :field the key given or the field's label,
+// :locale the refused language and :locales the type's, comma-separated; :id the record's id.
 return [
     'required' => 'This field is required.',
     'email' => 'Must be a valid email address.',
@@ -79,5 +81,12 @@ return [
         'uid_format' => 'The uid ":uid" is not a block uid: a uid is 16 hex digits (0-9, a-f), such as "3f9a1c2b4d5e6f70". Leave "_uid" out to get a fresh one.',
         'set_layout' => 'The layout ":key" is not one of the layouts of the set ":set" (:layouts). Choose one of them.',
         'areas_value' => 'Must be an object with "layout" (the key of one of the set\'s layouts, or null) and "areas" (area names, each with a list of blocks), such as {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
+    ],
+    'record' => [
+        'unknown_field' => 'The type ":type" has no field ":field".',
+        'unknown_locale' => 'The type ":type" has no language ":locale". Use one of: :locales.',
+        'readonly' => 'The field ":field" is read-only.',
+        'id' => 'This record\'s id is ":id": leave out "_id", or give this id.',
+        'id_shape' => 'Must be the record\'s id as text, such as "j1".',
     ],
 ];

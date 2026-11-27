@@ -8,6 +8,7 @@ use Preflow\Blocks\BlockDefinition;
 use Preflow\Blocks\BlockLists;
 use Preflow\Blocks\BlockRegistry;
 use Preflow\Data\FieldVisibility;
+use Preflow\Data\Records\InputPart;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Validation\Message;
@@ -46,9 +47,15 @@ use Preflow\Validation\ValidatorFactory;
  * columns block's columns): its areas are kept, refused and merged by these rules, keyed under the
  * field.
  *
+ * Since 0.93 it is the blocks package's part of the one write class (InputPart, registered on
+ * RecordParts by BlocksServiceProvider): RecordInput hands it "_layout" and "_areas" of a type with
+ * layouts (keys()) beside the type's fields, and an areas field's value through AreasFieldValue.
+ * Write a record through RecordInput rather than calling merge() and mergeField() yourself: the
+ * fields, the languages and the refusals of the rest of the body are then the core's too.
+ *
  * @since 0.92.0
  */
-final readonly class LayoutInput
+final readonly class LayoutInput implements InputPart
 {
     public function __construct(
         private PageLayouts $layouts,
@@ -59,6 +66,17 @@ final readonly class LayoutInput
     ) {}
 
     /**
+     * The keys this part takes for a type (0.93, InputPart): "_layout" and "_areas" for a type with
+     * "layouts", else none (RecordInput then refuses them as no field of the type).
+     *
+     * @return list<string>
+     */
+    public function keys(TypeDefinition $def): array
+    {
+        return $this->layouts->forType($def->key) === null ? [] : [PageLayouts::LAYOUT, PageLayouts::AREAS];
+    }
+
+    /**
      * The record's values after $input.
      *
      * @param array<string, mixed> $stored the record's values before this write (the caller may
@@ -66,6 +84,8 @@ final readonly class LayoutInput
      * @param array<string, mixed> $input  the body: "_layout", "_areas", and the caller's own keys
      * @return array<string, mixed>
      * @throws ValidationException naming the stored key ("_layout", "_areas", "_areas.<name>…")
+     * @deprecated since 0.93.0 as a call of your own (it stays as InputPart::merge(), which RecordInput
+     *             calls): write a record through RecordInput, which merges these keys with this method
      */
     public function merge(TypeDefinition $def, array $stored, array $input): array
     {
@@ -125,6 +145,8 @@ final readonly class LayoutInput
      * @return array{layout: ?string, areas: array<string, list<array<string, mixed>>>}
      * @throws ValidationException naming the field's keys
      * @throws LayoutConfigException when the field is no areas field or its set is not registered
+     * @deprecated since 0.93.0, removed no earlier than 0.95: write the record through RecordInput,
+     *             which merges an areas field's value through its value (AreasFieldValue::merge())
      */
     public function mergeField(TypeFieldDefinition $field, mixed $stored, mixed $input): array
     {

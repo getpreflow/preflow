@@ -70,4 +70,11 @@ return [
         'set_layout' => '레이아웃 ":key"은(는) 세트 ":set"의 레이아웃(:layouts)에 없습니다. 그중 하나를 선택하세요.',
         'areas_value' => '"layout"(세트 레이아웃 중 하나의 키 또는 null)과 "areas"(영역 이름마다 블록 목록)를 가진 객체여야 합니다. 예: {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
+    'record' => [
+        'unknown_field' => '":type" 유형에는 ":field" 필드가 없습니다.',
+        'unknown_locale' => '":type" 유형에는 ":locale" 언어가 없습니다. 다음 중 하나를 사용하세요: :locales.',
+        'readonly' => '":field" 필드는 읽기 전용입니다.',
+        'id' => '이 레코드의 ID는 ":id"입니다. "_id"를 빼거나 이 ID를 지정하세요.',
+        'id_shape' => '레코드의 ID를 텍스트로 지정해야 합니다(예: "j1").',
+    ],
 ];

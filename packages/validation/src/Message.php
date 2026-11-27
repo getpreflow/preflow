@@ -67,11 +67,14 @@ final readonly class Message implements \Stringable
         if ($this->count !== null) {
             $value = (new \Preflow\I18n\PluralResolver())->resolve($value, $this->count);
         }
+        // As the translator replaces them (since 0.93.0): the longest name first (":locales" before
+        // ":locale"), a replacement never read again.
+        $map = [];
         foreach ($this->params as $name => $param) {
-            $value = str_replace(':' . $name, $param, $value);
+            $map[':' . $name] = $param;
         }
 
-        return $value;
+        return $map === [] ? $value : strtr($value, $map);
     }
 
     public function __toString(): string

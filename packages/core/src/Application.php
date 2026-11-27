@@ -1397,14 +1397,19 @@ final class Application
                 $c->get(\Preflow\Data\Describe\DescriptionContributors::class),
             ));
         }
-        // The one read class of every type (0.93) and the packages' output and input parts: the
-        // parts are bound without config/data.php too, so packages always add theirs; reading needs
-        // the DataManager.
+        // The one read class and the one write class of every type (0.93) and the packages' output
+        // and input parts: the parts are bound without config/data.php too, so packages always add
+        // theirs; reading and writing need the DataManager.
         if (class_exists(\Preflow\Data\Records\RecordOutput::class)) {
             $this->container->singleton(\Preflow\Data\Records\RecordParts::class, static fn (): \Preflow\Data\Records\RecordParts => new \Preflow\Data\Records\RecordParts());
             $this->container->singleton(\Preflow\Data\Records\RecordOutput::class, static fn (Container $c): \Preflow\Data\Records\RecordOutput => new \Preflow\Data\Records\RecordOutput(
                 $c->get(\Preflow\Data\DataManager::class),
                 $c->get(\Preflow\Data\Records\RecordParts::class),
+            ));
+            $this->container->singleton(\Preflow\Data\Records\RecordInput::class, static fn (Container $c): \Preflow\Data\Records\RecordInput => new \Preflow\Data\Records\RecordInput(
+                $c->get(\Preflow\Data\DataManager::class),
+                $c->get(\Preflow\Data\Records\RecordParts::class),
+                $c->bound(\Preflow\Validation\ValidatorFactory::class) ? $c->get(\Preflow\Validation\ValidatorFactory::class) : new \Preflow\Validation\ValidatorFactory(new \Preflow\Validation\RuleFactory()),
             ));
         }
 

@@ -70,4 +70,11 @@ return [
         'set_layout' => 'Układ ":key" nie należy do układów zestawu ":set" (:layouts). Wybierz jeden z nich.',
         'areas_value' => 'Musi być obiektem z "layout" (kluczem jednego z układów zestawu lub null) i "areas" (nazwy obszarów, każdy z listą bloków), np. {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
+    'record' => [
+        'unknown_field' => 'Typ ":type" nie ma pola ":field".',
+        'unknown_locale' => 'Typ ":type" nie ma języka ":locale". Użyj jednego z: :locales.',
+        'readonly' => 'Pole ":field" jest tylko do odczytu.',
+        'id' => 'Identyfikator tego rekordu to ":id": pomiń "_id" lub podaj ten identyfikator.',
+        'id_shape' => 'Musi to być identyfikator rekordu jako tekst, np. "j1".',
+    ],
 ];

@@ -8,7 +8,8 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Since 0.93.0: folio 0.93.0 (Folio before 0.93 has its own StoredDate class: its form would not find the core's date
- * rule to put its input rule in its place).
+ * rule to put its input rule in its place); validation 0.93.0 (validation.record.*, the messages of RecordInput's refusals:
+ * an older one would show their keys).
  * Since 0.92.0: validation 0.92.0 (validation.options_from, the message of a select's "options_from" the core checks
  * now; WhenFilled around a select's options); folio 0.92.0 (Folio before 0.92 adds its own select option rules, which
  * the core now runs for every select: each message would show twice).
@@ -31,8 +32,8 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(['preflow/core' => '<0.84.0', 'preflow/validation' => '<0.92.0', 'preflow/folio' => '<0.93.0', 'preflow/publishing' => '<0.72', 'preflow/devtools' => '<0.80'], $composer['conflict'] ?? null);
+        $this->assertSame(['preflow/core' => '<0.84.0', 'preflow/validation' => '<0.93.0', 'preflow/folio' => '<0.93.0', 'preflow/publishing' => '<0.72', 'preflow/devtools' => '<0.80'], $composer['conflict'] ?? null);
         $this->assertSame('^0.84.0 || @dev', $composer['require']['preflow/core'] ?? null);
-        $this->assertSame('^0.92.0 || @dev', $composer['require']['preflow/validation'] ?? null);
+        $this->assertSame('^0.93.0 || @dev', $composer['require']['preflow/validation'] ?? null);
     }
 }

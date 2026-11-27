@@ -74,4 +74,11 @@ return [
         'set_layout' => 'La mise en page « :key » ne fait pas partie des mises en page de l\'ensemble « :set » (:layouts). Choisissez-en une.',
         'areas_value' => 'Doit être un objet avec « layout » (la clé d\'une mise en page de l\'ensemble, ou null) et « areas » (des noms de zones, chacun avec une liste de blocs), par exemple {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
+    'record' => [
+        'unknown_field' => 'Le type ":type" n\'a pas de champ ":field".',
+        'unknown_locale' => 'Le type ":type" n\'a pas de langue ":locale". Utilisez l\'une de celles-ci : :locales.',
+        'readonly' => 'Le champ ":field" est en lecture seule.',
+        'id' => 'L\'identifiant de cet enregistrement est ":id" : omettez "_id" ou indiquez cet identifiant.',
+        'id_shape' => 'Doit être l\'identifiant de l\'enregistrement sous forme de texte, par exemple "j1".',
+    ],
 ];

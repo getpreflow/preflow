@@ -86,6 +86,16 @@ final class ValidationTranslationTest extends TestCase
         $this->assertSame(['min' => '3'], $min->params);
     }
 
+    /** @since 0.93.0 the English text replaces placeholders as the translator does: ":locales" is not ":locale" + "s". */
+    public function test_the_english_text_takes_the_longest_placeholder_first(): void
+    {
+        $message = new Message('validation.record.unknown_locale', ['type' => 'Jobs', 'locale' => 'fr', 'locales' => 'en, de']);
+
+        $this->assertSame('The type "Jobs" has no language "fr". Use one of: en, de.', $message->english());
+        $this->assertSame($message->english(), $message->text(self::translator('en')));
+        $this->assertSame('Must be one of: :min.', (new Message('validation.in', ['values' => ':min', 'min' => '3']))->english(), 'a replacement is not read again');
+    }
+
     public function test_a_custom_rules_own_string_is_kept_with_a_translator(): void
     {
         $rule = new class implements ValidationRule {
