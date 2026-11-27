@@ -2828,6 +2828,13 @@ final class Application
 
         $translator = new \Preflow\I18n\Translator($langDir, $locale, $fallback);
         $this->container->instance(\Preflow\I18n\Translator::class, $translator);
+        // Key-shaped labels of types and fields are translated (0.93); without i18n the declared text stays.
+        if ($this->container->bound(\Preflow\Data\DataManager::class)) {
+            $this->container->get(\Preflow\Data\DataManager::class)->translateLabelsWith(
+                static fn (string $key, string $locale): ?string => $translator->has($key, $locale) ? $translator->get($key, [], $locale) : null,
+                $translator->getFallbackLocale(),
+            );
+        }
         if (class_exists(\Preflow\I18n\TranslationRegistry::class)) {
             $registry = $this->translationRegistry();
             $registry->apply($translator);

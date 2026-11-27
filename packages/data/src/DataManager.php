@@ -65,6 +65,10 @@ final class DataManager
     /** @var (\Closure(): ?TypeLabels)|null */
     private ?\Closure $labels = null;
 
+    /** @var (\Closure(string, string): ?string)|null */
+    private ?\Closure $translateLabels = null;
+    private string $labelFallback = 'en';
+
     private ?DataObserver $observer = null;
 
     private ?VersionFields $versionFields = null;
@@ -601,6 +605,35 @@ final class DataManager
         $labels = $this->labels !== null ? ($this->labels)() : null;
 
         return $labels instanceof FieldLabels ? $labels : null;
+    }
+
+    /**
+     * The names of types and fields for people: the bound TypeLabels (and FieldLabels) where one
+     * is bound, else the schema's declared labels, translated when translateLabelsWith() was given
+     * a translator. Works without an admin package.
+     *
+     * @since 0.93.0
+     */
+    public function labels(): Labels\DataLabels
+    {
+        return new Labels\DataLabels(
+            $this->labels !== null ? ($this->labels)() : null,
+            new Labels\DeclaredLabels($this->typeRegistry, $this->translateLabels, $this->labelFallback),
+        );
+    }
+
+    /**
+     * How a key-shaped label ("site.types.job") is translated: $translate gives the text in the
+     * locale, null for an unknown key; $fallbackLocale is the language a label given per language
+     * falls back to. The application sets it when preflow/i18n is installed.
+     *
+     * @param \Closure(string, string): ?string $translate
+     * @since 0.93.0
+     */
+    public function translateLabelsWith(\Closure $translate, string $fallbackLocale): void
+    {
+        $this->translateLabels = $translate;
+        $this->labelFallback = $fallbackLocale;
     }
 
     /**
