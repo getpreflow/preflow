@@ -56,6 +56,11 @@ return [
             '$token = Contexts::peek()?->get(PreviewGrant::class)?->token();' => 'outside every render there is no preview: a component URL carries no token (the documented default)',
         ],
     ],
+    'blocks/src/BlocksServiceProvider.php' => [
+        'peek' => [
+            "if (Contexts::peek()?->purpose !== Purpose::Preview || \$type === '') {" => 'outside every render nothing is previewed: preview_mark() prints nothing (the documented default)',
+        ],
+    ],
     'auth/src/AuthManager.php' => [
         'peek' => [
             'return Contexts::peek()?->viewer;' => 'outside every render nobody is signed in: user() is null, users() empty (the documented default; Access::can() then denies)',
