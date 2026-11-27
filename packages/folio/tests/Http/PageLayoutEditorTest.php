@@ -11,8 +11,8 @@ use Preflow\Testing\ChecksFrameBalance;
 use Psr\Http\Message\ResponseInterface;
 
 /**
- * The page layout editor in Folio (0.92): the layout picker as the form's first control (or "Layout:
- * Home (fixed)" for a pinned page), the layout's areas as block lists after the type's fields, the
+ * The page layout editor in Folio (0.92): the layout picker as the form's first control (or "Home
+ * (fixed)" under the label for a pinned page), the layout's areas as block lists after the type's fields, the
  * switch and move endpoint POST /folio/_areas (the areas from the posted form, nothing stored), the
  * panel "Not shown in this layout", and the core's refusals shown where the editor works. The
  * forms are posted as a browser posts them: every control of the record form, read from the
@@ -234,7 +234,10 @@ final class PageLayoutEditorTest extends TestCase
 
         $form = $this->html($this->get('/folio/page/r1/edit'));
 
-        $this->assertStringContainsString('Layout: Home (fixed)', $form);
+        $this->assertStringContainsString('<span class="form-label">Layout</span>', $form);
+        $this->assertMatchesRegularExpression('~<p class="folio-layout-fixed"><svg[^>]*>.*?</svg><span>Home \(fixed\)</span></p>~s', $form, 'the fixed line names the layout, not the word "Layout" again (0.92.1)');
+        $picker = substr($form, (int) strpos($form, 'data-areas-picker'), 600);
+        $this->assertSame(1, substr_count($picker, 'Layout'), 'the word once');
         $this->assertStringContainsString('Set by "layouts.pinned" in the type\'s configuration.', $form);
         $this->assertStringNotContainsString('name="_layout"', $form, 'no switch');
         $this->assertStringContainsString('name="_areas[top][_order][]"', $form, 'the pin\'s areas');
@@ -444,9 +447,9 @@ final class PageLayoutEditorTest extends TestCase
     public static function interfaceLanguages(): iterable
     {
         yield 'German' => ['de', ['>Layout</label>', 'Das Layout „gone“ ist nicht mehr verfügbar. Diese Seite erscheint als „Standard“, bis du ein Layout wählst.', 'In diesem Layout nicht angezeigt',
-            'Diese Blöcke bleiben erhalten, aber die Seite zeigt sie nicht. Verschiebe sie in einen Bereich dieses Layouts oder entferne sie.', '<span>Verschieben</span>', 'Verschieben nach', 'Layout: Home (fest)', 'Standard (bis du ein Layout wählst)', 'Festgelegt durch „layouts.pinned“ in der Konfiguration des Typs.', 'Seitenbereiche']];
+            'Diese Blöcke bleiben erhalten, aber die Seite zeigt sie nicht. Verschiebe sie in einen Bereich dieses Layouts oder entferne sie.', '<span>Verschieben</span>', 'Verschieben nach', '<span>Home (fest)</span>', 'Standard (bis du ein Layout wählst)', 'Festgelegt durch „layouts.pinned“ in der Konfiguration des Typs.', 'Seitenbereiche']];
         yield 'French' => ['fr', ['>Mise en page</label>', 'La mise en page « gone » n&#039;est plus disponible. Cette page s&#039;affiche comme « Standard » jusqu&#039;à ce que vous choisissiez une mise en page.', 'Non affiché dans cette mise en page',
-            'Ces blocs sont conservés, mais la page ne les affiche pas. Déplacez-les dans une zone de cette mise en page, ou retirez-les.', '<span>Déplacer</span>', 'Déplacer vers', 'Mise en page : Home (fixe)', 'Standard (jusqu&#039;à ce que vous choisissiez une mise en page)', 'Définie par « layouts.pinned » dans la configuration du type.', 'Zones de la page']];
+            'Ces blocs sont conservés, mais la page ne les affiche pas. Déplacez-les dans une zone de cette mise en page, ou retirez-les.', '<span>Déplacer</span>', 'Déplacer vers', '<span>Home (fixe)</span>', 'Standard (jusqu&#039;à ce que vous choisissiez une mise en page)', 'Définie par « layouts.pinned » dans la configuration du type.', 'Zones de la page']];
     }
 
     /** @param list<string> $texts */

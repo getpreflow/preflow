@@ -538,7 +538,7 @@ return [
     // The page layout editor (0.92): the picker, a pinned page's fixed layout, the panel of blocks a layout does not show.
     'page_layouts' => [
         'label' => 'Mise en page',
-        'fixed' => 'Mise en page : :label (fixe)',
+        'fixed' => ':label (fixe)',
         'fixed_help' => 'Définie par « layouts.pinned » dans la configuration du type.',
         'unavailable' => 'La mise en page « :key » n\'est plus disponible. Cette page s\'affiche comme « :label » jusqu\'à ce que vous choisissiez une mise en page.',
         'fallback_choice' => ':label (jusqu\'à ce que vous choisissiez une mise en page)',
