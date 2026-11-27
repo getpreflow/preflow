@@ -68,8 +68,9 @@ final class FolioText
      * #[BulkAction] labels and confirm texts, a permission's label): when it has the shape of a
      * key ("members-admin.list.state") and the translator has a text for it, that text in the
      * interface language; otherwise the text as it is, so plain English labels stay as they are.
+     *
+     * @param array<string, string|int> $params the key's :name parameters (an area's labelParams)
      */
-    /** @param array<string, string|int> $params the key's :name parameters (an area's labelParams) */
     public static function label(string $text, array $params = []): string
     {
         if (preg_match('/^[a-z][a-z0-9_-]*(\.[a-z0-9_]+)+$/', $text) !== 1) {

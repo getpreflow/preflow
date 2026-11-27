@@ -2638,7 +2638,6 @@ final class FolioServiceProvider extends ServiceProvider
         }
     }
 
-    /** The types' page layouts (0.92): bound in preflow/blocks' boot when there is a type registry. */
     /** The layout editor (0.92): a page's layout picker, its areas and the panel "Not shown in this layout". */
     private static function areasEditor(Container $c, string $prefix): ?\Preflow\Folio\Field\AreasEditor
     {
@@ -2649,6 +2648,7 @@ final class FolioServiceProvider extends ServiceProvider
             : null;
     }
 
+    /** The types' page layouts (0.92): bound in preflow/blocks' boot when there is a type registry. */
     private static function pageLayouts(Container $c): ?\Preflow\Blocks\Layouts\PageLayouts
     {
         return $c->bound(\Preflow\Blocks\Layouts\PageLayouts::class) ? $c->get(\Preflow\Blocks\Layouts\PageLayouts::class) : null;

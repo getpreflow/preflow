@@ -21,8 +21,9 @@ use Preflow\Blocks\Layouts\LayoutConfigException;
  *                     block but the columns block itself) or ['allowed' => ['text', 'image']]
  *
  * The columns are areas c1…cN (never numeric names, so the stored map stays a map in JSON),
- * labelled "block-library.columns.column" with the label parameter n (1…N): "Column 2". A stored key the list no longer has renders with the list's first layout of as many columns, else
- * "full", else the first (AreaLayoutSet::resolve()); the columns it lacks are kept, not shown.
+ * labelled "block-library.columns.column" with the label parameter n (1…N): "Column 2". A stored
+ * key the list no longer has renders with the list's first layout of as many columns, else "full",
+ * else the first (AreaLayoutSet::resolve()); the columns it lacks are kept, not shown.
  *
  * @since 0.92.0
  */

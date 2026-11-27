@@ -44,7 +44,8 @@ return [
 Installing the package registers the `columns` block (its `composer.json` lists it under
 `extra.preflow.blocks`). The provider registers the column layouts the block takes its layouts
 from (the area layout set `columns`) and the texts in English, German and French. A site that
-installs the package but does not list the provider gets a clear boot error:
+installs the package but does not list the provider gets this error when the block registry is
+built:
 
 ```
 Block "columns": field "columns": No package registers the area layout set "columns". The package
