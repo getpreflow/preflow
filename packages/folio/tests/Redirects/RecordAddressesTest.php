@@ -77,7 +77,7 @@ final class RecordAddressesTest extends TestCase
         $catalog = new TypeCatalog($this->dir . '/models');
         $fieldTypes = new FieldTypeRegistry();
         $fieldTypes->register(new StringFieldType());
-        $this->publisher = FolioPublisher::make($this->dm, $catalog, new RecordValidator($fieldTypes, $this->dm));
+        $this->publisher = FolioPublisher::make($this->dm, $catalog, new RecordValidator($this->dm));
         $this->resolver = FrontendResolver::fromCatalog($catalog, $this->dm);
         $this->live = new LiveRecords($this->dm, $this->publisher, $this->resolver);
         $this->entries = new RedirectEntries($this->dm);
@@ -446,7 +446,7 @@ final class RecordAddressesTest extends TestCase
         );
         $catalog = new TypeCatalog($this->dir . '/models');
         $resolver = FrontendResolver::fromCatalog($catalog, $dm);
-        $publisher = FolioPublisher::make($dm, $catalog, new RecordValidator(new FieldTypeRegistry(), $dm));
+        $publisher = FolioPublisher::make($dm, $catalog, new RecordValidator($dm));
         $warnings = [];
         $addresses = new RecordAddresses($dm, new RedirectEntries($dm), $resolver, new LiveRecords($dm, $publisher, $resolver), warn: static function (string $m) use (&$warnings): void {
             $warnings[] = $m;

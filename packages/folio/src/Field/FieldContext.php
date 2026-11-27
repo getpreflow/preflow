@@ -50,6 +50,12 @@ final readonly class FieldContext
          * @var array<string, mixed>|null
          */
         public ?array $values = null,
+        /**
+         * How deep the field sits in blocks: 0 for a record's field, 1 for a field of a block in a
+         * blocks field, and so on (a field holding blocks counts its lists against max_depth from
+         * here). @since 0.92
+         */
+        public int $depth = 0,
     ) {}
 
     /**

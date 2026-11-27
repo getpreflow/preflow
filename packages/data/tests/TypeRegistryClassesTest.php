@@ -121,6 +121,19 @@ final class TypeRegistryClassesTest extends TestCase
         }
     }
 
+    public function test_a_file_setting_an_areas_fields_layouts_is_an_error(): void
+    {
+        // An areas field's "layouts" (0.92) names the set whose areas its value holds: it is schema, the class's.
+        $dir = $this->dirWith('job.json', ['key' => 'job', 'fields' => ['company' => ['layouts' => 'columns']]]);
+
+        try {
+            new TypeRegistry($dir, null, ['job' => Job::class]);
+            $this->fail('accepted "layouts" on a field');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('Model file job.json sets "layouts" on the field "company", but job is defined by ' . Job::class . '; this file may only hold its admin settings.', $e->getMessage());
+        }
+    }
+
     public function test_a_file_with_a_table_is_an_error(): void
     {
         $dir = $this->dirWith('job.json', ['key' => 'job', 'table' => 'jobs']);

@@ -73,6 +73,8 @@ final class FolioRoutes
         $defs = array_merge($defs, [
             ['GET',  $prefix . '/_blocks/{key}/new',   'newBlock', self::BLOCKS],
             ['POST', $prefix . '/_blocks/duplicate',   'duplicate', self::BLOCKS],
+            // A page's areas after a layout switch or a move (0.92): rendered from the posted form, nothing stored.
+            ['POST', $prefix . '/_areas',              'areas', self::BLOCKS],
             ['GET',  $prefix . '/assets',              'index', self::ASSETS],
             ['POST', $prefix . '/assets',              'upload', self::ASSETS],
             ['GET',  $prefix . '/assets/bin',          'bin', self::ASSETS], // before assets/{id}

@@ -73,9 +73,13 @@ final class PurposeFieldType implements FieldType, \Preflow\Folio\Field\HasColum
         return $this->select->renderFrontend($value, $this->config($config));
     }
 
+    /**
+     * One of the purposes: the core's select check over them (a "codes_purpose" field is no
+     * "select" to the core, so Folio brings this rule to it through FieldKinds).
+     */
     public function rules(array $config): array
     {
-        return $this->select->rules($this->config($config));
+        return \Preflow\Data\Validation\SelectRules::of(new \Preflow\Data\TypeFieldDefinition('purpose', 'select', config: $this->config($config)), []);
     }
 
     public function assets(): array

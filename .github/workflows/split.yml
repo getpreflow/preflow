@@ -35,6 +35,7 @@ jobs:
           - { local: 'packages/rbac', remote: 'rbac' }
           - { local: 'packages/ai', remote: 'ai' }
           - { local: 'packages/blocks', remote: 'blocks' }
+          - { local: 'packages/block-library', remote: 'block-library' }
           - { local: 'packages/codes', remote: 'codes' }
           - { local: 'packages/fields', remote: 'fields' }
           - { local: 'packages/media', remote: 'media' }

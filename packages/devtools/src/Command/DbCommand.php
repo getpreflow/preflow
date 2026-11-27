@@ -19,7 +19,8 @@ use Preflow\Data\Schema\TextRuleConversion;
  *
  *   db:check    Maintenance::check(): every problem found, exit 1 when there is one; then the
  *               MaintenanceReport lines of a store that has them (MySQL: CHECK TABLE is the check,
- *               a collation report and what is not applicable follow); then, as
+ *               a collation report and what is not applicable follow); then the registered
+ *               warnings (MigrationRegistry::warning(), since 0.92: "warning: [name] line"); then, as
  *               warnings, the text columns of Preflow's tables that compare neither by the text
  *               rule nor exactly (TextRuleConversion::unconverted())
  *   db:vacuum   Maintenance::compact()
@@ -98,7 +99,7 @@ final class DbCommand implements CommandInterface
             [$storage, $driver] = $this->storage($dm, $capability, $storage);
 
             return match ($this->name) {
-                'db:check' => $this->check($storage, $driver, $this->collations($app, $dm)),
+                'db:check' => $this->check($storage, $driver, $this->collations($app, $dm), $this->warnings($app)),
                 'db:vacuum' => $this->vacuum($storage, $driver),
                 'db:dump' => $this->dump($storage, $driver, $file),
                 'db:restore' => $this->restore($storage, $driver, $file),
@@ -130,8 +131,26 @@ final class DbCommand implements CommandInterface
         return $container->get(TextRuleConversion::class);
     }
 
-    /** Text columns that compare neither by the rule nor exactly are listed as warnings: they do not fail the check. */
-    private function check(string $storage, Maintenance $driver, ?TextRuleConversion $collations): int
+    /**
+     * What the registered warnings say (MigrationRegistry::warning()), by name.
+     *
+     * @return array<string, list<string>>
+     */
+    private function warnings(Application $app): array
+    {
+        $container = $app->container();
+
+        return $container->bound(MigrationRegistry::class)
+            ? MigrationRegistry::linesOf($container->get(MigrationRegistry::class)->warnings())
+            : [];
+    }
+
+    /**
+     * Text columns that compare neither by the rule nor exactly are listed as warnings: they do not fail the check.
+     *
+     * @param array<string, list<string>> $warnings
+     */
+    private function check(string $storage, Maintenance $driver, ?TextRuleConversion $collations, array $warnings = []): int
     {
         $problems = $driver->check();
         foreach ($problems as $problem) {
@@ -146,6 +165,11 @@ final class DbCommand implements CommandInterface
             $this->say("[{$storage}] {$warning}");
         }
         $this->say($problems === [] ? "[{$storage}] No problems found." : "[{$storage}] " . count($problems) . ' problem(s) found.');
+        foreach ($warnings as $name => $lines) {
+            foreach ($lines as $line) {
+                $this->say("warning: [{$name}] {$line}"); // MigrationRegistry::warning() (0.92): never fails the check
+            }
+        }
 
         return $problems === [] ? 0 : 1;
     }

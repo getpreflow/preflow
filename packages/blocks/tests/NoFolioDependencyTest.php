@@ -23,11 +23,11 @@ final class NoFolioDependencyTest extends TestCase
         $this->assertGreaterThan(0, $checked);
     }
 
-    public function test_composer_requires_core_components_data_and_view_only(): void
+    public function test_composer_requires_core_components_data_validation_and_view_only(): void
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(['php', 'preflow/components', 'preflow/core', 'preflow/data', 'preflow/view'], array_keys($composer['require']));
+        $this->assertSame(['php', 'preflow/components', 'preflow/core', 'preflow/data', 'preflow/validation', 'preflow/view'], array_keys($composer['require']));
         $this->assertArrayNotHasKey('preflow/folio', $composer['suggest'] ?? []);
         $this->assertArrayNotHasKey('extra', $composer);
     }

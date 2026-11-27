@@ -36,8 +36,10 @@ final class RecordWriters
         ?RecordValidator $validator = null,
         ?Customizations $customizations = null,
     ): array {
+        // Folio's field rules in the data layer, as the provider registers them at boot.
+        FolioRules::register($fields, $dm);
         $hooks = $customizations !== null ? new FolioSaveHooks($customizations) : new NoSaveHooks();
-        $checks = new FolioRecordChecks($validator ?? new RecordValidator($fields, $dm, $frontend));
+        $checks = new FolioRecordChecks($validator ?? new RecordValidator($dm, $frontend));
 
         return [
             new RecordWriter($dm, $publisher, $checks, $hooks, new FolioRecordTypes($catalog)),

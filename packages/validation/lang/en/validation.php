@@ -6,8 +6,12 @@
 // in its own lang/en/validation.php, and adds a language this package does not ship with
 // lang/{locale}/validation.php. A language without a text falls back to the site's fallback
 // language, then English.
-// :min, :max, :step are the rule's numbers; :values the allowed values, comma-separated; :kinds and
+// :min, :max, :step are the rule's numbers; :values the allowed values, comma-separated; :field (a
+// select's "options_from") the label of the field its choices come from; :kinds and
 // :types (a link's) the allowed link kinds and record types, comma-separated; :refused the refused type; :values (a colour's palette) the colours offered; :value and :zone (a date-time that does not exist in a zone), :example (a date range), :start and :end (a range's ends); :providers the video hosts offered and :host the refused one (an embed's); :count and :max (a table's columns or rows).
+// Page layouts' ("layout"): :key the refused layout key and :allowed the keys allowed, comma-separated;
+// :layout, :slug and :type a pin's layout, page slug and type; :area an area's name, :min and :max its
+// limits, :block the refused block key.
 return [
     'required' => 'This field is required.',
     'email' => 'Must be a valid email address.',
@@ -25,6 +29,7 @@ return [
     'between' => 'Must be between :min and :max.',
     'step' => 'Must be a multiple of :step.',
     'in' => 'Must be one of: :values.',
+    'options_from' => 'No choices yet: add values to :field first.',
     'regex' => 'Format is invalid.',
     'slug' => [
         'segment' => 'Only lowercase letters a-z, digits and single hyphens between them, e.g. "about-us".',
@@ -57,5 +62,22 @@ return [
         'target' => 'Choose or enter what the link points to.',
         'type' => 'This link cannot point to a record of type ":refused"; choose one of: :types.',
         'url' => 'Must be a web address starting with https:// or http://, or a path on this site starting with /.',
+    ],
+    'layout' => [
+        'choice' => 'The layout ":key" is not one of the layouts this type allows (:allowed). Choose one of them.',
+        'pinned' => 'This page is pinned to the layout ":layout" by the entry ":slug" of "layouts.pinned" in the type ":type". Change or remove that entry first, then rename the page.',
+        'area_max' => 'The area ":area" takes at most :max blocks.',
+        'area_min' => 'The area ":area" takes at least :min blocks.',
+        'area_block' => 'The area ":area" does not take ":block" blocks. Move it to another area or remove it.',
+        'none' => 'The type ":type" has no layouts; leave out "_layout" and "_areas".',
+        'key' => 'Must be the key of a layout, such as "standard", or null for the type\'s default.',
+        'areas' => 'Must be an object of area names, each with a list of blocks, such as {"main": [{"_block": "text"}]}.',
+        'block' => 'Must be a block: an object whose "_block" is the key of its block type, such as {"_block": "text"}.',
+        'unknown_block' => 'No block has the key ":block". Use the key of one of the site\'s blocks: :blocks.',
+        'unknown_area' => 'The layout ":layout" has no area ":name". Use one of: :areas.',
+        'uid_twice' => 'The uid ":uid" is given to more than one block. Give each block its own "_uid", or leave it out for a new one.',
+        'uid_format' => 'The uid ":uid" is not a block uid: a uid is 16 hex digits (0-9, a-f), such as "3f9a1c2b4d5e6f70". Leave "_uid" out to get a fresh one.',
+        'set_layout' => 'The layout ":key" is not one of the layouts of the set ":set" (:layouts). Choose one of them.',
+        'areas_value' => 'Must be an object with "layout" (the key of one of the set\'s layouts, or null) and "areas" (area names, each with a list of blocks), such as {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
 ];

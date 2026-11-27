@@ -70,6 +70,9 @@
         <testsuite name="Blocks">
             <directory>packages/blocks/tests</directory>
         </testsuite>
+        <testsuite name="BlockLibrary">
+            <directory>packages/block-library/tests</directory>
+        </testsuite>
         <testsuite name="Codes">
             <directory>packages/codes/tests</directory>
         </testsuite>
@@ -118,6 +121,7 @@
             <directory>packages/rbac/src</directory>
             <directory>packages/ai/src</directory>
             <directory>packages/blocks/src</directory>
+            <directory>packages/block-library/src</directory>
             <directory>packages/codes/src</directory>
             <directory>packages/fields/src</directory>
             <directory>packages/media/src</directory>

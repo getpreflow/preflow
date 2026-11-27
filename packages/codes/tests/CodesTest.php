@@ -559,7 +559,8 @@ final class CodesTest extends TestCase
         $type = $c->get(\Preflow\Folio\Field\FieldTypeRegistry::class)->get($field->type);
 
         $this->assertSame('codes_purpose', $type->key());
-        $this->assertSame(['in:members.book,forcemap.round'], $type->rules($field->config));
+        // The core's select check over the purposes (0.92: an empty choice passes, "required" judges it).
+        $this->assertEquals([new \Preflow\Validation\Rules\WhenFilled(new \Preflow\Validation\Rules\InList(['members.book', 'forcemap.round']))], $type->rules($field->config));
         $html = $type->renderEditor(new \Preflow\Folio\Field\FieldContext(name: 'purpose', label: 'Purpose', value: 'members.book', config: $field->config));
         $this->assertStringContainsString('Book code', $html);
         $this->assertStringContainsString('Force Map round', $html);

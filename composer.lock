@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "27553e6afd04dff8d3807d1e0c6bc68a",
+    "content-hash": "e4de44d3e602a3709711c5d4d6448d22",
     "packages": [
         {
             "name": "matthiasmullie/minify",
@@ -3116,7 +3116,7 @@
         },
         {
             "name": "preflow/ai",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/ai",
@@ -3178,7 +3178,7 @@
         },
         {
             "name": "preflow/auth",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/auth",
@@ -3220,7 +3220,7 @@
         },
         {
             "name": "preflow/blade",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/blade",
@@ -3263,29 +3263,93 @@
             }
         },
         {
+            "name": "preflow/block-library",
+            "version": "dev-topic/folio-breadth-r2",
+            "dist": {
+                "type": "path",
+                "url": "packages/block-library",
+                "reference": "1a23a2cb10503e7642dd1932767311300862945a"
+            },
+            "require": {
+                "php": ">=8.4",
+                "preflow/blocks": "^0.92.0 || @dev",
+                "preflow/components": "^0.91.0 || @dev",
+                "preflow/core": "^0.91.0 || @dev",
+                "preflow/i18n": "^0.91.0 || @dev",
+                "preflow/view": "^0.91.0 || @dev"
+            },
+            "conflict": {
+                "preflow/blocks": "<0.92.0",
+                "preflow/components": "<0.91.0",
+                "preflow/core": "<0.91.0",
+                "preflow/i18n": "<0.91.0",
+                "preflow/view": "<0.91.0"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^11.0",
+                "preflow/blade": "^0.91.0 || @dev",
+                "preflow/twig": "^0.91.0 || @dev"
+            },
+            "type": "library",
+            "extra": {
+                "preflow": {
+                    "blocks": [
+                        "Preflow\\BlockLibrary\\Columns\\Columns"
+                    ],
+                    "translations": {
+                        "block-library": {
+                            "path": "lang",
+                            "scope": "public"
+                        }
+                    }
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Preflow\\BlockLibrary\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "Preflow\\BlockLibrary\\Tests\\": "tests/"
+                }
+            },
+            "license": [
+                "MIT"
+            ],
+            "description": "Preflow block library — ready-made blocks a site switches on and restyles: columns (a column layout from a site-defined list)",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
             "name": "preflow/blocks",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/blocks",
-                "reference": "91bbb8a6f03c4d3cc036aa9b538b967360b54cec"
+                "reference": "ede95a7213d81c729d3f2b607f61552685fba704"
             },
             "require": {
                 "php": ">=8.4",
                 "preflow/components": "^0.70 || @dev",
                 "preflow/core": "^0.81.0 || @dev",
-                "preflow/data": "^0.91.0 || @dev",
+                "preflow/data": "^0.92.0 || @dev",
+                "preflow/validation": "^0.92.0 || @dev",
                 "preflow/view": "^0.70 || @dev"
             },
             "conflict": {
                 "preflow/components": "<0.70",
                 "preflow/core": "<0.81.0",
-                "preflow/data": "<0.91.0",
-                "preflow/folio": "<0.91.0",
+                "preflow/data": "<0.92.0",
+                "preflow/folio": "<0.92.0",
+                "preflow/validation": "<0.92.0",
                 "preflow/view": "<0.70"
             },
             "require-dev": {
                 "phpunit/phpunit": "^11.0",
+                "preflow/testing": "^0.62 || @dev",
                 "psr/log": "^3.0"
             },
             "suggest": {
@@ -3313,7 +3377,7 @@
         },
         {
             "name": "preflow/codes",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/codes",
@@ -3355,7 +3419,7 @@
         },
         {
             "name": "preflow/components",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/components",
@@ -3395,7 +3459,7 @@
         },
         {
             "name": "preflow/core",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/core",
@@ -3450,11 +3514,11 @@
         },
         {
             "name": "preflow/data",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/data",
-                "reference": "aa0b309a3fbf9c58c41014f268ca83efc47c89a3"
+                "reference": "d070f83550c1f23f3f5b2dc88ff306032d0cbad7"
             },
             "require": {
                 "ext-intl": "*",
@@ -3462,14 +3526,14 @@
                 "ext-pdo_sqlite": "*",
                 "php": ">=8.4",
                 "preflow/core": "^0.84.0 || @dev",
-                "preflow/validation": "^0.52 || @dev"
+                "preflow/validation": "^0.92.0 || @dev"
             },
             "conflict": {
                 "preflow/core": "<0.84.0",
                 "preflow/devtools": "<0.80",
-                "preflow/folio": "<0.67",
+                "preflow/folio": "<0.92.0",
                 "preflow/publishing": "<0.72",
-                "preflow/validation": "<0.52"
+                "preflow/validation": "<0.92.0"
             },
             "require-dev": {
                 "phpunit/phpunit": "^11.0",
@@ -3497,7 +3561,7 @@
         },
         {
             "name": "preflow/devtools",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/devtools",
@@ -3545,11 +3609,11 @@
         },
         {
             "name": "preflow/fields",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/fields",
-                "reference": "639c5294e0bbd68610175fac262a390188b574a6"
+                "reference": "e65552ff93e2fa4ec7be6f8666540e24eb8f0e21"
             },
             "require": {
                 "php": ">=8.4",
@@ -3587,7 +3651,7 @@
             "license": [
                 "MIT"
             ],
-            "description": "Preflow fields — field types as core values: parsing, checks, storage and template helpers (the link field first)",
+            "description": "Preflow fields — field types as core values: parsing, checks, storage and template helpers (link, email, phone, date and time, colour, video embed, table, code, JSON, location)",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -3595,20 +3659,20 @@
         },
         {
             "name": "preflow/folio",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/folio",
-                "reference": "bc31a3fdfcb7173a06f96c61c92dbf8541974f4e"
+                "reference": "b188ac3c28a51a666b327435e2ea41e19f68c1f1"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
                 "php": ">=8.4",
                 "preflow/auth": "^0.83.0 || @dev",
-                "preflow/blocks": "^0.91.0 || @dev",
+                "preflow/blocks": "^0.92.0 || @dev",
                 "preflow/components": "^0.1 || @dev",
                 "preflow/core": "^0.82.0 || @dev",
-                "preflow/data": "^0.91.0 || @dev",
+                "preflow/data": "^0.92.0 || @dev",
                 "preflow/devtools": "^0.85.0 || @dev",
                 "preflow/fields": "^0.91.0 || @dev",
                 "preflow/form": "^0.75 || @dev",
@@ -3626,10 +3690,10 @@
             "conflict": {
                 "preflow/ai": "<0.78",
                 "preflow/auth": "<0.83.0",
-                "preflow/blocks": "<0.91.0",
+                "preflow/blocks": "<0.92.0",
                 "preflow/codes": "<0.68",
                 "preflow/core": "<0.82.0",
-                "preflow/data": "<0.91.0",
+                "preflow/data": "<0.92.0",
                 "preflow/devtools": "<0.85.0",
                 "preflow/fields": "<0.91.0",
                 "preflow/form": "<0.75",
@@ -3647,7 +3711,8 @@
             },
             "require-dev": {
                 "phpunit/phpunit": "^11.0",
-                "preflow/ai": "^0.78 || @dev"
+                "preflow/ai": "^0.78 || @dev",
+                "preflow/block-library": "^0.92.0 || @dev"
             },
             "suggest": {
                 "openspout/openspout": "^4 — Excel export of admin lists (the Export button shows once it is installed)",
@@ -3721,7 +3786,7 @@
         },
         {
             "name": "preflow/form",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/form",
@@ -3765,7 +3830,7 @@
         },
         {
             "name": "preflow/htmx",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/htmx",
@@ -3810,7 +3875,7 @@
         },
         {
             "name": "preflow/i18n",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/i18n",
@@ -3867,7 +3932,7 @@
         },
         {
             "name": "preflow/media",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/media",
@@ -3938,7 +4003,7 @@
         },
         {
             "name": "preflow/members",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/members",
@@ -4009,7 +4074,7 @@
         },
         {
             "name": "preflow/notify",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/notify",
@@ -4058,7 +4123,7 @@
         },
         {
             "name": "preflow/publishing",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/publishing",
@@ -4124,7 +4189,7 @@
         },
         {
             "name": "preflow/rbac",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/rbac",
@@ -4208,7 +4273,7 @@
         },
         {
             "name": "preflow/roles",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/roles",
@@ -4248,7 +4313,7 @@
         },
         {
             "name": "preflow/routing",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/routing",
@@ -4286,7 +4351,7 @@
         },
         {
             "name": "preflow/testing",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/testing",
@@ -4335,7 +4400,7 @@
         },
         {
             "name": "preflow/twig",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/twig",
@@ -4378,7 +4443,7 @@
         },
         {
             "name": "preflow/validation",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/validation",
@@ -4433,7 +4498,7 @@
         },
         {
             "name": "preflow/view",
-            "version": "dev-integration/0.91.0",
+            "version": "dev-topic/folio-breadth-r2",
             "dist": {
                 "type": "path",
                 "url": "packages/view",
@@ -8242,6 +8307,7 @@
         "preflow/ai": 20,
         "preflow/auth": 20,
         "preflow/blade": 20,
+        "preflow/block-library": 20,
         "preflow/blocks": 20,
         "preflow/codes": 20,
         "preflow/components": 20,

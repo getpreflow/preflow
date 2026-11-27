@@ -269,6 +269,8 @@ return [
         'changes' => ':count Änderung|:count Änderungen',
         'change_locales' => 'Sprachen',
         'change_seo' => 'SEO & Teilen',
+        'change_layout' => 'Layout',
+        'change_areas' => 'Seitenbereiche',
         'scheduled_for' => 'Geplant zur Veröffentlichung am :date.',
         'address_redirect_hint' => 'Beim Umbenennen leitet die alte Adresse weiter.',
         'languages_editing' => 'in Bearbeitung',
@@ -532,6 +534,18 @@ return [
         'expand_all' => 'Alle aufklappen',
         'search' => 'Block hinzufügen – zum Filtern tippen :count',
         'no_match' => 'Kein Block passt zu „:query“.',
+    ],
+    // The page layout editor (0.92): the picker, a pinned page's fixed layout, the panel of blocks a layout does not show.
+    'page_layouts' => [
+        'label' => 'Layout',
+        'fixed' => 'Layout: :label (fest)',
+        'fixed_help' => 'Festgelegt durch „layouts.pinned“ in der Konfiguration des Typs.',
+        'unavailable' => 'Das Layout „:key“ ist nicht mehr verfügbar. Diese Seite erscheint als „:label“, bis du ein Layout wählst.',
+        'fallback_choice' => ':label (bis du ein Layout wählst)',
+        'not_shown' => 'In diesem Layout nicht angezeigt',
+        'not_shown_help' => 'Diese Blöcke bleiben erhalten, aber die Seite zeigt sie nicht. Verschiebe sie in einen Bereich dieses Layouts oder entferne sie.',
+        'move_to' => 'Verschieben nach',
+        'move' => 'Verschieben',
     ],
     'fields' => [
         'filter_label' => ':label filtern',

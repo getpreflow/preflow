@@ -150,7 +150,7 @@ final class RecordDeleterTest extends TestCase
         $this->catalog = new TypeCatalog($this->dir . '/models');
         $fieldTypes = new FieldTypeRegistry();
         $fieldTypes->register(new StringFieldType());
-        $this->publisher = FolioPublisher::make($this->dm, $this->catalog, new RecordValidator($fieldTypes, $this->dm));
+        $this->publisher = FolioPublisher::make($this->dm, $this->catalog, new RecordValidator($this->dm));
         $this->resolver = FrontendResolver::fromCatalog($this->catalog, $this->dm);
         $this->entries = new RedirectEntries($this->dm);
         $live = new LiveRecords($this->dm, $this->publisher, $this->resolver);

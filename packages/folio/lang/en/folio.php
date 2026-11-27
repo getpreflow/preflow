@@ -281,6 +281,8 @@ return [
         'changes' => ':count change|:count changes',
         'change_locales' => 'Languages',
         'change_seo' => 'SEO & sharing',
+        'change_layout' => 'Layout',
+        'change_areas' => 'Page areas',
         'scheduled_for' => 'Scheduled to publish on :date.',
         'address_redirect_hint' => 'Renaming keeps a redirect from the old address.',
         'languages_editing' => 'editing',
@@ -547,6 +549,18 @@ return [
         'expand_all' => 'Expand all',
         'search' => 'Add a block — type to filter :count',
         'no_match' => 'No block matches “:query”.',
+    ],
+    // The page layout editor (0.92): the picker, a pinned page's fixed layout, the panel of blocks a layout does not show.
+    'page_layouts' => [
+        'label' => 'Layout',
+        'fixed' => 'Layout: :label (fixed)',
+        'fixed_help' => 'Set by "layouts.pinned" in the type\'s configuration.',
+        'unavailable' => 'The layout ":key" is no longer available. This page shows as ":label" until you choose a layout.',
+        'fallback_choice' => ':label (until you choose a layout)',
+        'not_shown' => 'Not shown in this layout',
+        'not_shown_help' => 'These blocks are kept, but the page does not show them. Move them to an area of this layout, or remove them.',
+        'move_to' => 'Move to',
+        'move' => 'Move',
     ],
     // Field editors.
     'fields' => [

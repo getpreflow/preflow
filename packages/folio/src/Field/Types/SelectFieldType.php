@@ -8,8 +8,10 @@ use Preflow\Folio\Field\FieldContext;
 
 /**
  * One choice from "options" (a value => label map, or a plain list where the value is the label;
- * a label may be a map per language). Adds an in: rule automatically. A stored value that is no
- * longer an option stays visible (and selected) so editing never silently drops it.
+ * a label may be a map per language). That the value is one of the options is checked by the core
+ * on every write (Preflow\Data\Validation\SelectRules, since 0.92), so rules(), recordRules() and
+ * blockRules() give no rule of their own. A stored value that is no longer an option stays visible
+ * (and selected) so editing never silently drops it.
  *
  * How it shows (board LibFields, 0.75): up to SEGMENTED_MAX options of a choice that is required or
  * has a "default" are a segmented radiogroup (an option under "", a placeholder, is no segment); "display": "cards" shows radio cards with a
@@ -22,12 +24,12 @@ use Preflow\Folio\Field\FieldContext;
  * list; else a JSON-text list or one text), each value its own label. While the source has no
  * values the editor shows a note naming it ("options_from_label", which the admin sets to the
  * source's label) instead of an empty control. A save accepts only one of the source's values as
- * submitted in the same save (OptionsFrom, through recordRules()); an empty value passes unless
- * the field is required.
+ * submitted in the same save (the core's OptionsFrom); an empty value passes unless the field is
+ * required.
  * A name that is not another field of the type, both "options" and "options_from", "display":
  * "cards" with it, and such a select in "list.filters" or "list.bulk" are boot errors (TypeCatalog).
  * In a block (since 0.90) the source is another field of the same block: the editor gets that
- * block's values, a save checks the block's submitted ones (blockRules()), and the same mistakes
+ * block's values, a save checks the block's submitted ones (the core's BlockValueChecks), and the same mistakes
  * are errors when the blocks load (BlockRegistry). A "blocks" or "matrix" field as the source is
  * refused (since 0.90), in a type and in a block: it holds entries, not values.
  */
@@ -109,16 +111,11 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
     }
 
     /**
-     * Without the record's type (rules()): the source is read as sourceValues() reads it.
+     * None: the options are checked by the core (SelectRules) on every write, since 0.92.
      */
     public function rules(array $config): array
     {
-        if (($source = self::sourceField($config)) !== null) {
-            return [new OptionsFrom($source)];
-        }
-        $values = array_keys(self::options($config));
-
-        return $values === [] ? [] : ['in:' . implode(',', array_map('strval', $values))];
+        return [];
     }
 
     /** A required choice (or one with a default) of up to this many options is segmented. @since 0.75 */
@@ -185,23 +182,7 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
      */
     public static function sourceValues(mixed $value): array
     {
-        if (is_string($value)) {
-            $trimmed = trim($value);
-            $decoded = str_starts_with($trimmed, '[') ? json_decode($trimmed, true) : null;
-            $value = is_array($decoded) ? $decoded : ($trimmed === '' ? [] : [$trimmed]);
-        }
-        if (!is_array($value)) {
-            return [];
-        }
-        $out = [];
-        foreach ($value as $entry) {
-            $entry = is_scalar($entry) ? trim((string) $entry) : '';
-            if ($entry !== '' && !in_array($entry, $out, true)) {
-                $out[] = $entry;
-            }
-        }
-
-        return $out;
+        return \Preflow\Data\Validation\OptionsFrom::values($value);
     }
 
     /**
@@ -226,39 +207,24 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
     }
 
     /**
-     * With the record's type (RecordValidator): the source is read through its own field type, and
-     * a refusal with no source values names it.
+     * None: the core checks "options_from" against the record's values (SelectRules), since 0.92.
      *
      * @since 0.89
      */
     public function recordRules(array $config, \Preflow\Data\TypeDefinition $type, \Preflow\Folio\Field\FieldTypeRegistry $fieldTypes): array
     {
-        $source = self::sourceField($config);
-        $sourceDef = $source !== null ? ($type->fields[$source] ?? null) : null;
-        if ($source === null || $sourceDef === null) {
-            return $this->rules($config);
-        }
-        $label = \Preflow\Folio\Content\DisplayLabels::pick($sourceDef->labels ?: $sourceDef->label);
-
-        return [new OptionsFrom($source, $fieldTypes->get($sourceDef->type), $label)];
+        return [];
     }
 
     /**
-     * Inside a block (BlocksFieldType::validateBlocks(), the block as the data): the source is a field
-     * of the same block, read through its own field type; a refusal with no source values names it.
+     * None: the core checks a block's select against the same block's values (BlockValueChecks),
+     * since 0.92.
      *
      * @since 0.90.0
      */
     public function blockRules(array $config, \Preflow\Blocks\BlockDefinition $block, \Preflow\Folio\Field\FieldTypeRegistry $fieldTypes): array
     {
-        $source = self::sourceField($config);
-        $sourceDef = $source !== null ? ($block->fields[$source] ?? null) : null;
-        if ($source === null || $sourceDef === null) {
-            return $this->rules($config);
-        }
-        $label = $sourceDef->label !== null ? \Preflow\Folio\FolioText::label($sourceDef->label) : null;
-
-        return [new OptionsFrom($source, $fieldTypes->get($sourceDef->type), $label)];
+        return [];
     }
 
     /** @return array<string, string> value => label: the record's values of the "options_from" field (none on a new record) */

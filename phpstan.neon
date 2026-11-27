@@ -10,6 +10,7 @@ parameters:
         - packages/ai/src
         - packages/auth/src
         - packages/blade/src
+        - packages/block-library/src
         - packages/blocks/src
         - packages/codes/src
         - packages/components/src

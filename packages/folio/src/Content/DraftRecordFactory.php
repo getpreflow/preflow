@@ -4,17 +4,23 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Content;
 
+use Preflow\Blocks\Layouts\LayoutInput;
+use Preflow\Blocks\Layouts\PageLayouts;
+use Preflow\Blocks\Layouts\Placement;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\FieldVisibility;
 use Preflow\Data\LocaleValue;
 use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Field\BuildContext;
+use Preflow\Folio\Field\FieldType;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\StructuredFieldType;
 use Preflow\Folio\Field\HandlesUpload;
 use Preflow\Folio\Field\Types\AssetFieldType;
+use Preflow\Folio\Field\Types\BlocksFieldType;
 use Preflow\Folio\Field\Types\EnvFieldType;
 use Preflow\Folio\Seo\SeoSection;
+use Preflow\Validation\ValidationException;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\UploadedFileInterface;
 
@@ -38,17 +44,36 @@ use Psr\Http\Message\UploadedFileInterface;
  * (FieldVisibility::keepStored(); the editor disables its input, but a post can carry one). Which
  * fields are hidden is decided from the posted source values before any upload is stored, so a
  * file posted for a hidden field is never written.
+ *
+ * A type with page layouts (0.92) posts its layout section with the marker "_areas_submitted":
+ * "_layout" (the chosen layout; a pinned page posts none: its stored key stays, the pin decides)
+ * and "_areas[<area>]", each area as a blocks field posts its blocks (BlocksFieldType::buildValue(),
+ * an "_order" without blocks empties it; an empty area the page does not store is no write). The built areas and the layout go to the core's LayoutInput::merge(), as an API's write
+ * does: areas the form did not post keep their blocks, an area neither the layout has nor the
+ * page stores is refused. Without the marker the stored layout and areas stay as they are. What
+ * the core refused is in buildErrors(), keyed as the core keys it ("_areas.<area>…"); the record
+ * then holds the layout and areas as posted (over the stored ones) for the form to show again, and
+ * must not be saved: every save path checks buildErrors() first.
  */
 final class DraftRecordFactory
 {
     /** @var array<string, list<string>> */
     private array $uploadErrors = [];
 
+    /** @var array<string, list<string>> */
+    private array $layoutErrors = [];
+
     private readonly TranslationStatus $translations;
 
+    /**
+     * @param PageLayouts|null $layouts     the types' page layouts (0.92); without, no type has any
+     * @param LayoutInput|null $layoutInput the core's merge of a posted layout and areas (bound with $layouts)
+     */
     public function __construct(
         private readonly FieldTypeRegistry $fieldTypes,
         ?TranslationStatus $translations = null,
+        private readonly ?PageLayouts $layouts = null,
+        private readonly ?LayoutInput $layoutInput = null,
     ) {
         $this->translations = $translations ?? new TranslationStatus($fieldTypes);
     }
@@ -61,6 +86,19 @@ final class DraftRecordFactory
     public function uploadErrors(): array
     {
         return $this->uploadErrors;
+    }
+
+    /**
+     * What the last build() could not take, keyed as form errors: the uploads it could not store
+     * (uploadErrors()) and, for a type with page layouts, the posted layout and areas the core
+     * refused (LayoutInput::merge()).
+     *
+     * @return array<string, list<string>>
+     * @since 0.92.0
+     */
+    public function buildErrors(): array
+    {
+        return $this->uploadErrors + $this->layoutErrors;
     }
 
     /**
@@ -79,6 +117,7 @@ final class DraftRecordFactory
         $translatable = array_flip($typeDef->translatableFields());
         $submitted = (array) $request->getParsedBody();
         $this->uploadErrors = [];
+        $this->layoutErrors = [];
         $assetType = $this->fieldTypes->has('asset') ? $this->fieldTypes->get('asset') : null;
         if ($assetType instanceof AssetFieldType) {
             $assetType->drainErrors(); // nothing left over from an earlier build
@@ -166,6 +205,10 @@ final class DraftRecordFactory
             $data['_locales'] = $this->locales($typeDef, $submitted, $existing);
         }
 
+        if (isset($submitted['_areas_submitted'])) {
+            $data = $this->layout($typeDef, $submitted, $data, is_array($uploads[PageLayouts::AREAS] ?? null) ? $uploads[PageLayouts::AREAS] : [], new BuildContext($locales, $locale, $writeUploads), $assetType);
+        }
+
         $data = FieldVisibility::keepStored($typeDef, $data, $existing);
         $data[$typeDef->idField] = $existing[$typeDef->idField] ?? null;
 
@@ -176,6 +219,68 @@ final class DraftRecordFactory
             DynamicRecord::fromArray($typeDef, $data),
             $locale,
         );
+    }
+
+    /**
+     * The values with the posted layout section (_layout, _areas[<area>]) merged in by the core
+     * (LayoutInput::merge()); as they were for a type without page layouts, or with the core's
+     * refusal in buildErrors().
+     *
+     * @param array<string, mixed> $submitted
+     * @param array<string, mixed> $data     the values built so far, the stored system keys among them
+     * @param array<string, mixed> $uploads  the files posted under _areas
+     * @return array<string, mixed>
+     */
+    private function layout(TypeDefinition $typeDef, array $submitted, array $data, array $uploads, BuildContext $ctx, ?FieldType $assetType): array
+    {
+        $blocks = $this->fieldTypes->has('blocks') ? $this->fieldTypes->get('blocks') : null;
+        if ($this->layouts?->forType($typeDef->key) === null || $this->layoutInput === null || !$blocks instanceof BlocksFieldType) {
+            return $data;
+        }
+
+        $input = [];
+        if (array_key_exists(PageLayouts::LAYOUT, $submitted)) {
+            // "" (nothing chosen) is the type's default, as null is for the core.
+            $input[PageLayouts::LAYOUT] = $submitted[PageLayouts::LAYOUT] === '' ? null : $submitted[PageLayouts::LAYOUT];
+        }
+        $stored = Placement::areasOf($data[PageLayouts::AREAS] ?? null);
+        $posted = is_array($submitted[PageLayouts::AREAS] ?? null) ? $submitted[PageLayouts::AREAS] : [];
+        $areas = [];
+        foreach ($posted as $name => $post) {
+            // Each area is built as a blocks field: whether it takes a block is the core's to say (AreaContents).
+            $built = $blocks->buildValue(
+                is_array($post) ? $post : [],
+                $stored[(string) $name] ?? [],
+                is_array($uploads[$name] ?? null) ? $uploads[$name] : [],
+                $ctx,
+            );
+            // The form posts every area it shows, empty ones too; one the page does not store and that
+            // holds nothing is no write (an area a stored page lacks counts as empty).
+            if ($built !== [] || array_key_exists((string) $name, $stored)) {
+                $areas[(string) $name] = $built;
+            }
+        }
+        if ($assetType instanceof AssetFieldType && ($errors = $assetType->drainErrors()) !== []) {
+            $this->uploadErrors[PageLayouts::AREAS] = $errors; // uploads inside area blocks
+        }
+        if ($areas !== []) {
+            $input[PageLayouts::AREAS] = $areas;
+        }
+
+        try {
+            return $this->layoutInput->merge($typeDef, $data, $input);
+        } catch (ValidationException $e) {
+            $this->layoutErrors = $e->errors();
+
+            // Refused: nothing of it may be saved (every save checks buildErrors()), but the form shows
+            // the layout and areas as posted, over the stored ones, so the editor's edits stay in it.
+            if (array_key_exists(PageLayouts::LAYOUT, $input) && (is_string($input[PageLayouts::LAYOUT]) || $input[PageLayouts::LAYOUT] === null)) {
+                $data[PageLayouts::LAYOUT] = $input[PageLayouts::LAYOUT];
+            }
+            $data[PageLayouts::AREAS] = array_replace($stored, $areas);
+
+            return $data;
+        }
     }
 
     /**

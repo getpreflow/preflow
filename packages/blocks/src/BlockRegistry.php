@@ -151,7 +151,8 @@ final class BlockRegistry
 
     /**
      * A block's values as its output reads them: a field its show_when hides is null, in the block
-     * and in every block nested in its blocks fields, each deciding on its own values. The renderer
+     * and in every block nested in its blocks fields (and, since 0.92, in the areas of its areas
+     * fields), each deciding on its own values. The renderer
      * gives a block's component these values (data-only children its template prints included);
      * the stored block is unchanged. Without show_when, $block comes back as given.
      *
@@ -165,9 +166,9 @@ final class BlockRegistry
     }
 
     /**
-     * visibleBlock() for every block of a record's blocks fields (for templates that read a record's
-     * values: folio_get, folio_list, a page's record). Other values stay as given; so does a blocks
-     * value that is not a list of blocks.
+     * visibleBlock() for every block of a record's blocks fields and (since 0.92) areas fields (for
+     * templates that read a record's values: folio_get, folio_list, a page's record). Other values
+     * stay as given; so does a value that is not an array.
      *
      * @param array<string, mixed> $values a record's values
      * @param array<string, TypeFieldDefinition> $fields its type's fields
@@ -180,8 +181,8 @@ final class BlockRegistry
             return $values;
         }
         foreach ($fields as $name => $field) {
-            if ($field->type === 'blocks' && is_array($values[$name] ?? null)) {
-                $values[$name] = $this->visibleList($values[$name]);
+            if (BlockLists::holds($field) && is_array($values[$name] ?? null)) {
+                $values[$name] = $this->visibleLists($field, $values[$name]);
             }
         }
 
@@ -203,8 +204,8 @@ final class BlockRegistry
             $block[$hidden] = null;
         }
         foreach ($definition->fields as $name => $field) {
-            if ($field->type === 'blocks' && is_array($block[$name] ?? null)) {
-                $block[$name] = $this->visibleList($block[$name]);
+            if (BlockLists::holds($field) && is_array($block[$name] ?? null)) {
+                $block[$name] = $this->visibleLists($field, $block[$name]);
             }
         }
 
@@ -212,12 +213,15 @@ final class BlockRegistry
     }
 
     /**
-     * @param array<mixed> $list
+     * A value holding blocks (a blocks field's list, an areas field's areas: BlockLists) with each
+     * block as visible() reads it.
+     *
+     * @param array<mixed> $value
      * @return array<mixed>
      */
-    private function visibleList(array $list): array
+    private function visibleLists(TypeFieldDefinition $field, array $value): array
     {
-        return array_map(fn (mixed $child): mixed => is_array($child) ? $this->visible($child) : $child, $list);
+        return BlockLists::map($field, $value, fn (array $list): array => array_map($this->visible(...), $list));
     }
 
     /** @return array<string, true> */
@@ -404,6 +408,20 @@ final class BlockRegistry
     /** @return list<class-string> data-only block classes under app/Blocks (App\Blocks\…) */
     private static function scanBlocksDir(string $dir): array
     {
+        return self::scanClasses($dir, 'App\\Blocks\\');
+    }
+
+    /**
+     * The classes of the PHP files under a directory, named from their path below it (PSR-4 under
+     * $namespace); a file that declares no such class is left out. Layouts use it for app/Layouts,
+     * as blocks do for app/Blocks.
+     *
+     * @param string $namespace with its trailing backslash
+     * @return list<class-string>
+     * @since 0.92.0
+     */
+    public static function scanClasses(string $dir, string $namespace): array
+    {
         if (!is_dir($dir)) {
             return [];
         }
@@ -414,7 +432,10 @@ final class BlockRegistry
                 continue;
             }
             $relative = substr($file->getPathname(), strlen(rtrim($dir, '/')) + 1, -4);
-            $classes[] = 'App\\Blocks\\' . str_replace('/', '\\', $relative);
+            $class = $namespace . str_replace('/', '\\', $relative);
+            if (class_exists($class)) {
+                $classes[] = $class;
+            }
         }
         sort($classes);
 

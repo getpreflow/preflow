@@ -21,6 +21,7 @@
         "preflow/ai": "@dev",
         "preflow/auth": "@dev",
         "preflow/blade": "@dev",
+        "preflow/block-library": "@dev",
         "preflow/blocks": "@dev",
         "preflow/codes": "@dev",
         "preflow/components": "@dev",
@@ -155,6 +156,11 @@
         },
         {
             "type": "path",
+            "url": "packages/block-library",
+            "options": { "symlink": true }
+        },
+        {
+            "type": "path",
             "url": "packages/codes",
             "options": { "symlink": true }
         },
@@ -187,6 +193,7 @@
             "Tests\\": "packages/skeleton/tests/",
             "Preflow\\Ai\\Tests\\": "packages/ai/tests/",
             "Preflow\\Auth\\Tests\\": "packages/auth/tests/",
+            "Preflow\\BlockLibrary\\Tests\\": "packages/block-library/tests/",
             "Preflow\\Blocks\\Tests\\": "packages/blocks/tests/",
             "Preflow\\DevTools\\Tests\\": "packages/devtools/tests/",
             "Preflow\\Codes\\Tests\\": "packages/codes/tests/",

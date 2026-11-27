@@ -727,6 +727,14 @@
             }
         });
 
+        // A record saved in the drawer (a linked record opened from the preview, a new related record):
+        // the preview shows it as saved; while only the form shows, when the preview shows again.
+        document.addEventListener('folio:drawer-saved', function () {
+            if (split.getAttribute('data-mode') === 'form') { stale = true; return; }
+            if (timer) { clearTimeout(timer); timer = null; }
+            render();
+        });
+
         preview.setMode = setMode;
         preview.mode = function () { return split.getAttribute('data-mode'); };
         setMode(stored('folio-split-mode') || (window.innerWidth >= 1100 ? 'split' : 'form'));
@@ -908,7 +916,29 @@
             selectInForm(uid, field);
         } else if (data.type === 'ready') {
             repostHighlights();
+        } else if (data.type === 'open') {
+            openLinkedRecord(data.recordType, data.id);
         }
+    }
+
+    // A linked record clicked in either preview (a template's preview_mark()): its form in the drawer.
+    // Only a well-formed type key and id make the address; the edit route checks the permission (403).
+    // Its save (folio:drawer-saved) renders both previews again. The record this editor has open
+    // (its form saves to {prefix}/{type}/{id}) opens no drawer: a save there would make this form's
+    // next save conflict. Its first field takes the focus instead.
+    function openLinkedRecord(type, id) {
+        if (typeof type !== 'string' || !/^[a-z][a-z0-9_]*$/.test(type)) { return; }
+        if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(id)) { return; }
+        var prefix = ((document.body && document.body.getAttribute('data-folio-prefix')) || '').replace(/\/+$/, '');
+        var form = document.getElementById('folio-record');
+        if (form && (form.getAttribute('action') || '').split('?')[0] === prefix + '/' + type + '/' + id) {
+            var first = Array.prototype.find.call(form.querySelectorAll('input, textarea, select, trix-editor'), function (el) {
+                return el.getAttribute('type') !== 'hidden';
+            });
+            if (first && first.focus) { first.focus(); }
+            return;
+        }
+        openDrawer(prefix + '/' + type + '/' + id + '/edit?_drawer=1');
     }
 
     // ---- Dialogs: window.folioConfirm and window.folioAlert ---------------------------------
@@ -1903,12 +1933,17 @@
         return Array.prototype.slice.call(select.options || select.querySelectorAll('option'));
     }
 
+    function isLayoutName(name) {
+        return name === '_layout' || name.indexOf('_areas[') === 0;
+    }
+
     /** {values: {name: [values]}, hidden: {name: [values of hidden inputs]}}, as the form would submit now. */
     function valuesOf(form) {
         var out = { values: {}, hidden: {} };
         controlsOf(form).forEach(function (el) {
             var name = String(el.name || el.getAttribute('name') || '');
-            if (name === '' || name.charAt(0) === '_' || el.disabled) { return; }
+            // A page's layout and areas (0.92: "_layout", "_areas[…]") are record data, unlike the other "_" names.
+            if (name === '' || (name.charAt(0) === '_' && !isLayoutName(name)) || el.disabled) { return; }
             var type = String(el.type || '').toLowerCase();
             var add = function (value, map) { (map[name] = map[name] || []).push(String(value == null ? '' : value)); };
             if (type === 'checkbox' || type === 'radio') {
@@ -2920,6 +2955,8 @@
         if (root.hasAttribute && root.hasAttribute('data-folio-matrix')) { initMatrix(root); }
         root.querySelectorAll('[data-folio-matrix]').forEach(initMatrix);
         if (root.hasAttribute && root.hasAttribute('data-block-card')) { notifyChange(root); }
+        // A page's areas after a layout switch or a move (0.92, POST {admin}/_areas): an edit of the record form.
+        if (root.hasAttribute && root.hasAttribute('data-areas-section')) { notifyChange(root); }
         root.querySelectorAll('[data-folio-focal]').forEach(placeFocalMarker);
         initTabs(root);
         initNeedsChange(root);

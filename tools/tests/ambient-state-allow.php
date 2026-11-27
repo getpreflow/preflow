@@ -35,6 +35,11 @@ return [
             'contextTranslator: static fn (): ?\\Preflow\\I18n\\Translator => Contexts::peek() !== null && $container->bound(\\Preflow\\I18n\\Translator::class)' => 'outside every render there is no locale to follow: validators answer in English (the documented default)',
         ],
     ],
+    'data/src/Validation/SelectRules.php' => [
+        'peek' => [
+            '$context = Contexts::peek();' => 'outside every render a select\'s labels are read in English, as Folio\'s texts are outside the admin (the documented default)',
+        ],
+    ],
     'core/src/Http/InternalRender.php' => [
         'peek' => [
             'return Contexts::peek()?->purpose->leavesNoTrace() === true;' => 'outside every render nothing is internal (the documented default)',
@@ -49,6 +54,11 @@ return [
     'core/src/Context/Preview/PreviewUrls.php' => [
         'peek' => [
             '$token = Contexts::peek()?->get(PreviewGrant::class)?->token();' => 'outside every render there is no preview: a component URL carries no token (the documented default)',
+        ],
+    ],
+    'blocks/src/BlocksServiceProvider.php' => [
+        'peek' => [
+            "if (Contexts::peek()?->purpose !== Purpose::Preview || \$type === '') {" => 'outside every render nothing is previewed: preview_mark() prints nothing (the documented default)',
         ],
     ],
     'auth/src/AuthManager.php' => [

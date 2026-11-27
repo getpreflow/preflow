@@ -1,0 +1,41 @@
+/*
+ * The columns block (preflow/block-library). One rule set for every column layout: the cells share
+ * the row by their widths (pf-columns__cell--w1 … --w12, the layout's widths) and stack, each the
+ * full width, when the block is narrower than the breakpoint. No media query: the breakpoint is
+ * the block's own width, so it is a custom property a site sets, also per section:
+ *
+ *   --pf-columns-gap         the space between columns (and between stacked cells), 1.5rem
+ *   --pf-columns-breakpoint  below this width of the block the columns stack, 40rem
+ *
+ *   .pf-columns { --pf-columns-gap: 2rem; --pf-columns-breakpoint: 48rem; }
+ *
+ * How it stacks: flex-basis is (breakpoint - block width) × 999 — far below zero when the block is
+ * wider (each cell then starts from 0 and grows by its width), far above it when narrower (each
+ * cell takes a row of its own).
+ */
+.pf-columns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--pf-columns-gap, 1.5rem);
+}
+
+.pf-columns__cell {
+    flex-grow: 1;
+    flex-shrink: 1;
+    flex-basis: calc((var(--pf-columns-breakpoint, 40rem) - 100%) * 999);
+    min-width: 0;
+}
+
+/* A cell's share of the row. */
+.pf-columns__cell--w1 { flex-grow: 1; }
+.pf-columns__cell--w2 { flex-grow: 2; }
+.pf-columns__cell--w3 { flex-grow: 3; }
+.pf-columns__cell--w4 { flex-grow: 4; }
+.pf-columns__cell--w5 { flex-grow: 5; }
+.pf-columns__cell--w6 { flex-grow: 6; }
+.pf-columns__cell--w7 { flex-grow: 7; }
+.pf-columns__cell--w8 { flex-grow: 8; }
+.pf-columns__cell--w9 { flex-grow: 9; }
+.pf-columns__cell--w10 { flex-grow: 10; }
+.pf-columns__cell--w11 { flex-grow: 11; }
+.pf-columns__cell--w12 { flex-grow: 12; }

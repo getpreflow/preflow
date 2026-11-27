@@ -229,18 +229,6 @@ parameters:
 			path: packages/blade/src/BladeEngine.php
 
 		-
-			message: '#^Method Preflow\\Blocks\\BlockRegistry\:\:scanBlocksDir\(\) should return list\<class\-string\> but returns list\<non\-falsy\-string\>\.$#'
-			identifier: return.type
-			count: 1
-			path: packages/blocks/src/BlockRegistry.php
-
-		-
-			message: '#^Parameter \#3 \$classes of static method Preflow\\Blocks\\BlockRegistry\:\:discover\(\) expects list\<class\-string\>, array given\.$#'
-			identifier: argument.type
-			count: 1
-			path: packages/blocks/src/BlocksServiceProvider.php
-
-		-
 			message: '#^Method Preflow\\Codes\\CodeType\:\:schema\(\) return type has no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
@@ -1172,12 +1160,6 @@ parameters:
 
 		-
 			message: '#^Method Preflow\\Data\\DataManager\:\:update\(\) has parameter \$rules with no value type specified in iterable type array\.$#'
-			identifier: missingType.iterableValue
-			count: 1
-			path: packages/data/src/DataManager.php
-
-		-
-			message: '#^Method Preflow\\Data\\DataManager\:\:validate\(\) has parameter \$rules with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
 			path: packages/data/src/DataManager.php
@@ -2629,12 +2611,6 @@ parameters:
 			path: packages/folio/src/Field/Types/AssetFieldType.php
 
 		-
-			message: '#^Call to function is_array\(\) with array\<string, mixed\> will always evaluate to true\.$#'
-			identifier: function.alreadyNarrowedType
-			count: 2
-			path: packages/folio/src/Field/Types/BlocksFieldType.php
-
-		-
 			message: '#^Call to function is_array\(\) with list\<string\> will always evaluate to true\.$#'
 			identifier: function.alreadyNarrowedType
 			count: 1
@@ -2648,18 +2624,6 @@ parameters:
 
 		-
 			message: '#^Method Preflow\\Folio\\Field\\Types\\BlocksFieldType\:\:renderAdmin\(\) has parameter \$config with no value type specified in iterable type array\.$#'
-			identifier: missingType.iterableValue
-			count: 1
-			path: packages/folio/src/Field/Types/BlocksFieldType.php
-
-		-
-			message: '#^Method Preflow\\Folio\\Field\\Types\\BlocksFieldType\:\:renderCard\(\) has parameter \$record with no value type specified in iterable type array\.$#'
-			identifier: missingType.iterableValue
-			count: 1
-			path: packages/folio/src/Field/Types/BlocksFieldType.php
-
-		-
-			message: '#^Method Preflow\\Folio\\Field\\Types\\BlocksFieldType\:\:renderField\(\) has parameter \$record with no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
 			count: 1
 			path: packages/folio/src/Field/Types/BlocksFieldType.php
@@ -3383,12 +3347,6 @@ parameters:
 			identifier: missingType.iterableValue
 			count: 1
 			path: packages/folio/src/View/InkMarks.php
-
-		-
-			message: '#^Empty array passed to foreach\.$#'
-			identifier: foreach.emptyArray
-			count: 1
-			path: packages/folio/src/legacy-aliases.php
 
 		-
 			message: '#^Constant Preflow\\Form\\FieldRenderer\:\:STANDARD_INPUTS is unused\.$#'

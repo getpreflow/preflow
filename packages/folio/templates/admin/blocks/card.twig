@@ -15,7 +15,15 @@
             <span class="folio-block-label">{{ label }}</span>
             {% if error|default(null) %}<span class="folio-block-summary is-error">{{ error }}</span>{% elseif summary %}<span class="folio-block-summary">{{ summary }}</span>{% endif %}
         </span>
-        <details class="folio-row-menu folio-block-menu" data-folio-row-menu>
+{% if move|default(null) and move.items is not empty %}{# The panel "Not shown in this layout" (0.92): Move, to an area of the layout (POST {admin}/_areas, swapped in by htmx). #}{% set move_label = t('folio.page_layouts.move_to') %}        <details class="folio-row-menu folio-block-move" data-folio-row-menu>
+            <summary class="btn btn-secondary btn-sm" aria-haspopup="menu"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-arrow"></use></svg><span>{{ t('folio.page_layouts.move') }}</span></summary>
+            <div class="folio-menu folio-row-menu-panel" role="menu" aria-label="{{ move_label }}">
+                <span class="folio-menu-heading" role="presentation">{{ move_label }}</span>
+                {% for item in move.items %}<button type="button" class="folio-menu-item" role="menuitem" name="_areas_move" value="{{ item.value }}"
+                        hx-post="{{ move.url }}" hx-target="{{ move.target }}" hx-swap="outerHTML" hx-disabled-elt="this"><span>{{ item.label }}</span></button>{% endfor %}
+            </div>
+        </details>
+{% endif %}        <details class="folio-row-menu folio-block-menu" data-folio-row-menu>
             <summary class="btn btn-ghost btn-icon btn-sm" aria-label="{{ menu_label|raw }}" title="{{ menu_label|raw }}" aria-haspopup="menu"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-dots"></use></svg></summary>
             <div class="folio-menu folio-row-menu-panel" role="menu" aria-label="{{ menu_label|raw }}">
                 <button type="button" class="folio-menu-item" role="menuitem" data-block-up><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-up"></use></svg><span>{{ t('folio.common.move_up') }}</span></button>

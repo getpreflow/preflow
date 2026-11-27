@@ -14,7 +14,8 @@ use Preflow\View\TemplateEngineInterface;
 
 /**
  * A temp app with preflow/blocks and no Folio: Twig, content locales en and de, the
- * fixture app's component blocks (app/Components) and data-only blocks (app/Blocks).
+ * fixture app's component blocks (app/Components), data-only blocks (app/Blocks), its layout
+ * (app/Layouts) and its JSON API (app/Controllers/Api, over the type "page" a test defines).
  */
 abstract class BlocksAppTestCase extends TestCase
 {
@@ -23,9 +24,9 @@ abstract class BlocksAppTestCase extends TestCase
 
     public static function setUpBeforeClass(): void
     {
-        // The fixture app's App\Components\… and App\Blocks\… classes (a site's composer autoload).
+        // The fixture app's App\Components\…, App\Blocks\…, App\Layouts\… and App\Controllers\… classes (a site's composer autoload).
         spl_autoload_register(static function (string $class): void {
-            foreach (['App\\Components\\' => 'app/Components/', 'App\\Blocks\\' => 'app/Blocks/'] as $prefix => $dir) {
+            foreach (['App\\Components\\' => 'app/Components/', 'App\\Blocks\\' => 'app/Blocks/', 'App\\Layouts\\' => 'app/Layouts/', 'App\\Controllers\\' => 'app/Controllers/'] as $prefix => $dir) {
                 $file = __DIR__ . '/Fixtures/app/' . $dir . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
                 if (str_starts_with($class, $prefix) && is_file($file)) {
                     require $file;

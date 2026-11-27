@@ -74,7 +74,8 @@ final class FieldRuleObjectsTest extends TestCase
             );
             $fieldTypes = new FieldTypeRegistry();
             $fieldTypes->register(new LinkFieldType());
-            $validator = new RecordValidator($fieldTypes, $dm);
+            \Preflow\Folio\Tests\Support\FolioRules::register($fieldTypes, $dm);
+            $validator = new RecordValidator($dm);
             $def = $registry->get('page');
 
             $validator->validate(DynamicRecord::fromArray($def, ['uuid' => 'ok', 'website' => 'https://example.com']));

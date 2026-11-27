@@ -27,7 +27,7 @@ use Psr\Http\Message\UploadedFileInterface;
  * their own "blocks" fields; translatable leaves are locale maps, structure
  * is shared across locales. Unknown block keys are kept untouched.
  */
-final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\Folio\Field\DisplaysInAdmin, ReportsTranslatableTexts, AcceptsTranslatedTexts
+final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\Folio\Field\DisplaysInAdmin, \Preflow\Folio\Field\ReportsStoredTranslatableTexts, AcceptsTranslatedTexts
 {
     private const UID = '/^[a-f0-9]{16}$/';
 
@@ -40,6 +40,10 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         private readonly string $adminPrefix = '/folio',
         /** The data package's field kinds: a field type's core checks (FieldKinds::rules(), 0.91) apply inside blocks too. */
         private readonly ?\Preflow\Data\FieldKinds $kinds = null,
+        /** The core's block value checks (0.92), the app's instance; without it validateBlocks() builds its own. */
+        private ?\Preflow\Blocks\BlockValueChecks $checks = null,
+        /** The app's area layout sets (0.92): the checks validateBlocks() builds see the columns a layout shows only. */
+        private readonly ?\Preflow\Blocks\Layouts\AreaLayoutSets $sets = null,
     ) {}
 
     public function key(): string
@@ -171,6 +175,24 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
      */
     public function translatableTexts(mixed $value, array $config, Locales $locales): array
     {
+        return $this->texts($value, $locales, false);
+    }
+
+    /**
+     * Every text of the known blocks, the fields their show_when hides and, inside an areas field,
+     * the columns its layout does not show included (0.92): what a save keeps the stamps of.
+     */
+    public function storedTranslatableTexts(mixed $value, array $config, Locales $locales): array
+    {
+        return $this->texts($value, $locales, true);
+    }
+
+    /**
+     * @param bool $stored every stored text (storedTranslatableTexts()), not only the shown ones
+     * @return list<TranslatableText>
+     */
+    private function texts(mixed $value, Locales $locales, bool $stored): array
+    {
         if (!$locales->isMultilingual()) {
             return [];
         }
@@ -183,7 +205,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
             }
             $prefix = $block['_uid'];
             $blockLabel = \Preflow\Folio\FolioText::label($definition->label);
-            $hidden = array_flip($this->blocks->hiddenFieldsOf($definition->key, $block));
+            $hidden = $stored ? [] : array_flip($this->blocks->hiddenFieldsOf($definition->key, $block));
             foreach ($definition->fields as $name => $field) {
                 if (isset($hidden[$name])) {
                     continue;
@@ -191,7 +213,10 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                 $type = $this->fieldTypes->get($field->type);
                 $label = $blockLabel . ' › ' . self::fieldLabel($field->label, $name);
                 if ($type instanceof ReportsTranslatableTexts) {
-                    foreach ($type->translatableTexts($type->fromStorage($block[$name] ?? null), $field->config, $locales) as $text) {
+                    $nested = $stored && $type instanceof \Preflow\Folio\Field\ReportsStoredTranslatableTexts
+                        ? $type->storedTranslatableTexts($type->fromStorage($block[$name] ?? null), $field->config, $locales)
+                        : $type->translatableTexts($type->fromStorage($block[$name] ?? null), $field->config, $locales);
+                    foreach ($nested as $text) {
                         $texts[] = $text->within($prefix . '.' . $name, $label);
                     }
                     continue;
@@ -258,8 +283,9 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
     }
 
     /**
-     * Per-instance validation. Keys: "<uid>.<field>", nested
-     * "<uid>.<child>.<cuid>.<field>", "" and "<uid>.<child>" for min/max.
+     * Per-instance validation, the core's (BlockValueChecks): keys "<uid>.<field>", nested
+     * "<uid>.<child>.<cuid>.<field>", and "" and "<uid>.<child>" for min/max (BlockCount). A record's
+     * save runs the same checks in the data layer; this is for callers that judge one value.
      *
      * @param array<string, mixed> $config the blocks field's config (allowed/min/max)
      * @return array<string, list<string>>
@@ -268,64 +294,30 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
     {
         $list = $this->fromStorage($value);
         $errors = [];
-
-        $count = count($list);
-        if (isset($config['min']) && $count < (int) $config['min']) {
-            $errors[rtrim($prefix, '.')][] = \Preflow\Folio\FolioText::choice('folio.blocks.min', (int) $config['min']);
-        }
-        if (isset($config['max']) && $count > (int) $config['max']) {
-            $errors[rtrim($prefix, '.')][] = \Preflow\Folio\FolioText::choice('folio.blocks.max', (int) $config['max']);
-        }
-
-        foreach ($list as $block) {
-            if (!is_array($block) || !is_string($block['_uid'] ?? null)) {
-                continue;
-            }
-            $definition = $this->blocks->get((string) ($block['_block'] ?? ''));
-            if ($definition === null) {
-                continue;
-            }
-            $uid = $block['_uid'];
-            // A field its show_when hides is not validated (0.91), a nested blocks field included.
-            $hidden = array_flip($this->blocks->hiddenFieldsOf($definition->key, $block));
-            $rules = [];
-            // The whole block is the data (in the default language), so a rule may read another field
-            // of it (a select's "options_from", 0.90); only the ruled fields are checked.
-            $data = [];
-            foreach ($definition->fields as $name => $field) {
-                $type = $this->fieldTypes->get($field->type);
-                if ($type instanceof self) {
-                    if (isset($hidden[$name])) {
-                        continue;
-                    }
-                    $errors += $type->validateBlocks($block[$name] ?? [], $field->config, $locales, $prefix . $uid . '.' . $name . '.');
-                    continue;
-                }
-                $data[$name] = $field->translatable
-                    ? LocaleValue::pick($block[$name] ?? null, $locales, $locales->default)
-                    : LocaleValue::default($block[$name] ?? null, $locales);
-                $fieldRules = \Preflow\Folio\Field\FieldRules::merge(
-                    $field->validate,
-                    $type instanceof \Preflow\Folio\Field\HasBlockRules
-                        ? $type->blockRules($field->config, $definition, $this->fieldTypes)
-                        : $type->rules($field->config),
-                    // The type's core checks (FieldKinds::rules(), 0.91), as a record's save runs them.
-                    $this->kinds?->rulesOf($field) ?? [],
-                );
-                if ($fieldRules !== [] && !isset($hidden[$name])) {
-                    $rules[$name] = $fieldRules;
-                }
-            }
-
-            if ($rules !== [] && $this->validators !== null) {
-                $result = $this->validators->make($rules, $data)->validate();
-                foreach ($result->errors() as $field => $messages) {
-                    $errors[$prefix . $uid . '.' . $field] = $messages;
-                }
+        foreach ($this->rules($config) as $rule) {
+            $result = $rule->validate($list, new \Preflow\Validation\ValidationContext(rtrim($prefix, '.'), []));
+            if ($result !== true) {
+                $errors[rtrim($prefix, '.')][] = (string) $result;
             }
         }
+        $checks = $this->valueChecks();
 
-        return $errors;
+        return $checks === null ? $errors : $errors + $checks->blocks($list, $locales, $prefix);
+    }
+
+    /**
+     * The core's block value checks with Folio's field rules: the app's instance, else (a field type
+     * built on its own, without a validator factory none) one over this registry.
+     */
+    private function valueChecks(): ?\Preflow\Blocks\BlockValueChecks
+    {
+        if ($this->checks === null && $this->validators !== null) {
+            $kinds = $this->kinds ?? new \Preflow\Data\FieldKinds();
+            $this->checks = new \Preflow\Blocks\BlockValueChecks($this->blocks, $kinds, $this->validators, sets: $this->sets);
+            \Preflow\Folio\Field\CoreFieldRules::register($this->fieldTypes, $kinds, blocks: $this->checks);
+        }
+
+        return $this->checks;
     }
 
     public function renderEditor(FieldContext $ctx): string
@@ -340,9 +332,31 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
             $ctx->nestedErrors,
             $ctx->locales ?? Locales::single($ctx->locale ?? 'en'),
             $ctx->locale ?? ($ctx->locales?->default ?? 'en'),
-            0,
+            $ctx->depth,
             $ctx->record,
         );
+    }
+
+    /**
+     * A block list under any form name, rendered as a blocks field is: a page's area
+     * ("_areas[main]", 0.92), and a column of an areas field. $value is the list, $config the
+     * area as a blocks field ("allowed" for its picker, "min", "max"). The list posts an empty
+     * "_order" entry before its cards, so a list without cards empties its area (an area that is
+     * not posted keeps its blocks). $picker false: no "Add block" (the panel "Not shown in this
+     * layout": its blocks are kept, moved or removed, never added to). $move: each card's "Move"
+     * menu, to the areas $move['targets'] names for the block's key, through the switch and move
+     * endpoint at $move['url'] (POST {admin}/_areas, value "<uid>:<area>").
+     *
+     * @param array<string, mixed>        $config
+     * @param list<string>                $errors       the list's own errors
+     * @param array<string, list<string>> $nestedErrors keys "<uid>.<field>…" relative to the list
+     * @param array{type: string, id: ?string}|null $record
+     * @param array{url: string, target: string, targets: \Closure(string): list<array{area: string, label: string}>}|null $move
+     * @since 0.92.0
+     */
+    public function renderList(string $name, string $label, ?string $help, mixed $value, array $config, array $errors, array $nestedErrors, Locales $locales, string $locale, int $depth, ?array $record = null, bool $picker = true, ?array $move = null): string
+    {
+        return $this->renderField($name, $label, $help, $this->fromStorage($value), $config, $errors, $nestedErrors, $locales, $locale, $depth, $record, $picker, $move, emptiable: true);
     }
 
     /**
@@ -392,17 +406,28 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
 
     /**
      * The stored block list at a field path such as "sections[<uid>][links]"
-     * inside a record's data, or null.
+     * inside a record's data, or null. A page's area is "_areas[<area>]" (0.92), an areas field's
+     * column "…[<field>][areas][<area>]".
      *
      * @param list<string>         $keys  ["sections", "<uid>", "links", …]
      * @param array<string, mixed> $data  the record's stored data
      */
     public function storedLevel(array $data, array $keys): mixed
     {
-        $value = $data[array_shift($keys)] ?? null;
+        $first = array_shift($keys);
+        $value = $data[$first] ?? null;
+        if ($first === \Preflow\Blocks\Layouts\PageLayouts::AREAS) {
+            $value = \Preflow\Blocks\Layouts\Placement::areasOf($value)[(string) array_shift($keys)] ?? null;
+        }
         while ($keys !== []) {
             $uid = array_shift($keys);
             $field = array_shift($keys);
+            if ($uid === 'areas' && $field !== null) {
+                // An areas value {layout, areas}: one of its areas.
+                $areas = is_string($value) ? json_decode($value, true) : $value;
+                $value = \Preflow\Blocks\Layouts\Placement::areasOf(is_array($areas) ? ($areas['areas'] ?? null) : null)[$field] ?? null;
+                continue;
+            }
             $found = null;
             foreach ($this->fromStorage($value) as $block) {
                 if ($block['_uid'] === $uid) {
@@ -419,14 +444,19 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         return $value;
     }
 
-    /** @param array<string, mixed> $block */
+    /**
+     * The block with a new uid, and so has every block inside its fields that hold blocks (a blocks
+     * field's, an areas field's columns: BlockLists).
+     *
+     * @param array<string, mixed> $block
+     */
     private function withFreshUids(array $block): array
     {
         $block['_uid'] = bin2hex(random_bytes(8));
         $definition = $this->blocks->get((string) ($block['_block'] ?? ''));
         foreach ($definition?->fields ?? [] as $name => $field) {
-            if ($this->fieldTypes->get($field->type) instanceof self && is_array($block[$name] ?? null)) {
-                $block[$name] = array_map(fn ($child) => is_array($child) ? $this->withFreshUids($child) : $child, $this->fromStorage($block[$name]));
+            if (\Preflow\Blocks\BlockLists::holds($field) && is_array($block[$name] ?? null)) {
+                $block[$name] = \Preflow\Blocks\BlockLists::map($field, $block[$name], fn (array $list): array => array_map($this->withFreshUids(...), $list));
             }
         }
 
@@ -438,8 +468,10 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
      * @param array<string, mixed>        $config
      * @param list<string>                $errors       field-level errors (min/max)
      * @param array<string, list<string>> $nestedErrors keys "<uid>.<field>…" relative to this field
+     * @param array{type: string, id: ?string}|null $record
+     * @param array{url: string, target: string, targets: \Closure(string): list<array{area: string, label: string}>}|null $move
      */
-    private function renderField(string $name, string $label, ?string $help, array $blocks, array $config, array $errors, array $nestedErrors, Locales $locales, string $locale, int $depth, ?array $record = null): string
+    private function renderField(string $name, string $label, ?string $help, array $blocks, array $config, array $errors, array $nestedErrors, Locales $locales, string $locale, int $depth, ?array $record = null, bool $picker = true, ?array $move = null, bool $emptiable = false): string
     {
         if ($depth >= $this->maxDepth) {
             return $this->render('@folio/admin/blocks/too_deep.twig', ['label' => $label]);
@@ -459,7 +491,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                     'name' => $name,
                     'raw' => json_encode($block, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 ])
-                : $this->renderCard($definition, $block, $name, self::scoped($nestedErrors, $uid), $locales, $locale, $depth, record: $record);
+                : $this->renderCard($definition, $block, $name, self::scoped($nestedErrors, $uid), $locales, $locale, $depth, record: $record, move: $move);
         }
 
         $summary = [];
@@ -515,14 +547,19 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
             // One popover per field: its id follows the field's name (unique in the form, nested ones too).
             'picker_id' => 'folio-picker-' . hash('xxh3', $name),
             'single' => count($groups) === 1 && count(reset($groups) ?: []) === 1,
+            // A block list of an area (0.92, renderList()): it empties when its last card goes; the panel's has no picker.
+            'emptiable' => $emptiable,
+            'picker' => $picker,
         ]);
     }
 
     /**
      * @param array<string, mixed>        $block
      * @param array<string, list<string>> $errors keys "<field>…" relative to this block
+     * @param array{type: string, id: ?string}|null $record
+     * @param array{url: string, target: string, targets: \Closure(string): list<array{area: string, label: string}>}|null $move
      */
-    private function renderCard(\Preflow\Blocks\BlockDefinition $definition, array $block, string $namePrefix, array $errors, Locales $locales, string $locale, int $depth, bool $open = false, ?array $record = null): string
+    private function renderCard(\Preflow\Blocks\BlockDefinition $definition, array $block, string $namePrefix, array $errors, Locales $locales, string $locale, int $depth, bool $open = false, ?array $record = null, ?array $move = null): string
     {
         $uid = (string) $block['_uid'];
         $base = $namePrefix . '[' . $uid . ']';
@@ -547,20 +584,21 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
             $this->assertLeaf($definition, $field, $def, $type);
             $raw = $block[$field] ?? null;
 
-            if ($type instanceof self) {
-                $fields[] = $conditional($field, $type->renderField(
-                    $base . '[' . $field . ']',
-                    self::fieldLabel($def->label, $field),
-                    $def->help !== null ? \Preflow\Folio\FolioText::label($def->help) : null,
-                    $type->fromStorage($raw),
-                    $def->config,
-                    $errors[$field] ?? [],
-                    self::scoped($errors, $field),
-                    $locales,
-                    $locale,
-                    $depth + 1,
-                    $record,
-                ));
+            if (\Preflow\Blocks\BlockLists::holds($def)) {
+                // A field holding blocks (a blocks field, an areas field's columns) one level deeper.
+                $fields[] = $conditional($field, $type->renderEditor(new FieldContext(
+                    name: $base . '[' . $field . ']',
+                    label: self::fieldLabel($def->label, $field),
+                    help: $def->help !== null ? \Preflow\Folio\FolioText::label($def->help) : null,
+                    value: $type->fromStorage($raw),
+                    errors: $errors[$field] ?? [],
+                    config: $def->config,
+                    nestedErrors: self::scoped($errors, $field),
+                    locale: $locale,
+                    locales: $locales,
+                    record: $record,
+                    depth: $depth + 1,
+                )));
                 continue;
             }
 
@@ -621,6 +659,12 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
             'fields' => $fields,
             'open' => $open || $errors !== [],
             'has_errors' => $errors !== [],
+            // The panel "Not shown in this layout" (0.92): the areas of the layout this block may move to.
+            'move' => $move === null ? null : [
+                'url' => $move['url'],
+                'target' => $move['target'],
+                'items' => array_map(static fn (array $to): array => ['value' => $uid . ':' . $to['area'], 'label' => $to['label']], ($move['targets'])($definition->key)),
+            ],
             'duplicate_url' => $this->adminPrefix . '/_blocks/duplicate?' . http_build_query([
                 'name' => $namePrefix,
                 'uid' => $uid,
@@ -659,7 +703,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
 
     /**
      * The block's values, field => value, as FieldContext::$values holds a record's: each in the
-     * default language, as its own field type reads it; nested blocks fields left out.
+     * default language, as its own field type reads it; fields holding blocks (BlockLists) left out.
      *
      * @param array<string, mixed> $block
      * @return array<string, mixed>
@@ -668,10 +712,10 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
     {
         $values = [];
         foreach ($definition->fields as $name => $field) {
-            $type = $this->fieldTypes->get($field->type);
-            if ($type instanceof self) {
+            if (\Preflow\Blocks\BlockLists::holds($field)) {
                 continue;
             }
+            $type = $this->fieldTypes->get($field->type);
             $raw = $field->translatable
                 ? LocaleValue::pick($block[$name] ?? null, $locales, $locales->default)
                 : LocaleValue::default($block[$name] ?? null, $locales);
@@ -762,9 +806,8 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
 
         $blocks = [];
         foreach (array_values(array_filter($value, 'is_array')) as $index => $block) {
-            if (!is_string($block['_uid'] ?? null) || preg_match(self::UID, $block['_uid']) !== 1) {
-                $block['_uid'] = hash('xxh3', 'folio-block:' . $index . ':' . json_encode($block['_uid'] ?? null) . ':' . json_encode($block['_block'] ?? null));
-            }
+            // The core derives the same uid (BlockLists::uidOf()), so its errors name the block the editor shows.
+            $block['_uid'] = \Preflow\Blocks\BlockLists::uidOf($block, $index);
             $blocks[] = $block;
         }
 
@@ -784,9 +827,17 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         return ''; // rendered by blocks() through the block components
     }
 
+    /**
+     * The field's "min" and "max" (BlockCount); the values inside are the core's (BlockValueChecks).
+     *
+     * @return list<\Preflow\Validation\ValidationRule>
+     */
     public function rules(array $config): array
     {
-        return [];
+        $min = isset($config['min']) ? (int) $config['min'] : null;
+        $max = isset($config['max']) ? (int) $config['max'] : null;
+
+        return $min === null && $max === null ? [] : [new BlockCount($min, $max)];
     }
 
     public function assets(): array
@@ -800,7 +851,8 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         }
         foreach ($this->blocks->all() as $definition) {
             foreach ($definition->fields as $field) {
-                if ($field->type !== $this->key() && $this->fieldTypes->has($field->type)) {
+                // A field holding blocks (BlockLists) draws these same blocks: its assets are these.
+                if (!\Preflow\Blocks\BlockLists::holds($field) && $this->fieldTypes->has($field->type)) {
                     $assets = [...$assets, ...$this->fieldTypes->get($field->type)->assets()];
                 }
             }

@@ -326,7 +326,7 @@ final class FolioRecordReferencesTest extends TestCase
         $fieldTypes = new FieldTypeRegistry();
         $fieldTypes->register(new StringFieldType());
 
-        return FolioPublisher::make($this->dm, new TypeCatalog($this->assetRoot . '/models'), new RecordValidator($fieldTypes, $this->dm));
+        return FolioPublisher::make($this->dm, new TypeCatalog($this->assetRoot . '/models'), new RecordValidator($this->dm));
     }
 
     private function usage(): FolioRecordReferences

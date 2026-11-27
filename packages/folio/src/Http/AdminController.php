@@ -45,7 +45,6 @@ use Preflow\Folio\Extension\Screen\ScreenView;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\HandlesUpload;
-use Preflow\Folio\Field\Types\BlocksFieldType;
 use Preflow\Folio\Seo\SeoSection;
 use Preflow\Folio\View\FormOwner;
 use Preflow\I18n\Completeness;
@@ -105,6 +104,9 @@ final class AdminController
         ?\Preflow\Folio\Content\TypeActions $typeActions = null,
         // The whole-page preview's "View as" choices (since 0.81); null: only the visitor.
         private readonly ?ViewAs $viewAs = null,
+        // A page's layout picker and areas (0.92): the types' page layouts and the editor that draws them.
+        private readonly ?\Preflow\Blocks\Layouts\PageLayouts $pageLayouts = null,
+        private readonly ?\Preflow\Folio\Field\AreasEditor $areasEditor = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
@@ -773,9 +775,9 @@ final class AdminController
         }
         $locale = $this->requestLocale($request, $typeDef);
         $record = $this->drafts->build($typeDef, $request, [], $locale, $this->can('assets.upload'));
-        if ($this->drafts->uploadErrors() !== []) {
+        if ($this->drafts->buildErrors() !== []) {
             $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
-            return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.new', ['label' => $this->singularFor($type)]), $this->drafts->uploadErrors(), $csrf, 422, $layout, $locale, $this->prefix . '/' . $type . '/new');
+            return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.new', ['label' => $this->singularFor($type)]), $this->drafts->buildErrors(), $csrf, 422, $layout, $locale, $this->prefix . '/' . $type . '/new');
         }
         // The writer gives the new record its id and, in an orderable list, the last place.
         $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
@@ -817,6 +819,13 @@ final class AdminController
         if (!$this->catalog->has($type)) {
             return NotFound::response($request, FolioText::get('folio.errors.unknown_type'));
         }
+        $drawer = $this->isDrawer($request);
+        // The drawer (a linked record opened from the preview, 0.92) is for editing: the route asks
+        // {type}.view, the drawer the edit permission the save asks too (and a type that allows editing).
+        if ($drawer && !$this->can($type . '.edit')) {
+            return Forbidden::response($request, $this->engine, $this->prefix, $this->catalog,
+                $this->typeActions->readonly($type) ? FolioText::get('folio.form.readonly_note', ['label' => $this->labelFor($type)]) : null);
+        }
         $record = $this->dm->findType($type, $id);
         if ($record === null) {
             return NotFound::response($request, FolioText::get('folio.errors.not_found'));
@@ -827,12 +836,14 @@ final class AdminController
         return $this->form(
             $type,
             $record->toArray(),
-            $this->prefix . '/' . $type . '/' . $id,
+            $this->prefix . '/' . $type . '/' . $id . ($drawer ? '?_drawer=1' : ''),
             FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]),
             [],
             $csrf,
+            layout: $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig',
             locale: $this->requestLocale($request, $this->registry->get($type)),
-            editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit',
+            // Another language of the record stays in the drawer.
+            editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit' . ($drawer ? '?_drawer=1' : ''),
             notice: self::restoredNotice($request) ?? $this->confirmedNotice($request, $type),
         );
     }
@@ -866,22 +877,28 @@ final class AdminController
         $path = $body['_confirm_path'] ?? $body['path'] ?? null;
         $path = is_string($path) && $path !== '' ? $path : null;
         $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
-        $action = $this->prefix . '/' . $type . '/' . $id;
-        $editUrl = $this->isSingleton($type) ? $this->prefix . '/' . $type : $action . '/edit';
+        // In the drawer (0.92): the form stays in the drawer's layout, and a save hands back to the editor, as update() does.
+        $drawer = $this->isDrawer($request);
+        $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
+        $base = $this->prefix . '/' . $type . '/' . $id;
+        $action = $base . ($drawer ? '?_drawer=1' : '');
+        $editUrl = $drawer ? $base . '/edit?_drawer=1' : ($this->isSingleton($type) ? $this->prefix . '/' . $type : $base . '/edit');
         $heading = FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]);
-        $done = new Response(302, ['Location' => $editUrl . '?locale=' . rawurlencode($locale) . '&confirmed=1']);
+        $done = fn (): ResponseInterface => $drawer
+            ? new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $this->engine->render('@folio/admin/drawer_saved.twig', ['type' => $type, 'id' => $id]))
+            : new Response(302, ['Location' => $editUrl . '?locale=' . rawurlencode($locale) . '&confirmed=1']);
 
         if ($fromForm) {
             $built = $this->drafts->build($typeDef, $request, $current->toArray(), $locale, $this->can('assets.upload'));
-            if ($this->drafts->uploadErrors() !== []) {
-                return $this->form($type, $built->toArray(), $action, $heading, $this->drafts->uploadErrors(), $csrf, 422, locale: $locale, editUrl: $editUrl);
+            if ($this->drafts->buildErrors() !== []) {
+                return $this->form($type, $built->toArray(), $action, $heading, $this->drafts->buildErrors(), $csrf, 422, $layout, locale: $locale, editUrl: $editUrl);
             }
             $record = $this->translations->confirm($typeDef, $built, $locale, $path);
             $failed = $this->saveForm($request, $record, $this->saveOptions($request, $type, publish: false), false,
-                fn (array $values, array $errors, int $status, bool $saved, ?string $notice, bool $reload): ResponseInterface => $this->form($type, $values, $action, $heading, $errors, $csrf, $status, locale: $locale, editUrl: $editUrl, notice: $notice, reloadUrl: $reload ? $editUrl : null),
+                fn (array $values, array $errors, int $status, bool $saved, ?string $notice, bool $reload): ResponseInterface => $this->form($type, $values, $action, $heading, $errors, $csrf, $status, $layout, locale: $locale, editUrl: $editUrl, notice: $notice, reloadUrl: $reload ? $editUrl : null),
             );
 
-            return $failed ?? $done;
+            return $failed ?? $done();
         }
 
         $confirmed = $this->translations->confirm($typeDef, $current, $locale, $path);
@@ -891,15 +908,15 @@ final class AdminController
             $values = $current->toArray();
             $values['_version'] = $e->current;
 
-            return $this->form($type, $values, $action, $heading, [], $csrf, 409, locale: $locale, editUrl: $editUrl,
-                notice: FolioText::get('folio.form.conflict'), reloadUrl: $editUrl . '?locale=' . rawurlencode($locale));
+            return $this->form($type, $values, $action, $heading, [], $csrf, 409, $layout, locale: $locale, editUrl: $editUrl,
+                notice: FolioText::get('folio.form.conflict'), reloadUrl: self::withLocale($editUrl, $locale));
         } catch (ValidationException $e) {
             // A #[BeforeSave] hook, the rules or the storage refused: nothing saved.
-            return $this->form($type, $confirmed->toArray(), $action, $heading, $e->errors(), $csrf, 422, locale: $locale, editUrl: $editUrl);
+            return $this->form($type, $confirmed->toArray(), $action, $heading, $e->errors(), $csrf, 422, $layout, locale: $locale, editUrl: $editUrl);
         }
         $this->leftSite($request, $outcome->addressesLeft ? [$outcome->record] : []);
 
-        return $done;
+        return $done();
     }
 
     public function update(ServerRequestInterface $request): ResponseInterface
@@ -923,21 +940,34 @@ final class AdminController
             return $refused;
         }
         $locale = $this->requestLocale($request, $typeDef);
+        // In the drawer (0.92): the form stays in the drawer's layout, and a save hands back to the editor.
+        $drawer = $this->isDrawer($request);
+        $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
+        $base = $this->prefix . '/' . $type . '/' . $id;
+        $action = $base . ($drawer ? '?_drawer=1' : '');
+        $editUrl = $base . '/edit' . ($drawer ? '?_drawer=1' : '');
         $record = $this->drafts->build($typeDef, $request, $existing, $locale, $this->can('assets.upload'));
-        if ($this->drafts->uploadErrors() !== []) {
-            return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . '/' . $id, FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), $this->drafts->uploadErrors(), $csrf, 422, locale: $locale, editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit');
+        if ($this->drafts->buildErrors() !== []) {
+            return $this->form($type, $record->toArray(), $action, FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), $this->drafts->buildErrors(), $csrf, 422, $layout, locale: $locale, editUrl: $editUrl);
         }
-        $action = $this->prefix . '/' . $type . '/' . $id;
         $failed = $this->saveForm($request, $record, $this->saveOptions($request, $type, publish: true), false,
-            fn (array $values, array $errors, int $status, bool $saved, ?string $notice, bool $reload): ResponseInterface => $this->form($type, $values, $action, FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), $errors, $csrf, $status,
+            fn (array $values, array $errors, int $status, bool $saved, ?string $notice, bool $reload): ResponseInterface => $this->form($type, $values, $action, FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), $errors, $csrf, $status, $layout,
                 locale: $locale,
-                editUrl: $action . '/edit',
+                editUrl: $editUrl,
                 notice: $notice,
-                reloadUrl: $reload ? $action . '/edit' : null,
+                reloadUrl: $reload ? $editUrl : null,
             ),
         );
         if ($failed !== null) {
             return $failed;
+        }
+        if ($drawer) {
+            // As store() does: the saved record back to the editor below (drawer_saved.twig), which
+            // renders its previews again; "Save and leave" (_folio_next) is the full-page editor's.
+            return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $this->engine->render('@folio/admin/drawer_saved.twig', [
+                'type' => $type,
+                'id' => $record->getId() ?? $id,
+            ]));
         }
 
         return new Response(302, ['Location' => self::leaveTo($request) ?? $this->prefix . '/' . $type . $this->localeQuery($typeDef, $locale)]);
@@ -1486,8 +1516,8 @@ final class AdminController
                 ];
                 continue;
             }
-            if ($fieldType instanceof HandlesUpload || $fieldType instanceof BlocksFieldType) {
-                $multipart = true; // blocks may contain upload fields
+            if ($fieldType instanceof HandlesUpload || \Preflow\Blocks\BlockLists::holds($fieldDef)) {
+                $multipart = true; // blocks (a blocks field's, an areas field's columns) may contain upload fields
             }
 
             $isTranslatable = isset($translatable[$name]) && !$fieldType instanceof HandlesUpload;
@@ -1543,8 +1573,8 @@ final class AdminController
                 'name' => $name,
                 'html' => $placement === 'main' ? $html : FormOwner::assign($html, self::RECORD_FORM),
                 'translatable' => $isTranslatable,
-                // Blocks hold their own (possibly translated) leaves: no "shared" label.
-                'structured' => $fieldType instanceof BlocksFieldType,
+                // Blocks (a blocks field's, an areas field's columns) hold their own (possibly translated) leaves: no "shared" label.
+                'structured' => \Preflow\Blocks\BlockLists::holds($fieldDef),
                 'falls_back' => $fallsBack,
                 'reference' => $reference,
                 'address' => $addressFields[$name] ?? null,
@@ -1552,6 +1582,22 @@ final class AdminController
                 'half' => ($fieldDef->config['width'] ?? 'full') === 'half',
             ];
             foreach ($fieldType->assets() as $asset) {
+                $editorAssets[$asset] = true;
+            }
+        }
+
+        // Page layouts (0.92), for a type with "layouts": the layout picker is the form's first control,
+        // the layout's areas (and the panel "Not shown in this layout") follow the type's fields.
+        $pageLayout = null;
+        if ($this->areasEditor !== null && $this->pageLayouts?->forType($type) !== null) {
+            $record = ['type' => $type, 'id' => isset($values[$typeDef->idField]) ? (string) $values[$typeDef->idField] : null];
+            $pageLayout = [
+                'picker' => $this->areasEditor->renderPage($this->pageLayouts, $typeDef, $values, $locale, $errors, $record, \Preflow\Folio\Field\AreasEditor::PICKER),
+                'areas' => $this->areasEditor->renderPage($this->pageLayouts, $typeDef, $values, $locale, $errors, $record, \Preflow\Folio\Field\AreasEditor::AREAS),
+            ];
+            $multipart = true; // area blocks may hold upload fields
+            $blocksType = $this->fieldTypes->get('blocks');
+            foreach ($blocksType->assets() as $asset) {
                 $editorAssets[$asset] = true;
             }
         }
@@ -1578,7 +1624,7 @@ final class AdminController
             }
             $localeErrors[] = [
                 'language' => self::languageName($code),
-                'url' => ($editUrl ?? $action) . '?locale=' . rawurlencode($code),
+                'url' => self::withLocale($editUrl ?? $action, $code),
                 'field' => $incomplete ? '' : $this->labels->field($type, $field),
                 'messages' => (array) $messages,
             ];
@@ -1594,7 +1640,7 @@ final class AdminController
                 $languages[] = [
                     'code' => $code,
                     'name' => self::languageName($code),
-                    'url' => ($editUrl ?? $action) . '?locale=' . rawurlencode($code),
+                    'url' => self::withLocale($editUrl ?? $action, $code),
                     'active' => $code === $locale,
                     'state' => $state,
                     // The share of the default language's texts this one has (the bar's fill).
@@ -1643,6 +1689,7 @@ final class AdminController
             'record_id' => isset($values[$typeDef->idField]) ? rawurlencode((string) $values[$typeDef->idField]) : '',
             'csrf' => $csrf,
             'fields' => $fields,
+            'page_layout' => $pageLayout,
             // editor-frame.js: the save state, the Publish split button, the side panel, the editor's keys.
             // The order is admin.js, then fields.js, then editor-frame.js: fields.js uses what admin.js shares
             // (folioT, Folio.copyLater, fillAssetField, ownControls), editor-frame.js uses Folio.relativeTime.
@@ -1651,6 +1698,8 @@ final class AdminController
                 + ($this->frontend->routeFor($type) !== null ? ['page-preview.js' => true] : [])),
             'multipart' => $multipart,
             'layout' => $layout,
+            // In the drawer (0.92): "Still correct" posts there too (partials/_field.twig).
+            'drawer' => $layout === '@folio/admin/_drawer_layout.twig',
             // No preview in the create drawer: its form posts to the save route.
             // A read-only form has nothing to preview (and its user may not post to the preview route).
             'previewable' => $this->frontend->routeFor($type) !== null && $layout !== '@folio/admin/_drawer_layout.twig'
@@ -2270,6 +2319,9 @@ final class AdminController
             isset($typeDef->fields[$key]) => $this->labels->field($type, $key),
             $key === '_locales' => FolioText::get('folio.form.change_locales'),
             $key === SeoSection::KEY => FolioText::get('folio.form.change_seo'),
+            // A page's layout and its areas (0.92).
+            $key === \Preflow\Blocks\Layouts\PageLayouts::LAYOUT => FolioText::get('folio.form.change_layout'),
+            $key === \Preflow\Blocks\Layouts\PageLayouts::AREAS => FolioText::get('folio.form.change_areas'),
             default => (new \Preflow\Form\FieldRenderer())->humanize(ltrim($key, '_')),
         };
     }
@@ -2569,6 +2621,12 @@ final class AdminController
     private function listQuery(string $type, TypeDefinition $typeDef, array $listConfig): \Preflow\Data\QueryBuilder
     {
         return \Preflow\Folio\Content\ListOrder::apply($this->dm->queryType($type), $typeDef, $listConfig);
+    }
+
+    /** $url in the language $code: "?locale=…", or "&locale=…" after a query it has (the drawer's "_drawer=1"). */
+    private static function withLocale(string $url, string $code): string
+    {
+        return $url . (str_contains($url, '?') ? '&' : '?') . 'locale=' . rawurlencode($code);
     }
 
     private function isDrawer(ServerRequestInterface $request): bool

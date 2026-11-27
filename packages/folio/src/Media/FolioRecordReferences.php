@@ -34,7 +34,8 @@ use Preflow\Media\Usage\CountsAssetUsage;
  *
  * Runs on every delete, so it reads only what can hold a reference: types
  * without a field that holds asset ids (asset, blocks, and since 0.91 every type
- * implementing ReferencesAssets: an embed's poster, a link to a file) or a share
+ * implementing ReferencesAssets: an embed's poster, a link to a file), without page areas
+ * ("_areas", 0.92) or a share
  * image are skipped, and only rows whose such columns or `_seo` (a revision's "data") contain the id
  * (CONTAINS, the same on every storage) are walked. A library page counts the
  * usages of all its assets at once (usageCounts(): one query per type and source for the page's ids, the
@@ -198,10 +199,13 @@ final class FolioRecordReferences implements AssetReferenceSource, CountsAssetUs
             : $this->prefix . '/' . $listing->key . '/' . rawurlencode($id) . '/edit';
     }
 
-    /** @return list<string> the fields AssetReferences::collect() reads: asset, blocks and every ReferencesAssets type's (since 0.91) */
+    /**
+     * @return list<string> the columns AssetReferences::collect() reads: asset, blocks and every ReferencesAssets type's
+     *                      field (since 0.91), and a type with page layouts its "_areas" (0.92)
+     */
     private function referenceFields(TypeDefinition $def): array
     {
-        return array_keys(array_filter($def->fields, $this->references->holdsAssets(...)));
+        return [...array_keys(array_filter($def->fields, $this->references->holdsAssets(...))), ...$this->references->blockColumns($def)];
     }
 
     /**

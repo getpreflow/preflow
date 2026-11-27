@@ -119,6 +119,7 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         'RedirectsController@targets' => self::SIGNED_IN, // the page picker (also while deleting a record): public pages only
         'BlockEditorController@newBlock' => '*.edit|create',
         'BlockEditorController@duplicate' => '*.edit|create',
+        'BlockEditorController@areas' => '*.edit|create',
         'AccountController@show' => self::SIGNED_IN,
         'AccountController@password' => self::SIGNED_IN,
         'LocaleController@update' => self::SIGNED_IN,

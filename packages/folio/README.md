@@ -721,7 +721,9 @@ A type's `key` cannot be a path Folio uses under its prefix (`login`, `logout`,
 - `template` (optional): a userland Twig path. When it is absent, Folio uses
   `@folio/frontend/{type}.twig`, then `@folio/frontend/page.twig`. Templates receive
   `record`, `rendered` (field → safe HTML), `type`, `preview`, `locale`, `alternates` and
-  `query` (the request's query parameters).
+  `query` (the request's query parameters). A type with page layouts (0.92) also gets `layout`
+  and `areas`, and the layout's own template stands before `page.twig` in that chain (see
+  [Page layouts](#page-layouts-092)).
 - `published`: which field and value make a record public. The default is `status` /
   `published`. It only applies when [publishing](#drafts-and-publishing) is off for the
   type.
@@ -1035,15 +1037,17 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   is still chosen shows "Must be one of: …". A source the form does not post (hidden or
   read-only) counts with its stored values. An empty choice passes unless the field is
   `required`. A value that is no longer among them stays visible and selected, marked "no longer
-  an option". The source is read by its own field type (a tags field's list, also an old comma
-  text); another field gives a JSON-text list or one text. A translatable source counts with its
+  an option". The source is read as a list (a tags field's, also its old comma text), a JSON-text
+  list or one text. Since 0.92 the core checks this (and a select's `options`) on every write,
+  imports and API saves included, with the same messages. A translatable source counts with its
   default-language values only: add choices there. Boot errors: a name that is not another field of the type, a `blocks` or
   `matrix` field as the source (it holds entries, not values), both `"options"`
   and `"options_from"`, `"display": "cards"`, naming the select in `list.filters` or
   `list.bulk` (its options differ per record). A class-backed type sets it on the class, like `options`. A field type's editor
   gets the record's values as `FieldContext::$values`, whatever its type (each in the default
   language, as its field type reads it; null without a record), and a field type whose rules need the record's other
-  fields implements `HasRecordRules`.
+  fields implements `HasRecordRules`. A field type's `rules()` reach the core at boot (since 0.92), so every write
+  path checks them, each message once.
 
   In a block (since 0.90) the source is another field of **the same block**, never the record's
   or another block's: `#[BlockField(type: 'select', config: ['options_from' => 'answers'])]`.
@@ -1355,6 +1359,51 @@ The editor saves at most `config/blocks.php` `'max_depth'` levels of blocks in a
 - `{{ folio_editable('headline') }}` in a block template marks an element for click-to-edit
   (only while a preview renders).
 - For a `richtext` block field, `{{ body|raw }}` is the intended output (sanitized).
+
+## Page layouts (0.92)
+
+The idea and the code (layout classes, areas, pins, the rules, the API classes) are in
+[preflow/blocks](../blocks/README.md#page-layouts-092) and work without Folio. Folio is the editor
+for them.
+
+A page type opts in with `"layouts"` (`{"allowed": ["landing", "standard"], "default": "standard"}`,
+optionally `"pinned"`). `preflow migrate` then adds the columns `_layout` and `_areas` to that
+type's table, and only to such types. A type without `"layouts"` has no new control, column or
+template variable.
+
+**What the editor sees:**
+- **The layout picker** is the first control of the form, for a new page and an existing one: "creating
+  a page asks for the layout". A pinned page shows its layout as fixed, with a note that
+  `layouts.pinned` sets it.
+- **The areas** follow the type's fields, each one a block list like a blocks field: the same cards,
+  insert lines and Add block popover, limited to the blocks the area accepts and its `min` and `max`.
+  Problems show beside the area they belong to.
+- **Switching the layout** swaps the areas section from the form as it stands (an htmx call to
+  `POST {admin}/_areas`), so nothing typed is lost. Areas the new layout lacks move to a panel,
+  **Not shown in this layout**. Each block there can be moved to an area of the layout ("Move to")
+  or removed. Only Remove deletes a block: switch back and the blocks are in their areas again.
+- **A page on a layout that is gone** keeps its stored key until the editor chooses one. A notice says
+  the layout is no longer available and which one the page shows as meanwhile.
+- **Unsaved changes:** a layout or area change counts, so the form shows it as an unsaved change.
+  An autosave that the core refuses says so instead of dropping the area edits.
+- **Languages:** area blocks are translated like a blocks field. Translation status, AI translation
+  and the publish-language check count them, and editing the German version keeps the English texts.
+- **Media:** an image used only in an area block (or in a column) counts as in use.
+
+The `areas` field type is the same editor for a layout from a named set, in a type or in a block
+(the columns block of [preflow/block-library](../block-library/README.md) uses it).
+
+The permission to use `POST {admin}/_areas` is the named type's edit permission (create for a new
+record). The block editor's `_blocks/duplicate` checks the named type's permission the same way
+(since 0.92; before, any edit or create permission could read a stored record of another type).
+
+**Linked records in the preview (0.92).** A template marks the element that shows another record
+with `preview_mark('member', m)` (see preflow/blocks). In the live and whole-page preview the
+element gets an outline and the type's label on hover. A click opens that record in the edit
+drawer (`{admin}/{type}/{id}/edit?_drawer=1`, which needs the type's edit permission). Saving
+there refreshes the preview. Only a type and an id that look as Folio writes them are opened
+(the id must match `^[A-Za-z0-9_-]{1,64}$`). In Blade write a space before the directive:
+`<a @preview_mark('member', $m)>`.
 
 ## Blocks, matrix or relation?
 

@@ -1,6 +1,6 @@
 {
     "name": "preflow/fields",
-    "description": "Preflow fields — field types as core values: parsing, checks, storage and template helpers (the link field first)",
+    "description": "Preflow fields — field types as core values: parsing, checks, storage and template helpers (link, email, phone, date and time, colour, video embed, table, code, JSON, location)",
     "type": "library",
     "license": "MIT",
     "require": {

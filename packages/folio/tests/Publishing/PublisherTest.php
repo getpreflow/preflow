@@ -852,7 +852,7 @@ final class PublisherTest extends TestCase
             return $live;
         });
         $fieldTypes = $this->fieldTypes();
-        $p = FolioPublisher::make($this->dm, $catalog, new RecordValidator($fieldTypes, $this->dm), 20, fn (): \DateTimeImmutable => $this->now, addresses: $addresses);
+        $p = FolioPublisher::make($this->dm, $catalog, new RecordValidator($this->dm), 20, fn (): \DateTimeImmutable => $this->now, addresses: $addresses);
         $live = new LiveRecords($this->dm, $p, $resolver);
 
         return [$p, $entries, $addresses];
@@ -940,7 +940,7 @@ final class PublisherTest extends TestCase
 
     public function test_a_publisher_wired_with_folios_adapters_publishes(): void
     {
-        $p = FolioPublisher::make($this->dm, new TypeCatalog($this->dir . '/models'), new RecordValidator($this->fieldTypes(), $this->dm));
+        $p = FolioPublisher::make($this->dm, new TypeCatalog($this->dir . '/models'), new RecordValidator($this->dm));
 
         $this->assertTrue($p->enabled('post'), 'a routed type publishes, as Folio says');
         $this->assertFalse($p->enabled('memo'));
@@ -957,7 +957,7 @@ final class PublisherTest extends TestCase
         return FolioPublisher::make(
             $this->dm,
             new TypeCatalog($this->dir . '/models'),
-            new RecordValidator($fieldTypes, $this->dm),
+            new RecordValidator($this->dm),
             $keep,
             fn (): \DateTimeImmutable => $this->now,
             new TranslationStatus($fieldTypes),

@@ -1,0 +1,1 @@
+<div class="grid">{% for name, list in columns.areas|default({}) %}<div class="cell" data-area="{{ name }}">{{ blocks(list) }}{% for child in list %}{% if child._block == 'quote' %}<q>{{ child.text|raw }}</q>{% endif %}{% endfor %}</div>{% endfor %}</div>

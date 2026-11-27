@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Content;
 
+use Preflow\Blocks\Layouts\PageLayouts;
+use Preflow\Blocks\Layouts\Placement;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\LocaleValue;
@@ -12,6 +14,7 @@ use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Field\AcceptsTranslatedTexts;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\ReportsTranslatableTexts;
+use Preflow\Folio\Field\Types\BlocksFieldType;
 use Preflow\Publishing\PublishState;
 use Preflow\Publishing\Publisher;
 use Preflow\Publishing\RecordWriter;
@@ -32,7 +35,8 @@ use Preflow\Validation\ValidationException;
  * The records of one Folio type as a TextSource, so the core job runner can translate them.
  *
  * Units are the record's translatable texts (TranslationStatus::texts()), without the fields a
- * model opts out of with "ai": {"translate": false}. Writing goes the way of a manual save in the
+ * model opts out of with "ai": {"translate": false}; a page's area blocks among them (0.92,
+ * "_areas.<area>.…", written back as a blocks field's). Writing goes the way of a manual save in the
  * target language: the texts are set (top-level fields as locale maps, structured fields through
  * AcceptsTranslatedTexts), stamped (TranslationStatus::stamp()) and marked as machine-made, then
  * saved through the RecordWriter as by someone who may not publish: the type's save hooks run
@@ -236,6 +240,7 @@ final class FolioTextSource implements TextSource, \Preflow\I18n\Machine\WritesA
         )));
         $data = $record->toArray();
         $structured = [];
+        $areaTexts = []; // area => path below it => text
         $expected = []; // path => the text that must be there after the write
         $seen = $this->seen[$id][$to] ?? [];
         $before = [];
@@ -256,6 +261,13 @@ final class FolioTextSource implements TextSource, \Preflow\I18n\Machine\WritesA
                 continue;
             }
             $field = self::topField($path);
+            if ($field === PageLayouts::AREAS) {
+                // A page's area (0.92): "_areas.<area>.<uid>.<field>…", written as a blocks field's texts.
+                [$area, $rest] = explode('.', substr($path, strlen($field) + 1), 2) + [1 => ''];
+                $areaTexts[$area][$rest] = $text;
+                $expected[$path] = $text;
+                continue;
+            }
             if ($field === $path && isset($addressModes[$field])) {
                 $text = Slug::clean($text, $addressModes[$field] === 'path');
                 if ($text === '') {
@@ -278,6 +290,16 @@ final class FolioTextSource implements TextSource, \Preflow\I18n\Machine\WritesA
             $type = $this->fieldTypes->get($def->fields[$field]->type);
             \assert($type instanceof AcceptsTranslatedTexts);
             $data[$field] = $type->toStorage($type->withTranslatedTexts($type->fromStorage($data[$field] ?? null), $given, $to, $def->fields[$field]->config, $def->locales));
+        }
+        $blocks = $this->fieldTypes->has('blocks') ? $this->fieldTypes->get('blocks') : null;
+        if ($areaTexts !== [] && $blocks instanceof BlocksFieldType) {
+            $areas = Placement::areasOf($data[PageLayouts::AREAS] ?? null);
+            foreach ($areaTexts as $area => $given) {
+                if (isset($areas[$area])) {
+                    $areas[$area] = $blocks->withTranslatedTexts($areas[$area], $given, $to, [], $def->locales);
+                }
+            }
+            $data[PageLayouts::AREAS] = $areas;
         }
         // A path counts as written only when its text is really there afterwards: a field type that
         // reports a path but cannot accept it would otherwise get a human translation marked as machine-made.

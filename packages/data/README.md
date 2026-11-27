@@ -459,6 +459,21 @@ name twice throws. A step is SQL-only by default: on a site whose storage is JSO
 migrate runs just the steps registered with `sqlOnly: false` (work through `DataManager`, no
 SQL; since 0.77.1). `steps(sql: false)` lists those, `isSqlOnly($name)` tells one step.
 
+**Warnings (0.92).** Some things in the data need a person, but are no error: a layout whose class
+was deleted while pages still use it, say. A package reports them as a warning:
+
+```php
+$registry->warning('mypkg.orphans', fn (): array => ['Type "page": 3 pages use the layout "old".']);
+```
+
+The closure only reads and returns one line per finding (`[]` when all is well). `preflow migrate`
+prints each line as `[mypkg.orphans] warning: …` after its steps, and `db:check` as
+`warning: [mypkg.orphans] …` after its own lines. A warning never changes an exit code, and one
+that throws becomes a single line saying so, so it can never stop either command. The default
+works on any storage; pass `sqlOnly: true` for one that needs SQL. A name registered twice
+throws. `warnings(sql: false)` lists the ones that work without SQL, and
+`MigrationRegistry::linesOf($warnings)` runs them for you.
+
 Related behaviour: a storage name that is not configured is an error, never a silent
 fallback to the default; a record key with no column fails with a message naming
 `preflow migrate`; and `orderBy($field, $direction, numeric: true)` compares as numbers even
@@ -958,6 +973,43 @@ final class Job extends Model { … }
   rules a caller gives for a field (`validate($record, ['field' => [...]])`) replace them, as they
   replace `validate`. preflow/fields registers its link field's check this way. `rulesOf($field)`
   reads them.
+- A select's options (since 0.92): a type's select field is checked by the core on every validated
+  write, not only by Folio's form. The value must be one of the select's `options`, or one of the
+  values of the field named in `options_from`; an empty value passes unless the field is `required`.
+  The rule is `Preflow\Data\Validation\SelectRules::of($field, $siblings)` (the same one checks a
+  select inside a block), and an import, a seed or a REST write is refused with the message the
+  form shows. `OptionsFrom` lives in the same namespace (Folio's old class name stays as an alias
+  for one release). `DataManager::fieldRules($def)` gives all the rules of a type's fields (the
+  fields' `validate`, the field types' own and the select's), and `FieldKinds::hasRules($type)`
+  says whether a field type registered some.
+
+## Rules a package adds to a type's records: `RecordRules` (0.92)
+
+A package sometimes needs a rule for a field it does not own. preflow/blocks, for example, must
+check the `_layout` and `_areas` of a page, and refuse a rename of a pinned page's slug. If the
+package wrote that check into its own form, a seed, an import or an API controller would skip it.
+
+`DataManager::recordRules()` is the one place for such rules. Every validated write of a typed
+record (`validate()`, `saveType()`, so Folio, REST, imports and seeds alike) runs them. There are
+two kinds:
+
+| Kind | Judges | Registered with | Example |
+|---|---|---|---|
+| Field rules | one field of the record | `add(fn (TypeDefinition $def): array => ['field' => [rules]])` | the pin on a page's slug |
+| Checks | the whole record | `check(fn (DynamicRecord $record, array $given): array => ['key' => ['message']])` | the values of blocks inside a record's block lists, keyed `sections.<uid>.title` |
+
+```php
+$data->recordRules()->add(
+    static fn (TypeDefinition $def): array => $def->key === 'page' ? ['slug' => [new MyRule()]] : [],
+    drafts: true,   // also run when a draft is stored (validateStorable())
+);
+```
+
+A closure returns `[]` for a type it has nothing for, so a type nobody added rules to behaves as
+in 0.91. The rules run after the fields' own `validate` and the field types' rules. Rules a caller
+gives for a field replace them, as they replace `validate`, and a field a caller gives `[]` is not
+checked by the checks either. Field errors and check errors come in one `ValidationException`.
+`of($def, drafts: true)` lists the rules that also run for drafts, and `checks()` the checks.
 
 ## Slugs
 

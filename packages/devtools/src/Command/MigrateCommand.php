@@ -58,9 +58,13 @@ final class MigrateCommand implements CommandInterface
                 echo "No SQL storage configured: no schema migrations.\n";
                 $registry = $container->get(MigrationRegistry::class);
                 if ($pretend) {
-                    return $this->refused($this->runSteps($registry->checks(sql: false)));
+                    $refused = $this->runSteps($registry->checks(sql: false));
+                    $this->printWarnings($registry->warnings(sql: false));
+
+                    return $this->refused($refused);
                 }
                 $refused = $this->runSteps($registry->steps(sql: false));
+                $this->printWarnings($registry->warnings(sql: false));
                 echo "Done.\n";
                 return $this->refused($refused);
             }
@@ -100,9 +104,13 @@ final class MigrateCommand implements CommandInterface
             $registry->ranOn($storage);
             if ($pretend) {
                 // The read-only checks: what the steps would refuse, nothing changed.
-                return $this->refused($this->runSteps($registry->checks(sql: true)));
+                $refused = $this->runSteps($registry->checks(sql: true));
+                $this->printWarnings($registry->warnings(sql: true));
+
+                return $this->refused($refused);
             }
             $refused = $this->runSteps($registry->steps(sql: true));
+            $this->printWarnings($registry->warnings(sql: true));
             echo "Done.\n";
 
             return $this->refused($refused);
@@ -153,6 +161,21 @@ final class MigrateCommand implements CommandInterface
         }
 
         return array_keys($refused);
+    }
+
+    /**
+     * Prints each warning's lines as "[name] warning: line" (MigrationRegistry::warning(), since 0.92). A warning
+     * never changes the exit code, and one that cannot be worked out says so instead of stopping the run.
+     *
+     * @param array<string, \Closure(): list<string>> $warnings
+     */
+    private function printWarnings(array $warnings): void
+    {
+        foreach (MigrationRegistry::linesOf($warnings) as $name => $lines) {
+            foreach ($lines as $line) {
+                echo "[{$name}] warning: {$line}\n";
+            }
+        }
     }
 
     /**

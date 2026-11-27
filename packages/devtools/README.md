@@ -45,6 +45,17 @@ php preflow migrate --storage=sqlite   # the storage to migrate (default: sqlite
   idempotent. Folio's step is SQLite-only for now (a Folio type on MySQL makes it throw),
   and creates and adds only; it never drops or renames.
 - `--pretend` skips the steps. The command exits 1 with `Error: ...` on stderr when it fails.
+- **Warnings (since 0.92).** After its steps (and before `Done.`) `migrate` prints what packages
+  registered with `MigrationRegistry::warning()`: data that needs a person but is no error, one
+  line each as `[name] warning: …`. With preflow/blocks that is the page layout report: a layout
+  a type allows or pins but no class declares, a pin whose page does not exist yet, pages that use a
+  layout that is gone, and pages with blocks in areas their layout does not show. It only reads:
+  the exit code does not change, and a warning that fails is one line saying so. `--pretend`
+  prints the warnings too.
+
+```
+# [blocks.layouts] warning: Type "page": layouts.allowed names "promo", which no #[Layout] class declares. …
+```
 - A site whose storage is JSON only has no schema to migrate: it prints
   `No SQL storage configured: no schema migrations.`, then runs the steps registered for any
   storage (`sqlOnly: false`, such as `publishing.published_versions` and `rbac.seed`) and exits 0;
@@ -92,6 +103,9 @@ that can. They ask the storage's driver for `Preflow\Data\Maintenance` (`check`,
 has no check for, such as references between records, is listed as "not applicable", never faked).
 On MySQL/MariaDB dump and restore, and on JSON storage, they exit 1 naming the tools to use
 (`mysqldump`, a copy of the folder). Messages go to standard error.
+
+`db:check` also prints the registered warnings (since 0.92), after its own lines, as
+`warning: [name] line`: the same page layout report as `migrate`. A warning never fails the check.
 
 ### `activity:prune` — apply the activity log's retention (since 0.77)
 

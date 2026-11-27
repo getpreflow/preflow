@@ -1,0 +1,38 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\Blocks\Tests\Fixtures\Columns;
+
+use Preflow\Blocks\Layouts\AreaDefinition;
+use Preflow\Blocks\Layouts\AreaLayout;
+use Preflow\Blocks\Layouts\AreaLayoutSet;
+use Preflow\Blocks\Layouts\AreaLayoutSets;
+use Preflow\Core\Container\Container;
+use Preflow\Core\Container\ServiceProvider;
+
+/**
+ * Registers the area layout set "grid" in register(), as a package that brings a columns block
+ * does: "full" (c1), "1-1" (c1, c2), "2-1" (c1 twice as wide, c2 at most one block), "1-1-1"
+ * (c1, c2, c3); no column takes a grid; fallback "full".
+ */
+final class GridLayouts extends ServiceProvider
+{
+    public function register(Container $container): void
+    {
+        // One instance, whoever binds it first (BlocksServiceProvider does the same).
+        if (!$container->bound(AreaLayoutSets::class)) {
+            $container->instance(AreaLayoutSets::class, new AreaLayoutSets());
+        }
+        $container->get(AreaLayoutSets::class)->add('grid', static function (): AreaLayoutSet {
+            $column = static fn (int $n, int $width = 1, ?int $max = null): AreaDefinition => new AreaDefinition('c' . $n, 'Column ' . $n, except: ['grid'], max: $max, width: $width);
+
+            return new AreaLayoutSet('grid', [
+                new AreaLayout('full', 'Full width', ['c1' => $column(1)]),
+                new AreaLayout('1-1', 'Two columns', ['c1' => $column(1), 'c2' => $column(2)]),
+                new AreaLayout('2-1', 'Wide and narrow', ['c1' => $column(1, 2), 'c2' => $column(2, 1, 1)]),
+                new AreaLayout('1-1-1', 'Three columns', ['c1' => $column(1), 'c2' => $column(2), 'c3' => $column(3)]),
+            ], fallback: 'full');
+        });
+    }
+}

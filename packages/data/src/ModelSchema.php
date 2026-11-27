@@ -27,10 +27,12 @@ final class ModelSchema
     /**
      * Keys that define a field's data; every other field key is presentation (label, help, readonly, ...).
      * "multiple" is data: it decides the column (FieldKinds stores a multiple relation as text).
+     * "layouts" is data (0.92): an areas field's set decides which areas its value may hold.
      */
     public const array SCHEMA_FIELD_KEYS = [
         'type', 'validate', 'translatable', 'unique', 'index', 'length', 'searchable',
         'transform', 'default', 'relation', 'options', 'options_from', 'accept', 'time', 'blocks', 'fields', 'multiple', 'exact',
+        'layouts',
     ];
 
     /**
