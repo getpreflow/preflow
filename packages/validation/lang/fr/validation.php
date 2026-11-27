@@ -60,8 +60,8 @@ return [
     'layout' => [
         'choice' => 'La mise en page « :key » ne fait pas partie de celles que ce type autorise (:allowed). Choisissez-en une.',
         'pinned' => 'Cette page est liée à la mise en page « :layout » par l\'entrée « :slug » de « layouts.pinned » dans le type « :type ». Modifiez ou supprimez d\'abord cette entrée, puis renommez la page.',
-        'area_max' => 'La zone « :area » accepte au plus :max blocs.',
-        'area_min' => 'La zone « :area » demande au moins :min blocs.',
+        'area_max' => 'La zone « :area » accepte au plus :max bloc.|La zone « :area » accepte au plus :max blocs.',
+        'area_min' => 'La zone « :area » demande au moins :min bloc.|La zone « :area » demande au moins :min blocs.',
         'area_block' => 'La zone « :area » n\'accepte pas les blocs « :block ». Déplacez-le dans une autre zone ou supprimez-le.',
         'none' => 'Le type « :type » n\'a pas de mises en page ; omettez « _layout » et « _areas ».',
         'key' => 'Doit être la clé d\'une mise en page, p. ex. « standard », ou null pour celle par défaut du type.',

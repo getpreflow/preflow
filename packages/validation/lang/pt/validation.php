@@ -56,8 +56,8 @@ return [
     'layout' => [
         'choice' => 'O layout ":key" não é um dos layouts que este tipo permite (:allowed). Escolha um deles.',
         'pinned' => 'Esta página está fixada ao layout ":layout" pela entrada ":slug" de "layouts.pinned" no tipo ":type". Altere ou remova essa entrada primeiro e depois renomeie a página.',
-        'area_max' => 'A área ":area" aceita no máximo :max blocos.',
-        'area_min' => 'A área ":area" precisa de pelo menos :min blocos.',
+        'area_max' => 'A área ":area" aceita no máximo :max bloco.|A área ":area" aceita no máximo :max blocos.',
+        'area_min' => 'A área ":area" precisa de pelo menos :min bloco.|A área ":area" precisa de pelo menos :min blocos.',
         'area_block' => 'A área ":area" não aceita blocos ":block". Mova-o para outra área ou remova-o.',
         'none' => 'O tipo ":type" não tem layouts; omita "_layout" e "_areas".',
         'key' => 'Deve ser a chave de um layout, como "standard", ou null para o padrão do tipo.',

@@ -148,11 +148,17 @@ final class ValidationTranslationTest extends TestCase
 
             return $flat;
         };
+        // A text with plural forms ("…:max block.|…:max blocks.", since 0.92.1) has them in each form; a
+        // language has as many forms as it needs (one in Japanese, three in Polish).
         $placeholders = static function (string $text): array {
-            preg_match_all('/:[a-z]+/', $text, $found);
-            sort($found[0]);
+            $forms = [];
+            foreach (explode('|', $text) as $form) {
+                preg_match_all('/:[a-z]+/', $form, $found);
+                sort($found[0]);
+                $forms[implode(' ', $found[0])] = $found[0];
+            }
 
-            return $found[0];
+            return array_values($forms);
         };
         $root = dirname(__DIR__) . '/lang';
         $english = $flatten(require $root . '/en/validation.php');
@@ -166,5 +172,28 @@ final class ValidationTranslationTest extends TestCase
                 $this->assertSame($placeholders($text), $placeholders($messages[$key]), "$locale $key: placeholders");
             }
         }
+    }
+
+    /** @since 0.92.1 an area's limit reads "1 block", "2 blocks" (Message's count chooses the form). */
+    public function test_the_area_limits_choose_their_plural_form(): void
+    {
+        $max = static fn (int $n): \Preflow\Validation\Message => new \Preflow\Validation\Message('validation.layout.area_max', ['area' => 'aside', 'max' => (string) $n], $n);
+        $min = static fn (int $n): \Preflow\Validation\Message => new \Preflow\Validation\Message('validation.layout.area_min', ['area' => 'main', 'min' => (string) $n], $n);
+
+        $this->assertSame('The area "aside" takes at most 1 block.', $max(1)->english());
+        $this->assertSame('The area "aside" takes at most 3 blocks.', $max(3)->english());
+        $this->assertSame('The area "main" takes at least 1 block.', (string) $min(1));
+        $this->assertSame('The area "main" takes at least 2 blocks.', (string) $min(2));
+        $this->assertSame('Format is invalid.', (new \Preflow\Validation\Message('validation.regex'))->english(), 'a text with one form, no count');
+
+        $translator = self::translator('de');
+        $this->assertSame('Der Bereich "aside" nimmt höchstens 1 Block auf.', $max(1)->text($translator));
+        $this->assertSame('Der Bereich "aside" nimmt höchstens 4 Blöcke auf.', $max(4)->text($translator));
+        $translator = self::translator('pl');
+        $this->assertSame('Obszar "aside" mieści najwyżej 1 blok.', $max(1)->text($translator));
+        $this->assertSame('Obszar "aside" mieści najwyżej 3 bloki.', $max(3)->text($translator));
+        $this->assertSame('Obszar "aside" mieści najwyżej 5 bloków.', $max(5)->text($translator));
+        $translator = self::translator('ja');
+        $this->assertSame('エリア "aside" に置けるブロックは最大 1 個です。', $max(1)->text($translator), 'one form');
     }
 }

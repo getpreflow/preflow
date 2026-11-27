@@ -56,8 +56,8 @@ return [
     'layout' => [
         'choice' => 'Układ ":key" nie należy do układów dozwolonych dla tego typu (:allowed). Wybierz jeden z nich.',
         'pinned' => 'Ta strona jest przypięta do układu ":layout" przez wpis ":slug" w "layouts.pinned" typu ":type". Najpierw zmień lub usuń ten wpis, a potem zmień nazwę strony.',
-        'area_max' => 'Obszar ":area" mieści najwyżej :max bloków.',
-        'area_min' => 'Obszar ":area" wymaga co najmniej :min bloków.',
+        'area_max' => '{1} Obszar ":area" mieści najwyżej :max blok.|[2,4] Obszar ":area" mieści najwyżej :max bloki.|[5,*] Obszar ":area" mieści najwyżej :max bloków.',
+        'area_min' => 'Obszar ":area" wymaga co najmniej :min bloku.|Obszar ":area" wymaga co najmniej :min bloków.',
         'area_block' => 'Obszar ":area" nie przyjmuje bloków ":block". Przenieś go do innego obszaru lub usuń.',
         'none' => 'Typ ":type" nie ma układów; pomiń "_layout" i "_areas".',
         'key' => 'Musi być kluczem układu, np. "standard", lub null dla domyślnego układu typu.',

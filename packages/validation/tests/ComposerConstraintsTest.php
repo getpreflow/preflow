@@ -13,6 +13,10 @@ use PHPUnit\Framework\TestCase;
  * "^0.37 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
  * Composer from pairing validation with a release that lacks the APIs it calls: i18n 0.37 (the
  * public-scoped validation group its Message texts come from).
+ *
+ * Since 0.92.1 it conflicts with blocks before 0.92.1, which it does not require: the area limits'
+ * messages ("validation.layout.area_max", "area_min") have plural forms, which only a Message with
+ * a count chooses; blocks before 0.92.1 gives none, so its messages would show both forms.
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -21,7 +25,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/core' => '<0.81.0', 'preflow/i18n' => '<0.81.0'],
+            ['preflow/core' => '<0.81.0', 'preflow/i18n' => '<0.81.0', 'preflow/blocks' => '<0.92.1'],
             $composer['conflict'] ?? null,
         );
         foreach (['preflow/core', 'preflow/i18n'] as $package) {

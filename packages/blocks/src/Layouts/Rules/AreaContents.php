@@ -129,10 +129,10 @@ final readonly class AreaContents implements ValidationRule
         // Against the stored count: a write may move an area towards its limits, never further past them.
         $count = count($blocks);
         if ($area->max !== null && $count > $area->max && ($stored === null || $count > count($stored))) {
-            return new Message('validation.layout.area_max', ['area' => $name, 'max' => (string) $area->max]);
+            return new Message('validation.layout.area_max', ['area' => $name, 'max' => (string) $area->max], $area->max);
         }
         if ($area->min !== null && $count < $area->min && ($stored === null || $count < count($stored))) {
-            return new Message('validation.layout.area_min', ['area' => $name, 'min' => (string) $area->min]);
+            return new Message('validation.layout.area_min', ['area' => $name, 'min' => (string) $area->min], $area->min);
         }
 
         return null;

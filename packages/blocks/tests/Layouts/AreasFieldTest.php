@@ -249,7 +249,7 @@ final class AreasFieldTest extends BlocksAppTestCase
         $errors = $this->errorsOfSave(['uuid' => 'p1', 'sections' => [$grid(['c1' => [$nested], 'c2' => [self::section(self::A), self::section(self::B)]])]]);
         $this->assertSame([$prefix . '.areas.c1', $prefix . '.areas.c2'], array_keys($errors));
         $this->assertSame('The area "c1" does not take "grid" blocks. Move it to another area or remove it.', $errors[$prefix . '.areas.c1'][0]);
-        $this->assertSame('The area "c2" takes at most 1 blocks.', $errors[$prefix . '.areas.c2'][0]);
+        $this->assertSame('The area "c2" takes at most 1 block.', $errors[$prefix . '.areas.c2'][0]);
         $this->assertSame([$prefix . '.layout' => ['The layout "wide" is not one of the layouts of the set "grid" (full, 1-1, 2-1, 1-1-1). Choose one of them.']], $this->errorsOfSave(['uuid' => 'p1', 'sections' => [$grid(['c1' => []], 'wide')]]));
 
         // Stored so (written past the rules, as before a site narrowed its columns): it stays savable.

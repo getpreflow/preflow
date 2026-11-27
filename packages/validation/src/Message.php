@@ -11,22 +11,32 @@ use Preflow\I18n\Translator;
  * string it is the English text of lang/en/validation.php, exactly the message a validator
  * without a translator gives; text() gives it in a translator's language, falling back to
  * that English text where the translator has no text for the key.
+ *
+ * With a count (since 0.92.1) the text is chosen by it, as Translator::choice() chooses: a text
+ * "One block.|:max blocks." gives its first form for 1 and its second otherwise, and the
+ * "{1} …|[2,4] …|[5,*] …" forms of PluralResolver work too. A text with one form stays as it is.
  */
 final readonly class Message implements \Stringable
 {
     /** The rules' own texts, the English of this package. */
     public const string LANG_PATH = __DIR__ . '/../lang';
 
-    /** @param array<string, string> $params :name => value */
+    /**
+     * @param array<string, string> $params :name => value
+     * @param int|null              $count  chooses the plural form (since 0.92.1); null: the text has one
+     */
     public function __construct(
         public string $key,
         public array $params = [],
+        public ?int $count = null,
     ) {}
 
     public function text(?Translator $translator = null): string
     {
         if ($translator !== null) {
-            $text = $translator->get($this->key, $this->params);
+            $text = $this->count !== null
+                ? $translator->choice($this->key, $this->count, $this->params)
+                : $translator->get($this->key, $this->params);
             if ($text !== $this->key) {
                 return $text;
             }
@@ -53,6 +63,9 @@ final readonly class Message implements \Stringable
         }
         if (!is_string($value)) {
             return $this->key;
+        }
+        if ($this->count !== null) {
+            $value = (new \Preflow\I18n\PluralResolver())->resolve($value, $this->count);
         }
         foreach ($this->params as $name => $param) {
             $value = str_replace(':' . $name, $param, $value);

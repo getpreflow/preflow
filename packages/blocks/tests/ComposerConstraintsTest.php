@@ -7,6 +7,8 @@ namespace Preflow\Blocks\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.92.1: validation 0.92.1 (Message's count, which chooses the plural form of the area limits' messages;
+ * an older validation has no count, and its texts have one form).
  * Since 0.92.0: data 0.92.0 (RecordRules, DataManager::recordRules(): the page layout rules run on every
  * validated save of a type with "layouts", and a pinned page's slug also on drafts); validation 0.92.0 (the
  * layout rules' messages, "validation.layout.*": an older one would show their keys); folio 0.92.0 (the block values
@@ -40,13 +42,13 @@ final class ComposerConstraintsTest extends TestCase
 
         $this->assertSame('^0.92.0 || @dev', $composer['require']['preflow/data'] ?? null);
         $this->assertSame('^0.81.0 || @dev', $composer['require']['preflow/core'] ?? null);
-        $this->assertSame('^0.92.0 || @dev', $composer['require']['preflow/validation'] ?? null);
+        $this->assertSame('^0.92.1 || @dev', $composer['require']['preflow/validation'] ?? null);
         $this->assertSame([
             'preflow/components' => '<0.70',
             'preflow/core' => '<0.81.0',
             'preflow/data' => '<0.92.0',
             'preflow/folio' => '<0.92.0',
-            'preflow/validation' => '<0.92.0',
+            'preflow/validation' => '<0.92.1',
             'preflow/view' => '<0.70',
         ], $composer['conflict'] ?? null);
     }

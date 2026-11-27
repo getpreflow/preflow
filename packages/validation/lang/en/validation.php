@@ -66,8 +66,8 @@ return [
     'layout' => [
         'choice' => 'The layout ":key" is not one of the layouts this type allows (:allowed). Choose one of them.',
         'pinned' => 'This page is pinned to the layout ":layout" by the entry ":slug" of "layouts.pinned" in the type ":type". Change or remove that entry first, then rename the page.',
-        'area_max' => 'The area ":area" takes at most :max blocks.',
-        'area_min' => 'The area ":area" takes at least :min blocks.',
+        'area_max' => 'The area ":area" takes at most :max block.|The area ":area" takes at most :max blocks.',
+        'area_min' => 'The area ":area" takes at least :min block.|The area ":area" takes at least :min blocks.',
         'area_block' => 'The area ":area" does not take ":block" blocks. Move it to another area or remove it.',
         'none' => 'The type ":type" has no layouts; leave out "_layout" and "_areas".',
         'key' => 'Must be the key of a layout, such as "standard", or null for the type\'s default.',
