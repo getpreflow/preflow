@@ -185,6 +185,26 @@ You write none of this: `BlocksServiceProvider` runs `Preflow\Blocks\BlockValueC
 adapter adds rules for block fields with `BlockValueChecks::extraRules()`; `BlockLists` is the one
 place that knows which field types hold blocks.
 
+### Cleaned on every write (0.93)
+
+Rich text inside blocks is cleaned when the record is stored, on every typed write, with or without
+validation: a `richtext` field of a block (every language), in nested blocks, in the columns of an
+`areas` field and in a page's `_areas`. It is the same cleaning a record's own rich text gets
+(`DataManager::storageValues()`), so an import or an API body stores the same safe HTML Folio's form
+stores. Clean HTML keeps its bytes, so saving a record again does not move its change date. A block
+whose class is gone, and a key its block does not declare, are stored as given. Rows a script
+writes straight to a driver are not cleaned; rendering cleans them again (`CoreBlockTextCleaner`).
+
+### Field values (0.93)
+
+`BlocksServiceProvider` registers what a `blocks` and an `areas` field's values mean on the
+DataManager's `FieldKinds` (`FieldKinds::valueOf()`), for readers and writers of any type:
+
+| Value | Shape | Does |
+|---|---|---|
+| `Values\BlocksFieldValue` | `blocks` | each block field read and written through its own value (a number stored as `"3"` reads `3`, rich text cleaned, locale maps kept), a field its `show_when` hides read as `null`; `references()` lists the records and assets every block points at |
+| `Values\AreasFieldValue` | `areas_value` | read as `LayoutResource::areasField()`, each block as above; `merge()` is `LayoutInput::mergeField()` |
+
 ## Page layouts (0.92)
 
 ### The problem it solves
@@ -385,12 +405,14 @@ in a provider's `register()`:
 | Interface | Asks | Default | Folio binds |
 |---|---|---|---|
 | `BlockLocale` | the locale to render in (`localeOf(RenderContext $ctx)`, `locales()`; since 0.83 `localeOf()` is part of `BlockLocale`, which was `ContextBlockLocale`'s in 0.81 and 0.82, and `get()` is gone) | the render context's locale when it is a content locale, else the default | its content locale (the page's; the editing locale in a preview) |
-| `BlockTextCleaner` | `block(array $block): array`, the values on their way to the template | as stored | its rich-text sanitizer (nested blocks included) |
+| `BlockTextCleaner` | `block(array $block): array`, the values on their way to the template | the core cleaner (`CoreBlockTextCleaner`, 0.93): rich text cleaned, nested blocks and columns included | its rich-text sanitizer (nested blocks included) |
 | `BlockPreviewMarks` | the root attributes of a block in preview (`data-…` only) | `data-block`, `data-block-label` | `data-folio-block`, `data-folio-label` |
 | `RecordPreviewMarks` (0.92) | the attributes of a linked record's element in preview (`attributes($type, $id)`, `data-…` only) | `data-record-type`, `data-record-id` | `data-folio-record`, `data-folio-record-id`, `data-folio-label` |
 
-Without Folio, rich-text values are rendered as stored: the default cleaner changes nothing, so bind a
-`BlockTextCleaner` to clean them (below).
+Since 0.93 blocks render their rich text cleaned without Folio too: the default `CoreBlockTextCleaner`
+cleans it with the core's HTML cleaner (`Preflow\Data\Html\HtmlCleaner`; bind your own to make it
+stricter or looser), as every save does. Before 0.93 the default changed nothing. Bind a
+`BlockTextCleaner` to do something else with a block's values (below).
 
 ```php
 $container->singleton(Preflow\Blocks\BlockTextCleaner::class, fn () => new App\Content\MarkdownBlocks());

@@ -6,9 +6,10 @@ namespace Preflow\Blocks;
 
 /**
  * Cleans a block's values before its component gets them (rich text sanitized, nested
- * blocks included). Values are usually cleaned when they are saved, but content can also
- * arrive by import, app code or older data. The default leaves them as they are; Folio
- * binds its rich-text sanitizer.
+ * blocks included). Values are cleaned when they are saved (since 0.93 on every typed write),
+ * but content can also arrive by a script writing straight to a driver or older data. The
+ * default is CoreBlockTextCleaner (since 0.93; DefaultBlockTextCleaner, which leaves them as
+ * they are, before); Folio binds its rich-text sanitizer.
  */
 interface BlockTextCleaner
 {

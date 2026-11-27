@@ -7,7 +7,7 @@
         "php": ">=8.4",
         "preflow/components": "^0.70 || @dev",
         "preflow/core": "^0.81.0 || @dev",
-        "preflow/data": "^0.92.0 || @dev",
+        "preflow/data": "^0.93.0 || @dev",
         "preflow/validation": "^0.92.1 || @dev",
         "preflow/view": "^0.70 || @dev"
     },
@@ -22,7 +22,7 @@
     "conflict": {
         "preflow/components": "<0.70",
         "preflow/core": "<0.81.0",
-        "preflow/data": "<0.92.0",
+        "preflow/data": "<0.93.0",
         "preflow/folio": "<0.92.0",
         "preflow/validation": "<0.92.1",
         "preflow/view": "<0.70"

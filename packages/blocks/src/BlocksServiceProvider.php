@@ -27,16 +27,22 @@ use Preflow\Blocks\Layouts\Rules\AreaContents;
 use Preflow\Blocks\Layouts\Rules\LayoutChoice;
 use Preflow\Blocks\Layouts\Rules\MessageRule;
 use Preflow\Blocks\Layouts\Rules\PinnedSlug;
+use Preflow\Blocks\Values\AreasFieldValue;
+use Preflow\Blocks\Values\BlocksFieldValue;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\FieldKinds;
+use Preflow\Data\Html\HtmlCleaner;
+use Preflow\Data\Html\SymfonyHtmlCleaner;
 use Preflow\Data\Locales;
 use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Data\TypeRegistry;
 use Preflow\Data\Schema\ColumnKind;
+use Preflow\Data\Values\CoreValues;
+use Preflow\Data\Values\StoredCleaning;
 use Preflow\Validation\RuleFactory;
 use Preflow\Validation\ValidationContext;
 use Preflow\Validation\ValidatorFactory;
@@ -68,6 +74,12 @@ use Preflow\View\TemplateFunctionDefinition;
  * Block values (since 0.92): with a DataManager, BlockValueChecks runs on every validated write of
  * a typed record (a RecordRules check), so a seed, an import or a REST save is refused for a block
  * value Folio's form refuses, with the same keys and messages.
+ *
+ * Field values (since 0.93): with a DataManager, BlocksFieldValue and AreasFieldValue on its
+ * FieldKinds (read, written and cleaned through each block field's own value), and a page's
+ * "_areas" cleaned on every typed write for the types with layouts (StoredCleaning::systemKey()).
+ * The default BlockTextCleaner is CoreBlockTextCleaner: rich text is cleaned on render without
+ * Folio too.
  *
  * Listed in config/providers.php by a site without Folio; Folio registers it itself.
  */
@@ -160,8 +172,10 @@ final class BlocksServiceProvider extends ServiceProvider
         if (!$container->bound(BlockLocale::class)) {
             $container->singleton(BlockLocale::class, static fn (Container $c): BlockLocale => new DefaultBlockLocale($c->get(Locales::class)));
         }
+        // The core cleaner (0.93; DefaultBlockTextCleaner before): sites without Folio get rich text
+        // cleaned on its way to the template too.
         if (!$container->bound(BlockTextCleaner::class)) {
-            $container->singleton(BlockTextCleaner::class, static fn (): BlockTextCleaner => new DefaultBlockTextCleaner());
+            $container->singleton(BlockTextCleaner::class, static fn (Container $c): BlockTextCleaner => new CoreBlockTextCleaner(self::cleaningOf($c), $c->get(BlockRegistry::class)));
         }
         if (!$container->bound(BlockPreviewMarks::class)) {
             $container->singleton(BlockPreviewMarks::class, static fn (): BlockPreviewMarks => new DefaultBlockPreviewMarks());
@@ -348,6 +362,12 @@ final class BlocksServiceProvider extends ServiceProvider
         if ($data === null) {
             return;
         }
+        // A page's areas are cleaned on every typed write (0.93), as its fields: rich text in their blocks.
+        $data->cleaning()->systemKey(PageLayouts::AREAS, static function (mixed $value, TypeDefinition $def) use ($container, $data): mixed {
+            return $container->get(PageLayouts::class)->forType($def->key) === null
+                ? $value
+                : self::blocksValue($container, $data->fieldKinds())->cleanAreaMap($value);
+        });
         // `preflow migrate` and `db:check` print what needs a person: layouts without a class, pins without a page, pages on an unavailable layout.
         $container->get(MigrationRegistry::class)->warning('blocks.layouts', static fn (): array => (new LayoutReport(
             $container->get(PageLayouts::class),
@@ -471,6 +491,8 @@ final class BlocksServiceProvider extends ServiceProvider
 
         // The areas field (0.92): a layout from a named set and its areas, stored as JSON text on SQL.
         $data->fieldKinds()->column(BlockLists::AREAS, ColumnKind::Text);
+        // What a blocks and an areas field's values mean (0.93): read, written and cleaned on every typed write.
+        self::registerValues($container, $data->fieldKinds());
         // What the areas of every areas field hold (AreaContents::forField(), against the stored
         // value), keyed by the area that is wrong ("<field>.areas.<area>", nested under the block).
         $data->recordRules()->check(static function (DynamicRecord $record, array $given) use ($container, $data): array {
@@ -487,6 +509,50 @@ final class BlocksServiceProvider extends ServiceProvider
 
             return self::errorsOf($container, $checks->problems($def, $values, $stored, $given));
         });
+    }
+
+    /**
+     * The values of the blocks and areas field types (0.93) on $kinds: BlocksFieldValue (shape
+     * "blocks") and AreasFieldValue (shape "areas_value"), each block field through its own value
+     * of $kinds. The registry, LayoutResource and LayoutInput are asked on use.
+     */
+    private static function registerValues(Container $container, FieldKinds $kinds): void
+    {
+        $blocks = self::blocksValue($container, $kinds);
+        $kinds->value(BlockLists::BLOCKS, $blocks);
+        $kinds->value(BlockLists::AREAS, new AreasFieldValue(
+            $blocks,
+            static fn (): LayoutResource => $container->get(LayoutResource::class),
+            static fn (): LayoutInput => $container->get(LayoutInput::class),
+        ));
+    }
+
+    /** A BlocksFieldValue over $kinds, the registry asked on use. */
+    private static function blocksValue(Container $container, FieldKinds $kinds): BlocksFieldValue
+    {
+        $value = $kinds->valueOf(new TypeFieldDefinition(PageLayouts::AREAS, BlockLists::BLOCKS));
+
+        return $value instanceof BlocksFieldValue ? $value : new BlocksFieldValue(static fn (): BlockRegistry => $container->get(BlockRegistry::class), $kinds);
+    }
+
+    /**
+     * What the core cleaner of blocks cleans with: the DataManager's StoredCleaning (its rich text
+     * cleaner, a site's bound HtmlCleaner), or without a DataManager the core values over the
+     * bound HtmlCleaner, else the core's.
+     */
+    private static function cleaningOf(Container $container): StoredCleaning
+    {
+        if ($container->bound(DataManager::class)) {
+            return $container->get(DataManager::class)->cleaning();
+        }
+        $kinds = new FieldKinds();
+        $default = null;
+        CoreValues::register($kinds, static function () use ($container, &$default): HtmlCleaner {
+            return $container->bound(HtmlCleaner::class) ? $container->get(HtmlCleaner::class) : ($default ??= SymfonyHtmlCleaner::standard());
+        });
+        self::registerValues($container, $kinds);
+
+        return new StoredCleaning($kinds);
     }
 
     /**

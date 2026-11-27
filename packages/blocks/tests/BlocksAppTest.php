@@ -10,7 +10,7 @@ use Preflow\Blocks\BlockRenderer;
 use Preflow\Blocks\BlocksConfig;
 use Preflow\Blocks\BlockTextCleaner;
 use Preflow\Blocks\DefaultBlockLocale;
-use Preflow\Blocks\DefaultBlockTextCleaner;
+use Preflow\Blocks\CoreBlockTextCleaner;
 use Preflow\Core\Cache\CacheRegistry;
 use Preflow\Core\Cache\FileCache;
 
@@ -165,7 +165,7 @@ final class BlocksAppTest extends BlocksAppTestCase
     {
         $c = $this->app()->container();
         $this->assertInstanceOf(DefaultBlockLocale::class, $c->get(BlockLocale::class));
-        $this->assertInstanceOf(DefaultBlockTextCleaner::class, $c->get(BlockTextCleaner::class));
+        $this->assertInstanceOf(CoreBlockTextCleaner::class, $c->get(BlockTextCleaner::class), 'the core cleaner (0.93; DefaultBlockTextCleaner before)');
         $this->assertSame('en', $c->get(BlockLocale::class)->localeOf($this->visit()));
 
         $html = $this->render('{{ blocks(page) }}', ['page' => self::PAGE], 'de');
@@ -173,7 +173,7 @@ final class BlocksAppTest extends BlocksAppTestCase
         $this->assertSame('de', $c->get(BlockLocale::class)->localeOf($this->visit()->in('de')));
         $this->assertStringContainsString('<h2>Hallo</h2>', $html);
         $this->assertStringContainsString('<q>Zitiert</q>', $html);
-        $this->assertStringContainsString('<em>as stored</em>', $html, 'no cleaning without a cleaner of the app');
+        $this->assertStringContainsString('<em>as stored</em>', $html, 'a text field is no rich text: the core cleaner keeps it');
 
         $this->assertSame('en', $c->get(BlockLocale::class)->localeOf($this->visit()->in('fr')), 'not a content locale: the default');
     }
