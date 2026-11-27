@@ -194,6 +194,27 @@ final class RecordOutputTest extends TestCase
         $this->assertSame('https://example.org/', $this->find($dm, 'r1')->get('url'), 'the stored value is kept');
     }
 
+    public function test_a_field_declared_hidden_is_never_read(): void
+    {
+        // Final review finding 2: "hidden": true holds what Folio's form never shows (a password
+        // hash, a code's payload). The read output leaves it out, also from what it references.
+        $this->model('member', [
+            'email' => ['type' => 'string'],
+            'password_hash' => ['type' => 'string', 'hidden' => true],
+            'invited_by' => ['type' => 'relation', 'relation' => ['to' => 'member'], 'hidden' => true],
+        ]);
+        $dm = $this->dm('json');
+        $dm->driver('json')->save('member', 'm1', ['uuid' => 'm1', 'email' => 'a@example.org', 'password_hash' => '$2y$10$abcdefghijklmnopqrstuv', 'invited_by' => 'm0']);
+        $record = $dm->findType('member', 'm1');
+        $this->assertNotNull($record);
+
+        $output = $this->reader($dm)->toArray($record);
+
+        $this->assertSame(['_id' => 'm1', 'email' => 'a@example.org'], $output);
+        $this->assertSame([], $this->reader($dm)->references($record), 'a hidden relation references nothing on the read side');
+        $this->assertSame('$2y$10$abcdefghijklmnopqrstuv', $record->get('password_hash'), 'the stored value is kept');
+    }
+
     #[DataProvider('storages')]
     public function test_relations_and_assets_are_ids(string $storage): void
     {

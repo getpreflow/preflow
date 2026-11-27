@@ -144,7 +144,10 @@ final readonly class RecordInput
                 continue;
             }
             $field = $def->fields[$key] ?? null;
-            if ($field === null) {
+            // A field declared "hidden": true is no field to an API (RecordOutput never reads it, the
+            // description leaves it out): any value is refused, its stored one too, so a client
+            // cannot test a guess of what it holds; the stored value is kept.
+            if ($field === null || RecordOutput::declaredHidden($field)) {
                 $problems[$key] = new Message('validation.record.unknown_field', ['type' => $this->typeLabel($def), 'field' => $key]);
                 continue;
             }

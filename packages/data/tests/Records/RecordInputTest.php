@@ -175,6 +175,40 @@ final class RecordInputTest extends TestCase
         }
     }
 
+    public function test_a_field_declared_hidden_is_refused_and_keeps_its_stored_value(): void
+    {
+        // Final review finding 2: Folio's form never takes a "hidden": true field; nor does the API.
+        // Any value is refused, its stored one too: the read output never gives it, and accepting
+        // a value equal to the stored one would let a client test a guess of a password hash.
+        $this->model('member', [
+            'email' => ['type' => 'string'],
+            'password_hash' => ['type' => 'string', 'hidden' => true],
+        ], ['label' => 'Members']);
+        $dm = $this->dm();
+        $def = $dm->getTypeRegistry()->get('member');
+        $hash = '$2y$10$abcdefghijklmnopqrstuv';
+        $record = DynamicRecord::fromArray($def, ['uuid' => 'm1', 'email' => 'a@example.org', 'password_hash' => $hash]);
+
+        foreach (['another' => 'x', 'the stored one' => $hash, 'null' => null] as $case => $given) {
+            try {
+                $this->input($dm)->update($record, ['email' => 'b@example.org', 'password_hash' => $given]);
+                self::fail("refused: {$case}");
+            } catch (ValidationException $e) {
+                $this->assertSame(['password_hash' => ['The type "Members" has no field "password_hash".']], $e->errors(), $case);
+            }
+        }
+        $this->assertSame($hash, $record->get('password_hash'), 'the stored value is kept');
+        $this->assertSame('a@example.org', $record->get('email'), 'nothing of the refused body is merged');
+
+        try {
+            $this->input($dm)->create($def, ['email' => 'c@example.org', 'password_hash' => 'x']);
+            self::fail('refused on create');
+        } catch (ValidationException $e) {
+            $this->assertSame(['password_hash'], array_keys($e->errors()));
+        }
+        $this->assertSame($hash, $this->input($dm)->update($record, ['email' => 'b@example.org'])->get('password_hash'), 'a body without it keeps it');
+    }
+
     public function test_create_into_a_non_creatable_type_is_refused(): void
     {
         $dm = $this->dm();

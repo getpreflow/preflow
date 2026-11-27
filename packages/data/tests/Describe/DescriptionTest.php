@@ -189,6 +189,17 @@ final class DescriptionTest extends TestCase
         $this->assertSame(['en'], $job['locales']);
     }
 
+    public function test_a_field_declared_hidden_is_left_out(): void
+    {
+        // Final review finding 2: what the read output never gives and the write class never takes.
+        $this->model('member', ['fields' => [
+            'email' => ['type' => 'string'],
+            'password_hash' => ['type' => 'string', 'hidden' => true],
+        ]]);
+
+        $this->assertSame(['email'], array_keys($this->description()->toArray()['types']['member']['fields']));
+    }
+
     public function test_a_read_only_type_allows_no_action(): void
     {
         $this->model('log', ['readonly' => true, 'fields' => ['message' => ['type' => 'text']]]);

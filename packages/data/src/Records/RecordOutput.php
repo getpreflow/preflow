@@ -38,6 +38,8 @@ use Preflow\Data\Values\ListsVisibleReferences;
  *   chain (LocaleValue::resolve(): the language, the fallback, the default). Inside blocks a
  *   translatable block field keeps its map (shapes "blocks", "area_map").
  * - A field its show_when hides is null (FieldVisibility); its stored value is kept.
+ * - A field declared "hidden": true (a password hash, a code's payload: what Folio's form never
+ *   shows) is never read: its key is not in the output, and the description leaves it out too.
  * - Relations and media fields are ids (shapes "id", "id_list"); the site builds links, and the
  *   media package adds URLs and sizes only when asked (ReadOptions(with: ['media'])).
  * - Rich text is cleaned again on the way out (the core cleaner), whatever the driver holds.
@@ -73,6 +75,9 @@ final readonly class RecordOutput
 
         $out = [RecordParts::ID => $record->getId()];
         foreach ($def->fields as $name => $field) {
+            if (self::declaredHidden($field)) {
+                continue;
+            }
             $out[$name] = isset($hidden[$name])
                 ? null
                 : $this->value($field, $stored[$name] ?? null, $options, $def->locales, isset($translatable[$name]));
@@ -124,7 +129,7 @@ final readonly class RecordOutput
         $found = [];
         foreach ($def->fields as $name => $field) {
             $value = $kinds->valueOf($field);
-            if (isset($hidden[$name]) || !$value instanceof ListsReferences) {
+            if (isset($hidden[$name]) || self::declaredHidden($field) || !$value instanceof ListsReferences) {
                 continue;
             }
             $raw = $stored[$name] ?? null;
@@ -181,5 +186,14 @@ final readonly class RecordOutput
         }
 
         return array_values($parts);
+    }
+
+    /**
+     * Whether the field is declared "hidden": true: never read out, never written through the
+     * write class (RecordInput), not in the description. @internal
+     */
+    public static function declaredHidden(TypeFieldDefinition $field): bool
+    {
+        return ($field->config['hidden'] ?? false) === true;
     }
 }

@@ -6,6 +6,7 @@ namespace Preflow\Data\Describe;
 
 use Preflow\Data\FieldKinds;
 use Preflow\Data\RecordTitle;
+use Preflow\Data\Records\RecordOutput;
 use Preflow\Data\Relation;
 use Preflow\Data\TypeAction;
 use Preflow\Data\TypeDefinition;
@@ -39,7 +40,8 @@ use Preflow\Data\Values\DescribesShapes;
  * field that names a record (RecordTitle::field()), or null (named by its id); "fields" its fields
  * in declared order. A contributor may add keys (blocks: "layouts").
  *
- * A field: "type" its field type; "label", "help" as declared; "required" its "validate" has
+ * A field declared "hidden": true is left out (the read output never gives it, the write class never
+ * takes it). A field: "type" its field type; "label", "help" as declared; "required" its "validate" has
  * "required"; "list" its value is a list (FieldKinds::holdsList()); "translatable" its value is a
  * map of locale => value (only on a site with more than one language); "unique" false, true, or
  * the fields that scope its uniqueness; "target" (a relation field only) the related type, or null
@@ -125,6 +127,9 @@ final readonly class Description
         $translatable = $def->translatableFields();
         $fields = [];
         foreach ($def->fields as $name => $field) {
+            if (RecordOutput::declaredHidden($field)) {
+                continue; // never read out nor written through the API classes
+            }
             $fields[$name] = $this->field($def, $field, in_array($name, $translatable, true), $shapes);
         }
 
