@@ -991,8 +991,22 @@ final class Job extends Model { … }
   gives the registered value, or `RawValue` (unchanged, shape `raw`) for a type without one;
   `hasValue()` and `values()` list them. Every `DataManager` starts with the core types' values
   (`Values\CoreValues`: `string`, `text`, `number`, `boolean`, `date`, `select`, `tags`,
-  `relation`, `asset`), and `CoreValues::SHAPES` describes their shapes. Optional companions:
-  `DescribesShapes`, `CleansOnWrite`, `MergesInput`, `ListsReferences`.
+  `relation`, `asset`, and `richtext`), and `CoreValues::SHAPES` describes their shapes. Optional
+  companions: `DescribesShapes`, `CleansOnWrite`, `MergesInput`, `ListsReferences`.
+- Rich text is cleaned on every typed write (since 0.93): `DataManager::storageValues()` first
+  runs `cleaning()` (`Values\StoredCleaning`), so `saveType()` with or without validation,
+  `saveTypeIfVersion()`, class-backed types, `updateWhen()`, `updateIf()`,
+  `updateFieldsIfVersion()` and an import that calls `storageValues()` store the same safe HTML
+  on every driver: no scripts, no event handlers, no unsafe links, every language of a
+  translatable field. The cleaner is `Html\HtmlCleaner`; the default,
+  `Html\SymfonyHtmlCleaner::standard()` (symfony/html-sanitizer, built on the first clean), has the
+  config Folio's rich text field used, so HTML Folio saved keeps its bytes and its change date.
+  A site binds its own `HtmlCleaner` in the container (the application hands the binding to
+  `DataManager::htmlCleanerFrom()`). A package cleans a system key of its own on every write with
+  `cleaning()->systemKey('_key', fn ($value, $def) => …)`. Rows a script writes straight to a
+  driver are not cleaned; the read side cleans rich text again. **Upgrading to 0.93:** HTML that is
+  safe but not in the cleaner's canonical form (`<br>` instead of `<br />`) is rewritten once on its
+  next save, which moves that record's change date once.
 - A date's stored rule is the core's (since 0.93): every `DataManager` checks a `date` field on
   save with `Validation\StoredDate`, which takes exactly what `Values\Core\DateValue::read()`
   reads (`Y-m-d`, `Y-m-d\TH:i`, `Y-m-d\TH:i:s` and ISO 8601 with an offset, a real date and

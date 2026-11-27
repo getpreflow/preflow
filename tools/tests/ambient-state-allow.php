@@ -339,6 +339,11 @@ return [
             'if (Contexts::peek()?->surface->admin === true && self::$source !== null) {' => 'outside every render there is no admin surface: Folio\'s own English texts (the documented default)',
         ],
     ],
+    'data/src/Html/SymfonyHtmlCleaner.php' => [
+        'static-state' => [
+            'public static int $built = 0;' => 'a test hook: how many real sanitizers were built',
+        ],
+    ],
     'folio/src/Field/LazyHtmlSanitizer.php' => [
         'static-state' => [
             'public static int $built = 0;' => 'a test hook: how many real sanitizers were built',

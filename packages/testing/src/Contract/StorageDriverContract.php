@@ -127,6 +127,8 @@ use Preflow\Testing\PlainDriver;
  *   64-bit whole numbers throws an OverflowException and writes nothing.
  * - An empty id is '', 0 or '0' (as PdoDriver and DataManager treat it): save() with one inserts
  *   a record whose id the store generates, and lastInsertId() returns it.
+ * - Rich text (@since 0.93.0) is cleaned by DataManager before the driver (storageValues()): a
+ *   driver gets the same safe HTML on every write path and stores it as any text.
  * - Change dates (@since 0.84.0): DataManager writes every record of a type with its change date
  *   (Preflow\Data\ChangeDates: the system key `_updated_at`, ISO 8601 text in UTC; a type's own
  *   updated field is content it never writes). A driver stores and reads it as any other key, and sorts by it as text; nothing
@@ -2361,6 +2363,49 @@ abstract class StorageDriverContract extends TestCase
         $this->assertNumber(1, $kept['amount'] ?? null);
         $this->assertNull($this->driver->findOne('records', 'r2'), 'nothing new');
         $this->assertNull($this->driver->findOne('records', 'r3'));
+    }
+
+    // --- rich text cleaned before the driver (@since 0.93.0) ---------------------------------------
+
+    /**
+     * Rich text is cleaned in DataManager before any driver sees it (DataManager::storageValues()):
+     * a save (validated or not) and a conditional update of a rich text field, translatable or not,
+     * store the cleaned HTML, and the same bytes on every driver. A driver stores it as any text;
+     * nothing else is asked of it.
+     */
+    public function test_rich_text_cleaned_before_the_driver(): void
+    {
+        $this->createType('rich', ['uuid' => 'exact', 'body' => 'exact', 'intro' => 'json']);
+        $models = sys_get_temp_dir() . '/contract_models_' . bin2hex(random_bytes(4));
+        @mkdir($models, 0777, true);
+        try {
+            $registry = new \Preflow\Data\TypeRegistry($models, new \Preflow\Data\Locales(['en', 'de'], 'en'));
+            $def = $registry->define([
+                'key' => 'rich', 'table' => 'rich', 'storage' => 'default', 'id_field' => 'uuid',
+                'fields' => ['body' => ['type' => 'richtext'], 'intro' => ['type' => 'richtext', 'translatable' => true]],
+            ]);
+            $dm = new \Preflow\Data\DataManager(['default' => $this->driver], 'default', $registry);
+            $unsafe = '<p onclick="steal()">Hi <strong>there</strong><script>alert(1)</script></p>';
+            $clean = '<p>Hi <strong>there</strong></p>';
+
+            $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'r1', 'body' => $unsafe, 'intro' => ['en' => $unsafe, 'de' => '<a href="javascript:x()">Hallo</a>']]), false);
+            $row = $this->driver->findOne('rich', 'r1') ?? [];
+            $intro = is_string($row['intro'] ?? null) ? json_decode($row['intro'], true) : ($row['intro'] ?? null);
+            $this->assertSame($clean, $row['body'] ?? null, 'a save without validation');
+            $this->assertSame(['en' => $clean, 'de' => '<a>Hallo</a>'], $intro, 'every locale of a translatable field');
+
+            $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'r2', 'body' => $unsafe]));
+            $this->assertSame($clean, ($this->driver->findOne('rich', 'r2') ?? [])['body'] ?? null, 'a validated save');
+
+            $this->assertTrue($dm->updateWhen($def, 'r2', \Preflow\Data\Condition::all(), ['body' => '<img src="/a.jpg" onerror="steal()">']));
+            $this->assertSame('<img src="/a.jpg" />', ($this->driver->findOne('rich', 'r2') ?? [])['body'] ?? null, 'a conditional update');
+
+            $dm->saveType($dm->findIn($def, 'r1') ?? $this->fail('r1 is stored'), false);
+            $again = $this->driver->findOne('rich', 'r1') ?? [];
+            $this->assertSame([$row['body'], $row['intro']], [$again['body'] ?? null, $again['intro'] ?? null], 'clean HTML saved again keeps its bytes');
+        } finally {
+            @rmdir($models);
+        }
     }
 
     // --- change dates (@since 0.84.0) -----------------------------------------------------------

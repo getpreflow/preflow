@@ -3479,7 +3479,7 @@
                 "preflow/auth": "<0.81.0",
                 "preflow/blade": "<0.60",
                 "preflow/components": "<0.86.0",
-                "preflow/data": "<0.84.0",
+                "preflow/data": "<0.93.0",
                 "preflow/folio": "<0.67",
                 "preflow/htmx": "<0.88.0",
                 "preflow/i18n": "<0.83.0",
@@ -3526,12 +3526,13 @@
                 "ext-pdo_sqlite": "*",
                 "php": ">=8.4",
                 "preflow/core": "^0.84.0 || @dev",
-                "preflow/validation": "^0.92.0 || @dev"
+                "preflow/validation": "^0.92.0 || @dev",
+                "symfony/html-sanitizer": "^7.0"
             },
             "conflict": {
                 "preflow/core": "<0.84.0",
                 "preflow/devtools": "<0.80",
-                "preflow/folio": "<0.92.0",
+                "preflow/folio": "<0.93.0",
                 "preflow/publishing": "<0.72",
                 "preflow/validation": "<0.92.0"
             },

@@ -55,6 +55,13 @@ final class DataManager
 
     private ?RecordRules $recordRules = null;
 
+    /** @var (\Closure(): ?Html\HtmlCleaner)|null */
+    private ?\Closure $htmlCleaner = null;
+
+    private ?Html\HtmlCleaner $defaultHtmlCleaner = null;
+
+    private ?Values\StoredCleaning $cleaning = null;
+
     /** @var (\Closure(): ?TypeLabels)|null */
     private ?\Closure $labels = null;
 
@@ -507,17 +514,56 @@ final class DataManager
 
     /**
      * The field kinds of this manager's types, shared by every caller. Since 0.93.0 they start with
-     * the core types' values and date's stored rule (Values\CoreValues), so a site without any
-     * package reads, writes and checks those types like one with Folio.
+     * the core types' values and date's stored rule (Values\CoreValues), richtext's over
+     * htmlCleaner(), so a site without any package reads, writes and checks those types like one
+     * with Folio.
      */
     public function fieldKinds(): FieldKinds
     {
         if ($this->fieldKinds === null) {
             $this->fieldKinds = new FieldKinds();
-            Values\CoreValues::register($this->fieldKinds);
+            Values\CoreValues::register($this->fieldKinds, fn (): Html\HtmlCleaner => $this->htmlCleaner());
         }
 
         return $this->fieldKinds;
+    }
+
+    /**
+     * Where the rich text cleaner comes from: $cleaner gives the bound HtmlCleaner (a site's own),
+     * or null for the default; asked on each use (htmlCleaner()). The application sets it to its
+     * container's binding.
+     *
+     * @param \Closure(): ?Html\HtmlCleaner $cleaner
+     * @since 0.93.0
+     */
+    public function htmlCleanerFrom(\Closure $cleaner): void
+    {
+        $this->htmlCleaner = $cleaner;
+    }
+
+    /**
+     * The cleaner rich text is cleaned with on every write and read: the one htmlCleanerFrom()
+     * gives, else Html\SymfonyHtmlCleaner::standard() (built once per manager, its sanitizer on the
+     * first clean).
+     *
+     * @since 0.93.0
+     */
+    public function htmlCleaner(): Html\HtmlCleaner
+    {
+        return ($this->htmlCleaner !== null ? ($this->htmlCleaner)() : null)
+            ?? ($this->defaultHtmlCleaner ??= Html\SymfonyHtmlCleaner::standard());
+    }
+
+    /**
+     * What every typed write cleans before the driver (storageValues()): the fields whose value
+     * cleans on write (rich text) and the system keys packages register on it
+     * (Values\StoredCleaning::systemKey()).
+     *
+     * @since 0.93.0
+     */
+    public function cleaning(): Values\StoredCleaning
+    {
+        return $this->cleaning ??= new Values\StoredCleaning($this->fieldKinds());
     }
 
     /**
@@ -1885,6 +1931,9 @@ final class DataManager
     /**
      * A row of this type as it is written, the same whoever saves it (Folio, the CLI, a script),
      * so an unchanged record is written to the same bytes:
+     * - first cleaned (cleaning(), since 0.93.0): rich text (every locale of a translatable field)
+     *   through htmlCleaner(), and the system keys packages register; idempotent, so clean values
+     *   keep their bytes;
      * - the keys in the type's field order, then the system keys (the id field when it is no
      *   field, then the keys starting with "_", in their given order but the change date last,
      *   ChangeDates::FIELD, since 0.84), then any other key in its
@@ -1905,6 +1954,7 @@ final class DataManager
      */
     public function storageValues(TypeDefinition $def, array $data): array
     {
+        $data = $this->cleaning()->apply($def, $data);
         $kinds = $this->fieldKinds();
         foreach ($def->fields as $name => $field) {
             if (!array_key_exists($name, $data)) {

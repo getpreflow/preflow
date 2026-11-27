@@ -1471,6 +1471,8 @@ final class Application
         // Messages that name a field use the bound type labels (Folio's display labels), resolved on use (0.92).
         $container = $this->container;
         $dataManager->labelsFrom(static fn (): ?\Preflow\Data\TypeLabels => $container->bound(\Preflow\Data\TypeLabels::class) ? $container->get(\Preflow\Data\TypeLabels::class) : null);
+        // Rich text is cleaned on every write with the bound HtmlCleaner (a site's own), else the core's (0.93).
+        $dataManager->htmlCleanerFrom(static fn (): ?\Preflow\Data\Html\HtmlCleaner => $container->bound(\Preflow\Data\Html\HtmlCleaner::class) ? $container->get(\Preflow\Data\Html\HtmlCleaner::class) : null);
         // Cross-type record search (the admin's palette, a site's own search box); built on first use.
         $this->container->singleton(
             \Preflow\Data\Search\RecordSearch::class,

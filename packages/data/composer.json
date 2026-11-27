@@ -9,7 +9,8 @@
         "ext-pdo": "*",
         "ext-pdo_sqlite": "*",
         "preflow/core": "^0.84.0 || @dev",
-        "preflow/validation": "^0.92.0 || @dev"
+        "preflow/validation": "^0.92.0 || @dev",
+        "symfony/html-sanitizer": "^7.0"
     },
     "conflict": {
         "preflow/core": "<0.84.0",
