@@ -1000,6 +1000,19 @@ A value that is not a list of section names is ignored (every section starts ope
 `email`, `phone`, `color`, `code`, `json`, `datetime`, `time`, `daterange`, `embed`, `table` and
 `location` (all since 0.91; their values, checks and storage are preflow/fields', see its [README](../fields/README.md)).
 
+What a field holds is the core's (since 0.93): every type reads and writes its value through the
+value registered for it on the DataManager's field kinds (`FieldKinds::value()`; preflow/data's
+for the core types, preflow/blocks' for `blocks` and `areas`, preflow/fields' for its twelve), the
+same value an API write or an import uses, so the admin form and those paths store the same. The
+editor only turns its post into the input first (a date and time in the field's zone, a
+location's three inputs, a link's parts). Folio registers the values of its own types: `matrix`
+(its references, stored as their JSON text), `env` (nothing stored), the codes and rbac admins'
+`codes_purpose`, `rbac_permissions` and `rbac_roles`, and `int`, `integer` and `float` as
+`number`'s. A field type of your own takes part by implementing `Preflow\Folio\Field\UsesFieldKinds`.
+Rich text is cleaned with the core's `HtmlCleaner` (`DataManager::htmlCleaner()`): bind your own
+in the container and the form, "Write a draft", every write and the templates use it.
+`SafeRichText` and `LazyHtmlSanitizer` are deprecated (0.93; removed no earlier than 0.95).
+
 How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` runs the controls):
 
 - `string`: a route parameter of the record's address (`slug`) has the static path before it as a
@@ -3290,7 +3303,7 @@ translated: it is your text once you insert it.
 - It asks only for the elements Folio's Trix editor keeps (`RichTextFieldType::EDITOR_ELEMENTS`:
   `p, h1, blockquote, pre, ul, ol, li, strong, em, del, a, br`), so a heading arrives as Trix's
   heading, not as bold text.
-- The server sanitises the answer (`LazyHtmlSanitizer::standard()`, as rich text on save) before
+- The server cleans the answer (the core's `HtmlCleaner`, as rich text on save) before
   it reaches the page, and the dialog copies it into the preview element by element.
 - The writer is `Preflow\Ai\Draft\DraftWriter` from `preflow/ai` (see "Drafts" there), so it
   works with any provider and a site can swap it (`config/ai.php` `draft.writer`); the button

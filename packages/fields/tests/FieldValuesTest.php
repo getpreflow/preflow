@@ -226,12 +226,24 @@ final class FieldValuesTest extends TestCase
         foreach (self::TYPES as $type) {
             $value = $this->value($type);
             $field = $this->field($type);
-            foreach ($type === 'code' ? [null, '', []] : ($type === 'json' ? [null, '', '  '] : [null, '', '  ', []]) as $input) {
+            // email keeps blank text as "" (as a string field, and as Folio's form stored it in 0.92): test_blank_email_is_empty_text.
+            foreach ($type === 'code' ? [null, '', []] : ($type === 'json' ? [null, '', '  '] : ($type === 'email' ? [null, []] : [null, '', '  ', []])) as $input) {
                 $this->assertNull($value->toStored($input, $field), $type);
             }
             $this->assertNull($value->toOutput(null, $field), $type);
             $this->assertNull($value->toOutput('', $field), $type);
         }
+    }
+
+    public function test_blank_email_is_empty_text(): void
+    {
+        // A text field: blank text is "" as for a string field (Folio's form stored "" in 0.92, so a
+        // record it saved keeps its bytes); output reads "" as no value.
+        $value = $this->value('email');
+        $field = $this->field('email');
+        $this->assertSame('', $value->toStored('', $field));
+        $this->assertSame('', $value->toStored("  \n", $field));
+        $this->assertNull($value->toOutput('', $field));
     }
 
     public function test_link_and_embed_list_references(): void

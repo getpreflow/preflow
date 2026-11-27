@@ -999,7 +999,8 @@ final class Job extends Model { … }
   `updateFieldsIfVersion()` and an import that calls `storageValues()` store the same safe HTML
   on every driver: no scripts, no event handlers, no unsafe links, every language of a
   translatable field. The cleaner is `Html\HtmlCleaner`; the default,
-  `Html\SymfonyHtmlCleaner::standard()` (symfony/html-sanitizer, built on the first clean), has the
+  `Html\SymfonyHtmlCleaner::standard()` (symfony/html-sanitizer, built on the first clean;
+  `sanitizer()` gives that Symfony sanitizer to code that needs its interface), has the
   config Folio's rich text field used, so HTML Folio saved keeps its bytes and its change date.
   A site binds its own `HtmlCleaner` in the container (the application hands the binding to
   `DataManager::htmlCleanerFrom()`). A package cleans a system key of its own on every write with

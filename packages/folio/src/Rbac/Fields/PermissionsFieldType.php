@@ -37,8 +37,10 @@ use Preflow\Rbac\RoleList;
  * Its words are the "rbac-admin" group's (FolioText: the admin's language); type, section and permission labels
  * come from Folio's DisplayLabels, so they read as everywhere else in the admin.
  */
-final class PermissionsFieldType implements FieldType
+final class PermissionsFieldType implements FieldType, \Preflow\Folio\Field\UsesFieldKinds
 {
+    use \Preflow\Folio\Field\Types\CoreValue;
+
     private const VERBS = ['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete'];
 
     /**
@@ -58,6 +60,12 @@ final class PermissionsFieldType implements FieldType
     public function key(): string
     {
         return 'rbac_permissions';
+    }
+
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new PermissionsValue();
     }
 
     public function renderEditor(FieldContext $ctx): string
@@ -259,20 +267,21 @@ final class PermissionsFieldType implements FieldType
     }
 
     /** @return list<string> only "*", declared names and declared patterns */
+    /** The posted permissions the matrix offers (others are dropped), as the core stores them (PermissionsValue). */
     public function normalizeInput(mixed $raw, array $config): array
     {
-        return array_values(array_intersect(RoleList::normalize($raw), $this->known()));
+        return array_values(array_intersect($this->stored($raw, $config), $this->known()));
     }
 
     public function toStorage(mixed $value): mixed
     {
-        return RoleList::normalize($value);
+        return $this->stored($value);
     }
 
     /** @return list<string> */
     public function fromStorage(mixed $value): array
     {
-        return RoleList::normalize($value);
+        return $this->output($value);
     }
 
     public function renderFrontend(mixed $value, array $config): string

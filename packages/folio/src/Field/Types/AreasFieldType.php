@@ -38,8 +38,10 @@ use Preflow\View\TemplateEngineInterface;
  * and takes translations back at those paths. Asset usage, rich text, show_when and fresh uids reach
  * the blocks inside through preflow/blocks' BlockLists, as for a blocks field.
  */
-final class AreasFieldType implements FieldType, StructuredFieldType, DisplaysInAdmin, ReportsStoredTranslatableTexts, AcceptsTranslatedTexts
+final class AreasFieldType implements FieldType, StructuredFieldType, DisplaysInAdmin, ReportsStoredTranslatableTexts, AcceptsTranslatedTexts, \Preflow\Folio\Field\UsesFieldKinds
 {
+    use \Preflow\Folio\Field\Types\CoreValue;
+
     /** An area name as the form posts it. */
     private const string AREA = '/^[A-Za-z_][A-Za-z0-9_]*$/';
 
@@ -57,6 +59,15 @@ final class AreasFieldType implements FieldType, StructuredFieldType, DisplaysIn
     public function key(): string
     {
         return 'areas';
+    }
+
+    /**
+     * The core value of this type (used without kinds, or when they hold none for the key): none
+     * (the value as AreasValue gives it), since AreasFieldValue needs the app's layouts.
+     */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Data\Values\RawValue();
     }
 
     /**
@@ -231,9 +242,13 @@ final class AreasFieldType implements FieldType, StructuredFieldType, DisplaysIn
         return []; // built through buildValue() (StructuredFieldType)
     }
 
+    /**
+     * The value as preflow/blocks stores it ({layout, areas}: AreasValue), each area's blocks as the
+     * core stores them (AreasFieldValue, through the kinds Folio hands the type).
+     */
     public function toStorage(mixed $value): mixed
     {
-        return AreasValue::fromStored($value)->toStored();
+        return $this->stored(AreasValue::fromStored($value)->toStored());
     }
 
     /**

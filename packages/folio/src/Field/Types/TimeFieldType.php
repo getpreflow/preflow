@@ -20,6 +20,12 @@ final class TimeFieldType extends AbstractScalarFieldType implements DisplaysInA
         return 'time';
     }
 
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Fields\Values\Field\TimeValue();
+    }
+
     protected function inputType(): string
     {
         return 'time';
@@ -31,17 +37,13 @@ final class TimeFieldType extends AbstractScalarFieldType implements DisplaysInA
             return null;
         }
 
-        return TimeOfDay::parse($raw)?->toStored() ?? trim($raw);
+        return $this->stored($raw, $config);
     }
 
-    public function toStorage(mixed $value): mixed
-    {
-        return TimeOfDay::fromStored($value)?->toStored() ?? (is_string($value) && trim($value) !== '' ? trim($value) : null);
-    }
-
+    /** "HH:MM" as the core stores it; text that is no time is kept as typed, so the editor shows it and the check refuses it. */
     public function fromStorage(mixed $value): mixed
     {
-        return $this->toStorage($value);
+        return $this->stored($value);
     }
 
     public function renderFrontend(mixed $value, array $config): string

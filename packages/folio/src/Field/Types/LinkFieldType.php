@@ -44,8 +44,10 @@ use Preflow\Folio\FolioText;
  * unpublished or not in the language; the file is gone) is marked in the editor ("Linked page no
  * longer available"): the mark is decided by the same href, read as a visitor reads.
  */
-final class LinkFieldType implements FieldType, StructuredFieldType, DisplaysInAdmin, ReportsTranslatableTexts, AcceptsTranslatedTexts, \Preflow\Folio\Field\ReferencesAssets
+final class LinkFieldType implements FieldType, StructuredFieldType, DisplaysInAdmin, ReportsTranslatableTexts, AcceptsTranslatedTexts, \Preflow\Folio\Field\ReferencesAssets, \Preflow\Folio\Field\UsesFieldKinds
 {
+    use \Preflow\Folio\Field\Types\CoreValue;
+
     /**
      * @param (\Closure(): list<string>)|null $linkableTypes the types a field without "link.types" offers (Folio: the routed ones)
      * @param (\Closure(string): string)|null $typeLabel a type's label for one record ("Page")
@@ -63,6 +65,12 @@ final class LinkFieldType implements FieldType, StructuredFieldType, DisplaysInA
     public function key(): string
     {
         return 'link';
+    }
+
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Fields\Values\Field\LinkValue();
     }
 
     public function renderEditor(FieldContext $ctx): string
@@ -284,10 +292,10 @@ final class LinkFieldType implements FieldType, StructuredFieldType, DisplaysInA
         return $this->buildValue($raw, null, [], new BuildContext(Locales::single('en'), 'en', false), $config);
     }
 
-    /** The stored object as it is (SQL storage writes JSON text of it); null for no link. */
+    /** The stored object as the core stores it (LinkValue; SQL storage writes JSON text of it); null for no link. */
     public function toStorage(mixed $value): mixed
     {
-        return Link::decode($value);
+        return $this->stored($value);
     }
 
     /** The stored object (decoded from SQL storage's JSON text); null for no link. */

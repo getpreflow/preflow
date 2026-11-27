@@ -23,8 +23,10 @@ use Preflow\Rbac\StaffManagers;
  * (PermissionCoverage) is disabled ("You can't grant this"); StaffRules refuses it anyway.
  * A role a package seeded shows its label in the admin's language (Messages::roleLabel()).
  */
-final class RolesFieldType implements FieldType
+final class RolesFieldType implements FieldType, \Preflow\Folio\Field\UsesFieldKinds
 {
+    use \Preflow\Folio\Field\Types\CoreValue;
+
     private readonly Messages $messages;
 
     public function __construct(
@@ -39,6 +41,12 @@ final class RolesFieldType implements FieldType
     public function key(): string
     {
         return 'rbac_roles';
+    }
+
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new RolesValue();
     }
 
     public function renderEditor(FieldContext $ctx): string
@@ -80,20 +88,21 @@ final class RolesFieldType implements FieldType
     }
 
     /** @return list<string> */
+    /** The posted roles, as the core stores them (RolesValue). */
     public function normalizeInput(mixed $raw, array $config): array
     {
-        return RoleList::normalize($raw);
+        return $this->stored($raw, $config);
     }
 
     public function toStorage(mixed $value): mixed
     {
-        return RoleList::normalize($value);
+        return $this->stored($value);
     }
 
     /** @return list<string> */
     public function fromStorage(mixed $value): array
     {
-        return RoleList::normalize($value);
+        return $this->output($value);
     }
 
     public function renderFrontend(mixed $value, array $config): string

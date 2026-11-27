@@ -44,7 +44,8 @@ final class FolioBlocksTest extends TestCase
         $c = $this->app()->container();
 
         $this->assertSame($c->get(ContentLocale::class), $c->get(BlockLocale::class));
-        $this->assertSame($c->get(SafeRichText::class), $c->get(BlockTextCleaner::class));
+        // Since 0.93 blocks' rich text is cleaned by the core (CoreBlockTextCleaner), not SafeRichText (deprecated).
+        $this->assertInstanceOf(\Preflow\Blocks\CoreBlockTextCleaner::class, $c->get(BlockTextCleaner::class));
         $this->assertInstanceOf(FolioBlockPreviewMarks::class, $c->get(BlockPreviewMarks::class));
     }
 

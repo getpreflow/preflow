@@ -21,8 +21,10 @@ use Psr\Http\Message\UploadedFileInterface;
  * {prefix}/_uploads); they keep working. Without a library the field writes
  * such paths itself (extension allowlist, randomized names).
  */
-final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\Field\DisplaysInAdmin, \Preflow\Folio\Field\StoresListFor, \Preflow\Folio\Field\ReferencesAssets
+final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\Field\DisplaysInAdmin, \Preflow\Folio\Field\StoresListFor, \Preflow\Folio\Field\ReferencesAssets, \Preflow\Folio\Field\UsesFieldKinds
 {
+    use \Preflow\Folio\Field\Types\CoreValue;
+
     private const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
     private const DEFAULT_ALLOWED = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'pdf', 'txt', 'doc', 'docx', 'csv', 'zip'];
 
@@ -61,6 +63,12 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
     public function key(): string
     {
         return 'asset';
+    }
+
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Data\Values\Core\AssetValue();
     }
 
     private function allows(string $permission): bool
@@ -247,14 +255,25 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
         return $raw;
     }
 
-    /** A multiple field's ids as a list (0.89; SQL storage keeps JSON text), a single field's id as text. */
+    /**
+     * A multiple field's ids as a list (0.89; SQL storage keeps JSON text), a single field's id as
+     * text, as the core stores them (AssetValue; an empty list is no value: null, so "required"
+     * refuses it, 0.77). Without the config here, a list is a multiple field's value.
+     */
     public function toStorage(mixed $value): mixed
     {
-        if (is_array($value)) {
-            // An empty list is no value: stored as null, so "required" refuses it (0.77).
-            return $value === [] ? null : array_values($value);
-        }
-        return (string) ($value ?? '');
+        return $this->stored($value ?? '', self::shapeConfig(is_array($value)));
+    }
+
+    /**
+     * The config that tells the core value whether the field holds a list, where the caller gives
+     * only the value (toStorage(), fromStorage()).
+     *
+     * @return array<string, mixed>
+     */
+    private static function shapeConfig(bool $multiple): array
+    {
+        return ['asset' => ['multiple' => $multiple]];
     }
 
     /** A multiple field holds a list of ids, a single one one id (0.89). */
@@ -263,15 +282,14 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
         return $this->assetConfig($config)['multiple'];
     }
 
+    /**
+     * The stored id, or a multiple field's list (a list stored as JSON text decoded), as the core
+     * reads it out (AssetValue). Without the config here, a list or its JSON text is a multiple
+     * field's value.
+     */
     public function fromStorage(mixed $value): mixed
     {
-        if (is_string($value) && str_starts_with($value, '[')) {
-            $decoded = json_decode($value, true);
-            if (is_array($decoded)) {
-                return $decoded;
-            }
-        }
-        return $value;
+        return $this->output($value, self::shapeConfig(is_array($value) || (is_string($value) && str_starts_with($value, '['))));
     }
 
     /** The file names (the library's original name, else the stored path), comma-separated and escaped. */

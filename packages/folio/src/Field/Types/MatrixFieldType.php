@@ -18,8 +18,10 @@ use Preflow\Folio\Field\FieldType;
  * (add pick-existing / remove / reorder); rendered on the frontend through each
  * reference's per-type template.
  */
-final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysInAdmin
+final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysInAdmin, \Preflow\Folio\Field\UsesFieldKinds
 {
+    use \Preflow\Folio\Field\Types\CoreValue;
+
     public function __construct(
         private readonly TypeCatalog $catalog,
         private readonly TypeRegistry $registry,
@@ -35,6 +37,12 @@ final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysI
     public function key(): string
     {
         return 'matrix';
+    }
+
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Folio\Field\Values\MatrixValue();
     }
 
     public function renderEditor(FieldContext $ctx): string
@@ -133,14 +141,15 @@ final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysI
         return $out;
     }
 
+    /** The refs' JSON text, as the core stores it (MatrixValue). */
     public function toStorage(mixed $value): mixed
     {
-        return json_encode($this->toRefs($value), JSON_UNESCAPED_SLASHES);
+        return $this->stored($value);
     }
 
     public function fromStorage(mixed $value): mixed
     {
-        return $this->toRefs($value);
+        return $this->output($value);
     }
 
     /** "3 rows": a summary, not the frontend templates. */
@@ -265,8 +274,8 @@ final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysI
     }
 
     /**
-     * Normalize a stored/raw value to a list of {_type,id} refs, preserving a
-     * non-empty view per entry.
+     * A stored or raw value as its list of {_type,id} refs, a non-empty view kept per entry: the
+     * core's reading (MatrixValue::refs()).
      *
      * NOTE: the view carried here is NOT whitelisted against the type's declared
      * views — only normalizeInput does that, on the save path. renderFrontend
@@ -278,30 +287,6 @@ final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysI
      */
     private function toRefs(mixed $value): array
     {
-        if (is_string($value)) {
-            $decoded = json_decode($value, true);
-            $value = is_array($decoded) ? $decoded : [];
-        }
-        if (!is_array($value)) {
-            return [];
-        }
-        $out = [];
-        foreach ($value as $entry) {
-            if (!is_array($entry)) {
-                continue;
-            }
-            $type = (string) ($entry['_type'] ?? '');
-            $id = (string) ($entry['id'] ?? '');
-            if ($type === '' || $id === '') {
-                continue;
-            }
-            $ref = ['_type' => $type, 'id' => $id];
-            $view = (string) ($entry['view'] ?? '');
-            if ($view !== '') {
-                $ref['view'] = $view;
-            }
-            $out[] = $ref;
-        }
-        return $out;
+        return \Preflow\Folio\Field\Values\MatrixValue::refs($value);
     }
 }

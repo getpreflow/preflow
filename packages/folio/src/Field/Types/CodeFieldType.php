@@ -27,6 +27,12 @@ final class CodeFieldType extends AbstractScalarFieldType implements SearchableT
         return 'code';
     }
 
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Fields\Values\Field\CodeValue();
+    }
+
     protected function inputType(): string
     {
         return 'textarea';
@@ -64,17 +70,7 @@ final class CodeFieldType extends AbstractScalarFieldType implements SearchableT
     {
         $code = is_string($raw) ? str_replace(["\r\n", "\r"], "\n", $raw) : '';
 
-        return trim($code) === '' ? null : $code;
-    }
-
-    public function toStorage(mixed $value): mixed
-    {
-        return Code::fromStored($value)?->toStored();
-    }
-
-    public function fromStorage(mixed $value): mixed
-    {
-        return Code::fromStored($value)?->toStored();
+        return $this->stored(trim($code) === '' ? null : $code, $config);
     }
 
     /** `<pre><code class="language-…">`, the code escaped. */

@@ -4,16 +4,26 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Field\Types;
 
+use Preflow\Data\Values\FieldValue;
+use Preflow\Data\Values\RawValue;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldType;
+use Preflow\Folio\Field\UsesFieldKinds;
 use Preflow\Form\FieldRenderer;
 
 /**
  * Shared behavior for plain scalar fields. Subclasses only declare their key
  * and the HTML input type they render.
+ *
+ * Since 0.93 the value is the core's (UsesFieldKinds): normalizeInput() takes the posted text
+ * and gives it to the value's toStored(), toStorage() is toStored(), fromStorage() toOutput(). A
+ * subclass names its core value in defaultValue(); without one (a site's own type whose key the
+ * kinds do not know) it reads and writes its value unchanged (RawValue), as before 0.93.
  */
-abstract class AbstractScalarFieldType implements FieldType
+abstract class AbstractScalarFieldType implements FieldType, UsesFieldKinds
 {
+    use CoreValue;
+
     public function __construct(
         protected readonly FieldRenderer $renderer = new FieldRenderer(),
     ) {}
@@ -88,19 +98,26 @@ abstract class AbstractScalarFieldType implements FieldType
         return [];
     }
 
+    /** The posted text (nothing posted is ""), as the core value stores it. */
     public function normalizeInput(mixed $raw, array $config): mixed
     {
-        return is_string($raw) ? $raw : (string) ($raw ?? '');
+        return $this->stored(is_string($raw) ? $raw : (string) ($raw ?? ''), $config);
     }
 
     public function toStorage(mixed $value): mixed
     {
-        return $value;
+        return $this->stored($value);
     }
 
     public function fromStorage(mixed $value): mixed
     {
-        return $value;
+        return $this->output($value);
+    }
+
+    /** The value of a type the kinds hold none for: unchanged (RawValue). Subclasses name their core value. */
+    protected function defaultValue(): FieldValue
+    {
+        return new RawValue();
     }
 
     public function renderFrontend(mixed $value, array $config): string

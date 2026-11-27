@@ -27,8 +27,10 @@ use Psr\Http\Message\UploadedFileInterface;
  * their own "blocks" fields; translatable leaves are locale maps, structure
  * is shared across locales. Unknown block keys are kept untouched.
  */
-final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\Folio\Field\DisplaysInAdmin, \Preflow\Folio\Field\ReportsStoredTranslatableTexts, AcceptsTranslatedTexts
+final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\Folio\Field\DisplaysInAdmin, \Preflow\Folio\Field\ReportsStoredTranslatableTexts, AcceptsTranslatedTexts, \Preflow\Folio\Field\UsesFieldKinds
 {
+    use \Preflow\Folio\Field\Types\CoreValue;
+
     private const UID = '/^[a-f0-9]{16}$/';
 
     public function __construct(
@@ -49,6 +51,15 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
     public function key(): string
     {
         return 'blocks';
+    }
+
+    /**
+     * The core value of this type (used without kinds, or when they hold none for the key): the
+     * block fields through the kinds given to the constructor, none without them (unchanged).
+     */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Blocks\Values\BlocksFieldValue(fn (): BlockRegistry => $this->blocks, $this->kinds ?? new \Preflow\Data\FieldKinds());
     }
 
     public function buildValue(mixed $input, mixed $existing, array $files, BuildContext $ctx, array $config = []): mixed
@@ -783,9 +794,13 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         return []; // built through buildValue() (StructuredFieldType)
     }
 
+    /**
+     * The list as the editor holds it (fromStorage(): each block with its uid), each block's fields
+     * as the core stores them (BlocksFieldValue: every field through its own value).
+     */
     public function toStorage(mixed $value): mixed
     {
-        return $this->fromStorage($value);
+        return $this->stored($this->fromStorage($value));
     }
 
     /**

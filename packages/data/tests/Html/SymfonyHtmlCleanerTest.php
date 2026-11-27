@@ -92,4 +92,17 @@ final class SymfonyHtmlCleanerTest extends TestCase
         $cleaner->clean('<i>y</i>');
         $this->assertSame(1, SymfonyHtmlCleaner::$built, 'built once, on the first clean()');
     }
+
+    public function test_sanitizer_is_the_one_clean_uses(): void
+    {
+        SymfonyHtmlCleaner::$built = 0;
+        $cleaner = SymfonyHtmlCleaner::standard();
+        $sanitizer = $cleaner->sanitizer();
+
+        $this->assertSame(1, SymfonyHtmlCleaner::$built);
+        $this->assertSame($sanitizer, $cleaner->sanitizer());
+        $this->assertSame('<p>hi</p>', $sanitizer->sanitize('<p onclick="x()">hi<script>alert(1)</script></p>'));
+        $cleaner->clean('<b>x</b>');
+        $this->assertSame(1, SymfonyHtmlCleaner::$built, 'clean() uses the same sanitizer');
+    }
 }

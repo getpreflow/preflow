@@ -23,8 +23,10 @@ use Preflow\Form\FieldRenderer;
  *
  * The check is the core's (ValidPhone through FieldKinds::rules()): rules() adds none.
  */
-final class PhoneFieldType implements FieldType, DisplaysInAdmin
+final class PhoneFieldType implements FieldType, DisplaysInAdmin, \Preflow\Folio\Field\UsesFieldKinds
 {
+    use \Preflow\Folio\Field\Types\CoreValue;
+
     public function __construct(
         private readonly FieldRenderer $renderer = new FieldRenderer(),
     ) {}
@@ -32,6 +34,12 @@ final class PhoneFieldType implements FieldType, DisplaysInAdmin
     public function key(): string
     {
         return 'phone';
+    }
+
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Fields\Values\Field\PhoneValue();
     }
 
     public function renderEditor(FieldContext $ctx): string
@@ -64,18 +72,19 @@ final class PhoneFieldType implements FieldType, DisplaysInAdmin
             return null;
         }
 
-        return Phone::of($raw, PhoneOptions::fromConfig($config)->defaultRegion)->toStored();
+        // The field's default region reads a national number: form-only parsing, then the core's value.
+        return $this->stored(Phone::of($raw, PhoneOptions::fromConfig($config)->defaultRegion)->toStored(), $config);
     }
 
-    /** The stored object as it is (SQL storage writes JSON text of it); null for no number. */
+    /** The stored object as the core stores it (SQL storage writes JSON text of it); null for no number. */
     public function toStorage(mixed $value): mixed
     {
-        return Phone::fromStored($value)?->toStored();
+        return $this->stored($value);
     }
 
     public function fromStorage(mixed $value): mixed
     {
-        return Phone::fromStored($value)?->toStored();
+        return $this->output($value);
     }
 
     public function renderFrontend(mixed $value, array $config): string

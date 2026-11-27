@@ -29,6 +29,12 @@ final class DateFieldType extends AbstractScalarFieldType implements DisplaysInA
         return 'date';
     }
 
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new DateValue();
+    }
+
     public function columnKind(array $config): \Preflow\Data\Schema\ColumnKind
     {
         return \Preflow\Data\Schema\ColumnKind::Date;

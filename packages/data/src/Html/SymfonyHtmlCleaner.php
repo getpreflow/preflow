@@ -44,6 +44,15 @@ final class SymfonyHtmlCleaner implements HtmlCleaner
 
     public function clean(string $html): string
     {
-        return ($this->inner ??= ($this->factory)())->sanitize($html);
+        return $this->sanitizer()->sanitize($html);
+    }
+
+    /**
+     * The Symfony sanitizer clean() uses, built on the first call: for code that needs Symfony's
+     * interface (its sanitizeFor()), such as Folio's deprecated LazyHtmlSanitizer.
+     */
+    public function sanitizer(): HtmlSanitizerInterface
+    {
+        return $this->inner ??= ($this->factory)();
     }
 }

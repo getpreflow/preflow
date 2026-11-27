@@ -85,6 +85,8 @@ use PHPUnit\Framework\TestCase;
  * preflow/blocks (required since 0.70: the block classes, registry and renderer that were Folio's own; BlockLocale,
  * BlockTextCleaner and BlockPreviewMarks, which ContentLocale, SafeRichText and FolioBlockPreviewMarks implement)
  * conflicts below 0.75 (BlockDefinition::$family, see above).
+ * Since 0.93 Folio's field types read and write through the core values (preflow/blocks' BlocksFieldValue and
+ * CoreBlockTextCleaner, preflow/fields' twelve values, all new in 0.93.0), so blocks and fields conflict below 0.93.0.
  * preflow/publishing (required since 0.71: the Publisher, LiveContent and the other publishing classes that were Folio's own;
  * PublishingTypes, RecordChecks, LanguageChecks, RecordIndex and RecordAddresses, which Folio's adapters implement)
  * conflicts below 0.72: 0.71 still carries the config/folio.php fallback and the shadow-table index rules 0.72 changed.
@@ -101,7 +103,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/ai' => '<0.78', 'preflow/auth' => '<0.83.0', 'preflow/blocks' => '<0.92.0', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.82.0', 'preflow/data' => '<0.93.0', 'preflow/devtools' => '<0.85.0', 'preflow/fields' => '<0.91.0', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.83.0', 'preflow/media' => '<0.89.0', 'preflow/members' => '<0.77', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.81.0', 'preflow/rbac' => '<0.84.0', 'preflow/routing' => '<0.78.2', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
+            ['preflow/ai' => '<0.78', 'preflow/auth' => '<0.83.0', 'preflow/blocks' => '<0.93.0', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.82.0', 'preflow/data' => '<0.93.0', 'preflow/devtools' => '<0.85.0', 'preflow/fields' => '<0.93.0', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.83.0', 'preflow/media' => '<0.89.0', 'preflow/members' => '<0.77', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.81.0', 'preflow/rbac' => '<0.84.0', 'preflow/routing' => '<0.78.2', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; ai, members, codes and rbac are suggested, not required.

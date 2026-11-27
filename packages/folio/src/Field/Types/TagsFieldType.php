@@ -27,8 +27,10 @@ use Preflow\Folio\FolioText;
  * the empty input removes the last, a pasted "a, b, c" adds three). Without script it is one
  * comma-separated text input under the field's own name.
  */
-final class TagsFieldType implements FieldType, HasColumnKind, SearchableText, DisplaysInAdmin, StoresList
+final class TagsFieldType implements FieldType, HasColumnKind, SearchableText, DisplaysInAdmin, StoresList, \Preflow\Folio\Field\UsesFieldKinds
 {
+    use \Preflow\Folio\Field\Types\CoreValue;
+
     public const int DEFAULT_MAX = 20;
 
     public const int DEFAULT_MAX_LENGTH = 40;
@@ -39,6 +41,12 @@ final class TagsFieldType implements FieldType, HasColumnKind, SearchableText, D
     public function key(): string
     {
         return 'tags';
+    }
+
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Data\Values\Core\TagsValue();
     }
 
     public function columnKind(array $config): ColumnKind
@@ -122,89 +130,43 @@ final class TagsFieldType implements FieldType, HasColumnKind, SearchableText, D
 
     /**
      * A posted list (name[]), its JSON text or a comma string (the input without script) as the
-     * tags: trimmed, without control characters and empty ones, in NFC, each once (case ignored,
-     * the first spelling kept). A tag cannot hold a comma: the comma separates tags.
-     * Nothing is cut: a list over the limits stays so, and the field's rule refuses it.
+     * core stores tags (TagsValue): trimmed, without control characters and empty ones, in NFC,
+     * each once (case ignored, the first spelling kept). A tag cannot hold a comma: the comma
+     * separates tags. Nothing is cut: a list over the limits stays so, and the field's rule
+     * refuses it. No tags is [] here (toStorage() stores it as null).
      *
      * @return list<string>
      */
     public function normalizeInput(mixed $raw, array $config): mixed
     {
-        if (is_string($raw) && str_starts_with(trim($raw), '[')) {
-            $decoded = json_decode(trim($raw), true);
-            $raw = is_array($decoded) ? $decoded : $raw; // a JSON list posted as text (0.78)
-        }
-        if (is_string($raw)) {
-            $raw = explode(',', $raw);
-        }
-        if (!is_array($raw)) {
-            return [];
-        }
-        $out = [];
-        $seen = [];
-        foreach ($raw as $item) {
-            if (!is_string($item) && !is_int($item) && !is_float($item)) {
-                continue;
-            }
-            $tag = self::nfc(trim((string) preg_replace('/\p{Cc}+/u', '', (string) $item)));
-            if ($tag === '') {
-                continue;
-            }
-            $fold = mb_strtolower($tag);
-            if (isset($seen[$fold])) {
-                continue;
-            }
-            $seen[$fold] = true;
-            $out[] = $tag;
-        }
+        $tags = $this->stored($raw, $config);
 
-        return $out;
+        return is_array($tags) ? $tags : [];
     }
 
     /**
-     * The list (0.78): a JSON file holds it as a list, SQL storage as JSON text in its column (umlauts
-     * readable, for search). No tags is null (no value), so "required" refuses an empty field.
+     * The list (0.78), as the core stores it (TagsValue): a JSON file holds it as a list, SQL
+     * storage as JSON text in its column (umlauts readable, for search). No tags is null (no
+     * value), so "required" refuses an empty field.
      *
      * @return list<string>|null
      */
     public function toStorage(mixed $value): mixed
     {
-        $tags = $this->fromStorage($value);
-
-        return $tags === [] ? null : $tags;
+        return $this->stored($value);
     }
 
     /**
      * The stored JSON list (a list where the storage or a class model holds one), or a legacy
-     * comma string split into its parts.
+     * comma string split into its parts, as the core reads it out (TagsValue).
      *
      * @return list<string>
      */
     public function fromStorage(mixed $value): mixed
     {
-        if (is_string($value)) {
-            $trimmed = trim($value);
-            if ($trimmed === '') {
-                return [];
-            }
-            if (str_starts_with($trimmed, '[')) {
-                $decoded = json_decode($trimmed, true);
-                if (is_array($decoded)) {
-                    $value = $decoded;
-                }
-            }
-            if (is_string($value)) {
-                $value = explode(',', $value);
-            }
-        }
-        if (!is_array($value)) {
-            return [];
-        }
+        $tags = $this->output($value);
 
-        return array_values(array_filter(
-            array_map(static fn ($v): string => is_string($v) || is_int($v) || is_float($v) ? trim((string) $v) : '', $value),
-            static fn (string $v): bool => $v !== '',
-        ));
+        return is_array($tags) ? $tags : [];
     }
 
     public function renderFrontend(mixed $value, array $config): string
@@ -271,19 +233,6 @@ final class TagsFieldType implements FieldType, HasColumnKind, SearchableText, D
         }
     }
 
-    /**
-     * A tag in Unicode NFC ("Ü" as one character, as fields.js writes it), so the same word typed
-     * on another system is the same tag; as it is without the intl extension.
-     */
-    private static function nfc(string $tag): string
-    {
-        if ($tag === '' || !class_exists(\Normalizer::class)) {
-            return $tag;
-        }
-        $normal = \Normalizer::normalize($tag, \Normalizer::FORM_C);
-
-        return is_string($normal) ? $normal : $tag;
-    }
 
     /** @param array<string, mixed> $config */
     private static function limit(array $config, string $option, int $default): int

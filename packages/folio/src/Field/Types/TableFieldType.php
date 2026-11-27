@@ -37,8 +37,10 @@ use Preflow\Folio\FolioText;
  * translation status and go to machine translation as "head.c" / "rows.r.c". The check is the
  * core's: rules() adds none.
  */
-final class TableFieldType implements FieldType, StructuredFieldType, DisplaysInAdmin, ReportsTranslatableTexts, AcceptsTranslatedTexts
+final class TableFieldType implements FieldType, StructuredFieldType, DisplaysInAdmin, ReportsTranslatableTexts, AcceptsTranslatedTexts, \Preflow\Folio\Field\UsesFieldKinds
 {
+    use \Preflow\Folio\Field\Types\CoreValue;
+
     /** @param (\Closure(): ?Locales)|null $locales the content locales, for a cell's fallback on the frontend */
     public function __construct(
         private readonly ?\Closure $locales = null,
@@ -47,6 +49,12 @@ final class TableFieldType implements FieldType, StructuredFieldType, DisplaysIn
     public function key(): string
     {
         return 'table';
+    }
+
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Fields\Values\Field\TableValue();
     }
 
     public function renderEditor(FieldContext $ctx): string
@@ -205,14 +213,12 @@ final class TableFieldType implements FieldType, StructuredFieldType, DisplaysIn
     /** The stored object (padded by Table); null for no table. Something that is no table stays as it is, for the check to refuse. */
     public function toStorage(mixed $value): mixed
     {
-        $table = Table::fromStored($value);
-
-        return $table !== null ? $table->toStored() : (is_array($value) && $value !== [] ? $value : null);
+        return $this->stored($value);
     }
 
     public function fromStorage(mixed $value): mixed
     {
-        return Table::fromStored($value)?->toStored();
+        return $this->output($value);
     }
 
     /** The core's table HTML (escaped) in the render's locale, along the content locales' fallback chain. */

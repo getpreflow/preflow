@@ -25,11 +25,19 @@ use Preflow\Folio\FolioText;
  * What a person types is read leniently: "C00", "#C00000" and "c00000" are "#cc0000" and "#c00000";
  * anything that is no colour is kept as typed so the check can say so.
  */
-final class ColorFieldType implements FieldType, DisplaysInAdmin
+final class ColorFieldType implements FieldType, DisplaysInAdmin, \Preflow\Folio\Field\UsesFieldKinds
 {
+    use \Preflow\Folio\Field\Types\CoreValue;
+
     public function key(): string
     {
         return 'color';
+    }
+
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Fields\Values\Field\ColorValue();
     }
 
     public function renderEditor(FieldContext $ctx): string
@@ -124,18 +132,20 @@ final class ColorFieldType implements FieldType, DisplaysInAdmin
             return null;
         }
 
-        return Color::parse($raw)?->toStored() ?? trim($raw);
+        // The input takes "C00" and "#C00000": form-only parsing, then the core's value.
+        return $this->stored(Color::parse($raw)?->toStored() ?? trim($raw), $config);
     }
 
-    /** A colour as "#rrggbb(aa)", text that is no colour as typed (the check refuses it, naming what to write); null for none. */
+    /** A colour as "#rrggbb(aa)", text that is no colour as typed (the check refuses it, naming what to write); null for none: the core's (ColorValue). */
     public function toStorage(mixed $value): mixed
     {
-        return Color::fromStored($value)?->toStored() ?? (is_string($value) && trim($value) !== '' ? trim($value) : null);
+        return $this->stored($value);
     }
 
+    /** As stored (toStorage()): text that is no colour stays, so the editor shows it. */
     public function fromStorage(mixed $value): mixed
     {
-        return $this->toStorage($value);
+        return $this->stored($value);
     }
 
     /** The colour as text; a page uses it as it likes (a style, a class map). */

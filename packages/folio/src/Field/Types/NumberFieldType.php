@@ -16,6 +16,12 @@ final class NumberFieldType extends AbstractScalarFieldType implements \Preflow\
         return 'number';
     }
 
+    /** The core value of this type (used without kinds, or when they hold none for the key). */
+    protected function defaultValue(): \Preflow\Data\Values\FieldValue
+    {
+        return new \Preflow\Data\Values\Core\NumberValue();
+    }
+
     public function columnKind(array $config): \Preflow\Data\Schema\ColumnKind
     {
         return \Preflow\Data\Schema\ColumnKind::Number;
@@ -162,11 +168,5 @@ final class NumberFieldType extends AbstractScalarFieldType implements \Preflow\
         }
 
         throw new \LogicException('Number field option "step" must be a positive number or "any".');
-    }
-
-    /** An emptied number field holds no number. */
-    public function fromStorage(mixed $value): mixed
-    {
-        return $value === '' ? null : $value;
     }
 }
