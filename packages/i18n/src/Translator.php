@@ -87,7 +87,7 @@ final class Translator
             return $key;
         }
 
-        $resolved = (new PluralResolver())->resolve($value, $count);
+        $resolved = (new PluralResolver())->resolve($value, $count, $locale ?? $this->getLocale());
         $params['count'] = (string) $count;
 
         return $this->replaceParams($resolved, $params);

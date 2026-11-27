@@ -88,4 +88,24 @@ final class PluralResolverTest extends TestCase
         // 0 uses the second form (plural)
         $this->assertSame('Many', $result);
     }
+
+    /** @since 0.92.1 three plain forms by the language's rule: one|few|many. */
+    public function test_three_forms_by_the_language(): void
+    {
+        $resolver = new PluralResolver();
+        $text = 'one|few|many';
+
+        foreach ([1 => 'one', 21 => 'one', 101 => 'one', 2 => 'few', 24 => 'few', 0 => 'many', 5 => 'many', 11 => 'many', 12 => 'many', 111 => 'many'] as $n => $form) {
+            $this->assertSame($form, $resolver->resolve($text, $n, 'ru'), 'ru ' . $n);
+        }
+        foreach ([1 => 'one', 21 => 'many', 2 => 'few', 22 => 'few', 12 => 'many', 5 => 'many'] as $n => $form) {
+            $this->assertSame($form, $resolver->resolve($text, $n, 'pl_PL'), 'pl ' . $n);
+        }
+        foreach ([1 => 'one', 3 => 'few', 22 => 'many'] as $n => $form) {
+            $this->assertSame($form, $resolver->resolve($text, $n, 'cs'), 'cs ' . $n);
+        }
+        $this->assertSame('few', $resolver->resolve($text, 2, 'en'), 'a language with two forms: 1 against the rest');
+        $this->assertSame('few', $resolver->resolve($text, 21, null));
+        $this->assertSame('items', $resolver->resolve('item|items', 21, 'ru'), 'two forms keep their rule');
+    }
 }

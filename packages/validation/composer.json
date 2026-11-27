@@ -8,7 +8,7 @@
         "ext-mbstring": "*",
         "preflow/view": "^0.1 || @dev",
         "preflow/core": "^0.81.0 || @dev",
-        "preflow/i18n": "^0.81.0 || @dev"
+        "preflow/i18n": "^0.92.1 || @dev"
     },
     "suggest": {
         "ext-intl": "Slug::clean() drops accents (é → e) only with intl's Normalizer"
@@ -18,7 +18,7 @@
     },
     "conflict": {
         "preflow/core": "<0.81.0",
-        "preflow/i18n": "<0.81.0",
+        "preflow/i18n": "<0.92.1",
         "preflow/blocks": "<0.92.1"
     },
     "autoload": {

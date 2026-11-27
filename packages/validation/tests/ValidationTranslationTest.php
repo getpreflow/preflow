@@ -193,6 +193,12 @@ final class ValidationTranslationTest extends TestCase
         $this->assertSame('Obszar "aside" mieści najwyżej 1 blok.', $max(1)->text($translator));
         $this->assertSame('Obszar "aside" mieści najwyżej 3 bloki.', $max(3)->text($translator));
         $this->assertSame('Obszar "aside" mieści najwyżej 5 bloków.', $max(5)->text($translator));
+        $this->assertSame('Obszar "aside" mieści najwyżej 22 bloki.', $max(22)->text($translator));
+        $this->assertSame('Obszar "aside" mieści najwyżej 12 bloków.', $max(12)->text($translator));
+        $translator = self::translator('ru');
+        foreach ([1 => 'блока', 21 => 'блока', 31 => 'блока', 2 => 'блоков', 11 => 'блоков', 25 => 'блоков'] as $n => $word) {
+            $this->assertSame('Область "aside" вмещает не более ' . $n . ' ' . $word . '.', $max($n)->text($translator), (string) $n);
+        }
         $translator = self::translator('ja');
         $this->assertSame('エリア "aside" に置けるブロックは最大 1 個です。', $max(1)->text($translator), 'one form');
     }
