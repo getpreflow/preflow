@@ -67,6 +67,8 @@ final readonly class Placement
 
     /**
      * A stored value as an areas map: JSON text or an array; null, "", [] and {} are all empty.
+     * JSON text that does not parse (only hand-edited storage) reads as empty too, so a later write
+     * of "_areas" (LayoutInput::merge()) replaces it with the parsed map.
      *
      * @return array<string, list<array<string, mixed>>>
      */

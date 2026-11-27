@@ -39,6 +39,9 @@ use Preflow\Validation\ValidatorFactory;
  * declares. Save the result with DataManager::saveType(): the core rules decide the rest, as for
  * Folio (the layout choice, a pin, the areas' limits, the block values).
  *
+ * Only the top level is merged by area: an areas field (the columns block's columns) of a block in
+ * a written list is taken as written, so its stored columns are replaced as a whole.
+ *
  * mergeField() does the same for the value of an areas field ({"layout": …, "areas": {…}}, the
  * columns block's columns): its areas are kept, refused and merged by these rules, keyed under the
  * field.

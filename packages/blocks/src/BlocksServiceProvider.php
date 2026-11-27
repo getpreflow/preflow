@@ -477,43 +477,16 @@ final class BlocksServiceProvider extends ServiceProvider
             $def = $record->getType();
             $values = $record->toArray();
             $layouts = $container->bound(PageLayouts::class) ? $container->get(PageLayouts::class) : null;
-            if (!self::holdsAreas($def, $container->get(BlockRegistry::class), $layouts)) {
+            $checks = new AreasFieldChecks($container->get(AreaLayoutSets::class), $container->get(BlockRegistry::class), $layouts);
+            // Spares the stored read for a type that cannot hold an areas value.
+            if (!$checks->appliesTo($def)) {
                 return [];
             }
             $id = $values[$def->idField] ?? null;
             $stored = is_scalar($id) && (string) $id !== '' ? $data->findIn($def, (string) $id)?->toArray() : null;
 
-            $checks = new AreasFieldChecks($container->get(AreaLayoutSets::class), $container->get(BlockRegistry::class), $layouts);
-
             return self::errorsOf($container, $checks->problems($def, $values, $stored, $given));
         });
-    }
-
-    /**
-     * Whether a record of the type may hold an areas value: a field of its own, a block list (a block
-     * with an areas field may be in it), or page areas. Spares the stored read for every other type.
-     */
-    private static function holdsAreas(TypeDefinition $def, BlockRegistry $blocks, ?PageLayouts $layouts): bool
-    {
-        $lists = false;
-        foreach ($def->fields as $field) {
-            if ($field->type === BlockLists::AREAS) {
-                return true;
-            }
-            $lists = $lists || BlockLists::holds($field);
-        }
-        if (!$lists && $layouts?->forType($def->key) === null) {
-            return false;
-        }
-        foreach ($blocks->all() as $block) {
-            foreach ($block->fields as $field) {
-                if ($field->type === BlockLists::AREAS) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
     }
 
     /**
