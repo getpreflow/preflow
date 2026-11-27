@@ -18,8 +18,9 @@ use Preflow\Data\TypeFieldDefinition;
  * - a type's rules() (number's step, tags' limits, a blocks field's min/max, a site's own field
  *   types) as the core checks of its kind (FieldKinds::rules()), where no core package registered
  *   checks for that kind already; a type whose form takes fewer shapes than it stores and reads
- *   (HasStoredRules, 0.92.1: date) gives its storedRules() instead, so a write from server code
- *   is refused only for a value the type cannot read;
+ *   (HasStoredRules, 0.92.1: date) gives its storedRules() instead, so saveType() from server
+ *   code, imports and seeds refuse only a value the type cannot read (Folio's RecordValidator
+ *   runs its rules() in their place);
  * - a type whose rules read the other fields (HasRecordRules, HasBlockRules) not as a kind: its
  *   recordRules() as rules the core adds for the records' fields (RecordRules::add()), its
  *   blockRules() (or rules()) for a block's field through BlockValueChecks::extraRules().

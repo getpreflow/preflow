@@ -14,8 +14,9 @@ use Preflow\Folio\Http\AdminFormat;
  * ISO 8601 with an offset (gmdate(DATE_ATOM)), which the type reads too (read()). Empty is
  * allowed unless required.
  *
- * Every write checks the stored shapes (storedRules(), since 0.92.1); Folio's form checks the
- * shapes its input posts (rules()).
+ * The core's writes (saveType(), imports, seeds, the API) check the stored shapes (storedRules(),
+ * since 0.92.1); Folio's checks (RecordValidator: its form, RecordWriter, publishing) check the
+ * shapes its input posts (rules()), as since 0.91.
  */
 final class DateFieldType extends AbstractScalarFieldType implements DisplaysInAdmin, \Preflow\Folio\Field\HasColumnKind, \Preflow\Folio\Field\HasStoredRules
 {

@@ -28,8 +28,9 @@ use Preflow\Validation\ValidationRule;
  *
  * With the field types (0.92.1), a field whose type's form takes fewer shapes than the type
  * stores (HasStoredRules: date) gets the type's rules() — what the editor's input posts — in
- * place of the stored-shape checks every write runs, as before 0.92. Without them (code that
- * builds a validator by hand) it keeps the core's checks.
+ * place of the stored-shape checks the core's writes run, as since 0.91. As Folio's RecordChecks
+ * this also holds for RecordWriter's saves and publishing. Without them (code that builds a
+ * validator by hand) it keeps the core's checks.
  */
 final class RecordValidator
 {

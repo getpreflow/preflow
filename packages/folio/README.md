@@ -1049,7 +1049,8 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   fields implements `HasRecordRules`. A field type's `rules()` reach the core at boot (since 0.92), so every write
   path checks them, each message once. A type whose form takes fewer shapes than the type stores
   and reads implements `HasStoredRules` (since 0.92.1): its `storedRules()` reach the core instead,
-  and Folio's form checks its `rules()` in their place (`date` does this).
+  and Folio's checks (`RecordValidator`: the form, `RecordWriter`, publishing) run its `rules()` in
+  their place for a record's own field (`date` does this).
 
   In a block (since 0.90) the source is another field of **the same block**, never the record's
   or another block's: `#[BlockField(type: 'select', config: ['options_from' => 'answers'])]`.
@@ -1241,9 +1242,15 @@ A `date` shows in the admin as `folio_date()` writes it in the interface languag
 (German "22.10.2026", French "22/10/2026"), or "Oct 22, 2026 23:15" with `"time": true`. Only
 `Y-m-d`, `Y-m-d\TH:i`, `Y-m-d\TH:i:s` and ISO 8601 with an offset (shown in the app's timezone)
 are parsed (`DateFieldType::read()`); any other value is shown escaped as it is stored, never as an
-error. Every write accepts exactly these shapes in a `date` field, with or without `"time"`, so
-server code may store `gmdate(DATE_ATOM)` (since 0.92.1); Folio's form still takes only what its
-input posts (`Y-m-d`, or `Y-m-d\TH:i` with optional seconds for `"time": true`).
+error. An impossible date (`2026-02-30`, `2026-02-30T05:00:00+00:00`) is not read; a padded value
+is shown trimmed, but no write accepts one. Since 0.92.1, `saveType()`, imports, seeds and the API accept exactly these shapes in a `date`
+field, with or without `"time"`, so server code may store `gmdate(DATE_ATOM)` that way. Folio's own
+checks still take only what its input posts (`Y-m-d`, or `Y-m-d\TH:i` with optional seconds for
+`"time": true`), as since 0.91: the admin form, `RecordWriter` saves while Folio is installed (an
+app's own code, a translation run) and publishing. The input shows a stored date in its own shape
+(the app timezone), so an admin save keeps a date stored with an offset and writes it in the
+form's shape (`2026-11-27T05:00:00+00:00` becomes `2026-11-27T06:00` with `"time"` in
+Europe/Zurich).
 
 A field type says how its value is stored in a SQL column by implementing
 `Preflow\Folio\Field\HasColumnKind` (`columnKind(array $config): Preflow\Data\Schema\ColumnKind`:

@@ -7,10 +7,11 @@ namespace Preflow\Folio\Field;
 /**
  * Optional for a field type whose form takes fewer shapes than the type stores and reads (a date
  * input posts "Y-m-d", while the type also reads an ISO 8601 date and time with an offset that
- * server code stored). storedRules() checks the stored shapes: it is what every write runs
- * (CoreFieldRules gives it to the core as the kind's checks, so saveType(), imports and seeds
- * refuse only what the type cannot read). rules() stays the check of what the editor typed:
- * Folio's RecordValidator runs it in place of storedRules() for a record's field.
+ * server code stored). storedRules() checks the stored shapes: CoreFieldRules gives it to the
+ * core as the kind's checks, so saveType(), imports, seeds and the API refuse only what the type
+ * cannot read. rules() stays the check of what the editor typed: Folio's RecordValidator (its
+ * form, and as RecordChecks RecordWriter's saves and publishing) runs it in place of
+ * storedRules() for a record's own field.
  *
  * storedRules() gives rule names or value objects: the validator finds them in the core's list
  * by value (a name as it is, an object by its class and properties).
