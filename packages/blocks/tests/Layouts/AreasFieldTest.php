@@ -89,6 +89,36 @@ final class AreasFieldTest extends BlocksAppTestCase
         }
     }
 
+    public function test_a_select_cannot_take_its_options_from_an_areas_field(): void
+    {
+        $this->blocks([\Preflow\Blocks\Tests\Fixtures\Columns\OptionsFromColumns::class]);
+
+        try {
+            $this->app()->container()->get(BlockRegistry::class);
+            $this->fail('a select taking its options from an areas field was taken');
+        } catch (BlockConfigException $e) {
+            $this->assertSame('Block "picky_grid": field "pick": Select field option "options_from" names "columns", an areas field; name a field of this block that holds values (such as tags).', $e->getMessage());
+        }
+    }
+
+    public function test_a_class_backed_type_declares_its_areas_field_and_layouts(): void
+    {
+        $this->write('config/data.php', "<?php\nreturn ['drivers' => ['json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data']], 'default' => 'json', 'models_path' => __DIR__ . '/models', 'model_paths' => [" . var_export(dirname(__DIR__) . '/Fixtures/Models', true) . "]];\n");
+        $this->write('config/blocks.php', "<?php\nreturn ['classes' => [\\Preflow\\Blocks\\Tests\\Fixtures\\Checks\\Section::class], 'layouts' => [\\Preflow\\Blocks\\Tests\\Fixtures\\Layouts\\Standard::class]];\n");
+        // The admin file adds what is the type's own, not a field's: its page layouts.
+        $this->write('config/models/board.json', (string) json_encode(['key' => 'board', 'label' => 'Boards', 'layouts' => ['allowed' => ['standard'], 'default' => 'standard']]));
+
+        $layouts = $this->app()->container()->get(PageLayouts::class)->forType('board');
+        $this->assertSame(['standard'], $layouts?->allowed, 'a class-backed type opts into layouts like a model file');
+        $field = $this->types()->get('board')->fields['columns'];
+        $this->assertSame('grid', BlockLists::setName($field), 'the class declares its areas field\'s set');
+
+        $this->data()->saveType(DynamicRecord::fromArray($this->types()->get('board'), ['uuid' => 'b1', 'title' => 'Board', 'slug' => 'board', 'columns' => ['layout' => 'full', 'areas' => ['c1' => [self::section(self::A)]]], '_layout' => 'standard', '_areas' => ['main' => []]]));
+        $stored = $this->fresh()->container()->get(DataManager::class)->findType('board', 'b1');
+        $this->assertSame('standard', $stored?->get('_layout'));
+        $this->assertSame([self::A], array_column(AreasValue::fromStored($stored?->get('columns'))->areas['c1'], '_uid'));
+    }
+
     public function test_areas_field_of_a_type_without_a_set_is_refused_at_boot(): void
     {
         $this->write('config/models/page.json', (string) json_encode([

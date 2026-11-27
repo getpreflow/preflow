@@ -14,8 +14,8 @@ namespace Preflow\Data;
  */
 final class SelectOptionsFrom
 {
-    /** Field types that hold nested entries, not values to choose from: never a source. */
-    public const array STRUCTURED = ['blocks', 'matrix'];
+    /** Field types that hold nested entries, not values to choose from: never a source (since 0.92 the areas field too). */
+    public const array STRUCTURED = ['blocks', 'matrix', 'areas'];
 
     /**
      * The "options_from" option against the field set: it names another field of the set that holds
@@ -50,7 +50,9 @@ final class SelectOptionsFrom
                     : 'name one of its fields (' . implode(', ', $others) . ').'));
         }
         if (in_array($fields[$source], self::STRUCTURED, true)) {
-            throw new \LogicException('Select field option "options_from" names "' . $source . '", a ' . $fields[$source] . ' field; name a field of this ' . $owner . ' that holds values (such as tags).');
+            $kind = $fields[$source];
+            $article = in_array($kind[0], ['a', 'e', 'i', 'o', 'u'], true) ? 'an' : 'a';
+            throw new \LogicException('Select field option "options_from" names "' . $source . '", ' . $article . ' ' . $kind . ' field; name a field of this ' . $owner . ' that holds values (such as tags).');
         }
         self::checkDisplay($config);
     }
