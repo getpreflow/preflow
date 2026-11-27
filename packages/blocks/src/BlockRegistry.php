@@ -413,7 +413,8 @@ final class BlockRegistry
 
     /**
      * The classes of the PHP files under a directory, named from their path below it (PSR-4 under
-     * $namespace). Layouts use it for app/Layouts, as blocks do for app/Blocks.
+     * $namespace); a file that declares no such class is left out. Layouts use it for app/Layouts,
+     * as blocks do for app/Blocks.
      *
      * @param string $namespace with its trailing backslash
      * @return list<class-string>
@@ -431,7 +432,10 @@ final class BlockRegistry
                 continue;
             }
             $relative = substr($file->getPathname(), strlen(rtrim($dir, '/')) + 1, -4);
-            $classes[] = $namespace . str_replace('/', '\\', $relative);
+            $class = $namespace . str_replace('/', '\\', $relative);
+            if (class_exists($class)) {
+                $classes[] = $class;
+            }
         }
         sort($classes);
 

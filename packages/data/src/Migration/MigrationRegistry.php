@@ -88,7 +88,7 @@ final class MigrationRegistry
      * changes an exit code. $sqlOnly true: only a site with SQL storage prints it (as check()); the
      * default, false, is a warning that works through DataManager on any storage.
      *
-     * @param \Closure(): list<string> $lines
+     * @param \Closure(): array<array-key, string> $lines (any array of lines; linesOf() lists them)
      * @since 0.92.0
      */
     public function warning(string $name, \Closure $lines, bool $sqlOnly = false): void
@@ -115,7 +115,7 @@ final class MigrationRegistry
      * What the warnings say: name => lines. A warning that throws is one line saying so, so a
      * warning can never stop `migrate` or `db:check`.
      *
-     * @param array<string, \Closure(): list<string>> $warnings (warnings())
+     * @param array<string, \Closure(): array<array-key, string>> $warnings (warnings())
      * @return array<string, list<string>>
      * @since 0.92.0
      */

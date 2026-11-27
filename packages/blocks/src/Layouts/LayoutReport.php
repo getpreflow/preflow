@@ -81,7 +81,7 @@ final class LayoutReport
     private function areasLines(TypeDefinition $def, bool $pageAreas): array
     {
         $missing = [];
-        $unplaced = ['count' => 0, 'names' => []];
+        $unplaced = self::none();
         $areas = [];
         try {
             for ($offset = 0;; $offset += $this->pageSize) {
@@ -110,6 +110,7 @@ final class LayoutReport
                         }
                     }
                     foreach (array_keys($gone) as $key) {
+                        $missing[$key] ??= self::none();
                         $this->add($missing[$key], $label);
                     }
                     if ($notShown !== []) {
@@ -243,7 +244,7 @@ final class LayoutReport
     {
         $slugs = [];
         $missing = [];
-        $unplaced = ['count' => 0, 'names' => []];
+        $unplaced = self::none();
         $areas = [];
         $watched = $type->pinned !== [];
 
@@ -261,6 +262,7 @@ final class LayoutReport
                 $pin = $type->pinFor($slug);
                 $pinUsed = $pin !== null && $this->registry->get($pin) !== null;
                 if (is_string($stored) && $stored !== '' && !$pinUsed && !(in_array($stored, $type->allowed, true) && $this->registry->get($stored) !== null)) {
+                    $missing[$stored] ??= self::none();
                     $this->add($missing[$stored], $label);
                 }
 
@@ -280,10 +282,15 @@ final class LayoutReport
         return ['slugs' => $slugs, 'missing' => $missing, 'unplaced' => $unplaced, 'areas' => $areas];
     }
 
-    /** @param array{count?: int, names?: list<string>}|null $into */
-    private function add(?array &$into, string $label): void
+    /** @return array{count: int, names: list<string>} */
+    private static function none(): array
     {
-        $into ??= ['count' => 0, 'names' => []];
+        return ['count' => 0, 'names' => []];
+    }
+
+    /** @param array{count: int, names: list<string>} $into */
+    private function add(array &$into, string $label): void
+    {
         $into['count']++;
         if (count($into['names']) < $this->named) {
             $into['names'][] = $label;

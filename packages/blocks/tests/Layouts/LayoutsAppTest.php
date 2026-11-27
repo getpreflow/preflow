@@ -64,6 +64,15 @@ final class LayoutsAppTest extends BlocksAppTestCase
         $this->app()->container()->get(LayoutRegistry::class);
     }
 
+    public function test_config_listing_something_that_is_not_a_class_fails(): void
+    {
+        $this->write('config/blocks.php', "<?php\nreturn ['layouts' => ['No\\\\Such\\\\Layout']];\n");
+
+        $this->expectException(LayoutConfigException::class);
+        $this->expectExceptionMessage("config/blocks.php 'layouts' lists No\\Such\\Layout, which is not a class.");
+        $this->app()->container()->get(LayoutRegistry::class);
+    }
+
     public function test_layouts_have_their_own_cache_entry(): void
     {
         $cache = $this->app()->container()->get(CacheRegistry::class)->get('layouts');

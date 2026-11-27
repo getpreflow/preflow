@@ -85,7 +85,7 @@ final readonly class TypeLayouts
             throw $refuse(sprintf('"layouts.pinned" pins pages by the field "%s" ("layouts.slug_field"), which the type does not have; add that field, or set "layouts.slug_field" to the field that holds the page\'s slug.', $slugField));
         }
 
-        return new self($type, array_values($allowed), $default, $pins, $slugField);
+        return new self($type, $allowed, $default, $pins, $slugField);
     }
 
     /** The layout a page with this slug (its default-locale value) is pinned to; null when none. */

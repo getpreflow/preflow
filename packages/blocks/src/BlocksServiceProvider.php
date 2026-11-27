@@ -85,7 +85,7 @@ final class BlocksServiceProvider extends ServiceProvider
 
         // Built once per request (discovery reflects over every component); conflicting keys fail when it is built.
         $container->singleton(BlockRegistry::class, static function (Container $c) use ($app): BlockRegistry {
-            $config = $c->get(BlocksConfig::class);
+            $config = self::config($c);
             try {
                 $components = $c->get(ComponentMap::class);
             } catch (\Throwable) {
@@ -108,7 +108,7 @@ final class BlocksServiceProvider extends ServiceProvider
 
         // Page layouts (since 0.92): found and cached like blocks.
         $container->singleton(LayoutRegistry::class, static function (Container $c) use ($app): LayoutRegistry {
-            $config = $c->get(BlocksConfig::class);
+            $config = self::config($c);
 
             return LayoutRegistry::fromArray($app->bootManifest()->remember('blocks.layouts', static fn (): array => LayoutRegistry::discover(
                 $app->basePath('app/Layouts'),
@@ -283,6 +283,17 @@ final class BlocksServiceProvider extends ServiceProvider
         }
 
         return $classes;
+    }
+
+    /** The bound BlocksConfig (register() binds it; a site may bind its own). */
+    private static function config(Container $c): BlocksConfig
+    {
+        $config = $c->get(BlocksConfig::class);
+        if (!$config instanceof BlocksConfig) {
+            throw new \LogicException('The container binds ' . BlocksConfig::class . ' to ' . get_debug_type($config) . '; bind a ' . BlocksConfig::class . '.');
+        }
+
+        return $config;
     }
 
     /**

@@ -29,7 +29,7 @@ final readonly class OptionsFrom implements ValidationRule
         public bool $list = false,
     ) {}
 
-    public function validate(mixed $value, ValidationContext $context): true|string|Message
+    public function validate(mixed $value, ValidationContext $context): true|Message
     {
         if ($value === null || $value === '') {
             return true;

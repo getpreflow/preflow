@@ -63,7 +63,7 @@ final class PageLayouts
     public function selectable(string $type): array
     {
         $selectable = [];
-        foreach ($this->forType($type)?->allowed ?? [] as $key) {
+        foreach ($this->forType($type)->allowed ?? [] as $key) {
             $layout = $this->layouts->get($key);
             if ($layout !== null) {
                 $selectable[] = $layout;
