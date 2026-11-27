@@ -287,7 +287,11 @@ final class AreasFieldTypeTest extends TestCase
     {
         $body = $more + self::posted($form);
         $body['sections'][self::GRID]['columns']['layout'] = $layout;
-        $response = $this->post('/folio/_areas?' . http_build_query(['name' => 'sections[' . self::GRID . '][columns]', 'set' => 'grid', 'type' => 'post', 'id' => 'p1', 'locale' => 'en', 'depth' => '1']), $body);
+        // The address the grid's picker posts to, as the form draws it (0.92.1: the field's own name).
+        $this->assertSame(1, preg_match('~<select [^>]*name="sections\[' . self::GRID . '\]\[columns\]\[layout\]"[^>]*hx-post="([^"]+)"~', $form, $m), 'the picker posts to the switch');
+        $url = html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5);
+        $this->assertSame('/folio/_areas?' . http_build_query(['name' => 'sections[' . self::GRID . '][columns]', 'type' => 'post', 'id' => 'p1', 'locale' => 'en', 'depth' => '1', 'set' => 'grid'], '', '&', PHP_QUERY_RFC3986), $url);
+        $response = $this->post($url, $body);
 
         return $this->html($response);
     }

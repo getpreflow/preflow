@@ -17,7 +17,7 @@ use Preflow\View\TemplateEngineInterface;
 
 /**
  * The layout editor (0.92), one renderer for a page's areas and the areas field: the layout picker
- * (or "Layout: Home (fixed)" for a pinned page), the notice for a layout that is no longer
+ * (or "Home (fixed)" under the label "Layout" for a pinned page), the notice for a layout that is no longer
  * available, each area of the layout as a block list in the layout's order, and the panel "Not
  * shown in this layout" with the blocks of the areas the layout lacks (Placement::unplaced()), each
  * movable to an area of the layout that accepts it, or removable. Nothing is decided here: the
@@ -55,7 +55,7 @@ final class AreasEditor
      * @param list<AreaLayout>                  $choices    the layouts the editor may pick, in order (none for a pinned page);
      *        with $missingKey the picker starts on that key ("Standard (until you choose a layout)"), so a save as shown keeps it
      * @param AreaLayout|null                   $current    the layout the areas show (the picker's choice); null: none exists
-     * @param string|null                       $fixedLabel a pinned page's layout label ("Layout: Home (fixed)", no picker)
+     * @param string|null                       $fixedLabel a pinned page's layout label ("Home (fixed)", no picker)
      * @param string|null                       $missingKey the stored (or pinned) key that is no longer available (the notice)
      * @param array<string, list<string>|string> $errors    the form's errors; those keyed under the dotted $layoutName or
      *        $areasName are shown: "_layout", "_areas", "_areas.<area>", "_areas.<area>.<uid>.<field>…"
@@ -65,8 +65,11 @@ final class AreasEditor
     public function render(string $layoutName, string $areasName, array $choices, ?AreaLayout $current, Placement $placement, ?string $fixedLabel, ?string $missingKey, Locales $locales, string $locale, int $depth, array $errors, ?array $record, string $part = self::WHOLE, ?string $set = null): string
     {
         $id = 'folio-areas-' . hash('xxh3', $areasName);
+        // The endpoint names what it rebuilds: a page's "_areas", an areas field by the field's own
+        // name ("<name>", whose "[layout]" and "[areas]" it reads from the posted form).
+        $endpointName = $set !== null && str_ends_with($areasName, '[areas]') ? substr($areasName, 0, -strlen('[areas]')) : $areasName;
         $url = $this->adminPrefix . '/_areas?' . http_build_query(array_filter([
-            'name' => $areasName,
+            'name' => $endpointName,
             'type' => $record['type'] ?? '',
             'id' => $record['id'] ?? '',
             'locale' => $locale,

@@ -193,7 +193,9 @@ final class FolioServiceProvider extends ServiceProvider
         $folioCfg = $this->folioConfig($app);
         // Folio's answers to the blocks' questions, unless the app bound its own (preflow/blocks fills the rest at boot).
         if (!$container->bound(\Preflow\Blocks\BlockPreviewMarks::class)) {
-            $container->singleton(\Preflow\Blocks\BlockPreviewMarks::class, static fn (): \Preflow\Blocks\BlockPreviewMarks => new \Preflow\Folio\Content\FolioBlockPreviewMarks());
+            $container->singleton(\Preflow\Blocks\BlockPreviewMarks::class, static fn (): \Preflow\Blocks\BlockPreviewMarks => new \Preflow\Folio\Content\FolioBlockPreviewMarks(
+                static fn (): ?\Preflow\I18n\Translator => $container->bound(\Preflow\I18n\Translator::class) ? $container->get(\Preflow\I18n\Translator::class) : null,
+            ));
         }
         // Linked records a template marks with preview_mark() (0.92): opened in the drawer from the preview.
         if (!$container->bound(\Preflow\Blocks\RecordPreviewMarks::class)) {
