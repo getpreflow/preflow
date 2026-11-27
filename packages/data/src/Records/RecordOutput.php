@@ -190,7 +190,9 @@ final readonly class RecordOutput
 
     /**
      * Whether the field is declared "hidden": true: never read out, never written through the
-     * write class (RecordInput), not in the description. @internal
+     * write class (RecordInput), not in the description.
+     *
+     * @since 0.93.0
      */
     public static function declaredHidden(TypeFieldDefinition $field): bool
     {
