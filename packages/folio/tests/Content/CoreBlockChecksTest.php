@@ -237,4 +237,32 @@ final class CoreBlockChecksTest extends TestCase
         $this->assertSame(422, $res->getStatusCode());
         $this->assertSame([], $this->dm()->queryType('event')->get()->items());
     }
+
+    #[RunInSeparateProcess]
+    public function test_a_save_in_the_form_keeps_a_date_server_code_stored_with_an_offset(): void
+    {
+        $atom = '2026-11-27T05:00:00+00:00';
+        $this->dm()->saveType(DynamicRecord::fromArray($this->dm()->getTypeRegistry()->get('event'), ['uuid' => 'e1', 'name' => 'Fair', 'day' => $atom, 'starts' => $atom]));
+        $local = \Preflow\Folio\Field\Types\DateFieldType::read($atom);
+        $this->assertNotNull($local);
+
+        $response = $this->get('/folio/event/e1/edit');
+        $form = (string) $response->getBody();
+        $this->assertSame(200, $response->getStatusCode(), substr($form, 0, 2000));
+        $value = function (string $name) use ($form): string {
+            $this->assertSame(1, preg_match('~<input type="(?:date|datetime-local)" name="' . $name . '" value="([^"]*)"~', $form, $m), $name);
+
+            return html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5);
+        };
+        // The inputs show the date in their own shape (a browser shows an offset value as empty).
+        $this->assertSame($local->format('Y-m-d'), $value('day'));
+        $this->assertSame($local->format('Y-m-d\TH:i'), $value('starts'));
+
+        // Saved untouched: the date is kept, in the form's shape (the app timezone).
+        $saved = $this->post('/folio/event/e1', ['name' => 'Fair', 'day' => $value('day'), 'starts' => $value('starts')]);
+        $this->assertSame(302, $saved->getStatusCode(), substr((string) $saved->getBody(), 0, 2000));
+        $record = $this->dm()->findType('event', 'e1');
+        $this->assertSame($local->format('Y-m-d'), $record?->get('day'));
+        $this->assertSame($local->format('Y-m-d\TH:i'), $record?->get('starts'));
+    }
 }
