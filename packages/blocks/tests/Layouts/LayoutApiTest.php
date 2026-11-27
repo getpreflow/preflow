@@ -6,6 +6,7 @@ namespace Preflow\Blocks\Tests\Layouts;
 
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Preflow\Blocks\Layouts\LayoutInput;
+use Preflow\Blocks\Layouts\PageLayouts;
 use Preflow\Blocks\Layouts\LayoutResource;
 use Preflow\Blocks\Tests\BlocksAppTestCase;
 use Preflow\Core\Application;
@@ -196,6 +197,29 @@ final class LayoutApiTest extends BlocksAppTestCase
         $this->assertMatchesRegularExpression('/^[a-f0-9]{16}$/', $main[1]['quotes'][0]['_uid'], 'nested too');
         $this->assertMatchesRegularExpression('/^[a-f0-9]{16}$/', $main[2]['_uid'], 'null is left out');
         $this->assertNotSame(self::B, $main[2]['_uid']);
+    }
+
+    public function test_a_new_page_keeps_an_area_another_layout_declares(): void
+    {
+        $def = $this->types()->get('page');
+        $input = $this->app()->container()->get(LayoutInput::class);
+
+        // A page never saved, switched from "promo" (hero, main) to "standard" (main) with its hero filled.
+        $values = $input->merge($def, ['uuid' => 'p9'], ['title' => 'New', 'slug' => 'new', 'layout' => 'standard', 'areas' => ['main' => [], 'hero' => [self::section(self::A)]]]);
+        $this->data()->saveType(DynamicRecord::fromArray($def, ['uuid' => 'p9', 'title' => 'New', 'slug' => 'new'] + $values));
+        $stored = $this->stored('p9');
+        $this->assertSame('standard', $stored?->get('_layout'));
+        $this->assertSame([self::A], array_column($this->areasOf($stored)['hero'], '_uid'), 'kept, not shown in this layout');
+        $this->assertSame([], $this->json('GET', '/api/pages/p9')->json('data.areas.main'));
+
+        // A name no layout of the type declares is still refused, naming the layout's areas.
+        try {
+            $input->merge($def, ['uuid' => 'p8'], ['layout' => 'standard', 'areas' => ['sidebar' => [self::section(self::B)]]]);
+            $this->fail('an area no layout declares was taken');
+        } catch (ValidationException $e) {
+            $this->assertSame(['_areas.sidebar' => ['The layout "standard" has no area "sidebar". Use one of: main.']], $e->errors());
+        }
+        $this->assertSame(['hero', 'main', 'top'], $this->app()->container()->get(PageLayouts::class)->declaredAreas('page'), 'the allowed layouts\' areas, then the pinned one\'s');
     }
 
     public function test_type_without_layouts_has_no_layout_resource(): void

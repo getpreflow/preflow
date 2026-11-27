@@ -27,8 +27,12 @@ use Preflow\Validation\ValidatorFactory;
  * hides keeps its stored value (FieldVisibility::keepStored(), per block, as Folio's form does).
  * Other keys of the input are the caller's own fields: merge() leaves them alone.
  *
- * Refused here (ValidationException, each key the stored key the core rules use): an area the
- * chosen layout does not have and the page does not store ("_areas.<name>"), a uid that is not 16
+ * An area the chosen layout lacks is taken when the page stores it or another layout of the type
+ * (one an editor may choose, or a pinned one) declares it: its blocks are kept, unplaced ("Not shown
+ * in this layout"), as when an editor switches layouts before the page was ever saved.
+ *
+ * Refused here (ValidationException, each key the stored key the core rules use): an area no
+ * layout of the type declares and the page does not store ("_areas.<name>"), a uid that is not 16
  * hex digits or is given to two blocks ("_areas.<name>.<i>._uid", nested
  * "_areas.<name>.<i>.<field>.<j>._uid"), a value of the wrong shape, a new block of a key no class
  * declares. Save the result with DataManager::saveType(): the core rules decide the rest, as for
@@ -101,6 +105,7 @@ final readonly class LayoutInput
             return $stored;
         }
         $layout = $this->layouts->resolveValues($def, $values)?->layout;
+        $declared = array_flip($this->layouts->declaredAreas($def->key));
 
         // Every stored block by uid (a block may move between areas); the uids the areas the write
         // does not name still hold.
@@ -122,7 +127,7 @@ final readonly class LayoutInput
         foreach ($given as $name => $list) {
             $name = (string) $name;
             $at = PageLayouts::AREAS . '.' . $name;
-            if (!isset($layout?->areas[$name]) && !array_key_exists($name, $stored)) {
+            if (!isset($layout?->areas[$name]) && !array_key_exists($name, $stored) && !isset($declared[$name])) {
                 $errors[$at] = new Message('validation.layout.unknown_area', [
                     'layout' => $layout->key ?? (string) ($values[PageLayouts::LAYOUT] ?? ''),
                     'name' => $name,

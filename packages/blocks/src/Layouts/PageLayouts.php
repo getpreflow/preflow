@@ -73,6 +73,32 @@ final class PageLayouts
         return $selectable;
     }
 
+    /**
+     * The area names the type's layouts declare: those of the layouts an editor may choose and of
+     * the pinned ones (each class that exists), in that order, each once. An area by one of these
+     * names may hold blocks on any page of the type (unplaced while its layout lacks it).
+     *
+     * @return list<string>
+     */
+    public function declaredAreas(string $type): array
+    {
+        $layouts = $this->selectable($type);
+        foreach ($this->forType($type)->pinned ?? [] as $key) {
+            $layout = $this->layouts->get($key);
+            if ($layout !== null) {
+                $layouts[] = $layout;
+            }
+        }
+        $names = [];
+        foreach ($layouts as $layout) {
+            foreach ($layout->areaNames() as $name) {
+                $names[$name] = true;
+            }
+        }
+
+        return array_keys($names);
+    }
+
     /** The stored record's layout; null for a type without "layouts". */
     public function resolve(DynamicRecord $record): ?ResolvedLayout
     {

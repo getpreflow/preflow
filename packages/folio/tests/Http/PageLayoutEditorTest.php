@@ -153,6 +153,28 @@ final class PageLayoutEditorTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_new_page_switched_away_from_a_filled_area_saves_it_unplaced(): void
+    {
+        $form = $this->html($this->get('/folio/page/new'));
+        $landing = self::swapped($form, $this->areas($form, '', ['_areas_to' => 'landing', '_layout' => 'landing']), 'landing');
+        $body = self::posted($landing);
+        $body['_areas']['hero'] = ['_order' => ['', self::HERO], self::HERO => ['_block' => 'hero', 'headline' => 'Welcome', 'intro' => '']];
+        $body['title'] = 'About';
+        $body['slug'] = 'about';
+
+        // Switched to "Standard" before the page was ever saved: the hero waits in the panel.
+        $answer = $this->post('/folio/_areas?' . http_build_query(['name' => '_areas', 'type' => 'page', 'locale' => 'en', 'depth' => '0']), ['_areas_to' => 'standard', '_layout' => 'standard'] + $body);
+        $switched = self::swapped($landing, $this->html($answer), 'standard');
+        $this->assertStringContainsString('value="Welcome"', $this->between($switched, 'data-areas-panel', '</section>'));
+
+        $saved = $this->post('/folio/page', self::posted($switched));
+        $this->assertSame(302, $saved->getStatusCode(), substr((string) $saved->getBody(), 0, 3000));
+        $created = $this->dm()->queryType('page')->first();
+        $this->assertSame('standard', $created?->get('_layout'));
+        $this->assertSame('Welcome', $created?->get('_areas')['hero'][0]['headline']['en'] ?? null, 'kept, not shown in this layout');
+    }
+
+    #[RunInSeparateProcess]
     public function test_move_puts_the_block_in_the_chosen_area(): void
     {
         $this->page('r1', 'about', 'standard', [
