@@ -14,7 +14,7 @@ use Preflow\Data\Values\ListsReferences;
  * A media field's value ("asset"): the asset's id (shape "id"), or with "asset.multiple" the ids
  * as a list (shape "id_list"). Stored and read out as a relation's (RelationValue::ids()): an
  * empty list is null, as AssetFieldType::toStorage() stores it, a list stored as JSON text (SQL)
- * decoded. references() names "asset" and its ids; URLs and sizes are the media package's.
+ * decoded, the output only ever strings (RelationValue::outputIds()). references() names "asset" and its ids; URLs and sizes are the media package's.
  *
  * @since 0.93.0
  */
@@ -27,7 +27,7 @@ final class AssetValue implements FieldValue, DescribesShapes, ListsReferences
 
     public function toOutput(mixed $stored, TypeFieldDefinition $field): mixed
     {
-        return RelationValue::ids($stored, self::multiple($field->config));
+        return RelationValue::outputIds($stored, self::multiple($field->config));
     }
 
     public function shape(TypeFieldDefinition $field): string

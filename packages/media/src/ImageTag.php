@@ -240,29 +240,76 @@ final class ImageTag
     }
 
     /**
+     * An image asset's sizes as an API answers with them (since 0.93): width => URL of the WebP
+     * files the <picture> lists for $preset (its WebP srcset: the preset's widths up to the
+     * original, or a box preset's files), from narrow to wide, for the image render() delivers (an
+     * edited image's master). [] for a video, a document, a private asset (it has no variants) or
+     * an image without WebP variants.
+     *
+     * @return array<int, string>
+     */
+    public function sizes(Asset $asset, ?string $preset = null): array
+    {
+        if ($asset->kind() !== 'image' || $asset->private) {
+            return [];
+        }
+        $delivery = $this->library->deliveryAsset($asset) ?? $asset;
+        $plan = $this->plan($asset, $delivery, $preset);
+        if ($plan !== null) {
+            $sizes = [];
+            foreach (self::hasVariants($plan->source, 'webp') ? $plan->widths : [] as $width) {
+                $sizes[$width] = $this->library->url("{$plan->base}-{$width}.webp");
+            }
+
+            return $sizes;
+        }
+
+        return $this->widthUrls($delivery, 'webp', $preset);
+    }
+
+    /**
      * With a width model: the preset's widths up to the original, by their
      * deterministic file names (step widths are made on first request); the
      * formats are those the asset already has variants in.
      */
     private function srcset(Asset $asset, string $format, ?string $preset): string
     {
+        $parts = [];
+        foreach ($this->widthUrls($asset, $format, $preset) as $width => $url) {
+            $parts[] = $url . ' ' . $width . 'w';
+        }
+
+        return implode(', ', $parts);
+    }
+
+    /**
+     * srcset()'s files: width => URL, from narrow to wide.
+     *
+     * @return array<int, string>
+     */
+    private function widthUrls(Asset $asset, string $format, ?string $preset): array
+    {
+        $urls = [];
         if ($this->widths !== null) {
             $has = array_filter($asset->variants, static fn (Variant $v) => $v->format === $format);
             if ($has === [] || $asset->width === null) {
-                return '';
+                return [];
             }
             $base = substr($asset->path, 0, (int) strrpos($asset->path, '.'));
+            foreach ($this->widths->srcsetWidths($preset, $asset->width) as $width) {
+                $urls[$width] = $this->library->url("{$base}-{$width}.{$format}");
+            }
 
-            return implode(', ', array_map(
-                fn (int $w) => $this->library->url("{$base}-{$w}.{$format}") . ' ' . $w . 'w',
-                $this->widths->srcsetWidths($preset, $asset->width),
-            ));
+            return $urls;
         }
 
         $variants = array_filter($asset->variants, static fn (Variant $v) => $v->format === $format);
         usort($variants, static fn (Variant $a, Variant $b) => $a->width <=> $b->width);
+        foreach ($variants as $variant) {
+            $urls[$variant->width] ??= $this->library->url($variant->path);
+        }
 
-        return implode(', ', array_map(fn (Variant $v) => $this->library->url($v->path) . ' ' . $v->width . 'w', $variants));
+        return $urls;
     }
 
     /**

@@ -38,6 +38,8 @@ use Preflow\Data\Html\HtmlCleaner;
 use Preflow\Data\Html\SymfonyHtmlCleaner;
 use Preflow\Data\Locales;
 use Preflow\Data\Migration\MigrationRegistry;
+use Preflow\Data\Records\OutputPart;
+use Preflow\Data\Records\RecordParts;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Data\TypeRegistry;
@@ -70,7 +72,9 @@ use Preflow\View\TemplateFunctionDefinition;
  *
  * For APIs (since 0.92): ContentDescription (blocks, layouts, area layout sets and type layouts as
  * data for a schema builder) and, with page layouts, LayoutResource and LayoutInput — a page's
- * layout and areas read and written as JSON under the same core rules as Folio's form.
+ * layout and areas read and written as JSON under the same core rules as Folio's form. Since 0.93
+ * LayoutResource is the blocks package's output part of the one read class (RecordParts:
+ * "_layout", "_areas", "_unplaced" in RecordOutput::toArray()).
  *
  * Block values (since 0.92): with a DataManager, BlockValueChecks runs on every validated write of
  * a typed record (a RecordRules check), so a seed, an import or a REST save is refused for a block
@@ -463,7 +467,12 @@ final class BlocksServiceProvider extends ServiceProvider
             $c->get(PageLayouts::class),
             $c->get(BlockRegistry::class),
             $c->get(AreaLayoutSets::class),
+            $c->bound(DataManager::class) ? self::blocksValue($c, $c->get(DataManager::class)->fieldKinds()) : null,
         ));
+        // Its part of the one read output (0.93): a page's layout and areas beside its fields.
+        if ($container->bound(RecordParts::class)) {
+            $container->get(RecordParts::class)->output(static fn (): OutputPart => $container->get(LayoutResource::class));
+        }
         $container->singleton(LayoutInput::class, static fn (Container $c): LayoutInput => new LayoutInput(
             $c->get(PageLayouts::class),
             $c->get(BlockRegistry::class),

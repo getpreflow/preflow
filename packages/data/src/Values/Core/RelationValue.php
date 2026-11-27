@@ -16,8 +16,10 @@ use Preflow\Data\Values\ListsReferences;
  *
  * Stored: a single id as text (a number id as its text); a multiple field's ids as a list, also
  * when given as JSON text or a comma string, without empty entries. An empty list is null (no
- * value), so "required" refuses it. Output: the same, a list stored as JSON text (SQL) decoded.
- * references() names the target type ("relation.to") and its ids.
+ * value), so "required" refuses it. Output: the same, a list stored as JSON text (SQL) decoded,
+ * only ever strings (outputIds(): what a list holds that is no id is left out, a single field
+ * reads a stored list as its first id). references() names the target type ("relation.to") and
+ * its ids.
  *
  * @since 0.93.0
  */
@@ -30,7 +32,7 @@ final class RelationValue implements FieldValue, DescribesShapes, ListsReference
 
     public function toOutput(mixed $stored, TypeFieldDefinition $field): mixed
     {
-        return self::ids($stored, self::multiple($field->config));
+        return self::outputIds($stored, self::multiple($field->config));
     }
 
     public function shape(TypeFieldDefinition $field): string
@@ -100,6 +102,33 @@ final class RelationValue implements FieldValue, DescribesShapes, ListsReference
         }
 
         return $ids === [] ? null : $ids;
+    }
+
+    /**
+     * One id, or with $multiple a list of ids, as shapes "id" and "id_list" promise them: each a
+     * string (a number id as its text). A list drops what is no id (an object, a list, true, a
+     * float, '' or null) and is null when nothing is left; a single field reads a list (stored
+     * while the field held several) as its first id, any other value that is no id as null.
+     *
+     * @return string|list<string>|null
+     * @internal
+     */
+    public static function outputIds(mixed $stored, bool $multiple): string|array|null
+    {
+        if ($multiple) {
+            $ids = self::idList(self::ids($stored, true));
+
+            return $ids === [] ? null : $ids;
+        }
+        $one = self::ids($stored, false);
+        if (is_string($one) && str_starts_with(trim($one), '[')) {
+            $one = self::ids($one, true); // a list stored as JSON text while the field held several
+        }
+        if (is_array($one)) {
+            return self::idList(self::ids($one, true))[0] ?? null;
+        }
+
+        return is_string($one) && $one !== '' ? $one : null;
     }
 
     /**

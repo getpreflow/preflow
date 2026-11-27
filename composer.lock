@@ -3943,13 +3943,13 @@
                 "nyholm/psr7": "^1.8",
                 "php": ">=8.4",
                 "preflow/core": "^0.81.0 || @dev",
-                "preflow/data": "^0.78 || @dev",
+                "preflow/data": "^0.93.0 || @dev",
                 "preflow/routing": "^0.59 || @dev",
                 "preflow/view": "^0.67 || @dev"
             },
             "conflict": {
                 "preflow/core": "<0.81.0",
-                "preflow/data": "<0.78",
+                "preflow/data": "<0.93.0",
                 "preflow/folio": "<0.83.0",
                 "preflow/i18n": "<0.77",
                 "preflow/routing": "<0.59",
@@ -3957,6 +3957,7 @@
             },
             "require-dev": {
                 "phpunit/phpunit": "^11.0",
+                "preflow/blocks": "^0.93.0 || @dev",
                 "preflow/devtools": "^0.34 || @dev",
                 "preflow/i18n": "^0.77 || @dev"
             },

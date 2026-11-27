@@ -195,6 +195,27 @@ final class CoreValuesTest extends TestCase
         $this->assertSame([], $value->references('a1', self::field('relation')), 'a relation without a target');
     }
 
+    /** Shapes "id" and "id_list" promise strings: what a list holds that is no id is left out of the output. */
+    public function test_relation_and_asset_output_holds_only_string_ids(): void
+    {
+        foreach (['relation' => ['to' => 'author'], 'asset' => []] as $type => $config) {
+            $value = self::value($type);
+            $multiple = self::field($type, [$type => [...$config, 'multiple' => true]]);
+            $single = self::field($type, $config === [] ? [] : [$type => $config]);
+
+            $this->assertSame(['1', 'x'], $value->toOutput([1, 'x', ['nested'], true, 2.5, null, ''], $multiple), $type);
+            $this->assertSame(['1', 'x'], $value->toOutput('[1,"x",{"a":1},false]', $multiple), $type . ' as JSON text');
+            $this->assertNull($value->toOutput([['nested']], $multiple), $type . ': no id left is no value');
+            $this->assertSame('7', $value->toOutput(7, $single), $type);
+            $this->assertSame('a1', $value->toOutput(['a1', 'a2'], $single), $type . ': a list stored while the field was multiple gives its first id');
+            $this->assertNull($value->toOutput(['k' => ['x']], $single), $type);
+            $this->assertNull($value->toOutput(true, $single), $type);
+            $this->assertNull($value->toOutput('', $single), $type);
+        }
+        // Input still passes what it cannot convert through, for the rules to refuse.
+        $this->assertSame([['nested']], self::value('relation')->toStored([['nested']], self::field('relation', ['relation' => ['to' => 'a', 'multiple' => true]])));
+    }
+
     public function test_asset_to_stored_and_output(): void
     {
         $value = self::value('asset');

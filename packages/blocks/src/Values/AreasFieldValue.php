@@ -56,7 +56,7 @@ final class AreasFieldValue implements FieldValue, CleansOnWrite, MergesInput, L
 
     public function toOutput(mixed $stored, TypeFieldDefinition $field): mixed
     {
-        $out = ($this->resource)()->areasField($field, $stored);
+        $out = ($this->resource)()->areasValue($field, $stored);
         foreach (['areas', 'unplaced'] as $key) {
             if (is_array($out[$key])) {
                 foreach ($out[$key] as $name => $list) {

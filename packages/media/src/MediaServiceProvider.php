@@ -11,10 +11,14 @@ use Preflow\Core\Debug\DebugCollector;
 use Preflow\Data\DataManager;
 use Preflow\Data\Locales;
 use Preflow\Data\Migration\MigrationRegistry;
+use Preflow\Data\Records\OutputPart;
+use Preflow\Data\Records\RecordOutput;
+use Preflow\Data\Records\RecordParts;
 use Preflow\Data\Schema\RecordTables;
 use Preflow\Data\Schema\RecordTableSync;
 use Preflow\Core\Routing\RouterInterface;
 use Preflow\Media\Access\DenyAllPrivateFileAccess;
+use Preflow\Media\Api\MediaOutputPart;
 use Preflow\Media\Access\PrivateFileAccess;
 use Preflow\Media\Cleanup\AssetCleanup;
 use Preflow\Media\Color\ColorExtractor;
@@ -55,6 +59,7 @@ use Preflow\View\TemplateFunctionDefinition;
  * Copies are made again (remake) by the makers sites and packages register on the shared DerivedMakers.
  * Private files are refused until something binds PrivateFileAccess (Folio does).
  * A delete moves an asset into config bin_dir; without one, `preflow migrate` warns that deletes are for good.
+ * For APIs (0.93): MediaOutputPart on RecordParts, the "_media" map a read asks for with ReadOptions(with: ['media']).
  * Listed in config/providers.php by a site without Folio; Folio registers it itself.
  */
 final class MediaServiceProvider extends ServiceProvider
@@ -125,6 +130,16 @@ final class MediaServiceProvider extends ServiceProvider
             $c->get(ImageWidths::class),
             $c->get(Formats::class),
         ));
+
+        // Its part of the one read output (0.93): "_media" (URLs, sizes, alt text) when a read asks for it.
+        if ($container->bound(RecordParts::class)) {
+            $container->get(RecordParts::class)->output(static fn (): OutputPart => new MediaOutputPart(
+                static fn (): RecordOutput => $container->get(RecordOutput::class),
+                static fn (): MediaLibrary => $container->get(MediaLibrary::class),
+                static fn (): ImageTag => $container->get(ImageTag::class),
+                self::locales($container),
+            ));
+        }
 
         // Nobody downloads a private file until Folio or the site binds its own rules.
         if (!$container->bound(PrivateFileAccess::class)) {
