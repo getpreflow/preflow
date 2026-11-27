@@ -46,10 +46,11 @@ final class JobsApiTest extends TestCase
 
         $first = $all->json('data.0');
         // The core read output (RecordOutput) of the published copy: "_id", the type's fields in
-        // declared order, then what the controller adds: when it went live and the job's page.
-        // The publish state is only for token-authenticated responses.
+        // declared order (not createdAt and updatedAt: declared "hidden", never read out), then what
+        // the controller adds: when it went live and the job's page. The publish state is only for
+        // token-authenticated responses.
         $this->assertSame(
-            ['_id', 'title', 'slug', 'company', 'place', 'employmentType', 'remote', 'salaryFrom', 'salaryTo', 'description', 'postedOn', 'createdAt', 'updatedAt', '_published_at', '_url'],
+            ['_id', 'title', 'slug', 'company', 'place', 'employmentType', 'remote', 'salaryFrom', 'salaryTo', 'description', 'postedOn', '_published_at', '_url'],
             array_keys($first),
         );
         // A relation is the related record's id (GET /api/content/company/{id} reads it).

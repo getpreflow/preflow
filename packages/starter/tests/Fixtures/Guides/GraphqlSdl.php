@@ -15,8 +15,8 @@ namespace Tests\Fixtures\Guides;
  *
  * Each type becomes an object type with "_id" and its fields; each field's GraphQL type comes from
  * the shape its "value" names, and a relation to a type in the schema becomes that object type
- * (its resolver reads the related record by the id). "required" adds the "!". A translatable field
- * is typed by one language's value: resolve it with a locale, the default when the query gives none.
+ * (its resolver reads the related record by the id). "required" adds the "!", not where show_when may
+ * hide the field (it reads null then). A translatable field is typed by one language's value: resolve it with a locale.
  */
 final class GraphqlSdl
 {
@@ -74,7 +74,7 @@ final class GraphqlSdl
             default => self::SCALARS[$field['value']] ?? 'JSON',
         };
 
-        return $field['required'] ? $type . '!' : $type;
+        return $field['required'] && !(is_array($field['config']) && isset($field['config']['show_when'])) ? $type . '!' : $type;
     }
 
     /** "company_page" → "CompanyPage". */

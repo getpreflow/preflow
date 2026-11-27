@@ -102,4 +102,18 @@ final class GuideSamplesTest extends TestCase
 
             SDL, GraphqlSdl::build($description, ['job', 'company']));
     }
+
+    public function test_graphql_sdl_leaves_the_mark_off_a_field_show_when_may_hide(): void
+    {
+        // Such a field reads null while it is hidden, so a required one must stay nullable.
+        $description = ['types' => ['notice' => ['fields' => [
+            'kind' => ['required' => true, 'value' => 'string', 'config' => new \stdClass()],
+            'url' => ['required' => true, 'value' => 'string', 'config' => ['show_when' => ['field' => 'kind', '=' => 'link']]],
+        ]]]];
+
+        $sdl = GraphqlSdl::build($description, ['notice']);
+
+        $this->assertStringContainsString("  kind: String!\n", $sdl);
+        $this->assertStringContainsString("  url: String\n", $sdl);
+    }
 }
