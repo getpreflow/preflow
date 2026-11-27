@@ -22,7 +22,7 @@ final class RecordTitle
     public static function of(DynamicRecord $record, ?string $locale = null): string
     {
         $type = $record->getType();
-        $field = $type->titleField ?? self::defaultField($type);
+        $field = self::field($type);
         if ($field !== null) {
             $value = $record->localized($locale ?? $type->locales->default)->get($field);
             // A declared titleField may be a number field; the default rule reads strings only.
@@ -35,6 +35,18 @@ final class RecordTitle
         }
 
         return (string) $record->getId();
+    }
+
+    /**
+     * The field that names the type's records: its titleField, else the first field of type
+     * "string" that is not hidden and holds no personal data; null: none (records are named by
+     * their id).
+     *
+     * @since 0.93.0
+     */
+    public static function field(TypeDefinition $type): ?string
+    {
+        return $type->titleField ?? self::defaultField($type);
     }
 
     /** The first field of type "string" that is not hidden and holds no personal data, or null. */

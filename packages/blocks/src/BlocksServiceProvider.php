@@ -31,6 +31,7 @@ use Preflow\Blocks\Values\AreasFieldValue;
 use Preflow\Blocks\Values\BlocksFieldValue;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Data\DataManager;
+use Preflow\Data\Describe\DescriptionContributors;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\FieldKinds;
 use Preflow\Data\Html\HtmlCleaner;
@@ -436,7 +437,8 @@ final class BlocksServiceProvider extends ServiceProvider
     }
 
     /**
-     * What an API controller calls (since 0.92): ContentDescription always, and with page layouts
+     * What an API controller calls (since 0.92): ContentDescription always (since 0.93 also added to
+     * the one Description as its contributor), and with page layouts
      * LayoutResource (a page's layout and areas as JSON) and LayoutInput (a body merged under the
      * core rules). In boot: PageLayouts is bound in boot.
      */
@@ -450,6 +452,10 @@ final class BlocksServiceProvider extends ServiceProvider
             $c->bound(PageLayouts::class) ? $c->get(PageLayouts::class) : null,
             $c->bound(TypeRegistry::class) ? $c->get(TypeRegistry::class) : ($c->bound(DataManager::class) ? $c->get(DataManager::class)->getTypeRegistry() : null),
         ));
+        // Its part of the one description of every type (0.93): blocks, layouts, area layout sets, type layouts.
+        if ($container->bound(DescriptionContributors::class)) {
+            $container->get(DescriptionContributors::class)->add(static fn (): ContentDescription => $container->get(ContentDescription::class));
+        }
         if (!$container->bound(PageLayouts::class)) {
             return;
         }

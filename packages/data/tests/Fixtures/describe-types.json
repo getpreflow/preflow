@@ -1,0 +1,175 @@
+{
+    "version": 1,
+    "types": {
+        "company": {
+            "label": "site.types.company",
+            "id": "uuid",
+            "actions": [
+                "update",
+                "delete"
+            ],
+            "locales": [
+                "en",
+                "de"
+            ],
+            "title_field": "name",
+            "fields": {
+                "name": {
+                    "type": "string",
+                    "label": null,
+                    "help": null,
+                    "required": true,
+                    "list": false,
+                    "translatable": false,
+                    "unique": false,
+                    "value": "string",
+                    "config": {}
+                },
+                "slug": {
+                    "type": "string",
+                    "label": null,
+                    "help": null,
+                    "required": false,
+                    "list": false,
+                    "translatable": false,
+                    "unique": [
+                        "name"
+                    ],
+                    "value": "string",
+                    "config": {}
+                },
+                "partners": {
+                    "type": "relation",
+                    "label": null,
+                    "help": null,
+                    "required": false,
+                    "list": true,
+                    "translatable": false,
+                    "unique": false,
+                    "target": "company",
+                    "value": "id_list",
+                    "config": {
+                        "relation": {
+                            "to": "company",
+                            "multiple": true
+                        }
+                    }
+                }
+            }
+        },
+        "job": {
+            "label": "Job",
+            "id": "uuid",
+            "actions": [
+                "create",
+                "update",
+                "delete"
+            ],
+            "locales": [
+                "en",
+                "de"
+            ],
+            "title_field": "title",
+            "fields": {
+                "title": {
+                    "type": "string",
+                    "label": "Title",
+                    "help": null,
+                    "required": true,
+                    "list": false,
+                    "translatable": true,
+                    "unique": false,
+                    "value": "string",
+                    "config": {}
+                },
+                "company": {
+                    "type": "relation",
+                    "label": "Company",
+                    "help": null,
+                    "required": false,
+                    "list": false,
+                    "translatable": false,
+                    "unique": false,
+                    "target": "company",
+                    "value": "id",
+                    "config": {
+                        "relation": {
+                            "to": "company"
+                        }
+                    }
+                },
+                "tags": {
+                    "type": "tags",
+                    "label": "Tags",
+                    "help": null,
+                    "required": false,
+                    "list": true,
+                    "translatable": false,
+                    "unique": false,
+                    "value": "string_list",
+                    "config": {}
+                },
+                "body": {
+                    "type": "richtext",
+                    "label": {
+                        "en": "Description",
+                        "de": "Beschreibung"
+                    },
+                    "help": "site.fields.body_help",
+                    "required": false,
+                    "list": false,
+                    "translatable": true,
+                    "unique": false,
+                    "value": "rich_text",
+                    "config": {}
+                },
+                "kind": {
+                    "type": "select",
+                    "label": "Kind",
+                    "help": null,
+                    "required": false,
+                    "list": false,
+                    "translatable": false,
+                    "unique": false,
+                    "value": "string",
+                    "config": {
+                        "options": {
+                            "full": "Full time",
+                            "part": "Part time"
+                        }
+                    }
+                },
+                "swatch": {
+                    "type": "swatch",
+                    "label": "Colour",
+                    "help": null,
+                    "required": false,
+                    "list": false,
+                    "translatable": false,
+                    "unique": false,
+                    "value": "raw",
+                    "config": {}
+                },
+                "code": {
+                    "type": "string",
+                    "label": null,
+                    "help": null,
+                    "required": false,
+                    "list": false,
+                    "translatable": false,
+                    "unique": true,
+                    "value": "string",
+                    "config": {}
+                }
+            }
+        }
+    },
+    "values": {
+        "id": "The id of one record, as a string.",
+        "id_list": "A list of record ids, each a string.",
+        "raw": "The value as it is stored, unchanged.",
+        "rich_text": "HTML, cleaned of scripts, event handlers and unsafe links: safe to output as it is.",
+        "string": "Text, as a string.",
+        "string_list": "A list of strings."
+    }
+}

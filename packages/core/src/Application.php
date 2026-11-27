@@ -1382,6 +1382,22 @@ final class Application
             $this->container->instance(\Preflow\Data\Schema\DeclaredTables::class, $declared);
         }
 
+        // The one description of every type and field (0.93), for an API's schema builder: bound
+        // without config/data.php too, so packages always add their parts to it. Without a type
+        // registry (no model files, no model classes) it reads the app's model folder: no types.
+        if (class_exists(\Preflow\Data\Describe\Description::class)) {
+            $this->container->singleton(\Preflow\Data\Describe\DescriptionContributors::class, static fn (): \Preflow\Data\Describe\DescriptionContributors => new \Preflow\Data\Describe\DescriptionContributors());
+            $modelsDir = $this->basePath('config/models');
+            $this->container->singleton(\Preflow\Data\Describe\Description::class, static fn (Container $c): \Preflow\Data\Describe\Description => new \Preflow\Data\Describe\Description(
+                $c->bound(\Preflow\Data\TypeRegistry::class)
+                    ? $c->get(\Preflow\Data\TypeRegistry::class)
+                    : (($c->bound(\Preflow\Data\DataManager::class) ? $c->get(\Preflow\Data\DataManager::class)->getTypeRegistry() : null)
+                        ?? new \Preflow\Data\TypeRegistry($modelsDir, $c->get(\Preflow\Data\Locales::class))),
+                $c->bound(\Preflow\Data\DataManager::class) ? $c->get(\Preflow\Data\DataManager::class)->fieldKinds() : new \Preflow\Data\FieldKinds(),
+                $c->get(\Preflow\Data\Describe\DescriptionContributors::class),
+            ));
+        }
+
         $dataConfig = $this->configFile('data');
         if ($dataConfig === null) {
             return;
