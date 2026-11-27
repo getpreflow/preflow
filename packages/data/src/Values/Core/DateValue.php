@@ -28,9 +28,10 @@ final class DateValue implements FieldValue, DescribesShapes, HasStoredRules
         return $input;
     }
 
-    public function toOutput(mixed $stored, TypeFieldDefinition $field): mixed
+    /** The stored text when read() reads it; null without a value and for anything else stored ("22.10.2026", a number, a list). */
+    public function toOutput(mixed $stored, TypeFieldDefinition $field): ?string
     {
-        return $stored === '' ? null : $stored;
+        return is_string($stored) && self::read($stored) !== null ? $stored : null;
     }
 
     public function shape(TypeFieldDefinition $field): string

@@ -165,11 +165,11 @@
         }
     },
     "values": {
-        "id": "The id of one record, as a string.",
-        "id_list": "A list of record ids, each a string.",
+        "id": "The id of one record, as a string, or null when none.",
+        "id_list": "A list of record ids, each a string, or null when none.",
         "raw": "The value as it is stored, unchanged.",
-        "rich_text": "HTML, cleaned of scripts, event handlers and unsafe links: safe to output as it is.",
-        "string": "Text, as a string.",
-        "string_list": "A list of strings."
+        "rich_text": "HTML, cleaned of scripts, event handlers and unsafe links: safe to output as it is; or null.",
+        "string": "Text, as a string, or null.",
+        "string_list": "A list of strings; [] when none."
     }
 }

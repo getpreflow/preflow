@@ -31,16 +31,20 @@ use Preflow\Data\Values\Core\TextValue;
  */
 final class CoreValues
 {
-    /** The core output shapes, each with what it is (the description's "values"); frozen in version 1. */
+    /**
+     * The core output shapes, each with what it is (the description's "values"); frozen in version 1.
+     * A value reads as null where its text says so: without a value, and for a stored value outside
+     * the shape (older data, a row a script wrote): the stored value stays as it is.
+     */
     public const SHAPES = [
-        'string' => 'Text, as a string.',
-        'number' => 'A number: an integer, or a decimal number.',
-        'boolean' => 'Yes or no, as true or false.',
-        'date' => 'A date as stored: "Y-m-d", "Y-m-d\TH:i" (optionally with seconds) or ISO 8601 with an offset.',
-        'rich_text' => 'HTML, cleaned of scripts, event handlers and unsafe links: safe to output as it is.',
-        'id' => 'The id of one record, as a string.',
-        'id_list' => 'A list of record ids, each a string.',
-        'string_list' => 'A list of strings.',
+        'string' => 'Text, as a string, or null.',
+        'number' => 'A number: an integer, or a decimal number; or null.',
+        'boolean' => 'Yes or no, as true or false; or null when not set.',
+        'date' => 'A date as stored: "Y-m-d", "Y-m-d\TH:i" (optionally with seconds) or ISO 8601 with an offset; or null.',
+        'rich_text' => 'HTML, cleaned of scripts, event handlers and unsafe links: safe to output as it is; or null.',
+        'id' => 'The id of one record, as a string, or null when none.',
+        'id_list' => 'A list of record ids, each a string, or null when none.',
+        'string_list' => 'A list of strings; [] when none.',
         'raw' => 'The value as it is stored, unchanged.',
     ];
 
@@ -64,6 +68,8 @@ final class CoreValues
         $kinds->list('tags');
         $kinds->value('relation', new RelationValue());
         $kinds->value('asset', new AssetValue());
+        // A media field with "asset.multiple" stores a list of ids (Folio's since 0.89, the core's since 0.93).
+        $kinds->listWhen('asset', static fn (array $config): bool => AssetValue::multiple($config));
         if ($cleaner !== null) {
             $kinds->value('richtext', new RichTextValue($cleaner));
         }

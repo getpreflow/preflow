@@ -18,7 +18,8 @@ use Preflow\Data\Values\FieldValue;
  * 0.78), "" no value there. Anything else passes through for the rules ("abc" stays "abc").
  *
  * Output: numeric text is a number (an int when whole and in range, else a float: "3.50" is 3.5),
- * empty ("") is null.
+ * empty ("") is null, and so is anything else stored ("abc", true, a list, a number too large for a
+ * float): the shape "number" is a number or null. Reading never writes, so such a stored value stays.
  *
  * @since 0.93.0
  */
@@ -29,9 +30,14 @@ final class NumberValue implements FieldValue, DescribesShapes
         return $input;
     }
 
-    public function toOutput(mixed $stored, TypeFieldDefinition $field): mixed
+    public function toOutput(mixed $stored, TypeFieldDefinition $field): int|float|null
     {
-        return $stored === '' ? null : self::number($stored);
+        if (is_int($stored)) {
+            return $stored;
+        }
+        $number = is_float($stored) || is_string($stored) ? self::number($stored) : null;
+
+        return is_int($number) || (is_float($number) && is_finite($number)) ? $number : null;
     }
 
     public function shape(TypeFieldDefinition $field): string

@@ -240,12 +240,66 @@ final class CoreValuesTest extends TestCase
     public function test_unconvertible_input_passes_through(): void
     {
         $this->assertSame('abc', self::value('number')->toStored('abc', self::field('number')));
-        $this->assertSame('abc', self::value('number')->toOutput('abc', self::field('number')));
         $this->assertSame('maybe', self::value('boolean')->toStored('maybe', self::field('boolean')));
         $this->assertSame(['x'], self::value('string')->toStored(['x'], self::field('string')));
         $this->assertSame(5, self::value('tags')->toStored(5, self::field('tags')));
         $this->assertSame(['a' => 1], self::value('select')->toStored(['a' => 1], self::field('select')));
         $this->assertSame('22.10.2026', self::value('date')->toStored('22.10.2026', self::field('date')), 'the stored rule refuses it');
+    }
+
+    /**
+     * Stored values outside a shape, as older data or a script may hold them: each reads out as
+     * null (final review finding 5), so a client can rely on the version 1 types. Reading never
+     * writes: the stored value stays as it is.
+     *
+     * @return iterable<string, array{string, array<string, mixed>, mixed}>
+     */
+    public static function storedOutsideTheShape(): iterable
+    {
+        foreach (['abc' => 'abc', 'true' => true, 'list' => ['1'], 'overflow' => '1e999', 'blank' => ' '] as $name => $stored) {
+            yield "number {$name}" => ['number', [], $stored];
+        }
+        foreach (['yes' => 'yes', 'maybe' => 'maybe', 'two' => 2, 'half' => 1.5, 'list' => ['1']] as $name => $stored) {
+            yield "boolean {$name}" => ['boolean', [], $stored];
+        }
+        foreach (['dotted' => '22.10.2026', 'word' => 'abc', 'int' => 20261127, 'list' => ['2026-11-27'], 'padded' => ' 2026-11-27 '] as $name => $stored) {
+            yield "date {$name}" => ['date', [], $stored];
+        }
+        foreach (['string', 'text'] as $type) {
+            foreach (['list' => ['x'], 'map' => ['en' => 'x'], 'bool' => true] as $name => $stored) {
+                yield "{$type} {$name}" => [$type, [], $stored];
+            }
+        }
+        foreach (['map' => ['a' => 1], 'bool' => false] as $name => $stored) {
+            yield "select {$name}" => ['select', ['options' => ['a', 'b']], $stored];
+        }
+    }
+
+    /** @param array<string, mixed> $config */
+    #[\PHPUnit\Framework\Attributes\DataProvider('storedOutsideTheShape')]
+    public function test_output_is_null_outside_its_shape(string $type, array $config, mixed $stored): void
+    {
+        $this->assertNull(self::value($type, $config)->toOutput($stored, self::field($type, $config)));
+    }
+
+    public function test_output_keeps_what_its_shape_holds(): void
+    {
+        $number = self::value('number');
+        $field = self::field('number');
+        $this->assertSame(-7, $number->toOutput(' -7', $field), 'numeric text with a leading space (PHP reads it as a number)');
+        $this->assertSame(7, $number->toOutput('007', $field));
+        $this->assertSame(2.5, $number->toOutput(2.5, $field));
+        $this->assertTrue(self::value('boolean')->toOutput(true, self::field('boolean')));
+        $this->assertFalse(self::value('boolean')->toOutput('FALSE', self::field('boolean')));
+        $this->assertSame('2026-11-27T05:00:00+00:00', self::value('date')->toOutput('2026-11-27T05:00:00+00:00', self::field('date')));
+    }
+
+    public function test_shape_texts_say_when_a_value_is_null(): void
+    {
+        foreach (['string', 'number', 'boolean', 'date', 'rich_text', 'id', 'id_list'] as $shape) {
+            $this->assertStringContainsString('or null', CoreValues::SHAPES[$shape], $shape);
+        }
+        $this->assertStringContainsString('[] when', CoreValues::SHAPES['string_list']);
     }
 
     public function test_date_read_is_the_0921_rule(): void

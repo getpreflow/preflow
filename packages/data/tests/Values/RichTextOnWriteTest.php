@@ -222,4 +222,18 @@ final class RichTextOnWriteTest extends TestCase
         $this->assertSame(42, $value->toStored(42, $field), 'other values pass through for the rules');
         $this->assertSame(['rich_text'], array_keys($value->shapes()));
     }
+
+    public function test_nested_rich_text_is_cleaned_on_write_and_never_read_out(): void
+    {
+        // Final review finding 5: a locale value that is itself an array was passed through unclean.
+        $value = new RichTextValue(static fn (): HtmlCleaner => SymfonyHtmlCleaner::standard());
+        $field = new TypeFieldDefinition('b', 'richtext');
+
+        $this->assertSame(['en' => ['x' => self::CLEAN, 'n' => 3]], $value->clean(['en' => ['x' => self::UNSAFE, 'n' => 3]], $field), 'every string at every depth');
+        $this->assertSame([[self::CLEAN]], $value->toStored([[self::UNSAFE]], $field));
+        // The output shape is cleaned HTML or null: what is no text reads as null.
+        $this->assertNull($value->toOutput(['en' => self::UNSAFE], $field));
+        $this->assertNull($value->toOutput(42, $field));
+        $this->assertSame('', $value->toOutput('', $field));
+    }
 }

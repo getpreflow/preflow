@@ -22,9 +22,14 @@ final class TextValue implements FieldValue, DescribesShapes
         return is_int($input) || is_float($input) ? (string) $input : $input;
     }
 
-    public function toOutput(mixed $stored, TypeFieldDefinition $field): mixed
+    /** Text; a number as its text; null without a value and for anything else stored (a list, true). */
+    public function toOutput(mixed $stored, TypeFieldDefinition $field): ?string
     {
-        return is_int($stored) || is_float($stored) ? (string) $stored : $stored;
+        return match (true) {
+            is_string($stored) => $stored,
+            is_int($stored), is_float($stored) => (string) $stored,
+            default => null,
+        };
     }
 
     public function shape(TypeFieldDefinition $field): string

@@ -23,9 +23,12 @@ final class SelectValue implements FieldValue, DescribesShapes
         return self::key($input);
     }
 
-    public function toOutput(mixed $stored, TypeFieldDefinition $field): mixed
+    /** The option's key as text; null without a value and for anything else stored (a list, true). */
+    public function toOutput(mixed $stored, TypeFieldDefinition $field): ?string
     {
-        return self::key($stored);
+        $key = self::key($stored);
+
+        return is_string($key) ? $key : null;
     }
 
     public function shape(TypeFieldDefinition $field): string

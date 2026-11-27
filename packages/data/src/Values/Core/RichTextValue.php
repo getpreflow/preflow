@@ -31,9 +31,10 @@ final class RichTextValue implements FieldValue, CleansOnWrite, DescribesShapes
         return $this->cleaned($input);
     }
 
-    public function toOutput(mixed $stored, TypeFieldDefinition $field): mixed
+    /** Cleaned HTML; null without a value and for anything else stored (a list, a number). */
+    public function toOutput(mixed $stored, TypeFieldDefinition $field): ?string
     {
-        return $this->cleaned($stored);
+        return is_string($stored) ? $this->cleaned($stored) : null;
     }
 
     public function clean(mixed $value, TypeFieldDefinition $field): mixed
@@ -57,7 +58,8 @@ final class RichTextValue implements FieldValue, CleansOnWrite, DescribesShapes
             return $value === '' ? '' : ($this->cleaner)()->clean($value);
         }
         if (is_array($value)) {
-            return array_map(fn (mixed $one): mixed => is_string($one) && $one !== '' ? ($this->cleaner)()->clean($one) : $one, $value);
+            // Every string at every depth: a locale value that is itself a list is cleaned too.
+            return array_map($this->cleaned(...), $value);
         }
 
         return $value;

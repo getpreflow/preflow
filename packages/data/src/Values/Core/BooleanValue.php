@@ -22,9 +22,12 @@ final class BooleanValue implements FieldValue, DescribesShapes
         return self::bool($input);
     }
 
-    public function toOutput(mixed $stored, TypeFieldDefinition $field): mixed
+    /** true or false; null without a value and for anything else stored ("yes", 2, a list). */
+    public function toOutput(mixed $stored, TypeFieldDefinition $field): ?bool
     {
-        return self::bool($stored);
+        $bool = self::bool($stored);
+
+        return is_bool($bool) ? $bool : null;
     }
 
     public function shape(TypeFieldDefinition $field): string
