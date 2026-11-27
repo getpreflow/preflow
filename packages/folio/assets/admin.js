@@ -1903,12 +1903,17 @@
         return Array.prototype.slice.call(select.options || select.querySelectorAll('option'));
     }
 
+    function isLayoutName(name) {
+        return name === '_layout' || name.indexOf('_areas[') === 0;
+    }
+
     /** {values: {name: [values]}, hidden: {name: [values of hidden inputs]}}, as the form would submit now. */
     function valuesOf(form) {
         var out = { values: {}, hidden: {} };
         controlsOf(form).forEach(function (el) {
             var name = String(el.name || el.getAttribute('name') || '');
-            if (name === '' || name.charAt(0) === '_' || el.disabled) { return; }
+            // A page's layout and areas (0.92: "_layout", "_areas[…]") are record data, unlike the other "_" names.
+            if (name === '' || (name.charAt(0) === '_' && !isLayoutName(name)) || el.disabled) { return; }
             var type = String(el.type || '').toLowerCase();
             var add = function (value, map) { (map[name] = map[name] || []).push(String(value == null ? '' : value)); };
             if (type === 'checkbox' || type === 'radio') {
