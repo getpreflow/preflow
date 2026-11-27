@@ -116,6 +116,22 @@ final class RecordPreviewMarksTest extends BlocksAppTestCase
         $this->renderIn($this->preview(), '<a{{ preview_mark(\'member\', \'m1\') }}></a>');
     }
 
+    public function test_preview_mark_prints_a_number_and_refuses_a_value_that_is_no_text(): void
+    {
+        $this->app()->container()->instance(RecordPreviewMarks::class, new class implements RecordPreviewMarks {
+            public function attributes(string $type, string $id): array
+            {
+                return $id === 'm1' ? ['data-x-count' => 3] : ['data-x-label' => ['Team']];
+            }
+        });
+
+        $this->assertSame('<a data-x-count="3"></a>', $this->renderIn($this->preview(), '<a{{ preview_mark(\'member\', id) }}></a>', ['id' => 'm1']));
+
+        $this->expectException(\Twig\Error\RuntimeError::class);
+        $this->expectExceptionMessageMatches('/gave the attribute "data-x-label" a value of the type array; preview marks are texts/');
+        $this->renderIn($this->preview(), '<a{{ preview_mark(\'member\', id) }}></a>', ['id' => 'm2']);
+    }
+
     private function preview(): RenderContext
     {
         return $this->visit()->asVisitor()->public()->workingCopies()->capturing()->skippingWrites()->because(Purpose::Preview);

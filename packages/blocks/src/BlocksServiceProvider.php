@@ -201,7 +201,7 @@ final class BlocksServiceProvider extends ServiceProvider
      * record's id, an array holding the type's id field, or a DynamicRecord; without an id, ''.
      * The template marks the element itself: nothing is marked on its own.
      *
-     * @throws \LogicException when a RecordPreviewMarks gives an attribute name that is not data-…
+     * @throws \LogicException when a RecordPreviewMarks gives an attribute name that is not data-…, or a value that is no text
      */
     private static function previewMark(Container $container, string $type, mixed $record): string
     {
@@ -218,10 +218,26 @@ final class BlocksServiceProvider extends ServiceProvider
             if (preg_match('/^data-[a-z0-9]+(-[a-z0-9]+)*$/', (string) $name) !== 1) {
                 throw new \LogicException(sprintf('%s gave the attribute name "%s"; preview marks are data-… attributes in lower case (data-record-id).', $marks::class, $name));
             }
-            $html .= ' ' . $name . '="' . htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '"';
+            $html .= ' ' . $name . '="' . htmlspecialchars(self::markValue($marks, (string) $name, $value), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '"';
         }
 
         return $html;
+    }
+
+    /**
+     * A preview mark's value as text: a site's RecordPreviewMarks may return anything (PHP does not
+     * check an array's values), so a number or a boolean is printed, anything else refused.
+     *
+     * @throws \LogicException naming the class and the attribute
+     */
+    private static function markValue(RecordPreviewMarks $marks, string $name, mixed $value): string
+    {
+        return match (true) {
+            is_string($value) => $value,
+            is_int($value), is_float($value) => (string) $value,
+            is_bool($value) => $value ? 'true' : 'false',
+            default => throw new \LogicException(sprintf('%s gave the attribute "%s" a value of the type %s; preview marks are texts (or numbers).', $marks::class, $name, get_debug_type($value))),
+        };
     }
 
     /** The id preview_mark() is given: a scalar, a DynamicRecord's, or an array's under the type's id field. */
