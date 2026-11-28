@@ -27,6 +27,7 @@ use Preflow\Blocks\Layouts\Rules\AreaContents;
 use Preflow\Blocks\Layouts\Rules\LayoutChoice;
 use Preflow\Blocks\Layouts\Rules\MessageRule;
 use Preflow\Blocks\Layouts\Rules\PinnedSlug;
+use Preflow\Blocks\Preview\PreviewCanvas;
 use Preflow\Blocks\Preview\TypePreviews;
 use Preflow\Blocks\Rules\BlockCount;
 use Preflow\Blocks\Values\AreasFieldValue;
@@ -52,6 +53,7 @@ use Preflow\Data\Values\StoredCleaning;
 use Preflow\Validation\RuleFactory;
 use Preflow\Validation\ValidationContext;
 use Preflow\Validation\ValidatorFactory;
+use Preflow\View\AssetCollector;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\View\TemplateFunctionDefinition;
 
@@ -76,7 +78,9 @@ use Preflow\View\TemplateFunctionDefinition;
  *
  * Type previews (since 0.94): with a type registry, TypePreviews for the types with "preview" (the
  * views a record is previewed in, each through a component the type names), bound only where a
- * provider bound none; their option and components checked at boot (kept in the boot manifest).
+ * provider bound none; their option and components checked at boot (kept in the boot manifest). And
+ * PreviewCanvas, which renders a record through a view's component inside a canvas template the
+ * caller names (bound where no provider bound its own; the caller opens the render context).
  *
  * For APIs (since 0.92): ContentDescription (blocks, layouts, area layout sets and type layouts as
  * data for a schema builder) and, with page layouts, LayoutResource and LayoutInput — a page's
@@ -201,6 +205,7 @@ final class BlocksServiceProvider extends ServiceProvider
 
         self::bootPageLayouts($container);
         self::bootTypePreviews($container);
+        self::bindPreviewCanvas($container);
         self::bindApi($container);
 
         // In boot: the cache file follows config that a provider registered after this one may set.
@@ -459,6 +464,24 @@ final class BlocksServiceProvider extends ServiceProvider
 
             return true;
         }, $manifest->isRecording() ? self::typesOf($container)->sources() : []);
+    }
+
+    /**
+     * PreviewCanvas (since 0.94), where no provider bound its own: a record through a preview view's
+     * component, inside a canvas template. Resolved when first asked for, not at boot.
+     */
+    private static function bindPreviewCanvas(Container $container): void
+    {
+        if ($container->bound(PreviewCanvas::class)) {
+            return;
+        }
+        $container->singleton(PreviewCanvas::class, static fn (Container $c): PreviewCanvas => new PreviewCanvas(
+            $c,
+            $c->get(ComponentRenderer::class),
+            $c->get(TemplateEngineInterface::class),
+            self::componentsOf($c),
+            $c->bound(AssetCollector::class) ? $c->get(AssetCollector::class) : null,
+        ));
     }
 
     /** The app's component map (Application::bootComponentLayer()); empty without a component layer. */
