@@ -24,7 +24,7 @@ final class FolioRecordPreviewMarks implements RecordPreviewMarks
     public function attributes(string $type, string $id): array
     {
         // The admin's language of the preview being rendered (since 0.94.0); none: the label as the render has it.
-        $language = \Preflow\Core\Context\Contexts::current()->get(PreviewLabelLanguage::class)?->locale;
+        $language = \Preflow\Core\Context\Contexts::peek()?->get(PreviewLabelLanguage::class)?->locale;
         $translator = $language !== null && $this->translator !== null ? ($this->translator)() : null;
         return [
             'data-folio-record' => $type,

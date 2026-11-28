@@ -1520,10 +1520,10 @@ engine (so `@folio/…` resolves on any app engine): a site that binds its own `
 changes its own controllers, not Folio's pane.
 
 **Labels on preview marks** (`data-folio-label` of blocks and linked records) are in the admin's
-language since 0.94, in the live preview, the type preview and the whole-page preview's first render
-(`Content\PreviewLabelLanguage`, a facet these renders add to their context; the marks read it with
-`Contexts::current()->get(PreviewLabelLanguage::class)`). Fragments loaded later through a preview
-token keep the label they had.
+language since 0.94, in the live preview, the type preview and the whole-page preview
+(`Content\PreviewLabelLanguage`, a facet these renders add to their context). The marks read it with
+`Contexts::peek()?->get(PreviewLabelLanguage::class)`, so outside every render the label is as before.
+Fragments loaded later through a preview token keep the label they had.
 
 ## Blocks, matrix or relation?
 

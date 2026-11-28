@@ -36,7 +36,7 @@ final class FolioBlockPreviewMarks implements BlockPreviewMarks
     private function label(string $label): string
     {
         // The admin's language of the preview being rendered (since 0.94.0); none: Folio's texts as the render has them.
-        $language = \Preflow\Core\Context\Contexts::current()->get(PreviewLabelLanguage::class)?->locale;
+        $language = \Preflow\Core\Context\Contexts::peek()?->get(PreviewLabelLanguage::class)?->locale;
         if ($language !== null && $this->translator !== null && preg_match('/^[a-z][a-z0-9_-]*(\.[a-z0-9_]+)+$/', $label) === 1) {
             $text = ($this->translator)()?->get($label, [], $language);
             if ($text !== null && $text !== $label) {

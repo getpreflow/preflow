@@ -149,12 +149,11 @@ final class LinkedRecordPreviewTest extends TestCase
 
         // Outside a preview the marks translate as before (Folio's English texts in a visitor's render).
         $marks = $this->session->container()->get(\Preflow\Blocks\RecordPreviewMarks::class);
-        $visitor = \Preflow\Testing\ContextFactory::forTest();
-        $this->assertSame('Note', Contexts::run($visitor, fn (): string => $marks->attributes('note', 'n1')['data-folio-label']));
+        $this->assertSame('Note', $marks->attributes('note', 'n1')['data-folio-label']);
         $block = new \Preflow\Folio\Content\FolioBlockPreviewMarks(fn () => $this->session->container()->get(\Preflow\I18n\Translator::class));
         $def = new \Preflow\Blocks\BlockDefinition('x', 'folio.layout.log_out', 'g', null, null, 'X', false, []);
-        $this->assertSame('Log out', Contexts::run($visitor, fn (): string => $block->attributes($def, ['_uid' => 'u'])['data-folio-label']));
-        $german = $visitor->with(new \Preflow\Folio\Content\PreviewLabelLanguage('de'));
+        $this->assertSame('Log out', $block->attributes($def, ['_uid' => 'u'])['data-folio-label']);
+        $german = \Preflow\Testing\ContextFactory::forTest()->with(new \Preflow\Folio\Content\PreviewLabelLanguage('de'));
         $this->assertSame('Abmelden', Contexts::run($german, fn (): string => $block->attributes($def, ['_uid' => 'u'])['data-folio-label']), 'a block label in the admin\'s language');
     }
 

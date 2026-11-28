@@ -15,8 +15,8 @@ use Preflow\Core\Context\Facet;
  * and the type preview, PreviewController; the whole-page preview, PagePreviewController) add it
  * with RenderContext::with() from FolioText::locale() while still on the admin surface.
  * FolioBlockPreviewMarks and FolioRecordPreviewMarks read it from the current context
- * (Contexts::current()->get(PreviewLabelLanguage::class)) and translate in it when it is there, and
- * as before when it is not. It ends with the preview's context, so there is nothing to reset.
+ * (Contexts::peek()?->get(PreviewLabelLanguage::class)) and translate in it when it is there, and
+ * as before when it is not (also outside every render, where there is no preview). It ends with the preview's context, so there is nothing to reset.
  *
  * Fragments loaded later through a preview token (a component action, a lazy part) are separate
  * requests without the admin surface and keep the English label.
