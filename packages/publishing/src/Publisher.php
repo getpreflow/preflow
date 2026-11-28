@@ -551,7 +551,7 @@ final class Publisher
             // A record built without its change date (not read from storage) would be dated now by the
             // save: an unchanged publish keeps the stored working copy's date.
             // Only for this attempt: put back when it does not write (a retry may find the content changed).
-            if (!$changed && $stored !== null && ($working->get(ChangeDates::FIELD) ?? '') === '' && ($stored->get(ChangeDates::FIELD) ?? '') !== '') {
+            if (!$changed && ($working->get(ChangeDates::FIELD) ?? '') === '' && ($stored->get(ChangeDates::FIELD) ?? '') !== '') {
                 $working->set(ChangeDates::FIELD, $stored->get(ChangeDates::FIELD));
                 $untake = static fn () => $working->remove(ChangeDates::FIELD);
             } else {

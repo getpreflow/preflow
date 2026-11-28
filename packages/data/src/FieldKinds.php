@@ -37,7 +37,7 @@ final class FieldKinds
     /** @var array<string, ColumnKind|\Closure(array<string, mixed>): ColumnKind> */
     private array $columns;
 
-    /** @var array<string, \Closure(array<string, mixed>): list<string|\Preflow\Validation\ValidationRule>> field type => its own rules for a field's config */
+    /** @var array<string, \Closure(array<string, mixed>, TypeFieldDefinition=): list<string|\Preflow\Validation\ValidationRule>> field type => its own rules for a field's config */
     private array $rules = [];
 
     /** @var array<string, FieldValue> field type => its value */

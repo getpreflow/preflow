@@ -18,7 +18,7 @@ use Preflow\Validation\ValidationRule;
  */
 final readonly class MatrixRequired implements ValidationRule
 {
-    public function validate(mixed $value, ValidationContext $context): true|string|Message
+    public function validate(mixed $value, ValidationContext $context): true|Message
     {
         return MatrixValue::refs($value) === [] ? new Message('validation.required') : true;
     }
