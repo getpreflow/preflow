@@ -649,6 +649,23 @@
             });
         });
 
+        // The view switch (a type with "preview"): the chosen view goes into the form's _preview_view, and the
+        // preview renders in full, since another view is another component (no region of it to patch).
+        stage.addEventListener('click', function (e) {
+            var b = e.target.closest('[data-preview-view]');
+            var input = form.querySelector('input[name="_preview_view"]');
+            if (!b || !input || b.getAttribute('aria-pressed') === 'true') { return; }
+            input.value = b.getAttribute('data-preview-view');
+            stage.querySelectorAll('[data-preview-view]').forEach(function (o) {
+                o.setAttribute('aria-pressed', o === b ? 'true' : 'false');
+            });
+            if (timer) { clearTimeout(timer); timer = null; }
+            started = true;
+            stale = false;
+            reqSeq++; // an answer still on its way was for the view before
+            fullRender();
+        });
+
         // Resizable form pane: pointer drag or arrow keys; the width is remembered.
         function bounds() {
             var total = split.getBoundingClientRect().width;

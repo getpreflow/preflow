@@ -307,6 +307,55 @@ final class AreasFieldTest extends BlocksAppTestCase
         $this->assertCount(1, $stored->areas['c2']);
     }
 
+    public function test_readonly_areas_field_sent_back_as_read_is_accepted(): void
+    {
+        $this->write('config/models/rpage.json', (string) json_encode([
+            'key' => 'rpage', 'table' => 'rpage', 'storage' => 'json', 'id_field' => 'uuid', 'titleField' => 'title',
+            'fields' => ['title' => ['type' => 'string'], 'columns' => ['type' => 'areas', 'layouts' => 'grid', 'readonly' => true]],
+        ]));
+        $input = $this->app()->container()->get(\Preflow\Data\Records\RecordInput::class);
+        $output = $this->app()->container()->get(\Preflow\Data\Records\RecordOutput::class);
+        $dm = $this->data();
+        $def = $this->types()->get('rpage');
+        $cases = [
+            'filled' => ['layout' => '1-1-1', 'areas' => ['c1' => [self::section(self::A)], 'c2' => [], 'c3' => [self::section(self::B)]]],
+            'empty' => ['layout' => '1-1-1', 'areas' => []],
+        ];
+        foreach ($cases as $name => $columns) {
+            $dm->saveType(DynamicRecord::fromArray($def, ['uuid' => $name, 'title' => 'T', 'columns' => $columns]), validate: false);
+            $record = $dm->findType('rpage', $name) ?? self::fail('no record');
+            $before = $record->toArray();
+
+            // What a client reads (through JSON) is what it sends back.
+            $read = json_decode((string) json_encode($output->toArray($record), JSON_THROW_ON_ERROR), true);
+            $written = $input->update($record, ['title' => 'T2', 'columns' => $read['columns']]);
+
+            $this->assertSame($before['columns'], $written->get('columns'), $name . ': the stored value stays as it is');
+            $this->assertSame('T2', $written->get('title'));
+        }
+    }
+
+    public function test_readonly_field_with_a_different_value_is_still_refused(): void
+    {
+        $this->write('config/models/rpage.json', (string) json_encode([
+            'key' => 'rpage', 'table' => 'rpage', 'storage' => 'json', 'id_field' => 'uuid', 'titleField' => 'title',
+            'fields' => ['title' => ['type' => 'string'], 'columns' => ['type' => 'areas', 'layouts' => 'grid', 'readonly' => true]],
+        ]));
+        $dm = $this->data();
+        $dm->saveType(DynamicRecord::fromArray($this->types()->get('rpage'), ['uuid' => 'r1', 'title' => 'T', 'columns' => ['layout' => '1-1-1', 'areas' => ['c1' => [self::section(self::A)]]]]), validate: false);
+        $record = $dm->findType('rpage', 'r1') ?? self::fail('no record');
+        $output = $this->app()->container()->get(\Preflow\Data\Records\RecordOutput::class);
+        $read = json_decode((string) json_encode($output->toArray($record), JSON_THROW_ON_ERROR), true);
+        $read['columns']['areas']['c1'][0]['title'] = ['en' => 'Changed'];
+
+        try {
+            $this->app()->container()->get(\Preflow\Data\Records\RecordInput::class)->update($record, ['columns' => $read['columns']]);
+            self::fail('refused');
+        } catch (ValidationException $e) {
+            $this->assertSame(['columns'], array_keys($e->errors()));
+        }
+    }
+
     public function test_api_reads_and_writes_an_areas_field(): void
     {
         $this->store(['uuid' => 'p1', 'title' => 'About', 'slug' => 'about', 'columns' => ['layout' => '1-1-1', 'areas' => [

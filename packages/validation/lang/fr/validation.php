@@ -74,6 +74,10 @@ return [
         'set_layout' => 'La mise en page « :key » ne fait pas partie des mises en page de l\'ensemble « :set » (:layouts). Choisissez-en une.',
         'areas_value' => 'Doit être un objet avec « layout » (la clé d\'une mise en page de l\'ensemble, ou null) et « areas » (des noms de zones, chacun avec une liste de blocs), par exemple {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
+    'blocks' => [
+        'min' => '{0} Ajoutez au moins :count bloc.|{1} Ajoutez au moins :count bloc.|[2,*] Ajoutez au moins :count blocs.',
+        'max' => '{0} :count bloc au maximum.|{1} :count bloc au maximum.|[2,*] :count blocs au maximum.',
+    ],
     'record' => [
         'unknown_field' => 'Le type ":type" n\'a pas de champ ":field".',
         'unknown_locale' => 'Le type ":type" n\'a pas de langue ":locale". Utilisez l\'une de celles-ci : :locales.',

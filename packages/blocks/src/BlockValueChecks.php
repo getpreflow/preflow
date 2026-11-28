@@ -23,7 +23,8 @@ use Preflow\Validation\ValidatorFactory;
  * (an area it does not show is not checked: it is not shown). Each block is checked on its own
  * values, in the default language: each field's "validate" ("required" included), a select's
  * options (SelectRules, "options_from" reading the same block), the field type's checks
- * (FieldKinds::rules()) and the rules an adapter adds (extraRules()). A field its show_when hides
+ * (FieldKinds::rules(): since 0.94 a nested blocks field's "min" and "max", Rules\BlockCount, keyed
+ * "<field>.<uid>.<child>") and the rules an adapter adds (extraRules()). A field its show_when hides
  * is not checked, nor is a field of the record its show_when hides or that the caller gives no
  * rules ([]: Folio's read-only fields). Lists nest to any depth; a block no class declares (any
  * more) is skipped.

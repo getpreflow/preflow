@@ -88,7 +88,7 @@
             {% set form_attrs = form_attrs|merge({'hx-post': publishing.autosave_url, 'hx-trigger': 'folio:edit delay:3s, folio:save-now', 'hx-target': '#folio-save-state', 'hx-swap': 'outerHTML', 'hx-disabled-elt': 'button[type=submit][form=' ~ record_form ~ '], find button[type=submit]'}) %}
         {% endif %}
         {% set form = form_begin({action: action, csrf_token: csrf, attrs: form_attrs}) %}
-        {{ form.begin()|raw }}
+        {{ form.begin()|raw }}{% if preview_view|default(null) %}{# A type with "preview" (0.94): the view the live preview renders ("page": the route's template); the view switch sets it. #}<input type="hidden" name="_preview_view" value="{{ preview_view }}">{% endif %}{{ '' }}
         {% if publishing %}
             <input type="hidden" name="_version" id="folio-version" value="{{ publishing.version }}">
         {% endif %}
@@ -203,7 +203,9 @@
                 <button type="button" data-preview-viewport="{{ vp[1] }}" aria-pressed="{{ loop.first ? 'true' : 'false' }}" aria-label="{{ vp[0] }}" title="{{ vp[0] }}{{ loop.first ? '' : ' (' ~ vp[1] ~ ')' }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ vp[2] }}"></use></svg></button>
                 {% endfor %}
             </div>
-            {% if bar and bar.address %}<span class="folio-preview-url{% if bar.draft %} is-draft{% endif %}" title="{{ bar.url }}"><span class="folio-preview-dot" aria-hidden="true"></span><span class="folio-preview-address">{{ bar.address }}</span>{% if bar.draft %}<span class="folio-preview-draft">{{ t('folio.form.preview_draft') }}</span>{% endif %}</span>{% else %}<span class="folio-preview-spacer"></span>{% endif %}
+            {% if preview_views|default([])|length > 1 %}{# The view switch (0.94, a type with "preview"): "page" (with a route) and the type's views, from two choices on; a click sets _preview_view and renders the preview in full (admin.js). #}<div class="folio-segmented folio-preview-views" role="group" aria-label="{{ t('folio.preview.view') }}">
+                {%- for choice in preview_views %}<button type="button" data-preview-view="{{ choice.key }}" aria-pressed="{{ choice.key == preview_view ? 'true' : 'false' }}">{{ choice.label }}</button>{% endfor -%}
+            </div>{% endif %}{% if bar and bar.address %}<span class="folio-preview-url{% if bar.draft %} is-draft{% endif %}" title="{{ bar.url }}"><span class="folio-preview-dot" aria-hidden="true"></span><span class="folio-preview-address">{{ bar.address }}</span>{% if bar.draft %}<span class="folio-preview-draft">{{ t('folio.form.preview_draft') }}</span>{% endif %}</span>{% else %}<span class="folio-preview-spacer"></span>{% endif %}
             {% if share %}<button type="button" class="btn btn-secondary btn-icon btn-sm folio-share-button" hx-post="{{ publishing.share_url }}" hx-target="#folio-share" hx-swap="outerHTML" hx-include="[name=_csrf_token], [name=_locale]" data-folio-share-copy data-text-copied="{{ bar.copied }}" aria-label="{{ t('folio.form.copy_preview_link') }}" title="{{ t('folio.form.copy_preview_link') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#link"></use></svg><span class="folio-share-status" aria-hidden="true"></span></button><span class="folio-sr" role="status" data-folio-share-announce></span>{% endif %}
             {% if bar and bar.address and bar.live_url %}<a class="btn btn-secondary btn-icon btn-sm folio-preview-open" href="{{ bar.live_url }}" target="_blank" rel="noopener" aria-label="{{ t('folio.form.open_live') }}" title="{{ t('folio.form.open_live') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-external"></use></svg></a>{% endif %}
             {% if page and page.view_as %}<label class="folio-preview-as" data-preview-as-field hidden><span>{{ t('folio.preview.view_as') }}</span>

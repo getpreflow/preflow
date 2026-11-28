@@ -101,4 +101,21 @@ final class LayoutsAppTest extends BlocksAppTestCase
         $this->installPackage(PackageHome::class);
         $this->assertNotSame([], array_filter($builder->drift() ?? [], static fn (string $line): bool => str_contains($line, 'installed.json')));
     }
+
+    public function test_a_site_binding_of_page_layouts_is_kept(): void
+    {
+        $this->write('config/data.php', "<?php\nreturn ['drivers' => ['json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data']], 'default' => 'json', 'models_path' => __DIR__ . '/models'];\n");
+        $this->write('config/models/page.json', (string) json_encode([
+            'key' => 'page', 'table' => 'page', 'storage' => 'json', 'id_field' => 'uuid',
+            'fields' => ['title' => ['type' => 'string']],
+            'layouts' => ['allowed' => ['landing'], 'default' => 'landing'],
+        ]));
+        $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Blocks\\Tests\\Fixtures\\Layouts\\OwnPageLayouts::class, \\Preflow\\Blocks\\BlocksServiceProvider::class];\n");
+        \Preflow\Blocks\Tests\Fixtures\Layouts\OwnPageLayouts::$built = null;
+
+        $layouts = $this->app()->container()->get(\Preflow\Blocks\Layouts\PageLayouts::class);
+
+        $this->assertSame(\Preflow\Blocks\Tests\Fixtures\Layouts\OwnPageLayouts::$built, $layouts, 'the site\'s own binding, not replaced in the package\'s boot');
+        $this->assertSame('landing', $layouts->forType('page')?->default);
+    }
 }

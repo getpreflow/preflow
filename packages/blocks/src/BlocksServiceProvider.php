@@ -27,6 +27,9 @@ use Preflow\Blocks\Layouts\Rules\AreaContents;
 use Preflow\Blocks\Layouts\Rules\LayoutChoice;
 use Preflow\Blocks\Layouts\Rules\MessageRule;
 use Preflow\Blocks\Layouts\Rules\PinnedSlug;
+use Preflow\Blocks\Preview\PreviewCanvas;
+use Preflow\Blocks\Preview\TypePreviews;
+use Preflow\Blocks\Rules\BlockCount;
 use Preflow\Blocks\Values\AreasFieldValue;
 use Preflow\Blocks\Values\BlocksFieldValue;
 use Preflow\Core\Container\ServiceProvider;
@@ -50,6 +53,7 @@ use Preflow\Data\Values\StoredCleaning;
 use Preflow\Validation\RuleFactory;
 use Preflow\Validation\ValidationContext;
 use Preflow\Validation\ValidatorFactory;
+use Preflow\View\AssetCollector;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\View\TemplateFunctionDefinition;
 
@@ -66,10 +70,17 @@ use Preflow\View\TemplateFunctionDefinition;
  * the rest.
  *
  * Page layouts (since 0.92): the layout classes (LayoutRegistry, found and cached like blocks)
- * and, with a type registry, PageLayouts for the types with "layouts" — their option checked at
+ * and, with a type registry, PageLayouts for the types with "layouts" (bound only where a
+ * provider bound none, since 0.94) — their option checked at
  * boot (kept in the boot manifest), and with a DataManager the layout rules on every validated
  * save of their records (RecordRules): the layout choice, a pinned page's slug (drafts too) and
  * what the areas hold.
+ *
+ * Type previews (since 0.94): with a type registry, TypePreviews for the types with "preview" (the
+ * views a record is previewed in, each through a component the type names), bound only where a
+ * provider bound none; their option and components checked at boot (kept in the boot manifest). And
+ * PreviewCanvas, which renders a record through a view's component inside a canvas template the
+ * caller names (bound where no provider bound its own; the caller opens the render context).
  *
  * For APIs (since 0.92): ContentDescription (blocks, layouts, area layout sets and type layouts as
  * data for a schema builder) and, with page layouts, LayoutResource and LayoutInput — a page's
@@ -79,7 +90,9 @@ use Preflow\View\TemplateFunctionDefinition;
  *
  * Block values (since 0.92): with a DataManager, BlockValueChecks runs on every validated write of
  * a typed record (a RecordRules check), so a seed, an import or a REST save is refused for a block
- * value Folio's form refuses, with the same keys and messages.
+ * value Folio's form refuses, with the same keys and messages. Since 0.94 a blocks field's "min"
+ * and "max" are the kind's check (Rules\BlockCount, FieldKinds::rules()), counted at the top and in
+ * blocks alike.
  *
  * Field values (since 0.93): with a DataManager, BlocksFieldValue and AreasFieldValue on its
  * FieldKinds (read, written and cleaned through each block field's own value), and a page's
@@ -191,6 +204,8 @@ final class BlocksServiceProvider extends ServiceProvider
         }
 
         self::bootPageLayouts($container);
+        self::bootTypePreviews($container);
+        self::bindPreviewCanvas($container);
         self::bindApi($container);
 
         // In boot: the cache file follows config that a provider registered after this one may set.
@@ -335,39 +350,42 @@ final class BlocksServiceProvider extends ServiceProvider
     /**
      * PageLayouts with the app's type registry (the one Folio binds, else the DataManager's), the
      * boot check of every type's "layouts" and the layout rules with the data package. In boot:
-     * Folio binds its registry in its register().
+     * Folio binds its registry in its register(). PageLayouts is bound only when no provider bound
+     * its own (0.94: a site's binding is kept), its registries resolved when it is first built.
      */
     private static function bootPageLayouts(Container $container): void
     {
-        $data = $container->bound(DataManager::class) ? $container->get(DataManager::class) : null;
-        $types = $container->bound(TypeRegistry::class) ? $container->get(TypeRegistry::class) : $data?->getTypeRegistry();
-        if ($types === null) {
+        if (!$container->bound(TypeRegistry::class) && !$container->bound(DataManager::class)) {
             return;
         }
-        $container->singleton(PageLayouts::class, static fn (Container $c): PageLayouts => new PageLayouts(
-            $c->get(LayoutRegistry::class),
-            $types,
-            $c->get(BlockRegistry::class),
-        ));
+        if (!$container->bound(PageLayouts::class)) {
+            $container->singleton(PageLayouts::class, static fn (Container $c): PageLayouts => new PageLayouts(
+                $c->get(LayoutRegistry::class),
+                self::typesOf($c),
+                $c->get(BlockRegistry::class),
+            ));
+        }
 
         // A "layouts" option that cannot work stops the boot, with or without Folio: checked when the
         // boot manifest is built (and live while none is loaded), as the data package's own checks.
         $manifest = $container->get(Application::class)->bootManifest();
-        $manifest->remember('blocks.type_layouts', static function () use ($container, $types): bool {
-            (new PageLayouts($container->get(LayoutRegistry::class), $types))->assertTypes();
+        $manifest->remember('blocks.type_layouts', static function () use ($container): bool {
+            (new PageLayouts($container->get(LayoutRegistry::class), self::typesOf($container)))->assertTypes();
 
             return true;
-        }, $manifest->isRecording() ? $types->sources() : []);
+        }, $manifest->isRecording() ? self::typesOf($container)->sources() : []);
         // An areas field of a type names a set some package registers, as a block's does.
-        $manifest->remember('blocks.type_areas', static function () use ($container, $types): bool {
-            self::assertTypeAreas($types, $container->get(AreaLayoutSets::class));
+        $manifest->remember('blocks.type_areas', static function () use ($container): bool {
+            self::assertTypeAreas(self::typesOf($container), $container->get(AreaLayoutSets::class));
 
             return true;
-        }, $manifest->isRecording() ? $types->sources() : []);
+        }, $manifest->isRecording() ? self::typesOf($container)->sources() : []);
 
-        if ($data === null) {
+        if (!$container->bound(DataManager::class)) {
             return;
         }
+        $data = $container->get(DataManager::class);
+        $types = static fn (): TypeRegistry => self::typesOf($container);
         // A page's areas are cleaned on every typed write (0.93), as its fields: rich text in their blocks.
         $data->cleaning()->systemKey(PageLayouts::AREAS, static function (mixed $value, TypeDefinition $def) use ($container, $data): mixed {
             return $container->get(PageLayouts::class)->forType($def->key) === null
@@ -378,7 +396,7 @@ final class BlocksServiceProvider extends ServiceProvider
         $container->get(MigrationRegistry::class)->warning('blocks.layouts', static fn (): array => (new LayoutReport(
             $container->get(PageLayouts::class),
             $container->get(LayoutRegistry::class),
-            $types,
+            $types(),
             $data,
             sets: $container->get(AreaLayoutSets::class),
             blocks: $container->get(BlockRegistry::class),
@@ -416,6 +434,68 @@ final class BlocksServiceProvider extends ServiceProvider
 
             return $type === null || $type->pinned === [] ? [] : [$type->slugField => [new PinnedSlug($layouts, $data, $def)]];
         }, drafts: true);
+    }
+
+    /**
+     * TypePreviews (0.94) with the app's type registry and component map, and the boot check of
+     * every type's "preview" (`blocks.type_previews`, beside `blocks.type_layouts`): its shape and
+     * each view's component. Bound only when no provider bound its own, its registries resolved
+     * when it is first built. In boot: the component map is bound before the providers boot.
+     * Without a component layer (no template engine) the map is empty: only a component given as
+     * a class passes, as component() would render nothing else.
+     */
+    private static function bootTypePreviews(Container $container): void
+    {
+        if (!$container->bound(TypeRegistry::class) && !$container->bound(DataManager::class)) {
+            return;
+        }
+        if (!$container->bound(TypePreviews::class)) {
+            $container->singleton(TypePreviews::class, static fn (Container $c): TypePreviews => new TypePreviews(
+                self::typesOf($c),
+                self::componentsOf($c),
+            ));
+        }
+
+        // A "preview" that cannot work, or names a component that does not exist, stops the boot,
+        // with or without Folio: checked when the boot manifest is built (and live while none is loaded).
+        $manifest = $container->get(Application::class)->bootManifest();
+        $manifest->remember('blocks.type_previews', static function () use ($container): bool {
+            (new TypePreviews(self::typesOf($container), self::componentsOf($container)))->assertTypes();
+
+            return true;
+        }, $manifest->isRecording() ? self::typesOf($container)->sources() : []);
+    }
+
+    /**
+     * PreviewCanvas (since 0.94), where no provider bound its own: a record through a preview view's
+     * component, inside a canvas template. Resolved when first asked for, not at boot.
+     */
+    private static function bindPreviewCanvas(Container $container): void
+    {
+        if ($container->bound(PreviewCanvas::class)) {
+            return;
+        }
+        $container->singleton(PreviewCanvas::class, static fn (Container $c): PreviewCanvas => new PreviewCanvas(
+            $c,
+            $c->get(ComponentRenderer::class),
+            $c->get(TemplateEngineInterface::class),
+            self::componentsOf($c),
+            $c->bound(AssetCollector::class) ? $c->get(AssetCollector::class) : null,
+        ));
+    }
+
+    /** The app's component map (Application::bootComponentLayer()); empty without a component layer. */
+    private static function componentsOf(Container $c): ComponentMap
+    {
+        $map = $c->bound(ComponentMap::class) ? $c->get(ComponentMap::class) : null;
+
+        return $map instanceof ComponentMap ? $map : new ComponentMap([]);
+    }
+
+    /** The app's type registry: the one Folio binds, else the DataManager's. */
+    private static function typesOf(Container $c): TypeRegistry
+    {
+        return $c->bound(TypeRegistry::class) ? $c->get(TypeRegistry::class) : $c->get(DataManager::class)->getTypeRegistry();
     }
 
     /**
@@ -509,6 +589,10 @@ final class BlocksServiceProvider extends ServiceProvider
         // Built on the first validated write, not at boot (the registry reflects over every block).
         $data->recordRules()->check(static fn (DynamicRecord $record, array $given): array => $container->get(BlockValueChecks::class)->errors($record->getType(), $record->toArray(), $given));
 
+        // A blocks field's "min" and "max" (0.94; Folio's check before): the kind's check, so a record's
+        // field and one nested in a block (BlockValueChecks reads the kinds) are counted, with or
+        // without Folio. Folio's field type gives the same rule in its place (CoreFieldRules).
+        $data->fieldKinds()->rules(BlockLists::BLOCKS, static fn (array $config): array => BlockCount::of($config));
         // The areas field (0.92): a layout from a named set and its areas, stored as JSON text on SQL.
         $data->fieldKinds()->column(BlockLists::AREAS, ColumnKind::Text);
         // What a blocks and an areas field's values mean (0.93): read, written and cleaned on every typed write.
@@ -552,7 +636,11 @@ final class BlocksServiceProvider extends ServiceProvider
     {
         $value = $kinds->valueOf(new TypeFieldDefinition(PageLayouts::AREAS, BlockLists::BLOCKS));
 
-        return $value instanceof BlocksFieldValue ? $value : new BlocksFieldValue(static fn (): BlockRegistry => $container->get(BlockRegistry::class), $kinds);
+        return $value instanceof BlocksFieldValue ? $value : new BlocksFieldValue(
+            static fn (): BlockRegistry => $container->get(BlockRegistry::class),
+            $kinds,
+            static fn (): ValidatorFactory => $container->bound(ValidatorFactory::class) ? $container->get(ValidatorFactory::class) : new ValidatorFactory(new RuleFactory()),
+        );
     }
 
     /**

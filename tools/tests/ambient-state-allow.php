@@ -82,6 +82,16 @@ return [
             '$locale = Contexts::peek()?->locale;' => 'outside every render content renders in the default content locale (the documented default)',
         ],
     ],
+    'folio/src/Content/FolioBlockPreviewMarks.php' => [
+        'peek' => [
+            '$language = \\Preflow\\Core\\Context\\Contexts::peek()?->get(PreviewLabelLanguage::class)?->locale;' => 'outside every render there is no preview: the label as before (the documented default)',
+        ],
+    ],
+    'folio/src/Content/FolioRecordPreviewMarks.php' => [
+        'peek' => [
+            '$language = \\Preflow\\Core\\Context\\Contexts::peek()?->get(PreviewLabelLanguage::class)?->locale;' => 'outside every render there is no preview: the label as before (the documented default)',
+        ],
+    ],
     'folio/src/Http/InterfaceLocales.php' => [
         'peek' => [
             '$surface = Contexts::peek()?->surface;' => 'outside every render there is no admin surface: the default interface locale (the documented default)',

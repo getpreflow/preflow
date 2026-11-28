@@ -164,6 +164,22 @@ final class CoreBlockChecksTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_folio_form_shows_the_count_message_once(): void
+    {
+        $uids = ['aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb', 'cccccccccccccccc', 'dddddddddddddddd'];
+        $sections = ['_order' => $uids];
+        foreach ($uids as $uid) {
+            $sections[$uid] = ['_block' => 'checked_fields', 'title' => 'T', 'size' => 's'];
+        }
+
+        $res = $this->post('/folio/event', ['name' => 'Fair', 'sections' => $sections]);
+
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertSame(1, substr_count((string) $res->getBody(), 'At most 3 blocks allowed.'), 'the core\'s count, once (Folio\'s field type adds none of its own)');
+        $this->assertSame(['At most 3 blocks allowed.'], $this->validatorErrors(['uuid' => 'e1', 'name' => 'Fair', 'sections' => array_map(static fn (string $uid): array => ['_uid' => $uid, '_block' => 'checked_fields', 'title' => 'T'], $uids)])['sections'] ?? null);
+    }
+
+    #[RunInSeparateProcess]
     public function test_the_form_shows_the_cores_block_error(): void
     {
         $res = $this->post('/folio/event', ['name' => 'Fair', 'sections' => ['_order' => [self::A], self::A => ['_block' => 'checked_fields', 'title' => '', 'size' => 's']]]);

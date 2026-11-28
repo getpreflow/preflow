@@ -7,7 +7,7 @@ namespace Preflow\Blocks\Tests\Fixtures\Checks;
 use Preflow\Blocks\Block;
 use Preflow\Blocks\BlockField;
 
-/** A data-only block with the kinds of value the core checks: required text, a select, a select from its own tags, a link, a field shown only for a link, nested quotes. */
+/** A data-only block with the kinds of value the core checks: required text, a select, a select from its own tags, a link, a field shown only for a link, nested quotes, a field declared hidden. */
 #[Block(key: 'section', label: 'Section')]
 final class Section
 {
@@ -34,4 +34,7 @@ final class Section
 
     #[BlockField(type: 'blocks', allowed: ['section_quote'])]
     public array $quotes = [];
+
+    #[BlockField(type: 'string', config: ['hidden' => true])]
+    public string $secret = '';
 }

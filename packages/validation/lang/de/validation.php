@@ -74,6 +74,10 @@ return [
         'set_layout' => 'Das Layout ":key" gehört nicht zu den Layouts der Gruppe ":set" (:layouts). Wähle eines davon.',
         'areas_value' => 'Muss ein Objekt mit "layout" (der Schlüssel eines Layouts der Gruppe, oder null) und "areas" (Bereichsnamen mit je einer Liste von Blöcken) sein, etwa {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
+    'blocks' => [
+        'min' => 'Füge mindestens :count Block hinzu.|Füge mindestens :count Blöcke hinzu.',
+        'max' => 'Höchstens :count Block erlaubt.|Höchstens :count Blöcke erlaubt.',
+    ],
     'record' => [
         'unknown_field' => 'Der Typ ":type" hat kein Feld ":field".',
         'unknown_locale' => 'Der Typ ":type" hat keine Sprache ":locale". Verwende eine davon: :locales.',

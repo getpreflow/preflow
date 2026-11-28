@@ -212,4 +212,19 @@ final class ValidationTranslationTest extends TestCase
         $translator = self::translator('ja');
         $this->assertSame('エリア "aside" に置けるブロックは最大 1 個です。', $max(1)->text($translator), 'one form');
     }
+
+    /** @since 0.94.0 a blocks field's count (preflow/blocks' BlockCount), worded as Folio worded it. */
+    public function test_the_block_count_chooses_its_plural_form(): void
+    {
+        $max = static fn (int $n): \Preflow\Validation\Message => new \Preflow\Validation\Message('validation.blocks.max', ['count' => (string) $n], $n);
+        $min = static fn (int $n): \Preflow\Validation\Message => new \Preflow\Validation\Message('validation.blocks.min', ['count' => (string) $n], $n);
+
+        $this->assertSame('At most 1 block allowed.', $max(1)->english());
+        $this->assertSame('At most 3 blocks allowed.', $max(3)->english());
+        $this->assertSame('Add at least 1 block.', (string) $min(1));
+        $this->assertSame('Add at least 2 blocks.', (string) $min(2));
+        $this->assertSame('Höchstens 3 Blöcke erlaubt.', $max(3)->text(self::translator('de')));
+        $this->assertSame('Ajoutez au moins 1 bloc.', $min(1)->text(self::translator('fr')));
+        $this->assertSame('Ajoutez au moins 2 blocs.', $min(2)->text(self::translator('fr')));
+    }
 }

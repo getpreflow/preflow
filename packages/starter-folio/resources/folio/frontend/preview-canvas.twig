@@ -1,0 +1,17 @@
+{#- The canvas Folio puts a type preview on (config/models/job.json, "preview"): a bare page with the
+    site's base CSS, so a job card looks here as it does on the site. Variables: preview (the component's
+    HTML, printed as it is), record, type, view, locale, label (the type's label). -#}
+<!doctype html>
+<html lang="{{ locale }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ label }}</title>
+</head>
+<body>
+<main class="site-main">
+{{ preview }}
+</main>
+{% include "_site-css.twig" %}
+</body>
+</html>

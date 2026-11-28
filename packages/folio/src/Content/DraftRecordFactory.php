@@ -268,7 +268,8 @@ final class DraftRecordFactory
         }
 
         try {
-            return $this->layoutInput->merge($typeDef, $data, $input);
+            // The form edits block fields declared hidden (no API writes them): taken, not refused.
+            return $this->layoutInput->merge($typeDef, $data, $input, hiddenFields: true);
         } catch (ValidationException $e) {
             $this->layoutErrors = $e->errors();
 

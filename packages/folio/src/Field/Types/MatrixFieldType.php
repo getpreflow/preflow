@@ -18,7 +18,7 @@ use Preflow\Folio\Field\FieldType;
  * (add pick-existing / remove / reorder); rendered on the frontend through each
  * reference's per-type template.
  */
-final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysInAdmin, \Preflow\Folio\Field\UsesFieldKinds
+final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysInAdmin, \Preflow\Folio\Field\UsesFieldKinds, \Preflow\Folio\Field\HasFieldRules
 {
     use \Preflow\Folio\Field\Types\CoreValue;
 
@@ -179,6 +179,12 @@ final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysI
     public function rules(array $config): array
     {
         return [];
+    }
+
+    /** A required matrix holds at least one reference ("required" is met by the stored "[]"). */
+    public function fieldRules(\Preflow\Data\TypeFieldDefinition $field): array
+    {
+        return in_array('required', $field->validate, true) ? [new MatrixRequired()] : [];
     }
 
     public function assets(): array

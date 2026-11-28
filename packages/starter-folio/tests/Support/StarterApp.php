@@ -63,6 +63,12 @@ trait StarterApp
             foreach (self::SITE_PATHS as $path) {
                 exec('rm -rf ' . escapeshellarg($this->starterRoot . '/' . $path));
             }
+            // The job's Folio preview names a component under app/Components; without it the type
+            // has no "preview" (the README says to remove the key with the components).
+            $job = $this->starterRoot . '/config/models/job.json';
+            $config = json_decode((string) file_get_contents($job), true, 512, JSON_THROW_ON_ERROR);
+            unset($config['preview']);
+            file_put_contents($job, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
         }
         // ApiOnlyTest reads this log back: one line per booted copy, naming the site paths it still has.
         $log = getenv('STARTER_API_ONLY_LOG');

@@ -70,6 +70,10 @@ return [
         'set_layout' => '布局 ":key" 不属于集合 ":set" 的布局（:layouts）。请选择其中之一。',
         'areas_value' => '必须是一个对象，包含 "layout"（集合中某个布局的键，或 null）和 "areas"（区域名称，每个对应一个区块列表），例如 {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}。',
     ],
+    'blocks' => [
+        'min' => '请至少添加 :count 个区块。',
+        'max' => '最多允许 :count 个区块。',
+    ],
     'record' => [
         'unknown_field' => '类型“:type”没有字段“:field”。',
         'unknown_locale' => '类型“:type”没有语言“:locale”。请使用以下之一：:locales。',

@@ -143,16 +143,16 @@ final class NumberFieldType extends AbstractScalarFieldType implements \Preflow\
     /**
      * "step": a positive number or "any". Without it the browser takes whole numbers only.
      * The numeric and step checks only judge a filled value: an optional field may be left
-     * empty, and "required" (from the field's "validate") still refuses an empty one.
+     * empty, and "required" (from the field's "validate") still refuses an empty one. Text is
+     * refused with or without a step (since 0.94 the browser is not relied on); the core registers
+     * the same numeric check for every number field, and CoreFieldRules replaces it with these
+     * rules, so the message is given once.
      */
     public function rules(array $config): array
     {
         $step = $this->step($config);
-        if ($step === null) {
-            return [];
-        }
 
-        return $step === 'any'
+        return $step === null || $step === 'any'
             ? [new WhenFilled(new Numeric())]
             : [new WhenFilled(new Numeric(), new Step((float) $step))];
     }

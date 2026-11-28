@@ -548,6 +548,15 @@ final class Publisher
             $changed = $stored === null || !$this->sameContent($working, $stored);
             $expected = $loadedVersion ?? (int) ($stored?->get('_version') ?? 0);
             $next = $changed ? $expected + 1 : $expected;
+            // A record built without its change date (not read from storage) would be dated now by the
+            // save: an unchanged publish keeps the stored working copy's date.
+            // Only for this attempt: put back when it does not write (a retry may find the content changed).
+            if (!$changed && ($working->get(ChangeDates::FIELD) ?? '') === '' && ($stored->get(ChangeDates::FIELD) ?? '') !== '') {
+                $working->set(ChangeDates::FIELD, $stored->get(ChangeDates::FIELD));
+                $untake = static fn () => $working->remove(ChangeDates::FIELD);
+            } else {
+                $untake = static fn () => null;
+            }
 
             $previous = null;
             $wrote = false;
@@ -565,11 +574,13 @@ final class Publisher
                 });
             } catch (\Throwable $e) {
                 $this->putScheduleBack($working, $before, $wrote ? $next : null);
+                $wrote ?: $untake();
                 throw $e;
             }
             if ($snapshot !== null) {
                 break;
             }
+            $untake();
             self::restoreKey($working, $before, '_publish_at');
             if ($loadedVersion !== null || $attempt >= self::SAVE_ATTEMPTS) {
                 throw new VersionConflict($this->storedVersion($working));

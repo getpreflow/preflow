@@ -7,6 +7,7 @@ namespace Preflow\Blocks\Layouts;
 use Preflow\Blocks\BlockDefinition;
 use Preflow\Blocks\BlockLists;
 use Preflow\Blocks\BlockRegistry;
+use Preflow\Blocks\HiddenBlockFields;
 use Preflow\Data\FieldVisibility;
 use Preflow\Data\Records\InputPart;
 use Preflow\Data\TypeDefinition;
@@ -26,7 +27,10 @@ use Preflow\Validation\ValidatorFactory;
  * (optional) replaces only the areas it names (a list [] empties one); every area it does not name
  * keeps its stored blocks, unplaced ones included, so a write never loses content it did not touch.
  * A block without "_uid" (or with null or "") gets a fresh one (16 hex digits, nested blocks too); a field its show_when
- * hides keeps its stored value (FieldVisibility::keepStored(), per block, as Folio's form does).
+ * hides keeps its stored value (FieldVisibility::keepStored(), per block, as Folio's form does), and
+ * so does (0.94) a field declared "hidden": true the block leaves out; given, such a field is
+ * refused ("_areas.<name>.<uid>.<field>", validation.record.unknown_field: no API writes it), except
+ * through merge(hiddenFields: true), Folio's form, which edits it.
  * Other keys of the input are the caller's own fields: merge() leaves them alone.
  *
  * An area the chosen layout lacks is taken when the page stores it or another layout of the type
@@ -35,7 +39,8 @@ use Preflow\Validation\ValidatorFactory;
  *
  * Refused here (ValidationException, each key the stored key the core rules use): an area no
  * layout of the type declares and the page does not store ("_areas.<name>"), a uid that is not 16
- * hex digits or is given to two blocks ("_areas.<name>.<i>._uid", nested
+ * hex digits or is given to two blocks anywhere in the areas (0.94: nested blocks too, against
+ * each other, the top level and the areas the write does not name; "_areas.<name>.<i>._uid", nested
  * "_areas.<name>.<i>.<field>.<j>._uid"), a value of the wrong shape, a new block of a key no class
  * declares. Save the result with DataManager::saveType(): the core rules decide the rest, as for
  * Folio (the layout choice, a pin, the areas' limits, the block values).
@@ -86,10 +91,12 @@ final readonly class LayoutInput implements InputPart
      * @throws ValidationException naming the stored key ("_layout", "_areas", "_areas.<name>…")
      * As InputPart::merge() (0.93) RecordInput calls it; a site's own write calls RecordInput,
      * which also takes the fields, the languages and the refusals of the rest of the body.
+     * $hiddenFields (0.94): the input may give block fields declared "hidden": true (an admin form
+     * that edits them, Folio's); without it such a field given is refused, as an API's write is.
      *
      * @see \Preflow\Data\Records\RecordInput
      */
-    public function merge(TypeDefinition $def, array $stored, array $input): array
+    public function merge(TypeDefinition $def, array $stored, array $input, bool $hiddenFields = false): array
     {
         $type = $this->layouts->forType($def->key);
         $errors = [];
@@ -114,6 +121,9 @@ final readonly class LayoutInput implements InputPart
             }
         }
         if (array_key_exists(PageLayouts::AREAS, $input)) {
+            if (!$hiddenFields) {
+                $errors += $this->hiddenGiven($input[PageLayouts::AREAS], PageLayouts::AREAS);
+            }
             $values[PageLayouts::AREAS] = $this->areas(
                 Placement::areasOf($values[PageLayouts::AREAS] ?? null),
                 $input[PageLayouts::AREAS],
@@ -135,10 +145,11 @@ final readonly class LayoutInput implements InputPart
      * fallback), "areas": {name: [blocks…]} (optional)}: "areas" replaces only the areas it names,
      * every other stored area keeps its blocks (a column a narrower layout lacks is kept, not
      * shown). An area no layout of the set declares and the value does not store is refused, so
-     * are a uid that is not 16 hex digits or is given twice, a value of the wrong shape and a new
-     * block of a key no class declares; blocks without "_uid" get fresh ones, hidden fields keep
-     * their stored values. Keys are the field's: "<field>", "<field>.layout",
-     * "<field>.areas.<name>", "<field>.areas.<name>.<i>._uid". Save the record with
+     * are a uid that is not 16 hex digits or is given twice, a value of the wrong shape, a new
+     * block of a key no class declares and (0.94) a block field declared hidden; blocks without
+     * "_uid" get fresh ones, hidden fields keep their stored values. Keys are the field's:
+     * "<field>", "<field>.layout", "<field>.areas.<name>", "<field>.areas.<name>.<i>._uid",
+     * "<field>.areas.<name>.<uid>.<leaf>" (a hidden field). Save the record with
      * DataManager::saveType(): the core rules decide the rest (the layout key, the columns' limits
      * and allowed blocks, the block values).
      *
@@ -187,6 +198,7 @@ final readonly class LayoutInput implements InputPart
                 array_push($declared, ...$one->areaNames());
             }
             $at = $field->name . '.areas';
+            $errors += $this->hiddenGiven($input['areas'], $at);
             $areas = $this->areas($areas, $input['areas'], AreasValue::of($layout, $areas)->resolve($set), array_values(array_unique($declared)), $at, (string) $layout, $errors);
         }
         $this->refuse($errors);
@@ -210,6 +222,28 @@ final readonly class LayoutInput implements InputPart
     }
 
     /**
+     * The refusals of the block fields declared hidden that the given areas' blocks hold, keyed
+     * "<at>.<area>.<uid>.<field>" (HiddenBlockFields); none for areas of the wrong shape (refused
+     * as such).
+     *
+     * @return array<string, Message>
+     */
+    private function hiddenGiven(mixed $areas, string $at): array
+    {
+        if (!is_array($areas)) {
+            return [];
+        }
+        $refused = [];
+        foreach ($areas as $name => $list) {
+            if (is_array($list) && array_is_list($list)) {
+                $refused += HiddenBlockFields::inList($this->blocks, $list, $at . '.' . $name . '.');
+            }
+        }
+
+        return $refused;
+    }
+
+    /**
      * The stored areas with the given ones replaced (a page's "_areas", an areas field's "areas").
      *
      * @param array<string, list<array<string, mixed>>> $stored   the stored areas
@@ -230,7 +264,7 @@ final readonly class LayoutInput implements InputPart
         $declared = array_flip($names);
 
         // Every stored block by uid (a block may move between areas); the uids the areas the write
-        // does not name still hold.
+        // does not name still hold, their nested blocks' too (0.94).
         $previous = [];
         $taken = [];
         foreach ($stored as $name => $blocks) {
@@ -238,9 +272,9 @@ final readonly class LayoutInput implements InputPart
                 $uid = $block['_uid'] ?? null;
                 if (is_string($uid) && $uid !== '') {
                     $previous[$uid] ??= $block;
-                    if (!array_key_exists($name, $given)) {
-                        $taken[$uid] = true;
-                    }
+                }
+                if (!array_key_exists($name, $given)) {
+                    $this->holdUids($block, $taken);
                 }
             }
         }
@@ -314,10 +348,32 @@ final readonly class LayoutInput implements InputPart
                 $blocks[] = $block;
                 continue;
             }
-            $blocks[] = $this->kept($definition, $block, ($was['_block'] ?? null) === $key ? $was : [], $here, $errors);
+            $blocks[] = $this->kept($definition, $block, ($was['_block'] ?? null) === $key ? $was : [], $here, $taken, $errors);
         }
 
         return $blocks;
+    }
+
+    /**
+     * The uids a stored block and the blocks nested in it hold, added to $taken.
+     *
+     * @param array<string, mixed>   $block
+     * @param array<array-key, true> $taken
+     */
+    private function holdUids(array $block, array &$taken): void
+    {
+        $uid = $block['_uid'] ?? null;
+        if (is_string($uid) && $uid !== '') {
+            $taken[$uid] = true;
+        }
+        $definition = $this->blocks->get(is_string($block['_block'] ?? null) ? $block['_block'] : '');
+        foreach ($definition === null ? [] : $definition->fields as $name => $field) {
+            foreach (BlockLists::holds($field) ? BlockLists::of($field, $block[$name] ?? null) : [] as $list) {
+                foreach ($list as $child) {
+                    $this->holdUids($child, $taken);
+                }
+            }
+        }
     }
 
     /**
@@ -327,32 +383,34 @@ final readonly class LayoutInput implements InputPart
      * @param array<string, mixed> $block
      * @param array<string, mixed>   $previous the stored block with the same uid and key; [] for a new one
      * @param string                 $at       the block's key in errors ("_areas.<name>.<i>")
+     * @param array<array-key, true> $taken    the uids already held in the value (0.94: nested lists too)
      * @param array<string, Message> $errors
      * @return array<string, mixed>
      */
-    private function kept(BlockDefinition $definition, array $block, array $previous, string $at, array &$errors): array
+    private function kept(BlockDefinition $definition, array $block, array $previous, string $at, array &$taken, array &$errors): array
     {
         foreach ($definition->fields as $name => $field) {
             if (!array_key_exists($name, $block) || !BlockLists::holds($field)) {
                 continue;
             }
             $before = BlockLists::of($field, $previous[$name] ?? null);
-            $block[$name] = BlockLists::map($field, $block[$name], function (array $list, string $path) use ($before, $at, $name, &$errors): array {
-                return $this->keptList($list, $before[$path] ?? [], $at . '.' . $name . ($path === '' ? '' : '.' . $path), $errors);
+            $block[$name] = BlockLists::map($field, $block[$name], function (array $list, string $path) use ($before, $at, $name, &$taken, &$errors): array {
+                return $this->keptList($list, $before[$path] ?? [], $at . '.' . $name . ($path === '' ? '' : '.' . $path), $taken, $errors);
             });
         }
 
-        return FieldVisibility::keepStored($definition->fields, $block, $previous);
+        return HiddenBlockFields::keepStored($definition, FieldVisibility::keepStored($definition->fields, $block, $previous), $previous);
     }
 
     /**
      * @param list<array<string, mixed>> $list
      * @param list<array<string, mixed>> $previous the stored list
      * @param string                     $at       the list's key in errors ("_areas.<name>.<i>.<field>")
+     * @param array<array-key, true>     $taken    the uids already held in the value
      * @param array<string, Message>     $errors
      * @return list<array<string, mixed>>
      */
-    private function keptList(array $list, array $previous, string $at, array &$errors): array
+    private function keptList(array $list, array $previous, string $at, array &$taken, array &$errors): array
     {
         $byUid = [];
         foreach ($previous as $block) {
@@ -370,10 +428,15 @@ final readonly class LayoutInput implements InputPart
                 $errors[$here . '._uid'] = self::uidFormat($uid);
                 $out[] = $block;
                 continue;
+            } elseif (isset($taken[$uid])) {
+                $errors[$here . '._uid'] = new Message('validation.layout.uid_twice', ['uid' => $uid]);
+                $out[] = $block;
+                continue;
             }
+            $taken[$uid] = true;
             $definition = $this->blocks->get((string) ($block['_block'] ?? ''));
             $was = $byUid[$uid] ?? [];
-            $out[] = $definition === null ? $block : $this->kept($definition, $block, ($was['_block'] ?? null) === $definition->key ? $was : [], $here, $errors);
+            $out[] = $definition === null ? $block : $this->kept($definition, $block, ($was['_block'] ?? null) === $definition->key ? $was : [], $here, $taken, $errors);
         }
 
         return $out;

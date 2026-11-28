@@ -1,0 +1,2 @@
+<article class="job-card" data-type="{{ type }}" data-view="{{ view }}" data-locale="{{ locale }}" data-preview="{{ flag }}"><h2>{{ record.title }}</h2>{% if record.post|default('') %}<p class="linked">{{ folio_find('post', record.post).title|default('none') }}</p>{% endif %}{{ page_side_effects() }}</article>
+{% apply css %}.job-card { color: rebeccapurple; }{% endapply %}

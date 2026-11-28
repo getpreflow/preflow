@@ -118,8 +118,7 @@ final class ApiFormParityTest extends TestCase
         ]];
         yield 'matrix' => ['matrix', ['matrix' => ['allowed' => ['note']]], ['f' => [['_type' => 'note', 'id' => 'n1'], ['_type' => 'ghost', 'id' => 'g1']]], [['_type' => 'note', 'id' => 'n1']], ['f' => []], [], [
             'stored' => '[{"_type":"note","id":"n1"}]',
-            // "required" is met by "[]" on both paths (MatrixValue stores refs as JSON text).
-            'error' => null,
+            // A required matrix without references is refused on both paths (0.94: MatrixRequired).
         ]];
         // The MergesInput path: a partial write names one area; the layout and the other area are kept.
         $card = ['_uid' => self::UID, '_block' => 'link', 'label' => 'L', 'url' => '/x'];
@@ -183,6 +182,72 @@ final class ApiFormParityTest extends TestCase
             $this->assertSame([], $form, 'neither refuses');
         } else {
             $this->assertSame(is_array($error) ? $error : ['f' => [$error]], $form);
+        }
+    }
+
+    public function test_number_field_refuses_text_through_the_form_and_the_api(): void
+    {
+        $this->writeModel('priced', ['label' => 'Priced', 'fields' => ['price' => ['type' => 'number']]]);
+        $this->working('priced', 'p1', []);
+        $c = $this->app()->container();
+        $dm = $c->get(DataManager::class);
+        $def = $dm->getTypeRegistry()->get('priced');
+        $record = $dm->findType('priced', 'p1') ?? self::fail('no record');
+
+        $request = (new Psr17Factory())->createServerRequest('POST', '/folio/priced/p1')->withParsedBody(['price' => 'abc', '_locale' => 'en']);
+        $form = $this->errorsOf(static fn () => $c->get(RecordValidator::class)->validate($c->get(DraftRecordFactory::class)->build($def, $request, $record->toArray(), 'en')));
+        $api = $this->errorsOf(static fn () => $dm->saveType($c->get(RecordInput::class)->update($record, ['price' => 'abc'])));
+
+        $this->assertSame(['price' => ['Must be a number.']], $form);
+        $this->assertSame($form, $api, 'the same key and message');
+    }
+
+    public function test_a_number_with_a_step_keeps_its_step_check_and_says_numeric_once(): void
+    {
+        $this->writeModel('priced', ['label' => 'Priced', 'fields' => ['price' => ['type' => 'number', 'step' => 0.5]]]);
+        $this->working('priced', 'p1', []);
+        $dm = $this->app()->container()->get(DataManager::class);
+        $record = $dm->findType('priced', 'p1') ?? self::fail('no record');
+        $input = $this->app()->container()->get(RecordInput::class);
+
+        $text = $this->errorsOf(static fn () => $dm->saveType($input->update($record, ['price' => 'abc'])));
+        $this->assertSame(['Must be a number.'], $text['price'], 'one message');
+        $off = $this->errorsOf(static fn () => $dm->saveType($input->update($record, ['price' => '0.3'])));
+        $this->assertCount(1, $off['price'], 'the step still applies');
+        $this->assertSame([], $this->errorsOf(static fn () => $dm->saveType($input->update($record, ['price' => '1.5'])), false));
+    }
+
+    public function test_required_matrix_refuses_no_references(): void
+    {
+        $this->writeModel('parity', ['label' => 'Parity', 'fields' => ['f' => ['type' => 'matrix', 'validate' => ['required'], 'matrix' => ['allowed' => ['note']]]]]);
+        $this->working('parity', 'm1', []);
+        $c = $this->app()->container();
+        $dm = $c->get(DataManager::class);
+        $def = $dm->getTypeRegistry()->get('parity');
+        $record = $dm->findType('parity', 'm1') ?? self::fail('no record');
+
+        foreach ([[], '[]', ''] as $given) {
+            $request = (new Psr17Factory())->createServerRequest('POST', '/folio/parity/m1')->withParsedBody(['f' => $given, '_locale' => 'en']);
+            $form = $this->errorsOf(static fn () => $c->get(RecordValidator::class)->validate($c->get(DraftRecordFactory::class)->build($def, $request, $record->toArray(), 'en')));
+            $api = $this->errorsOf(static fn () => $dm->saveType($c->get(RecordInput::class)->update($record, ['f' => $given])));
+            $this->assertSame(['f' => ['This field is required.']], $form, var_export($given, true));
+            $this->assertSame($form, $api, 'the same refusal: ' . var_export($given, true));
+        }
+    }
+
+    public function test_optional_matrix_accepts_no_references(): void
+    {
+        $this->writeModel('parity', ['label' => 'Parity', 'fields' => ['f' => ['type' => 'matrix', 'matrix' => ['allowed' => ['note']]]]]);
+        $this->working('parity', 'm1', []);
+        $c = $this->app()->container();
+        $dm = $c->get(DataManager::class);
+        $def = $dm->getTypeRegistry()->get('parity');
+        $record = $dm->findType('parity', 'm1') ?? self::fail('no record');
+
+        foreach ([[], '[]', ''] as $given) {
+            $request = (new Psr17Factory())->createServerRequest('POST', '/folio/parity/m1')->withParsedBody(['f' => $given, '_locale' => 'en']);
+            $this->assertSame([], $this->errorsOf(static fn () => $c->get(RecordValidator::class)->validate($c->get(DraftRecordFactory::class)->build($def, $request, $record->toArray(), 'en')), false));
+            $this->assertSame([], $this->errorsOf(static fn () => $dm->saveType($c->get(RecordInput::class)->update($record, ['f' => $given])), false));
         }
     }
 

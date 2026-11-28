@@ -289,6 +289,8 @@ return [
     // Die Vorschau der ganzen Seite im Editor (0.81): die echte Seite, wie Besucher sie nach dem Veröffentlichen sehen.
     'preview' => [
         'mode' => 'Vorschau',
+        'view' => 'Ansicht',
+        'page_view' => 'Seite',
         'live' => 'Live',
         'whole_page' => 'Ganze Seite',
         'whole_page_frame' => 'Vorschau der ganzen Seite',

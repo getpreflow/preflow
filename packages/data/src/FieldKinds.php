@@ -37,7 +37,7 @@ final class FieldKinds
     /** @var array<string, ColumnKind|\Closure(array<string, mixed>): ColumnKind> */
     private array $columns;
 
-    /** @var array<string, \Closure(array<string, mixed>): list<string|\Preflow\Validation\ValidationRule>> field type => its own rules for a field's config */
+    /** @var array<string, \Closure(array<string, mixed>, TypeFieldDefinition=): list<string|\Preflow\Validation\ValidationRule>> field type => its own rules for a field's config */
     private array $rules = [];
 
     /** @var array<string, FieldValue> field type => its value */
@@ -122,9 +122,11 @@ final class FieldKinds
      * record runs them after the field's "validate" (DataManager::validate(), saveType()), so Folio,
      * the REST API, imports and seeds check the same values; a field its show_when hides is not
      * checked, and rules a caller gives for the field replace them, as they replace "validate".
-     * Replaces an earlier registration for the type.
+     * Replaces an earlier registration for the type. Since 0.94 the closure is also given the field
+     * itself as a second argument (a check that depends on the field's "validate", such as a
+     * required list); a closure that declares one parameter is called as before.
      *
-     * @param \Closure(array<string, mixed>): list<string|\Preflow\Validation\ValidationRule> $rules
+     * @param \Closure(array<string, mixed>, TypeFieldDefinition=): list<string|\Preflow\Validation\ValidationRule> $rules
      * @since 0.91.0
      */
     public function rules(string $fieldType, \Closure $rules): void
@@ -143,7 +145,7 @@ final class FieldKinds
     {
         $rules = $this->rules[$field->type] ?? null;
 
-        return $rules === null ? [] : $rules($field->config);
+        return $rules === null ? [] : $rules($field->config, $field);
     }
 
     /**

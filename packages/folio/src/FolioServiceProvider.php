@@ -179,7 +179,7 @@ final class FolioServiceProvider extends ServiceProvider
                 // model (preflow/blocks' own boot check remembers its result by the model files and
                 // classes, which do not include extension models).
                 \Preflow\Blocks\Layouts\TypeLayouts::fromSchema($schema['key'], $types->schema($schema['key']));
-            } catch (\RuntimeException $e) {
+            } catch (\RuntimeException | \InvalidArgumentException $e) {
                 throw new \Preflow\Folio\Extension\ExtensionException("{$what} \"{$schema['key']}\": {$e->getMessage()}", 0, $e);
             }
         }
@@ -192,14 +192,13 @@ final class FolioServiceProvider extends ServiceProvider
         $this->registerLabelKeys($container, $modelsPath, $labelSources, $types, $catalog);
         $folioCfg = $this->folioConfig($app);
         // Folio's answers to the blocks' questions, unless the app bound its own (preflow/blocks fills the rest at boot).
+        $appTranslator = static fn (): ?\Preflow\I18n\Translator => $container->bound(\Preflow\I18n\Translator::class) ? $container->get(\Preflow\I18n\Translator::class) : null;
         if (!$container->bound(\Preflow\Blocks\BlockPreviewMarks::class)) {
-            $container->singleton(\Preflow\Blocks\BlockPreviewMarks::class, static fn (): \Preflow\Blocks\BlockPreviewMarks => new \Preflow\Folio\Content\FolioBlockPreviewMarks(
-                static fn (): ?\Preflow\I18n\Translator => $container->bound(\Preflow\I18n\Translator::class) ? $container->get(\Preflow\I18n\Translator::class) : null,
-            ));
+            $container->singleton(\Preflow\Blocks\BlockPreviewMarks::class, static fn (): \Preflow\Blocks\BlockPreviewMarks => new \Preflow\Folio\Content\FolioBlockPreviewMarks($appTranslator));
         }
         // Linked records a template marks with preview_mark() (0.92): opened in the drawer from the preview.
         if (!$container->bound(\Preflow\Blocks\RecordPreviewMarks::class)) {
-            $container->singleton(\Preflow\Blocks\RecordPreviewMarks::class, static fn (): \Preflow\Blocks\RecordPreviewMarks => new \Preflow\Folio\Content\FolioRecordPreviewMarks($displayLabels));
+            $container->singleton(\Preflow\Blocks\RecordPreviewMarks::class, static fn (): \Preflow\Blocks\RecordPreviewMarks => new \Preflow\Folio\Content\FolioRecordPreviewMarks($displayLabels, $appTranslator));
         }
 
         // Rebuilt on the next request; Settings → Cache and cache:clear list it (and the blocks cache, preflow/blocks').
@@ -820,6 +819,8 @@ final class FolioServiceProvider extends ServiceProvider
             areasEditor: self::areasEditor($c, $prefix),
             // The form's own checks (0.93): its input rules; RecordWriter's other saves and publishing run the bound RecordChecks.
             formChecks: new \Preflow\Folio\Publishing\FolioFormChecks($c->get(\Preflow\Folio\Content\RecordValidator::class)),
+            // The types' preview views (0.94): the live preview pane and its view switch.
+            typePreviews: self::typePreviews($c),
             reviewIndex: $c->get(\Preflow\I18n\Machine\ReviewIndex::class),
             worker: $c->get(\Preflow\I18n\Machine\TranslationWorker::class),
             seo: $c->bound(\Preflow\View\Seo\SeoConfig::class) ? $c->get(\Preflow\View\Seo\SeoConfig::class) : null,
@@ -930,6 +931,10 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(DraftRecordFactory::class),
             $c->get(\Preflow\View\AssetCollector::class),
             $c->get(\Preflow\Folio\Http\AdminAssetUrls::class),
+            // A type with "preview" (0.94): its views (preflow/blocks), on a canvas Folio's engine renders.
+            self::typePreviews($c),
+            self::previewCanvas($c),
+            $c->get(\Preflow\Folio\Content\DisplayLabels::class),
         ));
         // The whole-page preview (core's Application::preview()) and its "View as" control.
         $container->bind(\Preflow\Folio\Http\ViewAs::class, fn (Container $c) => new \Preflow\Folio\Http\ViewAs(
@@ -2717,6 +2722,40 @@ final class FolioServiceProvider extends ServiceProvider
         return $blocks instanceof BlocksFieldType
             ? new \Preflow\Folio\Field\AreasEditor($c->get(\Preflow\Folio\View\FolioEngine::class), $blocks, $c->get(BlockRegistry::class), $prefix)
             : null;
+    }
+
+    /**
+     * The types' previews (0.94, preflow/blocks' TypePreviews), only where the canvas can render them
+     * (previewCanvas()): the form's pane (AdminController::previewViews()) and the preview
+     * (PreviewController::typePreview()) read them from here, so both agree. Null without the blocks
+     * binding or without a component layer.
+     */
+    private static function typePreviews(Container $c): ?\Preflow\Blocks\Preview\TypePreviews
+    {
+        return $c->bound(\Preflow\Blocks\Preview\TypePreviews::class) && $c->bound(\Preflow\Components\ComponentRenderer::class)
+            ? $c->get(\Preflow\Blocks\Preview\TypePreviews::class)
+            : null;
+    }
+
+    /**
+     * The type preview's canvas (0.94): preflow/blocks' PreviewCanvas over Folio's engine, so
+     * @folio/frontend/preview-canvas.twig (the site's resources/folio first) resolves on any app engine;
+     * the component renders through the app's ComponentRenderer as on a page. Null without a component layer.
+     */
+    private static function previewCanvas(Container $c): ?\Preflow\Blocks\Preview\PreviewCanvas
+    {
+        if (!$c->bound(\Preflow\Components\ComponentRenderer::class)) {
+            return null;
+        }
+        $map = $c->bound(\Preflow\Components\ComponentMap::class) ? $c->get(\Preflow\Components\ComponentMap::class) : null;
+
+        return new \Preflow\Blocks\Preview\PreviewCanvas(
+            $c,
+            $c->get(\Preflow\Components\ComponentRenderer::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
+            $map instanceof \Preflow\Components\ComponentMap ? $map : new \Preflow\Components\ComponentMap([]),
+            $c->bound(\Preflow\View\AssetCollector::class) ? $c->get(\Preflow\View\AssetCollector::class) : null,
+        );
     }
 
     /** The types' page layouts (0.92): bound in preflow/blocks' boot when there is a type registry. */

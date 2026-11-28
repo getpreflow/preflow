@@ -342,6 +342,42 @@ final class ModelExtensionTest extends TestCase
         $this->app();
     }
 
+    /** A malformed show_when throws an InvalidArgumentException, not a RuntimeException: it still names the extension model (0.94). */
+    #[RunInSeparateProcess]
+    public function test_an_extension_models_malformed_show_when_keeps_its_prefix(): void
+    {
+        $this->members();
+        $member = self::MEMBER;
+        unset($member['users'], $member['list']);
+        $member['fields']['note'] = ['type' => 'string', 'show_when' => ['field' => 'nothing_here', '=' => 'x']];
+        $this->write('app/Folio/Members/models/member.json', (string) json_encode($member));
+
+        $this->expectException(ExtensionException::class);
+        $this->expectExceptionMessageMatches('~^Extension model "member": ~');
+        $this->app();
+    }
+
+    /** A site type's malformed show_when is reported under the site type, not the first extension model (0.94). */
+    #[RunInSeparateProcess]
+    public function test_a_site_types_malformed_show_when_names_the_site_type(): void
+    {
+        $this->members();
+        $this->write('config/models/news.json', (string) json_encode([
+            'key' => 'news',
+            'table' => 'news',
+            'storage' => 'json',
+            'fields' => ['note' => ['type' => 'string', 'show_when' => ['field' => 'nothing_here', '=' => 'x']]],
+        ]));
+
+        try {
+            $this->app();
+            $this->fail('The site type should be refused at boot.');
+        } catch (\Throwable $e) {
+            $this->assertStringStartsWith('Type "news"', $e->getMessage());
+            $this->assertStringNotContainsString('Extension model', $e->getMessage());
+        }
+    }
+
     #[RunInSeparateProcess]
     public function test_site_file_redefining_a_field_fails_at_boot(): void
     {

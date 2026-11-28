@@ -196,7 +196,10 @@ final class PagePreviewController
             $role = $role->by(Contexts::current()->viewer->primaryGuardName());
             $requires[] = ViewAs::PERMISSION;
         }
-        $result = $this->app->preview(Contexts::current(), self::encodedPath($path), $locale, $role, $request, array_values(array_unique($requires)));
+        // The marks' labels in the editor's language (FolioText::locale() on the admin surface), carried
+        // by the context the preview builds on (since 0.94.0).
+        $from = Contexts::current()->with(new \Preflow\Folio\Content\PreviewLabelLanguage(FolioText::locale()));
+        $result = $this->app->preview($from, self::encodedPath($path), $locale, $role, $request, array_values(array_unique($requires)));
 
         return $this->answer($result, $request, $path);
     }

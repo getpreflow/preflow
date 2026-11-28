@@ -37,6 +37,13 @@ final class FieldTypeRulesTest extends TestCase
                 'title' => ['type' => 'string'],
             ],
         ]));
+        file_put_contents($this->dir . '/models/product.json', json_encode([
+            'key' => 'product', 'table' => 'product', 'storage' => 'json', 'id_field' => 'uuid',
+            'fields' => [
+                'name' => ['type' => 'string'],
+                'price' => ['type' => 'number'],
+            ],
+        ]));
     }
 
     protected function tearDown(): void
@@ -88,6 +95,42 @@ final class FieldTypeRulesTest extends TestCase
         [$registry, $dm] = $this->manager();
 
         $this->assertSame([], $this->errors($dm, $registry, ['contact' => 'call me'], ['contact' => []]));
+    }
+
+    public function test_number_field_refuses_text_without_folio(): void
+    {
+        [$registry, $dm] = $this->manager();
+
+        $this->assertSame(['price' => ['Must be a number.']], $this->numberErrors($dm, $registry, 'abc'));
+        foreach (['3.5', '-7', '', null, 12, 4.25] as $ok) {
+            $this->assertSame([], $this->numberErrors($dm, $registry, $ok), var_export($ok, true));
+        }
+
+        $this->expectException(ValidationException::class);
+        $dm->saveType(DynamicRecord::fromArray($registry->get('product'), ['uuid' => 'x1', 'price' => 'abc']));
+    }
+
+    public function test_stored_number_text_reads_null_and_is_kept(): void
+    {
+        [$registry, $dm] = $this->manager();
+        $dm->driver('json')->save('product', 'old', ['uuid' => 'old', 'name' => 'Old', 'price' => 'abc']);
+
+        $record = $dm->findType('product', 'old') ?? self::fail('no record');
+        $field = $registry->get('product')->fields['price'];
+        $this->assertNull($dm->fieldKinds()->valueOf($field)->toOutput($record->get('price'), $field), 'reads as no number');
+        $this->assertSame('abc', $dm->driver('json')->findOne('product', 'old', 'uuid')['price'], 'the stored text is kept by a read');
+    }
+
+    /** @return array<string, list<string>> */
+    private function numberErrors(DataManager $dm, TypeRegistry $registry, mixed $price): array
+    {
+        try {
+            $dm->saveType(DynamicRecord::fromArray($registry->get('product'), ['uuid' => 'p1', 'price' => $price]));
+        } catch (ValidationException $e) {
+            return $e->errors();
+        }
+
+        return [];
     }
 
     /** @return array{TypeRegistry, DataManager} */
