@@ -70,6 +70,21 @@ final class PublishedChangeDatesTest extends PublishingAppTestCase
         $this->assertSame($version, $this->stored('post', 'p1')->get('_version'), 'no change, no new version');
     }
 
+    public function test_a_failed_publish_leaves_the_record_without_the_stored_date(): void
+    {
+        self::at('2026-03-01T08:00:00Z', fn () => $this->working('post', 'p1', ['title' => ['en' => 'Hello']]));
+        $built = \Preflow\Data\DynamicRecord::fromArray($this->stored('post', 'p1')->getType(), ['uuid' => 'p1', 'title' => ['en' => 'Hello']]);
+
+        try {
+            self::at('2026-03-02T08:00:00Z', fn () => $this->publisher()->publish($built, 'ana', 99));
+            $this->fail('published with a stale version');
+        } catch (\Preflow\Publishing\VersionConflict) {
+        }
+
+        $this->assertNull($built->get(ChangeDates::FIELD), 'the date taken for an attempt is not left on the caller\'s record');
+        $this->assertSame('2026-03-01T08:00:00+00:00', $this->stored('post', 'p1')->get(ChangeDates::FIELD));
+    }
+
     public function test_a_types_own_updated_field_is_content_and_each_copy_has_its_own_change_date(): void
     {
         $this->write('config/models/memo.json', (string) json_encode(['key' => 'memo', 'table' => 'memo', 'storage' => 'json', 'publishing' => true, 'fields' => [
