@@ -192,14 +192,18 @@ final class FolioServiceProvider extends ServiceProvider
         $this->registerLabelKeys($container, $modelsPath, $labelSources, $types, $catalog);
         $folioCfg = $this->folioConfig($app);
         // Folio's answers to the blocks' questions, unless the app bound its own (preflow/blocks fills the rest at boot).
+        // The admin's language while a Folio preview renders, for the marks' labels (0.94).
+        $container->singleton(\Preflow\Folio\Content\PreviewLabelLanguage::class, static fn (): \Preflow\Folio\Content\PreviewLabelLanguage => new \Preflow\Folio\Content\PreviewLabelLanguage());
+        $appTranslator = static fn (): ?\Preflow\I18n\Translator => $container->bound(\Preflow\I18n\Translator::class) ? $container->get(\Preflow\I18n\Translator::class) : null;
         if (!$container->bound(\Preflow\Blocks\BlockPreviewMarks::class)) {
             $container->singleton(\Preflow\Blocks\BlockPreviewMarks::class, static fn (): \Preflow\Blocks\BlockPreviewMarks => new \Preflow\Folio\Content\FolioBlockPreviewMarks(
-                static fn (): ?\Preflow\I18n\Translator => $container->bound(\Preflow\I18n\Translator::class) ? $container->get(\Preflow\I18n\Translator::class) : null,
+                $appTranslator,
+                $container->get(\Preflow\Folio\Content\PreviewLabelLanguage::class),
             ));
         }
         // Linked records a template marks with preview_mark() (0.92): opened in the drawer from the preview.
         if (!$container->bound(\Preflow\Blocks\RecordPreviewMarks::class)) {
-            $container->singleton(\Preflow\Blocks\RecordPreviewMarks::class, static fn (): \Preflow\Blocks\RecordPreviewMarks => new \Preflow\Folio\Content\FolioRecordPreviewMarks($displayLabels));
+            $container->singleton(\Preflow\Blocks\RecordPreviewMarks::class, static fn (): \Preflow\Blocks\RecordPreviewMarks => new \Preflow\Folio\Content\FolioRecordPreviewMarks($displayLabels, $appTranslator, $container->get(\Preflow\Folio\Content\PreviewLabelLanguage::class)));
         }
 
         // Rebuilt on the next request; Settings → Cache and cache:clear list it (and the blocks cache, preflow/blocks').
@@ -936,6 +940,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->bound(\Preflow\Blocks\Preview\TypePreviews::class) ? $c->get(\Preflow\Blocks\Preview\TypePreviews::class) : null,
             self::previewCanvas($c),
             $c->get(\Preflow\Folio\Content\DisplayLabels::class),
+            $c->get(\Preflow\Folio\Content\PreviewLabelLanguage::class),
         ));
         // The whole-page preview (core's Application::preview()) and its "View as" control.
         $container->bind(\Preflow\Folio\Http\ViewAs::class, fn (Container $c) => new \Preflow\Folio\Http\ViewAs(
@@ -954,6 +959,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Http\AdminAssetUrls::class),
             $c->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
             $c->bound(\Preflow\Core\Http\NonPublicPaths::class) ? $c->get(\Preflow\Core\Http\NonPublicPaths::class) : null,
+            $c->get(\Preflow\Folio\Content\PreviewLabelLanguage::class),
         ));
         $container->bind(AssetController::class, fn (Container $c) => new AssetController(
             dirname(__DIR__) . '/assets',

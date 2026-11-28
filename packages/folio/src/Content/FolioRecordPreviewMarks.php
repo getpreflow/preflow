@@ -15,14 +15,22 @@ use Preflow\Blocks\RecordPreviewMarks;
  */
 final class FolioRecordPreviewMarks implements RecordPreviewMarks
 {
-    public function __construct(private readonly DisplayLabels $labels) {}
+    /** @param (\Closure(): ?\Preflow\I18n\Translator)|null $translator the app's translator, resolved on use */
+    public function __construct(
+        private readonly DisplayLabels $labels,
+        private readonly ?\Closure $translator = null,
+        /** The admin's language of the preview being rendered (since 0.94.0); null: the label as the render has it. */
+        private readonly ?PreviewLabelLanguage $language = null,
+    ) {}
 
     public function attributes(string $type, string $id): array
     {
+        $language = $this->language?->get();
+        $translator = $language !== null && $this->translator !== null ? ($this->translator)() : null;
         return [
             'data-folio-record' => $type,
             'data-folio-record-id' => $id,
-            'data-folio-label' => $this->labels->one($type),
+            'data-folio-label' => $translator !== null ? $this->labels->oneIn($type, $language, $translator) : $this->labels->one($type),
         ];
     }
 }

@@ -77,6 +77,49 @@ final class LinkedRecordPreviewTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_mark_labels_use_the_admins_language(): void
+    {
+        $this->write('lang/de/site.php', "<?php return ['types' => ['note' => ['singular' => 'Notiz']]];");
+        $this->signIn('admin');
+        $this->session->container()->get(\Preflow\Folio\Users\UserPreferences::class)->setLocale('admin@site.test', 'de');
+        $this->working('note', 'n1', ['name' => 'Opening hours']);
+        $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello']]);
+        $german = 'data-folio-record="note" data-folio-record-id="n1" data-folio-label="Notiz"';
+
+        // The page's locale is English, the editor's language German: the label follows the editor.
+        $live = (string) $this->send('POST', '/folio/post/p1/preview', ['title' => 'Hello', 'slug' => 'hello', '_locale' => 'en'])->getBody();
+        $this->assertStringContainsString('<aside class="teaser" ' . $german . '>', $live, 'the live preview');
+
+        $page = $this->send('GET', '/folio/preview/page/post/p1');
+        $this->assertSame(200, $page->getStatusCode());
+        $this->assertStringContainsString('<aside class="teaser" ' . $german . '>', (string) $page->getBody(), 'the whole-page preview');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_mark_labels_after_the_render_are_reset(): void
+    {
+        $this->write('lang/de/site.php', "<?php return ['types' => ['note' => ['singular' => 'Notiz']]];");
+        $this->signIn('admin');
+        $this->session->container()->get(\Preflow\Folio\Users\UserPreferences::class)->setLocale('admin@site.test', 'de');
+        $this->working('note', 'n1', ['name' => 'Opening hours']);
+        $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello']]);
+
+        $this->send('POST', '/folio/post/p1/preview', ['title' => 'Hello', 'slug' => 'hello', '_locale' => 'en']);
+        $language = $this->session->container()->get(\Preflow\Folio\Content\PreviewLabelLanguage::class);
+        $this->assertNull($language->get(), 'unset when the render is over');
+
+        // Outside a preview the marks translate as before (Folio's English texts in a visitor's render).
+        $marks = $this->session->container()->get(\Preflow\Blocks\RecordPreviewMarks::class);
+        $this->assertSame('Note', $marks->attributes('note', 'n1')['data-folio-label']);
+        $block = new \Preflow\Folio\Content\FolioBlockPreviewMarks(fn () => $this->session->container()->get(\Preflow\I18n\Translator::class), $language);
+        $def = new \Preflow\Blocks\BlockDefinition('x', 'folio.layout.log_out', 'g', null, null, 'X', false, []);
+        $this->assertSame('Log out', $block->attributes($def, ['_uid' => 'u'])['data-folio-label']);
+        $language->set('de');
+        $this->assertNotSame('Log out', $block->attributes($def, ['_uid' => 'u'])['data-folio-label'], 'a block label in the admin\'s language');
+        $language->set(null);
+    }
+
+    #[RunInSeparateProcess]
     public function test_preview_mark_prints_nothing_on_a_visit_or_a_share_link_preview(): void
     {
         $this->signIn('admin');

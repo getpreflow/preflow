@@ -72,6 +72,7 @@ final class TypePreviewTest extends TestCase
             'fields' => ['title' => ['type' => 'string'], 'slug' => ['type' => 'string'], 'status' => ['type' => 'string']],
             'preview' => ['component' => JobCard::class],
         ]);
+        $this->writeModel('marked', ['label' => 'Marked', 'publishing' => false, 'fields' => ['title' => ['type' => 'string']], 'preview' => ['component' => \Preflow\Folio\Tests\Fixtures\Preview\PreviewMarked::class]]);
         $this->writeModel('broken', [
             'label' => 'Broken', 'publishing' => false,
             'fields' => ['title' => ['type' => 'string']],
@@ -99,6 +100,7 @@ final class TypePreviewTest extends TestCase
         $this->working('memo', 'm1', ['title' => 'A memo']);
         $this->working('event', 'e1', ['title' => 'Draft party', 'slug' => 'party', 'status' => 'draft']);
         $this->working('broken', 'b1', ['title' => 'Broken']);
+        $this->working('marked', 'k1', ['title' => 'K']);
         $this->working('note', 'n1', ['name' => 'A note']);
         $hash = password_hash('secret', PASSWORD_DEFAULT);
         $this->write('config/auth.php', "<?php\nreturn " . var_export([
@@ -152,6 +154,20 @@ final class TypePreviewTest extends TestCase
         $body = (string) $this->preview('/folio/job/j1/preview', ['_locale' => 'en', 'title' => 'Cook', 'post' => 'p1'])->getBody();
 
         $this->assertStringContainsString('<p class="linked">Draft</p>', $body, 'the linked post\'s working copy, not its published "Hello"');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_mark_labels_use_the_admins_language(): void
+    {
+        $this->write('lang/de/site.php', "<?php return ['types' => ['note' => ['singular' => 'Notiz']]];");
+        $this->signIn('admin@site.test');
+        $this->session->container()->get(\Preflow\Folio\Users\UserPreferences::class)->setLocale('admin@site.test', 'de');
+
+        $response = $this->preview('/folio/marked/k1/preview', ['_locale' => 'en', 'title' => 'K']);
+        $body = (string) $response->getBody();
+        $this->assertSame(200, $response->getStatusCode(), $response->getStatusCode() . ' ' . $response->getHeaderLine('Location'));
+
+        $this->assertStringContainsString('data-folio-record="note" data-folio-record-id="n1" data-folio-label="Notiz"', $body, 'the editor\'s language, the page\'s is English');
     }
 
     #[RunInSeparateProcess]

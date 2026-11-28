@@ -83,6 +83,19 @@ final class DisplayLabels
         return $this->singular($type) ?? (FolioText::locale() === 'en' ? self::guessSingular($this->type($type)) : $this->type($type));
     }
 
+    /**
+     * The type's label for one record in $locale, from $translator (the admin's language in a preview
+     * that renders as a visitor): as one() for that language.
+     *
+     * @since 0.94.0
+     */
+    public function oneIn(string $type, string $locale, Translator $translator): string
+    {
+        $singular = Labels::resolve($translator, ModelLabelKeys::singular($this->group($type), $type), $this->catalog->get($type)?->singular, $locale);
+
+        return $singular ?? ($locale === 'en' ? self::guessSingular($this->typeIn($type, $locale, $translator)) : $this->typeIn($type, $locale, $translator));
+    }
+
     private static function guessSingular(string $label): string
     {
         return match (true) {

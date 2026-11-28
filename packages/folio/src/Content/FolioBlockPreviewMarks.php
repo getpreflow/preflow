@@ -21,7 +21,11 @@ use Preflow\I18n\Translator;
 final class FolioBlockPreviewMarks implements BlockPreviewMarks
 {
     /** @param (\Closure(): ?Translator)|null $translator the app's translator, resolved on use */
-    public function __construct(private readonly ?\Closure $translator = null) {}
+    public function __construct(
+        private readonly ?\Closure $translator = null,
+        /** The admin's language of the preview being rendered (since 0.94.0); null: Folio's texts as the render has them. */
+        private readonly ?PreviewLabelLanguage $language = null,
+    ) {}
 
     public function attributes(BlockDefinition $definition, array $block): array
     {
@@ -33,6 +37,13 @@ final class FolioBlockPreviewMarks implements BlockPreviewMarks
 
     private function label(string $label): string
     {
+        $language = $this->language?->get();
+        if ($language !== null && $this->translator !== null && preg_match('/^[a-z][a-z0-9_-]*(\.[a-z0-9_]+)+$/', $label) === 1) {
+            $text = ($this->translator)()?->get($label, [], $language);
+            if ($text !== null && $text !== $label) {
+                return $text;
+            }
+        }
         $text = FolioText::label($label);
         $translator = $text === $label && $this->translator !== null ? ($this->translator)() : null;
         if ($translator === null || preg_match('/^[a-z][a-z0-9_-]*(\.[a-z0-9_]+)+$/', $label) !== 1) {
