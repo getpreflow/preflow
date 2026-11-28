@@ -12,6 +12,7 @@ use Preflow\Folio\Content\DisplayLabels;
 use Preflow\Folio\Content\FolioBlockPreviewMarks;
 use Preflow\Folio\Content\FolioRecordPreviewMarks;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Folio\Tests\Support\TempRoots;
 
 /**
  * Folio's preview marks with no render frame open (a block rendered directly, a site's test): they never
@@ -38,20 +39,14 @@ final class PreviewMarksOutsideRenderTest extends TestCase
 
     public function test_record_marks_outside_every_render(): void
     {
-        $dir = sys_get_temp_dir() . '/folio-marks-' . bin2hex(random_bytes(4));
-        mkdir($dir);
+        $dir = TempRoots::directory('folio-marks-');
         file_put_contents($dir . '/note.json', (string) json_encode(['key' => 'note', 'label' => 'Notes', 'singular' => 'Note', 'fields' => ['name' => ['type' => 'string']]]));
-        try {
-            $registry = new TypeRegistry($dir);
-            $marks = new FolioRecordPreviewMarks(new DisplayLabels(new TypeCatalog($dir, null, $registry), $registry));
+        $registry = new TypeRegistry($dir);
+        $marks = new FolioRecordPreviewMarks(new DisplayLabels(new TypeCatalog($dir, null, $registry), $registry));
 
-            $this->assertSame(
-                ['data-folio-record' => 'note', 'data-folio-record-id' => 'n1', 'data-folio-label' => 'Note'],
-                $marks->attributes('note', 'n1'),
-            );
-        } finally {
-            @unlink($dir . '/note.json');
-            @rmdir($dir);
-        }
+        $this->assertSame(
+            ['data-folio-record' => 'note', 'data-folio-record-id' => 'n1', 'data-folio-label' => 'Note'],
+            $marks->attributes('note', 'n1'),
+        );
     }
 }
