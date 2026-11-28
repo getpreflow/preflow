@@ -295,7 +295,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
 
     /**
      * Per-instance validation, the core's (BlockValueChecks): keys "<uid>.<field>", nested
-     * "<uid>.<child>.<cuid>.<field>", and "" and "<uid>.<child>" for min/max (BlockCount). A record's
+     * "<uid>.<child>.<cuid>.<field>", and "" and "<uid>.<child>" for min/max (the core's BlockCount). A record's
      * save runs the same checks in the data layer; this is for callers that judge one value.
      *
      * @param array<string, mixed> $config the blocks field's config (allowed/min/max)
@@ -308,7 +308,8 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         foreach ($this->rules($config) as $rule) {
             $result = $rule->validate($list, new \Preflow\Validation\ValidationContext(rtrim($prefix, '.'), []));
             if ($result !== true) {
-                $errors[rtrim($prefix, '.')][] = (string) $result;
+                // The core's count words its message in the admin's language, as the validator would.
+                $errors[rtrim($prefix, '.')][] = $result instanceof \Preflow\Validation\Message ? $result->text(\Preflow\Folio\FolioText::translator()) : (string) $result;
             }
         }
         $checks = $this->valueChecks();
@@ -843,16 +844,16 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
     }
 
     /**
-     * The field's "min" and "max" (BlockCount); the values inside are the core's (BlockValueChecks).
+     * The field's "min" and "max": the core's count (Preflow\Blocks\Rules\BlockCount, since 0.94;
+     * Folio's own before), which these rules replace as the "blocks" kind's check
+     * (CoreFieldRules::SUPERSEDING), so it runs once; the values inside are the core's
+     * (BlockValueChecks).
      *
      * @return list<\Preflow\Validation\ValidationRule>
      */
     public function rules(array $config): array
     {
-        $min = isset($config['min']) ? (int) $config['min'] : null;
-        $max = isset($config['max']) ? (int) $config['max'] : null;
-
-        return $min === null && $max === null ? [] : [new BlockCount($min, $max)];
+        return \Preflow\Blocks\Rules\BlockCount::of($config);
     }
 
     public function assets(): array

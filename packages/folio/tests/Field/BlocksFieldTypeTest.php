@@ -177,6 +177,15 @@ final class BlocksFieldTypeTest extends TestCase
         $this->assertSame([], $this->type()->buildValue('garbage', null, [], $this->ctx()));
     }
 
+    public function test_the_count_is_the_cores_rule(): void
+    {
+        $rules = $this->type()->rules(['min' => 1, 'max' => 2]);
+
+        $this->assertEquals([new \Preflow\Blocks\Rules\BlockCount(1, 2)], $rules, 'the core\'s count (preflow/blocks), Folio\'s field type adds none');
+        $this->assertSame([], $this->type()->rules([]));
+        $this->assertInstanceOf(\Preflow\Blocks\Rules\BlockCount::class, new \Preflow\Folio\Field\Types\BlockCount(1, 2), 'the old name is an alias for one release');
+    }
+
     public function test_validate_blocks_per_instance_and_min_max(): void
     {
         $value = [

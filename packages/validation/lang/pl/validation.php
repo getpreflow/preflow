@@ -70,6 +70,10 @@ return [
         'set_layout' => 'Układ ":key" nie należy do układów zestawu ":set" (:layouts). Wybierz jeden z nich.',
         'areas_value' => 'Musi być obiektem z "layout" (kluczem jednego z układów zestawu lub null) i "areas" (nazwy obszarów, każdy z listą bloków), np. {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
+    'blocks' => [
+        'min' => 'Dodaj co najmniej :count blok.|Dodaj co najmniej :count bloki.|Dodaj co najmniej :count bloków.',
+        'max' => 'Dozwolony najwyżej :count blok.|Dozwolone najwyżej :count bloki.|Dozwolonych najwyżej :count bloków.',
+    ],
     'record' => [
         'unknown_field' => 'Typ ":type" nie ma pola ":field".',
         'unknown_locale' => 'Typ ":type" nie ma języka ":locale". Użyj jednego z: :locales.',

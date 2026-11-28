@@ -7,6 +7,7 @@ namespace Preflow\Blocks\Describe;
 use Preflow\Blocks\BlockDefinition;
 use Preflow\Blocks\BlockLists;
 use Preflow\Blocks\BlockRegistry;
+use Preflow\Blocks\HiddenBlockFields;
 use Preflow\Blocks\Layouts\AreaDefinition;
 use Preflow\Blocks\Layouts\AreaLayout;
 use Preflow\Blocks\Layouts\AreaLayoutSets;
@@ -251,7 +252,10 @@ final readonly class ContentDescription implements DescriptionContributor, Descr
     {
         $fields = [];
         foreach ($block->fields as $name => $field) {
-            $fields[$name] = $this->field($field, $described);
+            // A field declared "hidden": true is no field to an API (0.94, as a type's own).
+            if (!HiddenBlockFields::declared($field)) {
+                $fields[$name] = $this->field($field, $described);
+            }
         }
 
         return [

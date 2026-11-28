@@ -16,7 +16,7 @@ use Preflow\Data\TypeFieldDefinition;
  * Folio's field types' rules, given to the core (0.92), so every write path checks them once —
  * Folio's form, imports, seeds and REST alike — and Folio's RecordValidator merges none of them:
  *
- * - a type's rules() (number's step, tags' limits, a blocks field's min/max, a site's own field
+ * - a type's rules() (number's step, tags' limits, a blocks field's min/max (the core's), a site's own field
  *   types) as the core checks of its kind (FieldKinds::rules()), where no core package registered
  *   checks for that kind already; a type whose form takes fewer shapes than it stores and reads
  *   (Preflow\Data\HasStoredRules, 0.92.1) gives its storedRules() instead, so saveType() from
@@ -30,7 +30,8 @@ use Preflow\Data\TypeFieldDefinition;
  * Select options are the core's own (SelectRules). FolioServiceProvider calls register() once at
  * boot; code that builds Folio's pieces by hand (a test) calls it itself, once per DataManager. A
  * kind is told only while no core package registered it (FieldKinds::hasRules()), except number
- * (the core's numeric check is replaced by Folio's, which adds "step"), so calling it
+ * (the core's numeric check is replaced by Folio's, which adds "step") and blocks (the core's count,
+ * which Folio's type gives as its rules), so calling it
  * again adds no rule twice; a RecordRules or BlockValueChecks given twice gets its rules twice.
  *
  * @since 0.92.0
@@ -39,9 +40,11 @@ final class CoreFieldRules
 {
     /**
      * Kinds whose core rules Folio's type replaces rather than leaves in place: Folio's rules are
-     * the core's plus its own (number: the core's numeric check plus "step").
+     * the core's plus its own (number: the core's numeric check plus "step"; blocks, 0.94: the
+     * core's count, Preflow\Blocks\Rules\BlockCount, which preflow/blocks registers for the kind),
+     * so a core check runs once and Folio's type keeps its place for the kind.
      */
-    private const SUPERSEDING = ['number'];
+    private const SUPERSEDING = ['number', 'blocks'];
 
     public static function register(FieldTypeRegistry $types, FieldKinds $kinds, ?RecordRules $records = null, ?BlockValueChecks $blocks = null): void
     {

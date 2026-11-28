@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 /**
  * Old class names that keep working for one release after their class moved. Loaded by Composer
- * ("autoload.files"). Until 0.95 (deprecated since 0.93.0): Preflow\Folio\Field\HasStoredRules
+ * ("autoload.files"). Until 0.96 (deprecated since 0.94.0): Preflow\Folio\Field\Types\BlockCount
+ * (use Preflow\Blocks\Rules\BlockCount), moved to the core with the blocks field's count. Until 0.95 (deprecated since 0.93.0): Preflow\Folio\Field\HasStoredRules
  * (use Preflow\Data\HasStoredRules) and Preflow\Folio\Field\Types\StoredDate (use
  * Preflow\Data\Validation\StoredDate), moved to the core with date's stored rule. Until 0.93:
  * Preflow\Folio\Field\Types\OptionsFrom (0.92: use
@@ -20,6 +21,8 @@ $aliases = [
     'Preflow\\Folio\\Field\\HasStoredRules' => \Preflow\Data\HasStoredRules::class,
     // @deprecated since 0.93.0, removed no earlier than 0.95: use Preflow\Data\Validation\StoredDate
     'Preflow\\Folio\\Field\\Types\\StoredDate' => \Preflow\Data\Validation\StoredDate::class,
+    // @deprecated since 0.94.0, removed no earlier than 0.96: use Preflow\Blocks\Rules\BlockCount
+    'Preflow\\Folio\\Field\\Types\\BlockCount' => \Preflow\Blocks\Rules\BlockCount::class,
 ];
 
 foreach ($aliases as $old => $new) {

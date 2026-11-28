@@ -70,6 +70,10 @@ return [
         'set_layout' => 'El diseño ":key" no es uno de los diseños del conjunto ":set" (:layouts). Elige uno de ellos.',
         'areas_value' => 'Debe ser un objeto con "layout" (la clave de uno de los diseños del conjunto, o null) y "areas" (nombres de áreas, cada uno con una lista de bloques), como {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
+    'blocks' => [
+        'min' => 'Añade al menos :count bloque.|Añade al menos :count bloques.',
+        'max' => 'Como máximo se permite :count bloque.|Como máximo se permiten :count bloques.',
+    ],
     'record' => [
         'unknown_field' => 'El tipo ":type" no tiene el campo ":field".',
         'unknown_locale' => 'El tipo ":type" no tiene el idioma ":locale". Usa uno de estos: :locales.',

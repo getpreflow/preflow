@@ -9,7 +9,8 @@ use Preflow\Blocks\BlockField;
 
 /**
  * A data-only block with the core values a block may hold: rich text (translatable and not), a
- * number, a relation, a media field, a field shown only for one kind, and nested cards.
+ * number, a relation, a media field, a field shown only for one kind, nested cards and two fields
+ * declared hidden ("hidden": true: no API reads, describes or writes them; 0.94).
  */
 #[Block(key: 'value_card', label: 'Card')]
 final class Card
@@ -37,4 +38,10 @@ final class Card
 
     #[BlockField(type: 'blocks', allowed: ['value_card'])]
     public array $children = [];
+
+    #[BlockField(type: 'string', config: ['hidden' => true])]
+    public string $secret = '';
+
+    #[BlockField(type: 'relation', config: ['relation' => ['to' => 'person'], 'hidden' => true])]
+    public string $keeper = '';
 }

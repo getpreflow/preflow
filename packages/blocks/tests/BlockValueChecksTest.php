@@ -30,12 +30,16 @@ final class BlockValueChecksTest extends BlocksAppTestCase
         parent::setUp();
         $this->write('config/data.php', "<?php\nreturn ['drivers' => ['json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data']], 'default' => 'json', 'models_path' => __DIR__ . '/models'];\n");
         $this->write('config/blocks.php', "<?php\nreturn [\n"
-            . "    'classes' => [\\Preflow\\Blocks\\Tests\\Fixtures\\Checks\\Section::class, \\Preflow\\Blocks\\Tests\\Fixtures\\Checks\\SectionQuote::class],\n"
+            . "    'classes' => [\\Preflow\\Blocks\\Tests\\Fixtures\\Checks\\Section::class, \\Preflow\\Blocks\\Tests\\Fixtures\\Checks\\SectionQuote::class, \\Preflow\\Blocks\\Tests\\Fixtures\\Checks\\QuoteList::class],\n"
             . "    'layouts' => [\\Preflow\\Blocks\\Tests\\Fixtures\\Layouts\\Standard::class, \\Preflow\\Blocks\\Tests\\Fixtures\\Layouts\\Promo::class],\n"
             . "];\n");
         $this->write('config/models/page.json', (string) json_encode([
             'key' => 'page', 'table' => 'page', 'storage' => 'json', 'id_field' => 'uuid',
             'fields' => ['title' => ['type' => 'string'], 'sections' => ['type' => 'blocks']],
+        ]));
+        $this->write('config/models/counted.json', (string) json_encode([
+            'key' => 'counted', 'table' => 'counted', 'storage' => 'json', 'id_field' => 'uuid',
+            'fields' => ['items' => ['type' => 'blocks', 'min' => 1, 'max' => 2], 'lists' => ['type' => 'blocks']],
         ]));
         $this->write('config/models/landing.json', (string) json_encode([
             'key' => 'landing', 'table' => 'landing', 'storage' => 'json', 'id_field' => 'uuid',
@@ -138,6 +142,48 @@ final class BlockValueChecksTest extends BlocksAppTestCase
     public function test_unknown_blocks_are_skipped(): void
     {
         $this->assertSame([], $this->errors('page', ['sections' => [['_uid' => self::A, '_block' => 'retired', 'title' => '']]]));
+    }
+
+    public function test_block_count_without_folio(): void
+    {
+        $quotes = static fn (int $n): array => array_map(static fn (int $i): array => ['_uid' => str_repeat(dechex($i + 1), 16), '_block' => 'section_quote', 'text' => 'Said'], $n === 0 ? [] : range(0, $n - 1));
+        $values = static fn (int $n): array => ['items' => $quotes($n), 'lists' => [['_uid' => self::A, '_block' => 'quote_list', 'quotes' => $quotes($n)]]];
+        $errors = function (array $values): array {
+            $errors = $this->errors('counted', $values);
+            ksort($errors);
+
+            return $errors;
+        };
+
+        $this->assertSame(
+            ['items' => ['Add at least 1 block.'], 'lists.' . self::A . '.quotes' => ['Add at least 1 block.']],
+            $errors($values(0)),
+            'min 1: none is refused, at the top and nested in a block',
+        );
+        $this->assertSame(
+            ['items' => ['At most 2 blocks allowed.'], 'lists.' . self::A . '.quotes' => ['At most 2 blocks allowed.']],
+            $errors($values(3)),
+            'max 2',
+        );
+        $this->assertSame([], $this->errors('counted', $values(1)));
+        $this->assertSame([], $this->errors('counted', $values(2)));
+        $this->assertSame(['items' => ['Add at least 1 block.']], $this->errors('counted', ['items' => '', 'lists' => []]), 'an empty text counts none');
+        $this->assertSame(['items' => ['Add at least 1 block.']], $this->errors('counted', []), 'nor does no value');
+        $this->assertSame(['items' => ['At most 2 blocks allowed.']], $this->errors('counted', ['items' => (string) json_encode($quotes(3))]), 'JSON text is counted');
+    }
+
+    public function test_the_count_rule_counts_a_list_or_its_json_text(): void
+    {
+        $count = new \Preflow\Blocks\Rules\BlockCount(1, 2);
+        $context = new ValidationContext('items', []);
+
+        $this->assertSame('validation.blocks.min', $count->validate(null, $context)->key);
+        $this->assertSame('validation.blocks.min', $count->validate('', $context)->key);
+        $this->assertTrue($count->validate([['_block' => 'a']], $context));
+        $this->assertTrue($count->validate('[{"_block":"a"},{"_block":"b"}]', $context));
+        $this->assertSame('validation.blocks.max', $count->validate([['_block' => 'a'], ['_block' => 'b'], ['_block' => 'c']], $context)->key);
+        $this->assertSame([], \Preflow\Blocks\Rules\BlockCount::of([]), 'no limits: no rule');
+        $this->assertEquals([new \Preflow\Blocks\Rules\BlockCount(1, null)], \Preflow\Blocks\Rules\BlockCount::of(['min' => '1']));
     }
 
     /**

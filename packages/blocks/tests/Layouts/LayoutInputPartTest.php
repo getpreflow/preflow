@@ -24,6 +24,9 @@ final class LayoutInputPartTest extends BlocksAppTestCase
 {
     private const string A = 'aaaaaaaaaaaaaaaa';
     private const string B = 'bbbbbbbbbbbbbbbb';
+    private const string C = 'cccccccccccccccc';
+    private const string D = 'dddddddddddddddd';
+    private const string E = 'eeeeeeeeeeeeeeee';
 
     protected function setUp(): void
     {
@@ -113,6 +116,96 @@ final class LayoutInputPartTest extends BlocksAppTestCase
         } catch (ValidationException $e) {
             $this->assertSame(['_layout' => ['The type "Note" has no field "_layout".']], $e->errors());
         }
+    }
+
+    public function test_hidden_block_field_sent_is_refused(): void
+    {
+        $page = $this->storedPage(['main' => [self::section(self::B, ['secret' => 'kept'])]]);
+
+        try {
+            $this->app()->container()->get(RecordInput::class)->update($page, ['_areas' => ['main' => [self::section(self::B, ['secret' => 'guess'])]]]);
+            self::fail('a hidden block field was taken');
+        } catch (ValidationException $e) {
+            $this->assertSame(['_areas.main.' . self::B . '.secret' => ['The type "Section" has no field "secret".']], $e->errors());
+        }
+
+        $folio = $this->app()->container()->get(LayoutInput::class)->merge($page->getType(), $page->toArray(), ['_areas' => ['main' => [self::section(self::B, ['secret' => 'edited'])]]], hiddenFields: true);
+        $this->assertSame('edited', $folio['_areas']['main'][0]['secret'], 'an admin form that edits hidden fields gives them (Folio)');
+    }
+
+    public function test_block_written_without_its_hidden_field_keeps_the_stored_value(): void
+    {
+        $page = $this->storedPage(['main' => [self::section(self::B, ['secret' => 'kept'])]]);
+
+        $written = $this->app()->container()->get(RecordInput::class)->update($page, ['_areas' => ['main' => [self::section(self::B, ['title' => ['en' => 'Edited']]), self::section(self::C)]]])->toArray();
+
+        $this->assertSame('kept', $written['_areas']['main'][0]['secret']);
+        $this->assertSame(['en' => 'Edited'], $written['_areas']['main'][0]['title']);
+        $this->assertArrayNotHasKey('secret', $written['_areas']['main'][1], 'a new block has none');
+    }
+
+    public function test_doubled_uid_in_a_nested_list_is_refused(): void
+    {
+        $page = $this->storedPage([]);
+
+        $this->assertSame(
+            ['_areas.main.0.quotes.1._uid' => [self::twice(self::C)]],
+            $this->refusals($page, ['_areas' => ['main' => [self::section(self::B, ['quotes' => [self::quote(self::C), self::quote(self::C)]])]]]),
+        );
+        $this->assertSame(
+            ['_areas.main.1.quotes.0._uid' => [self::twice(self::C)]],
+            $this->refusals($page, ['_areas' => ['main' => [self::section(self::B, ['quotes' => [self::quote(self::C)]]), self::section(self::D, ['quotes' => [self::quote(self::C)]])]]]),
+            'in the nested lists of two blocks',
+        );
+    }
+
+    public function test_nested_uid_equal_to_a_top_level_uid_is_refused(): void
+    {
+        $page = $this->storedPage(['hero' => [self::section(self::A, ['quotes' => [self::quote(self::E)]])]]);
+
+        $this->assertSame(
+            ['_areas.main.0.quotes.0._uid' => [self::twice(self::B)]],
+            $this->refusals($page, ['_areas' => ['main' => [self::section(self::B, ['quotes' => [self::quote(self::B)]])]]]),
+        );
+        $this->assertSame(
+            ['_areas.main.0.quotes.0._uid' => [self::twice(self::E)]],
+            $this->refusals($page, ['_areas' => ['main' => [self::section(self::B, ['quotes' => [self::quote(self::E)]])]]]),
+            'a nested uid an area the write does not name holds',
+        );
+    }
+
+    /** @param array<string, list<array<string, mixed>>> $areas */
+    private function storedPage(array $areas): DynamicRecord
+    {
+        $this->data()->saveType(DynamicRecord::fromArray($this->types()->get('page'), ['uuid' => 'p1', 'title' => 'About', 'slug' => 'about', '_layout' => 'landing', '_areas' => $areas]), validate: false);
+
+        return $this->data()->findType('page', 'p1') ?? self::fail('no page');
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     * @return array<string, list<string>>
+     */
+    private function refusals(DynamicRecord $page, array $body): array
+    {
+        try {
+            $this->app()->container()->get(RecordInput::class)->update($page, $body);
+        } catch (ValidationException $e) {
+            return $e->errors();
+        }
+
+        return [];
+    }
+
+    private static function twice(string $uid): string
+    {
+        return 'The uid "' . $uid . '" is given to more than one block. Give each block its own "_uid", or leave it out for a new one.';
+    }
+
+    /** @return array<string, mixed> */
+    private static function quote(string $uid): array
+    {
+        return ['_uid' => $uid, '_block' => 'section_quote', 'text' => 'Said'];
     }
 
     /** @param array<string, mixed> $values */

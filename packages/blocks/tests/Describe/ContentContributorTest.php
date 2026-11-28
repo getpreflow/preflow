@@ -81,6 +81,10 @@ final class ContentContributorTest extends BlocksAppTestCase
 
         $fields = $description['blocks']['section']['fields'];
         foreach ($section->fields as $name => $field) {
+            if (($field->config['hidden'] ?? false) === true) {
+                $this->assertArrayNotHasKey($name, $fields, "{$name}: declared hidden, not described (0.94)");
+                continue;
+            }
             $shape = $kinds->valueOf($field)->shape($field);
             $this->assertSame($shape, $fields[$name]['value'], $name);
             $this->assertArrayHasKey($shape, $description['values'], "{$name}: its shape is in \"values\"");

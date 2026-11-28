@@ -82,6 +82,11 @@ return [
         'set_layout' => 'The layout ":key" is not one of the layouts of the set ":set" (:layouts). Choose one of them.',
         'areas_value' => 'Must be an object with "layout" (the key of one of the set\'s layouts, or null) and "areas" (area names, each with a list of blocks), such as {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
+    // A blocks field's "min" and "max" (preflow/blocks, 0.94): :count the limit.
+    'blocks' => [
+        'min' => 'Add at least :count block.|Add at least :count blocks.',
+        'max' => 'At most :count block allowed.|At most :count blocks allowed.',
+    ],
     'record' => [
         'unknown_field' => 'The type ":type" has no field ":field".',
         'unknown_locale' => 'The type ":type" has no language ":locale". Use one of: :locales.',

@@ -70,6 +70,10 @@ return [
         'set_layout' => 'De lay-out ":key" hoort niet bij de lay-outs van de set ":set" (:layouts). Kies er een van.',
         'areas_value' => 'Moet een object zijn met "layout" (de sleutel van een lay-out van de set, of null) en "areas" (namen van gebieden, elk met een lijst blokken), zoals {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
+    'blocks' => [
+        'min' => 'Voeg minstens :count blok toe.|Voeg minstens :count blokken toe.',
+        'max' => 'Hoogstens :count blok toegestaan.|Hoogstens :count blokken toegestaan.',
+    ],
     'record' => [
         'unknown_field' => 'Het type ":type" heeft geen veld ":field".',
         'unknown_locale' => 'Het type ":type" heeft geen taal ":locale". Gebruik een van: :locales.',

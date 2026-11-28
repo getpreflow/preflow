@@ -70,6 +70,10 @@ return [
         'set_layout' => '레이아웃 ":key"은(는) 세트 ":set"의 레이아웃(:layouts)에 없습니다. 그중 하나를 선택하세요.',
         'areas_value' => '"layout"(세트 레이아웃 중 하나의 키 또는 null)과 "areas"(영역 이름마다 블록 목록)를 가진 객체여야 합니다. 예: {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}.',
     ],
+    'blocks' => [
+        'min' => '블록을 최소 :count개 추가하세요.',
+        'max' => '블록은 최대 :count개까지 허용됩니다.',
+    ],
     'record' => [
         'unknown_field' => '":type" 유형에는 ":field" 필드가 없습니다.',
         'unknown_locale' => '":type" 유형에는 ":locale" 언어가 없습니다. 다음 중 하나를 사용하세요: :locales.',

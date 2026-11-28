@@ -94,6 +94,15 @@ final class ContentDescriptionTest extends BlocksAppTestCase
         $this->assertSame(['_layout', '_areas'], array_keys($layouts['values']));
     }
 
+    public function test_hidden_block_field_is_not_described(): void
+    {
+        $fields = $this->description()['blocks']['section']['fields'];
+
+        $this->assertArrayNotHasKey('secret', $fields, 'a block field declared hidden is no field to an API');
+        $this->assertArrayHasKey('quotes', $fields, 'the others are');
+        $this->assertArrayNotHasKey('secret', $this->app()->container()->get(ContentDescription::class)->sections()['blocks']['section']['fields'], 'nor in the one description');
+    }
+
     /** @return array<string, mixed> */
     private function description(): array
     {

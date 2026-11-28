@@ -10,11 +10,14 @@ use Preflow\Blocks\Tests\BlocksAppTestCase;
 use Preflow\Blocks\Values\AreasFieldValue;
 use Preflow\Blocks\Values\BlocksFieldValue;
 use Preflow\Data\DataManager;
+use Preflow\Data\DynamicRecord;
+use Preflow\Data\Records\RecordInput;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Data\Values\CleansOnWrite;
 use Preflow\Data\Values\DescribesShapes;
 use Preflow\Data\Values\ListsReferences;
 use Preflow\Data\Values\MergesInput;
+use Preflow\Validation\ValidationException;
 
 /**
  * The values of a blocks field (shape "blocks") and an areas field (shape "areas_value"),
@@ -184,5 +187,71 @@ final class BlocksFieldValueTest extends BlocksAppTestCase
         $this->assertSame(['person' => ['p1', 'p2', 'p3'], 'asset' => ['i1', 'i2', 'i3']], $this->blocks()->references((string) json_encode($sections), self::blocksField()), 'every block field, nested blocks and columns (each area), each id once');
         $this->assertSame(['person' => ['p3']], $this->areas()->references(['layout' => 'full', 'areas' => ['c1' => [self::card(self::C, ['author' => 'p3'])]]], self::areasField()));
         $this->assertSame([], $this->blocks()->references(null, self::blocksField()));
+    }
+
+    public function test_hidden_block_field_is_not_output(): void
+    {
+        $sections = [self::card(self::A, ['count' => '1', 'secret' => 'code', 'children' => [self::card(self::B, ['secret' => 'inner'])]])];
+
+        $out = $this->blocks()->toOutput($sections, self::blocksField());
+
+        $this->assertArrayNotHasKey('secret', $out[0], 'a block field declared hidden is not read out');
+        $this->assertArrayNotHasKey('secret', $out[0]['children'][0], 'nor in a nested block');
+        $this->assertSame(1, $out[0]['count'], 'the other fields are');
+
+        $columns = $this->areas()->toOutput(['layout' => '1-1', 'areas' => ['c1' => [self::card(self::A, ['secret' => 'code'])], 'c3' => [self::card(self::B, ['secret' => 'kept'])]]], self::areasField());
+        $this->assertArrayNotHasKey('secret', $columns['areas']['c1'][0], 'nor in an area of an areas field');
+        $this->assertArrayNotHasKey('secret', $columns['unplaced']['c3'][0], 'nor in an unplaced one');
+
+        $referencing = [self::card(self::A, ['author' => 'p1', 'keeper' => 'p9'])];
+        $this->assertSame(['person' => ['p1']], $this->blocks()->visibleReferences($referencing, self::blocksField()), 'what a hidden field references is not read out');
+        $this->assertSame(['person' => ['p1', 'p9']], $this->blocks()->references($referencing, self::blocksField()), 'the usage check still counts it');
+    }
+
+    public function test_hidden_block_field_sent_is_refused(): void
+    {
+        $page = $this->app()->container()->get(DataManager::class)->getTypeRegistry()->get('page');
+        try {
+            $this->app()->container()->get(RecordInput::class)->create($page, [
+                'uuid' => 'p1',
+                'sections' => [self::card(self::A, ['secret' => 'guess', 'children' => [self::card(self::B, ['secret' => 'guess'])]])],
+                'columns' => ['layout' => 'full', 'areas' => ['c1' => [self::card(self::C, ['secret' => 'guess'])]]],
+            ]);
+            self::fail('a hidden block field was taken');
+        } catch (ValidationException $e) {
+            $errors = $e->errors();
+        }
+        ksort($errors);
+
+        $this->assertSame([
+            'columns.areas.c1.' . self::C . '.secret' => ['The type "Card" has no field "secret".'],
+            'sections.' . self::A . '.children.' . self::B . '.secret' => ['The type "Card" has no field "secret".'],
+            'sections.' . self::A . '.secret' => ['The type "Card" has no field "secret".'],
+        ], $errors);
+    }
+
+    public function test_block_written_without_its_hidden_field_keeps_the_stored_value(): void
+    {
+        $data = $this->app()->container()->get(DataManager::class);
+        $page = $data->getTypeRegistry()->get('page');
+        $data->saveType(DynamicRecord::fromArray($page, [
+            'uuid' => 'p1',
+            'sections' => [self::card(self::A, ['secret' => 'kept', 'children' => [self::card(self::B, ['secret' => 'inner'])]])],
+            'columns' => ['layout' => 'full', 'areas' => ['c1' => [self::card(self::C, ['secret' => 'column'])]]],
+        ]), validate: false);
+        $record = $data->findType('page', 'p1') ?? self::fail('no page');
+
+        $written = $this->app()->container()->get(RecordInput::class)->update($record, [
+            'sections' => [self::card(self::A, ['count' => '2', 'children' => [self::card(self::B), self::card(self::G)]]), self::card(self::C)],
+            'columns' => ['areas' => ['c1' => [self::card(self::C, ['count' => '1'])]]],
+        ])->toArray();
+
+        $sections = $written['sections'];
+        $this->assertSame('kept', $sections[0]['secret'], 'the stored value of the block with the same uid');
+        $this->assertSame('2', $sections[0]['count']);
+        $this->assertSame('inner', $sections[0]['children'][0]['secret'], 'in a nested block too');
+        $this->assertArrayNotHasKey('secret', $sections[0]['children'][1], 'a new block has none');
+        $this->assertArrayNotHasKey('secret', $sections[1], 'nor a block another list stored under its uid');
+        $this->assertSame('column', $written['columns']['areas']['c1'][0]['secret'], 'in an areas field\'s area too');
     }
 }

@@ -6,6 +6,8 @@ namespace Preflow\Blocks\Values;
 
 use Preflow\Blocks\BlockLists;
 use Preflow\Blocks\BlockRegistry;
+use Preflow\Blocks\HiddenBlockFields;
+use Preflow\Blocks\Layouts\Rules\MessageRule;
 use Preflow\Data\FieldKinds;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Data\Values\CleansOnWrite;
@@ -13,7 +15,11 @@ use Preflow\Data\Values\DescribesShapes;
 use Preflow\Data\Values\FieldValue;
 use Preflow\Data\Values\ListsReferences;
 use Preflow\Data\Values\ListsVisibleReferences;
+use Preflow\Data\Values\MergesInput;
 use Preflow\Data\Values\StoredCleaning;
+use Preflow\Validation\RuleFactory;
+use Preflow\Validation\ValidationException;
+use Preflow\Validation\ValidatorFactory;
 
 /**
  * A "blocks" field's value (0.93), shape "blocks": a list of blocks, each an object with "_uid",
@@ -27,22 +33,27 @@ use Preflow\Data\Values\StoredCleaning;
  *   other input passes through for the rules.
  * - toOutput(): the stored list (JSON text on SQL included) as BlockRegistry::visibleBlock() reads
  *   it (a field its show_when hides is null), each field through its toOutput(); none is [], and
- *   so is a stored value that is no list (reading never writes: it stays as stored).
+ *   so is a stored value that is no list (reading never writes: it stays as stored). A field
+ *   declared "hidden": true is left out (0.94, as a type's own: no API reads it).
+ * - merge() (MergesInput, 0.94: the write class, RecordInput): toStored() of the given list, a
+ *   block field declared hidden refused when given (validation.record.unknown_field at
+ *   "<field>.<uid>.<leaf>", nested lists too) and its stored value kept when the block (matched by
+ *   uid and key) leaves it out. Folio's form builds its value itself and edits such fields.
  * - clean() (on every typed write, StoredCleaning): each block's fields cleaned that clean on
  *   write (rich text), in every list the value holds (BlockLists::map()); a clean value comes back
  *   as given, the same array or the same JSON text, so its bytes and the change date stay; a
  *   cleaned JSON text stays JSON text.
  * - references(): the records every block field references (ListsReferences), by target type, each
  *   id once (a hidden field's too: media's usage check counts them). visibleReferences()
- *   (ListsVisibleReferences, 0.93): the same without the fields their show_when hides, for the
- *   read side.
+ *   (ListsVisibleReferences, 0.93): the same without the fields their show_when hides and (0.94)
+ *   those declared hidden, for the read side.
  *
  * The same walk serves an areas field (AreasFieldValue) and a page's "_areas" through the methods
  * marked @internal.
  *
  * @since 0.93.0
  */
-final class BlocksFieldValue implements FieldValue, CleansOnWrite, ListsReferences, ListsVisibleReferences, DescribesShapes
+final class BlocksFieldValue implements FieldValue, CleansOnWrite, MergesInput, ListsReferences, ListsVisibleReferences, DescribesShapes
 {
     public const array SHAPES = [
         'blocks' => 'A list of blocks: each an object with "_uid", "_block" (a key of "blocks") and its fields, each in its own shape (a translatable one a map of locale => value); [] when none.',
@@ -54,10 +65,13 @@ final class BlocksFieldValue implements FieldValue, CleansOnWrite, ListsReferenc
      * @param \Closure(): BlockRegistry $blocks asked on use: the registry is built on the first
      *        read or write, not when the value is registered
      * @param FieldKinds $kinds the kinds whose values a block's fields use (the DataManager's)
+     * @param (\Closure(): ValidatorFactory)|null $validators words merge()'s refusals (0.94; the app's
+     *        factory, asked on use); null: one without a translator of its own
      */
     public function __construct(
         private readonly \Closure $blocks,
         private readonly FieldKinds $kinds,
+        private readonly ?\Closure $validators = null,
     ) {}
 
     public function toStored(mixed $input, TypeFieldDefinition $field): mixed
@@ -68,6 +82,34 @@ final class BlocksFieldValue implements FieldValue, CleansOnWrite, ListsReferenc
         }
 
         return array_map(fn (mixed $block): mixed => is_array($block) ? $this->storedBlock($block) : $block, $list);
+    }
+
+    /**
+     * The given list stored (toStored()), with each block field declared hidden refused when given
+     * and kept from the stored block of the same uid and key when left out, at any depth.
+     *
+     * @throws ValidationException a hidden field given ("<field>.<uid>.<leaf>")
+     */
+    public function merge(mixed $stored, mixed $input, TypeFieldDefinition $field): mixed
+    {
+        $list = self::decoded($input);
+        if (!is_array($list)) {
+            return $this->toStored($input, $field);
+        }
+        $registry = ($this->blocks)();
+        $refused = HiddenBlockFields::inList($registry, $list, $field->name . '.');
+        if ($refused !== []) {
+            $rules = [];
+            foreach ($refused as $key => $message) {
+                $rules[$key] = [new MessageRule($message)];
+            }
+            $validators = $this->validators !== null ? ($this->validators)() : new ValidatorFactory(new RuleFactory());
+
+            throw new ValidationException($validators->make($rules, [])->validate());
+        }
+        $before = self::decoded($stored);
+
+        return $this->toStored(HiddenBlockFields::keepList($registry, $list, is_array($before) ? array_values(array_filter($before, 'is_array')) : []), $field);
     }
 
     /** @return list<array<string, mixed>> the blocks; none is [], and so is anything stored that is no list */
@@ -176,8 +218,9 @@ final class BlocksFieldValue implements FieldValue, CleansOnWrite, ListsReferenc
     }
 
     /**
-     * A block as an API reads it: visibleBlock() (hidden fields null), each declared field through
-     * its value's toOutput(); a block no class declares as given.
+     * A block as an API reads it: visibleBlock() (fields its show_when hides null), each declared
+     * field through its value's toOutput(), a field declared hidden left out (0.94); a block no
+     * class declares as given.
      *
      * @param array<string, mixed> $block
      * @return array<string, mixed>
@@ -194,6 +237,10 @@ final class BlocksFieldValue implements FieldValue, CleansOnWrite, ListsReferenc
         $hidden = array_flip($registry->hiddenFieldsOf($key, $block));
         $block = $registry->visibleBlock($block);
         foreach ($definition->fields as $name => $field) {
+            if (HiddenBlockFields::declared($field)) {
+                unset($block[$name]);
+                continue;
+            }
             if (!array_key_exists($name, $block) || isset($hidden[$name])) {
                 continue;
             }
@@ -233,7 +280,7 @@ final class BlocksFieldValue implements FieldValue, CleansOnWrite, ListsReferenc
         }
         $hidden = $visible ? array_flip($registry->hiddenFieldsOf($key, $block)) : [];
         foreach ($definition->fields as $name => $field) {
-            if (!array_key_exists($name, $block) || isset($hidden[$name])) {
+            if (!array_key_exists($name, $block) || isset($hidden[$name]) || ($visible && HiddenBlockFields::declared($field))) {
                 continue;
             }
             $value = $this->kinds->valueOf($field);

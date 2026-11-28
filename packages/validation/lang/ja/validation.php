@@ -70,6 +70,10 @@ return [
         'set_layout' => 'レイアウト ":key" はセット ":set" のレイアウト (:layouts) にありません。いずれかを選んでください。',
         'areas_value' => '"layout"（セットのいずれかのレイアウトのキー、または null）と "areas"（エリア名ごとのブロックのリスト）を持つオブジェクトにしてください。例: {"layout": "1-1", "areas": {"c1": [{"_block": "text"}]}}。',
     ],
+    'blocks' => [
+        'min' => 'ブロックを少なくとも :count 個追加してください。',
+        'max' => 'ブロックは最大 :count 個までです。',
+    ],
     'record' => [
         'unknown_field' => 'タイプ「:type」にはフィールド「:field」がありません。',
         'unknown_locale' => 'タイプ「:type」には言語「:locale」がありません。次のいずれかを使ってください: :locales。',
