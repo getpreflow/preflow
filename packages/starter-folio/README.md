@@ -106,6 +106,8 @@ The same routes, paging (12 per page), tokens and errors as `preflow/starter`; s
 - The owner's view adds `_status`: `draft`, `published` or `changed` (published, with edits not yet published). Public reads show the published copy, with `_published_at` (when Folio published it) and `postedOn` ("Posted on").
 - `app/Controllers/Api/ContentController.php` serves the types in its `TYPES` list (`company`) through the core's description, read and write classes: `GET /api/content`, `GET /api/content/company[/<id>]` (`?locale=de`, `?with=media` for the logo's URL and sizes), and `POST`/`PATCH` with a token. Reads show the published copies. Writes need the type's permissions from the roles (`company.create`, `company.edit`) and change only the working copy, as Folio's Save does; `POST /api/content/company/<id>/publish` (`company.publish`) puts it live, as Folio's Publish button does. The demo employer role has none of them.
 
+If you build only the API, delete `app/Components`, `app/pages` and `app/Controllers/Site`, and remove the `"preview"` key from `config/models/job.json` (and `resources/folio/frontend/preview-canvas.twig`): the key names the `JobPreview` component, and Folio refuses to start when a preview names a component that is gone.
+
 ### Make Folio yours
 
 The starter ships one Folio extension, `app/Folio/Jobs`: an "Open jobs" column on the company
@@ -186,8 +188,9 @@ Employers sign in somewhere else (`/employer`) and cannot open Folio.
    - **Description**: write it in Markdown, which is plain text with a few marks: a blank line starts a new paragraph, `**bold**` makes bold text, and a line that starts with `- ` is a bullet point. It needs at least 30 characters.
    - **Slug**: the address of the job. Write the title in lower case with dashes, like `support-engineer`. The job's page will be `/jobs/support-engineer`. Folio will not publish a job without one, and only lower case letters, digits and single dashes are allowed.
    - **Posted on**: today's date. The list shows the newest first, so a job without a date appears after the ones that have one.
-4. Click **Save draft**. Nobody outside Folio sees the job yet.
-5. Click **Publish**. Now the job shows on the job list (`/jobs`), on its own page, on the home page (if it is among the newest six) and on its company's page.
+4. The preview beside the form shows the job as the site shows it. Use **Card** or **List row** to choose how. It updates while you type, and the company shows once you have picked one.
+5. Click **Save draft**. Nobody outside Folio sees the job yet.
+6. Click **Publish**. Now the job shows on the job list (`/jobs`), on its own page, on the home page (if it is among the newest six) and on its company's page.
 
 To take a job down, open it and click **Unpublish**. Your text stays as a draft. After you change a published job, the public page keeps showing the old text until you click **Publish** again. Folio shows the job as **Changed** until then. **Discard changes** throws your edits away.
 
@@ -254,6 +257,7 @@ Ask an admin when you need more. Admins are the staff with the `admin` role.
 | Seeds | `app/Seeds/ContentSeeder.php` (required content: home page and page texts); `DemoSeeder` now also adds staff, logos and news |
 | Blocks | `app/Components/Blocks/{Hero,Text,LatestJobsBlock,LatestNews}` |
 | Folio templates | `resources/folio/frontend/page.twig` and `news.twig`, `app/pages/news/index.twig` |
+| Job preview in Folio | the `"preview"` key in `config/models/job.json`, `app/Components/JobPreview/`, the canvas `resources/folio/frontend/preview-canvas.twig` (loads `app/pages/_site-css.twig`, the CSS the layout shares) |
 | Demo images | `resources/seed/logos/`, `resources/seed/news/` |
 | Other | `app/pages/about-error-boundaries.twig` (the error demo moved off the home page) |
 
