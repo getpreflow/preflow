@@ -10,10 +10,14 @@ use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Data\Records\RecordOutput;
+use Preflow\Data\Records\RecordInput;
 use Preflow\Data\Records\RecordParts;
 use Preflow\Data\Schema\RecordTableSync;
 use Preflow\Data\TypeRegistry;
 use Preflow\Fields\FieldsServiceProvider;
+use Preflow\Validation\RuleFactory;
+use Preflow\Validation\ValidationException;
+use Preflow\Validation\ValidatorFactory;
 
 /**
  * The twelve field types read out by the one read class (RecordOutput, 0.93) in their frozen
@@ -81,6 +85,33 @@ final class FieldsRecordOutputTest extends TestCase
 
         $this->assertSame($expected, $out, $storage);
         $this->assertSame($out, json_decode((string) json_encode($out, JSON_THROW_ON_ERROR), true));
+    }
+
+    public function test_readonly_embed_field_sent_back_as_read_is_accepted(): void
+    {
+        $embed = ['provider' => 'youtube', 'id' => 'dQw4w9WgXcQ', 'url' => 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'poster' => null];
+        file_put_contents($this->dir . '/models/all.json', (string) json_encode([
+            'key' => 'all', 'table' => 'allfields', 'storage' => 'json', 'id_field' => 'uuid',
+            'fields' => ['title' => ['type' => 'string'], 'embedx' => ['type' => 'embed', 'readonly' => true]],
+        ]));
+        $dm = new DataManager(['json' => new JsonFileDriver($this->dir . '/data')], 'json', new TypeRegistry($this->dir . '/models'));
+        FieldsServiceProvider::registerKinds($dm->fieldKinds());
+        $dm->driver('json')->save('allfields', 'r1', ['uuid' => 'r1', 'title' => 'A', 'embedx' => json_encode($embed)]);
+        $record = $dm->findType('all', 'r1') ?? self::fail('no record');
+        $before = $record->toArray();
+
+        $read = json_decode((string) json_encode((new RecordOutput($dm, new RecordParts()))->toArray($record)), true);
+        $input = new RecordInput($dm, new RecordParts(), new ValidatorFactory(new RuleFactory()));
+        $written = $input->update($record, ['title' => 'B', 'embedx' => $read['embedx']]);
+
+        $this->assertSame($before['embedx'], $written->get('embedx'), 'the stored value stays as it is');
+        $this->assertSame('B', $written->get('title'));
+        try {
+            $input->update($record, ['embedx' => ['provider' => 'youtube', 'id' => 'aaaaaaaaaaa', 'url' => 'https://www.youtube.com/watch?v=aaaaaaaaaaa', 'poster' => null]]);
+            self::fail('refused');
+        } catch (ValidationException $e) {
+            $this->assertSame(['embedx'], array_keys($e->errors()));
+        }
     }
 
     /** @param list<string> $types */

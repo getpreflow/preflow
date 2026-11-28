@@ -52,6 +52,24 @@ final class PublishedChangeDatesTest extends PublishingAppTestCase
         $this->assertNotNull($working);
     }
 
+    public function test_unchanged_publish_without_updated_at_keeps_the_date(): void
+    {
+        self::at('2026-03-01T08:00:00Z', fn () => $this->working('post', 'p1', ['title' => ['en' => 'Hello']]));
+        $stored = $this->stored('post', 'p1');
+        $workingDate = $stored->get(ChangeDates::FIELD);
+        // A record built in PHP, without the change date the stored copy has.
+        $built = static fn (): \Preflow\Data\DynamicRecord => \Preflow\Data\DynamicRecord::fromArray($stored->getType(), ['uuid' => 'p1', 'title' => ['en' => 'Hello']]);
+
+        self::at('2026-03-02T08:00:00Z', fn () => $this->publisher()->publish($built(), 'ana'));
+        $version = $this->stored('post', 'p1')->get('_version');
+        $published = $this->snapshotDate('post', 'p1');
+        self::at('2026-03-03T08:00:00Z', fn () => $this->publisher()->publish($built(), 'ana'));
+
+        $this->assertSame($workingDate, $this->stored('post', 'p1')->get(ChangeDates::FIELD), 'the working copy keeps its date');
+        $this->assertSame($published, $this->snapshotDate('post', 'p1'), 'so does the published copy');
+        $this->assertSame($version, $this->stored('post', 'p1')->get('_version'), 'no change, no new version');
+    }
+
     public function test_a_types_own_updated_field_is_content_and_each_copy_has_its_own_change_date(): void
     {
         $this->write('config/models/memo.json', (string) json_encode(['key' => 'memo', 'table' => 'memo', 'storage' => 'json', 'publishing' => true, 'fields' => [

@@ -548,6 +548,11 @@ final class Publisher
             $changed = $stored === null || !$this->sameContent($working, $stored);
             $expected = $loadedVersion ?? (int) ($stored?->get('_version') ?? 0);
             $next = $changed ? $expected + 1 : $expected;
+            // A record built without its change date (not read from storage) would be dated now by the
+            // save: an unchanged publish keeps the stored working copy's date.
+            if (!$changed && $stored !== null && ($working->get(ChangeDates::FIELD) ?? '') === '' && ($stored->get(ChangeDates::FIELD) ?? '') !== '') {
+                $working->set(ChangeDates::FIELD, $stored->get(ChangeDates::FIELD));
+            }
 
             $previous = null;
             $wrote = false;

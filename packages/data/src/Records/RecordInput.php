@@ -279,7 +279,16 @@ final readonly class RecordInput
     private function unchanged(TypeDefinition $def, TypeFieldDefinition $field, mixed $stored, mixed $given, string $locale, bool $translatable): bool
     {
         $value = $this->dm->fieldKinds()->valueOf($field);
-        $same = static fn (mixed $was, mixed $now): bool => $value->toOutput($was, $field) === $value->toOutput($value->toStored($now, $field), $field);
+        $same = static function (mixed $was, mixed $now) use ($value, $field): bool {
+            $read = $value->toOutput($was, $field);
+            // As the client read it: the same JSON (objects and empty maps alike, keys as given), whatever
+            // shape toStored() does not take back (areas carry "resolved", "unplaced").
+            if (self::canonical($read) === self::canonical($now)) {
+                return true;
+            }
+
+            return $read === $value->toOutput($value->toStored($now, $field), $field);
+        };
         if (!$translatable) {
             return $same(LocaleValue::default($stored, $def->locales), $given);
         }
@@ -291,6 +300,20 @@ final readonly class RecordInput
         }
 
         return true;
+    }
+
+    /** A value as JSON text with an empty object and an empty list alike, keys in the order given. */
+    private static function canonical(mixed $value): string
+    {
+        $plain = static function (mixed $v) use (&$plain): mixed {
+            if ($v instanceof \stdClass) {
+                $v = (array) $v;
+            }
+
+            return is_array($v) ? array_map($plain, $v) : $v;
+        };
+
+        return json_encode($plain($value), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION) ?: '';
     }
 
     /** An object whose keys all look like language codes: a value per language. */
