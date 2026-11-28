@@ -88,7 +88,7 @@
             {% set form_attrs = form_attrs|merge({'hx-post': publishing.autosave_url, 'hx-trigger': 'folio:edit delay:3s, folio:save-now', 'hx-target': '#folio-save-state', 'hx-swap': 'outerHTML', 'hx-disabled-elt': 'button[type=submit][form=' ~ record_form ~ '], find button[type=submit]'}) %}
         {% endif %}
         {% set form = form_begin({action: action, csrf_token: csrf, attrs: form_attrs}) %}
-        {{ form.begin()|raw }}{% if preview_view|default(null) %}{# A type with "preview" (0.94): the view the live preview renders ("page": the route's template); the view switch sets it. #}<input type="hidden" name="_preview_view" value="{{ preview_view }}">{% endif %}{{ '' }}
+        {{ form.begin()|raw }}{% if preview_view|default(null) %}{# A type with "preview" (0.94): the view the live preview renders ("page": the route's template); the view switch sets it. #}<input type="hidden" name="_preview_view" value="{{ preview_view }}">{% endif %}
         {% if publishing %}
             <input type="hidden" name="_version" id="folio-version" value="{{ publishing.version }}">
         {% endif %}

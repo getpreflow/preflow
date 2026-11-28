@@ -495,6 +495,12 @@ binds `TypePreviews` and `PreviewCanvas` only when they are unbound, so a site m
 Folio's form uses the same classes for its live preview of such types, with its own canvas
 (see preflow/folio, "Type preview").
 
+**The shape of `record` is the caller's choice.** Folio's pane passes its `Content\RecordRenderer::values()`:
+the values a page template reads. The snippet above passes `RecordOutput::toArray()`: the record as
+the API outputs it. These two shapes can differ for the same record. If a component is used in Folio's
+pane and in your own endpoint, it must accept both shapes, or your endpoint must pass the template
+values as Folio does.
+
 ## Configuration
 
 `config/blocks.php` (a missing file means the defaults):
