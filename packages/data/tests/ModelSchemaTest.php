@@ -11,6 +11,7 @@ use Preflow\Data\Tests\Fixtures\ModelSchema\ApiClient;
 use Preflow\Data\Tests\Fixtures\ModelSchema\Job;
 use Preflow\Data\TypeRegistry;
 use Preflow\Data\Tests\Fixtures\ModelSchema\PlainPost;
+use Preflow\Data\Tests\Fixtures\ModelSchema\PreviewJob;
 use Preflow\Data\Tests\Fixtures\ModelSchema\UntypedArray;
 use Preflow\Data\Tests\Fixtures\ModelSchema\TranslatableString;
 use Preflow\Data\Tests\Fixtures\ModelSchema\UntypedObject;
@@ -98,5 +99,57 @@ final class ModelSchemaTest extends TestCase
         $this->assertTrue($def->fields['secret']->exact);
         $this->assertFalse($def->fields['name']->exact);
         $this->assertArrayNotHasKey('exact', $def->fields['secret']->config);
+    }
+
+    public function test_entity_preview_reaches_the_schema(): void
+    {
+        $preview = ['views' => ['card' => ['label' => 'Card', 'component' => 'JobCard'], 'wide' => ['component' => 'JobWide']]];
+
+        $this->assertSame($preview, ModelSchema::of(PreviewJob::class)['preview'] ?? null, 'as declared, unread: preflow/blocks checks it');
+        $this->assertArrayNotHasKey('preview', ModelSchema::of(Job::class), 'none declared: no key');
+
+        $dir = sys_get_temp_dir() . '/preflow_preview_' . bin2hex(random_bytes(4));
+        mkdir($dir);
+        try {
+            $this->assertSame($preview, (new TypeRegistry($dir, classes: ['preview_job' => PreviewJob::class]))->schema('preview_job')['preview'] ?? null);
+            file_put_contents($dir . '/preview_job.json', json_encode(['key' => 'preview_job', 'label' => 'Jobs']));
+            $schema = (new TypeRegistry($dir, classes: ['preview_job' => PreviewJob::class]))->schema('preview_job');
+            $this->assertSame($preview, $schema['preview'] ?? null, 'with an admin file that does not set it');
+            $this->assertSame('Jobs', $schema['label'] ?? null);
+
+            // A class without it: its admin file's "preview" is an admin setting, as before.
+            file_put_contents($dir . '/job.json', json_encode(['key' => 'job', 'preview' => ['component' => 'Teaser']]));
+            $this->assertSame(['component' => 'Teaser'], (new TypeRegistry($dir, classes: ['job' => Job::class]))->schema('job')['preview'] ?? null);
+        } finally {
+            array_map('unlink', glob($dir . '/*'));
+            rmdir($dir);
+        }
+    }
+
+    public function test_admin_file_may_not_set_preview_when_the_class_does(): void
+    {
+        $dir = sys_get_temp_dir() . '/preflow_preview_' . bin2hex(random_bytes(4));
+        mkdir($dir);
+        try {
+            file_put_contents($dir . '/preview_job.json', json_encode(['key' => 'preview_job', 'preview' => ['component' => 'Teaser']]));
+            try {
+                new TypeRegistry($dir, classes: ['preview_job' => PreviewJob::class]); // at boot
+                $this->fail('the registry was built');
+            } catch (\RuntimeException $e) {
+                $this->assertSame('Model file preview_job.json sets "preview", but preview_job is defined by ' . PreviewJob::class
+                    . ', whose #[Entity(preview:)] declares it; keep one.', $e->getMessage());
+            }
+        } finally {
+            array_map('unlink', glob($dir . '/*'));
+            rmdir($dir);
+        }
+
+        try {
+            ModelSchema::overlay(ModelSchema::of(PreviewJob::class), ['key' => 'preview_job', 'preview' => []], '/models/preview_job.json', PreviewJob::class);
+            $this->fail('the overlay passed');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('Model file preview_job.json sets "preview", but preview_job is defined by ' . PreviewJob::class
+                . ', whose #[Entity(preview:)] declares it; keep one.', $e->getMessage());
+        }
     }
 }

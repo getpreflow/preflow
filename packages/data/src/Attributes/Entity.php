@@ -26,5 +26,13 @@ final class Entity
          * @var array<string, mixed>|null
          */
         public readonly ?array $layouts = null,
+        /**
+         * The type's preview views, a model file's "preview" ({component} for one view, or {views:
+         * {key: {label?, component}}}); null: none. Data writes it into the schema unread;
+         * preflow/blocks checks it at boot. An admin file may not set it too. @since 0.94.0
+         *
+         * @var array<string, mixed>|null
+         */
+        public readonly ?array $preview = null,
     ) {}
 }

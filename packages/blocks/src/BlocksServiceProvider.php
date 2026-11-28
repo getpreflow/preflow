@@ -27,6 +27,7 @@ use Preflow\Blocks\Layouts\Rules\AreaContents;
 use Preflow\Blocks\Layouts\Rules\LayoutChoice;
 use Preflow\Blocks\Layouts\Rules\MessageRule;
 use Preflow\Blocks\Layouts\Rules\PinnedSlug;
+use Preflow\Blocks\Preview\TypePreviews;
 use Preflow\Blocks\Rules\BlockCount;
 use Preflow\Blocks\Values\AreasFieldValue;
 use Preflow\Blocks\Values\BlocksFieldValue;
@@ -72,6 +73,10 @@ use Preflow\View\TemplateFunctionDefinition;
  * boot (kept in the boot manifest), and with a DataManager the layout rules on every validated
  * save of their records (RecordRules): the layout choice, a pinned page's slug (drafts too) and
  * what the areas hold.
+ *
+ * Type previews (since 0.94): with a type registry, TypePreviews for the types with "preview" (the
+ * views a record is previewed in, each through a component the type names), bound only where a
+ * provider bound none; their option and components checked at boot (kept in the boot manifest).
  *
  * For APIs (since 0.92): ContentDescription (blocks, layouts, area layout sets and type layouts as
  * data for a schema builder) and, with page layouts, LayoutResource and LayoutInput — a page's
@@ -195,6 +200,7 @@ final class BlocksServiceProvider extends ServiceProvider
         }
 
         self::bootPageLayouts($container);
+        self::bootTypePreviews($container);
         self::bindApi($container);
 
         // In boot: the cache file follows config that a provider registered after this one may set.
@@ -423,6 +429,44 @@ final class BlocksServiceProvider extends ServiceProvider
 
             return $type === null || $type->pinned === [] ? [] : [$type->slugField => [new PinnedSlug($layouts, $data, $def)]];
         }, drafts: true);
+    }
+
+    /**
+     * TypePreviews (0.94) with the app's type registry and component map, and the boot check of
+     * every type's "preview" (`blocks.type_previews`, beside `blocks.type_layouts`): its shape and
+     * each view's component. Bound only when no provider bound its own, its registries resolved
+     * when it is first built. In boot: the component map is bound before the providers boot.
+     * Without a component layer (no template engine) the map is empty: only a component given as
+     * a class passes, as component() would render nothing else.
+     */
+    private static function bootTypePreviews(Container $container): void
+    {
+        if (!$container->bound(TypeRegistry::class) && !$container->bound(DataManager::class)) {
+            return;
+        }
+        if (!$container->bound(TypePreviews::class)) {
+            $container->singleton(TypePreviews::class, static fn (Container $c): TypePreviews => new TypePreviews(
+                self::typesOf($c),
+                self::componentsOf($c),
+            ));
+        }
+
+        // A "preview" that cannot work, or names a component that does not exist, stops the boot,
+        // with or without Folio: checked when the boot manifest is built (and live while none is loaded).
+        $manifest = $container->get(Application::class)->bootManifest();
+        $manifest->remember('blocks.type_previews', static function () use ($container): bool {
+            (new TypePreviews(self::typesOf($container), self::componentsOf($container)))->assertTypes();
+
+            return true;
+        }, $manifest->isRecording() ? self::typesOf($container)->sources() : []);
+    }
+
+    /** The app's component map (Application::bootComponentLayer()); empty without a component layer. */
+    private static function componentsOf(Container $c): ComponentMap
+    {
+        $map = $c->bound(ComponentMap::class) ? $c->get(ComponentMap::class) : null;
+
+        return $map instanceof ComponentMap ? $map : new ComponentMap([]);
     }
 
     /** The app's type registry: the one Folio binds, else the DataManager's. */
