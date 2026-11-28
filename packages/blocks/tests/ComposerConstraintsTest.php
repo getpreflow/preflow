@@ -9,6 +9,10 @@ use PHPUnit\Framework\TestCase;
 /**
  * Since 0.94.0: view 0.86.0 (SafeHtml, which every engine prints as it is: PreviewCanvas hands the component's HTML
  * to the canvas template with it; an older view would print it escaped).
+ * Since 0.94.0: data 0.94.0 (the type's "preview" option, which TypePreviews reads; FieldKinds::rulesOf() with the
+ * field); validation 0.94.0 (the block count's messages, "validation.blocks.*": an older one would show their keys);
+ * folio 0.94.0 (Folio before 0.94 merges a block list without LayoutInput::merge()'s hiddenFields, so every save of
+ * a page with a block field hidden in "_areas" would be refused as an unknown field).
  * Since 0.93.0: data 0.93.0 (Values\FieldValue and its companions, FieldKinds::value(), StoredCleaning and
  * DataManager::cleaning(): the blocks and areas values, block rich text cleaned on write, the "_areas" system key's
  * cleaning, and CoreBlockTextCleaner over the core cleaner).
@@ -45,16 +49,16 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame('^0.93.0 || @dev', $composer['require']['preflow/data'] ?? null);
+        $this->assertSame('^0.94.0 || @dev', $composer['require']['preflow/data'] ?? null);
         $this->assertSame('^0.81.0 || @dev', $composer['require']['preflow/core'] ?? null);
-        $this->assertSame('^0.92.1 || @dev', $composer['require']['preflow/validation'] ?? null);
+        $this->assertSame('^0.94.0 || @dev', $composer['require']['preflow/validation'] ?? null);
         $this->assertSame('^0.86.0 || @dev', $composer['require']['preflow/view'] ?? null);
         $this->assertSame([
             'preflow/components' => '<0.70',
             'preflow/core' => '<0.81.0',
-            'preflow/data' => '<0.93.0',
-            'preflow/folio' => '<0.92.0',
-            'preflow/validation' => '<0.92.1',
+            'preflow/data' => '<0.94.0',
+            'preflow/folio' => '<0.94.0',
+            'preflow/validation' => '<0.94.0',
             'preflow/view' => '<0.86.0',
         ], $composer['conflict'] ?? null);
     }
