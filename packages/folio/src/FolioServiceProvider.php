@@ -820,7 +820,7 @@ final class FolioServiceProvider extends ServiceProvider
             // The form's own checks (0.93): its input rules; RecordWriter's other saves and publishing run the bound RecordChecks.
             formChecks: new \Preflow\Folio\Publishing\FolioFormChecks($c->get(\Preflow\Folio\Content\RecordValidator::class)),
             // The types' preview views (0.94): the live preview pane and its view switch.
-            typePreviews: $c->bound(\Preflow\Blocks\Preview\TypePreviews::class) ? $c->get(\Preflow\Blocks\Preview\TypePreviews::class) : null,
+            typePreviews: self::typePreviews($c),
             reviewIndex: $c->get(\Preflow\I18n\Machine\ReviewIndex::class),
             worker: $c->get(\Preflow\I18n\Machine\TranslationWorker::class),
             seo: $c->bound(\Preflow\View\Seo\SeoConfig::class) ? $c->get(\Preflow\View\Seo\SeoConfig::class) : null,
@@ -932,7 +932,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\View\AssetCollector::class),
             $c->get(\Preflow\Folio\Http\AdminAssetUrls::class),
             // A type with "preview" (0.94): its views (preflow/blocks), on a canvas Folio's engine renders.
-            $c->bound(\Preflow\Blocks\Preview\TypePreviews::class) ? $c->get(\Preflow\Blocks\Preview\TypePreviews::class) : null,
+            self::typePreviews($c),
             self::previewCanvas($c),
             $c->get(\Preflow\Folio\Content\DisplayLabels::class),
         ));
@@ -2724,7 +2724,19 @@ final class FolioServiceProvider extends ServiceProvider
             : null;
     }
 
-    /** The types' page layouts (0.92): bound in preflow/blocks' boot when there is a type registry. */
+    /**
+     * The types' previews (0.94, preflow/blocks' TypePreviews), only where the canvas can render them
+     * (previewCanvas()): the form's pane (AdminController::previewViews()) and the preview
+     * (PreviewController::typePreview()) read them from here, so both agree. Null without the blocks
+     * binding or without a component layer.
+     */
+    private static function typePreviews(Container $c): ?\Preflow\Blocks\Preview\TypePreviews
+    {
+        return $c->bound(\Preflow\Blocks\Preview\TypePreviews::class) && $c->bound(\Preflow\Components\ComponentRenderer::class)
+            ? $c->get(\Preflow\Blocks\Preview\TypePreviews::class)
+            : null;
+    }
+
     /**
      * The type preview's canvas (0.94): preflow/blocks' PreviewCanvas over Folio's engine, so
      * @folio/frontend/preview-canvas.twig (the site's resources/folio first) resolves on any app engine;
@@ -2732,7 +2744,7 @@ final class FolioServiceProvider extends ServiceProvider
      */
     private static function previewCanvas(Container $c): ?\Preflow\Blocks\Preview\PreviewCanvas
     {
-        if (!$c->has(\Preflow\Components\ComponentRenderer::class)) {
+        if (!$c->bound(\Preflow\Components\ComponentRenderer::class)) {
             return null;
         }
         $map = $c->bound(\Preflow\Components\ComponentMap::class) ? $c->get(\Preflow\Components\ComponentMap::class) : null;
@@ -2746,6 +2758,7 @@ final class FolioServiceProvider extends ServiceProvider
         );
     }
 
+    /** The types' page layouts (0.92): bound in preflow/blocks' boot when there is a type registry. */
     private static function pageLayouts(Container $c): ?\Preflow\Blocks\Layouts\PageLayouts
     {
         return $c->bound(\Preflow\Blocks\Layouts\PageLayouts::class) ? $c->get(\Preflow\Blocks\Layouts\PageLayouts::class) : null;
