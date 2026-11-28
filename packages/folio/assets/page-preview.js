@@ -76,6 +76,16 @@
                 show(which);
                 return;
             }
+            // The view switch (a type with "preview"): admin.js renders the chosen view in the live
+            // frame, so the pane shows Live (and remembers it) rather than a hidden render.
+            var view = e.target.closest ? e.target.closest('[data-preview-view]') : null;
+            if (view) {
+                if (current === 'page') {
+                    store('live');
+                    show('live');
+                }
+                return;
+            }
             // The device switch (admin.js sizes the live frame): the page frame gets the same width.
             var device = e.target.closest ? e.target.closest('[data-preview-viewport]') : null;
             if (device && page) {

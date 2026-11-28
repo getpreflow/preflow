@@ -28,6 +28,8 @@ function stage({ saved = true, viewAs = true, remembered = null } = {}) {
     const page = el(root, 'button', { 'data-preview-tab': 'page', 'aria-pressed': 'false' });
     if (!saved) { page.disabled = true; }
     const phone = el(root, 'button', { 'data-preview-viewport': '375px' });
+    // The view switch of a type with "preview" (0.94): admin.js renders the chosen view in the live frame.
+    const view = el(root, 'button', { type: 'button', 'data-preview-view': 'card', 'aria-pressed': 'false' });
     let field = null, select = null;
     if (viewAs) {
         field = el(root, 'label', { 'data-preview-as-field': '' });
@@ -44,7 +46,7 @@ function stage({ saved = true, viewAs = true, remembered = null } = {}) {
     if (pageFrame) { pageFrame.hidden = true; pageFrame.style = {}; }
     load(w, PAGE_PREVIEW_JS);
     const autosaved = (successful = true, elt = form) => doc.dispatchEvent(Object.assign(new w.Event('htmx:afterRequest'), { detail: { elt, successful } }));
-    return { w, live, page, phone, field, select, liveFrame, pageFrame, autosaved, stored };
+    return { w, live, page, phone, view, field, select, liveFrame, pageFrame, autosaved, stored };
 }
 
 test('Whole page shows the record\'s page in its own frame, and Live brings the live preview back', () => {
@@ -110,4 +112,17 @@ test('a record that was never saved stays on Live', () => {
     s.page.click();
     assert.equal(s.liveFrame.hidden, false, 'its Whole page tab is disabled');
     assert.equal(s.live.getAttribute('aria-pressed'), 'true');
+});
+
+test('a view of the type\'s preview shows on Live: a click on the view switch leaves Whole page', () => {
+    const s = stage({ remembered: 'page' });
+    assert.equal(s.pageFrame.hidden, false, 'the remembered Whole page');
+
+    s.view.click();
+    assert.equal(s.liveFrame.hidden, false, 'the live frame, where admin.js renders the view');
+    assert.equal(s.pageFrame.hidden, true);
+    assert.equal(s.live.getAttribute('aria-pressed'), 'true');
+    assert.equal(s.page.getAttribute('aria-pressed'), 'false');
+    assert.equal(s.field.hidden, true, 'View as goes with the whole page');
+    assert.equal(s.stored.get('folio-preview-tab'), 'live', 'Live remembered');
 });
