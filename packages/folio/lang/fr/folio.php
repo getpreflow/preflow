@@ -289,6 +289,8 @@ return [
     // L'aperçu de la page entière dans l'éditeur (0.81) : la vraie page, telle que les visiteurs la verront une fois publiée.
     'preview' => [
         'mode' => 'Aperçu',
+        'view' => 'Vue',
+        'page_view' => 'Page',
         'live' => 'En direct',
         'whole_page' => 'Page entière',
         'whole_page_frame' => 'Aperçu de la page entière',

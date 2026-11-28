@@ -84,6 +84,18 @@ final class PreviewCanvasTest extends BlocksAppTestCase
         $this->assertMatchesRegularExpression('~<main class="canvas"><div id="PreviewTeaser-[^"]+"><article class="teaser"[^>]*data-view="card"~', $html, 'the component HTML printed unescaped');
     }
 
+    public function test_the_caller_hands_the_canvas_more_variables_but_not_the_five(): void
+    {
+        $this->write('canvas-label.twig', '<title>{{ label }}</title><body data-type="{{ type }}" data-view="{{ view }}">{{ preview }}</body>');
+        $canvas = $this->canvas(['Teaser' => PreviewTeaser::class]);
+
+        $html = $this->inVisit(fn (): string => $canvas->render($this->preview('Teaser'), 'wide', ['title' => 'Koch'], 'de', 'canvas-label.twig', ['label' => 'Stellen', 'type' => 'other', 'view' => 'other']));
+
+        $this->assertStringContainsString('<title>Stellen</title>', $html);
+        $this->assertStringContainsString('<body data-type="job" data-view="wide">', $html, 'the canvas\'s own five win');
+        $this->assertStringContainsString('data-props="locale,preview,record,type,view"', $html, 'the component gets none of them');
+    }
+
     public function test_component_css_and_js_are_injected_into_the_canvas(): void
     {
         $canvas = $this->canvas(['Teaser' => PreviewTeaser::class]);

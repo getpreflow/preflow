@@ -820,6 +820,8 @@ final class FolioServiceProvider extends ServiceProvider
             areasEditor: self::areasEditor($c, $prefix),
             // The form's own checks (0.93): its input rules; RecordWriter's other saves and publishing run the bound RecordChecks.
             formChecks: new \Preflow\Folio\Publishing\FolioFormChecks($c->get(\Preflow\Folio\Content\RecordValidator::class)),
+            // The types' preview views (0.94): the live preview pane and its view switch.
+            typePreviews: $c->bound(\Preflow\Blocks\Preview\TypePreviews::class) ? $c->get(\Preflow\Blocks\Preview\TypePreviews::class) : null,
             reviewIndex: $c->get(\Preflow\I18n\Machine\ReviewIndex::class),
             worker: $c->get(\Preflow\I18n\Machine\TranslationWorker::class),
             seo: $c->bound(\Preflow\View\Seo\SeoConfig::class) ? $c->get(\Preflow\View\Seo\SeoConfig::class) : null,
@@ -930,6 +932,10 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(DraftRecordFactory::class),
             $c->get(\Preflow\View\AssetCollector::class),
             $c->get(\Preflow\Folio\Http\AdminAssetUrls::class),
+            // A type with "preview" (0.94): its views (preflow/blocks), on a canvas Folio's engine renders.
+            $c->bound(\Preflow\Blocks\Preview\TypePreviews::class) ? $c->get(\Preflow\Blocks\Preview\TypePreviews::class) : null,
+            self::previewCanvas($c),
+            $c->get(\Preflow\Folio\Content\DisplayLabels::class),
         ));
         // The whole-page preview (core's Application::preview()) and its "View as" control.
         $container->bind(\Preflow\Folio\Http\ViewAs::class, fn (Container $c) => new \Preflow\Folio\Http\ViewAs(
@@ -2720,6 +2726,27 @@ final class FolioServiceProvider extends ServiceProvider
     }
 
     /** The types' page layouts (0.92): bound in preflow/blocks' boot when there is a type registry. */
+    /**
+     * The type preview's canvas (0.94): preflow/blocks' PreviewCanvas over Folio's engine, so
+     * @folio/frontend/preview-canvas.twig (the site's resources/folio first) resolves on any app engine;
+     * the component renders through the app's ComponentRenderer as on a page. Null without a component layer.
+     */
+    private static function previewCanvas(Container $c): ?\Preflow\Blocks\Preview\PreviewCanvas
+    {
+        if (!$c->has(\Preflow\Components\ComponentRenderer::class)) {
+            return null;
+        }
+        $map = $c->bound(\Preflow\Components\ComponentMap::class) ? $c->get(\Preflow\Components\ComponentMap::class) : null;
+
+        return new \Preflow\Blocks\Preview\PreviewCanvas(
+            $c,
+            $c->get(\Preflow\Components\ComponentRenderer::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
+            $map instanceof \Preflow\Components\ComponentMap ? $map : new \Preflow\Components\ComponentMap([]),
+            $c->bound(\Preflow\View\AssetCollector::class) ? $c->get(\Preflow\View\AssetCollector::class) : null,
+        );
+    }
+
     private static function pageLayouts(Container $c): ?\Preflow\Blocks\Layouts\PageLayouts
     {
         return $c->bound(\Preflow\Blocks\Layouts\PageLayouts::class) ? $c->get(\Preflow\Blocks\Layouts\PageLayouts::class) : null;

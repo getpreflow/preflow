@@ -110,6 +110,8 @@ final class AdminController
         private readonly ?\Preflow\Folio\Field\AreasEditor $areasEditor = null,
         // The form's own checks (0.93: its input rules, SaveOptions::$checks); null builds them from the data manager, frontend and field types.
         ?\Preflow\Publishing\RecordChecks $formChecks = null,
+        // The types' preview views (0.94): a type with "preview" gets the live preview pane, with or without a route.
+        private readonly ?\Preflow\Blocks\Preview\TypePreviews $typePreviews = null,
     ) {
         $this->formChecks = $formChecks ?? new \Preflow\Folio\Publishing\FolioFormChecks(new \Preflow\Folio\Content\RecordValidator($dm, $frontend, $fieldTypes));
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
@@ -1672,6 +1674,7 @@ final class AdminController
         $recordId = isset($values[$typeDef->idField]) ? (string) $values[$typeDef->idField] : '';
         $singleton = $this->isSingleton($type);
         $publishing = $this->publishingContext($type, $typeDef, $values);
+        $previewViews = $this->previewViews($type);
         $html = $this->engine->render('@folio/admin/form.twig', [
             'prefix' => $this->prefix,
             'type' => $type,
@@ -1706,8 +1709,12 @@ final class AdminController
             'drawer' => $layout === '@folio/admin/_drawer_layout.twig',
             // No preview in the create drawer: its form posts to the save route.
             // A read-only form has nothing to preview (and its user may not post to the preview route).
-            'previewable' => $this->frontend->routeFor($type) !== null && $layout !== '@folio/admin/_drawer_layout.twig'
+            'previewable' => $previewable = ($this->frontend->routeFor($type) !== null || $previewViews !== []) && $layout !== '@folio/admin/_drawer_layout.twig'
                 && $this->can($type . ($isNew ? '.create' : '.edit')),
+            // A type with "preview" (0.94): the views the pane offers (with a route, "page" first; the switch shows
+            // from two on) and the one it starts with, posted as _preview_view.
+            'preview_views' => $previewable ? $previewViews : [],
+            'preview_view' => $previewable && $previewViews !== [] ? $previewViews[0]['key'] : null,
             'preview_url' => strtok($action, '?') . '/preview',
             'page_preview' => $this->pagePreview($type, $typeDef, $values, $locale, $isNew),
             'preview_bar' => $this->previewBar($type, $typeDef, $values, $locale, $isNew, $publishing),
@@ -1753,6 +1760,29 @@ final class AdminController
         ]);
 
         return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
+    }
+
+    /**
+     * The choices of the live preview's view switch (0.94): "page" (the route's template) where the type
+     * has a route, then each view of its "preview" with its label (a key-shaped one translated), the
+     * "default" view under the type's singular label. Empty for a type without "preview".
+     *
+     * @return list<array{key: string, label: string}>
+     */
+    private function previewViews(string $type): array
+    {
+        $preview = $this->typePreviews?->forType($type);
+        if ($preview === null) {
+            return [];
+        }
+        $choices = $this->frontend->routeFor($type) !== null
+            ? [['key' => \Preflow\Blocks\Preview\TypePreview::RESERVED_VIEW, 'label' => FolioText::get('folio.preview.page_view')]]
+            : [];
+        foreach ($preview->views as $view) {
+            $choices[] = ['key' => $view->key, 'label' => $view->label !== null ? FolioText::label($view->label) : $this->labels->one($type)];
+        }
+
+        return $choices;
     }
 
     /** The editor note shows at most this many old addresses, then how many more. */

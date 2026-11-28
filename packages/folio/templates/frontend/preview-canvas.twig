@@ -1,0 +1,16 @@
+{#- Folio's canvas for a type preview (0.94): a bare page around the view's component, nothing else. A site
+    overrides it at resources/folio/frontend/preview-canvas.twig to load its base CSS. Variables: preview (the
+    component's HTML, printed as it is), record, type, view, locale, label (the type's label). The component's
+    own CSS and JS are put in by PreviewCanvas. -#}
+<!doctype html>
+<html lang="{{ locale }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ label }}</title>
+<style nonce="{{ csp_nonce() }}">.folio-preview-canvas { padding: 1rem; }</style>
+</head>
+<body class="folio-preview-canvas">
+{{ preview }}
+</body>
+</html>

@@ -301,6 +301,9 @@ return [
     // The editor's whole-page preview (0.81): the record's real page as a visitor will see it once published.
     'preview' => [
         'mode' => 'Preview',
+        // The live preview's view switch (0.94): a type's preview views, and its route's page.
+        'view' => 'View',
+        'page_view' => 'Page',
         'live' => 'Live',
         'whole_page' => 'Whole page',
         'whole_page_frame' => 'Whole page preview of this page',

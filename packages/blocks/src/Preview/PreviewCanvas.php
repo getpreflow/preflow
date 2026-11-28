@@ -27,7 +27,8 @@ use Psr\Container\ContainerInterface;
  *    RefusedInPreview are rethrown, as ComponentRenderer does). A container other than Preflow's
  *    Container is asked with get(), and must build a fresh instance for each call;
  * 2. the canvas template (a name the template engine resolves; the site chooses it on purpose) gets
- *    `preview` (the component's HTML, printed as it is), `record`, `type`, `view` and `locale`;
+ *    `preview` (the component's HTML, printed as it is), `record`, `type`, `view` and `locale`, and
+ *    whatever more the caller hands it in $canvasContext (Folio: `label`, the type's label);
  * 3. the CSS and JS collected while rendering go into the page (AssetCollector::injectInto()).
  *
  * It opens no render context: the caller renders inside the preview's (Folio: the live preview's
@@ -48,9 +49,11 @@ final readonly class PreviewCanvas
 
     /**
      * @param array<string, mixed> $record the record's values in $locale (what a page template reads)
+     * @param array<string, mixed> $canvasContext more variables for the canvas template only (not for the
+     *                                            component); preview, record, type, view and locale win over them
      * @throws PreviewConfigException when the view's component is neither in the component map nor a component class
      */
-    public function render(TypePreview $preview, ?string $view, array $record, string $locale, string $canvasTemplate): string
+    public function render(TypePreview $preview, ?string $view, array $record, string $locale, string $canvasTemplate, array $canvasContext = []): string
     {
         $chosen = $preview->view($view);
         $class = $this->classOf($preview->type, $chosen);
@@ -70,7 +73,7 @@ final readonly class PreviewCanvas
             'type' => $preview->type,
             'view' => $chosen->key,
             'locale' => $locale,
-        ]);
+        ] + $canvasContext);
 
         return $this->assets?->injectInto($page) ?? $page;
     }
