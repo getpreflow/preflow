@@ -8,7 +8,9 @@ use Preflow\Blocks\Preview\PreviewCanvas;
 use Preflow\Blocks\Preview\PreviewView;
 use Preflow\Blocks\Preview\TypePreview;
 use Preflow\Blocks\Tests\BlocksAppTestCase;
+use Preflow\Blocks\Preview\PreviewConfigException;
 use Preflow\Blocks\Tests\Fixtures\Preview\PreviewBroken;
+use Preflow\Blocks\Tests\Fixtures\Preview\PreviewNeedsService;
 use Preflow\Blocks\Tests\Fixtures\Preview\PreviewTeaser;
 use Preflow\Components\ComponentMap;
 use Preflow\Components\ComponentRenderer;
@@ -105,6 +107,28 @@ final class PreviewCanvasTest extends BlocksAppTestCase
         $main = substr($html, (int) strpos($html, '<main class="canvas">'));
         $this->assertStringContainsString('The teaser could not load its record.', $main, 'the boundary (debug app) inside the canvas');
         $this->assertStringNotContainsString('<p>never</p>', $html);
+    }
+
+    public function test_a_component_that_cannot_be_built_renders_its_error_inside_the_canvas(): void
+    {
+        $canvas = $this->canvas();
+
+        $html = $this->inVisit(fn (): string => $canvas->render($this->preview(PreviewNeedsService::class), 'card', ['title' => 'Koch'], 'de', 'canvas.twig'));
+
+        $this->assertStringStartsWith('<!doctype html>', $html, 'the canvas still renders');
+        $main = substr($html, (int) strpos($html, '<main class="canvas">'));
+        $this->assertStringContainsString(htmlspecialchars(PreviewNeedsService::class, ENT_QUOTES), $main, 'the boundary (debug app) inside the canvas names the component');
+        $this->assertStringContainsString('Countable', $main, 'and the dependency that could not be resolved');
+        $this->assertStringNotContainsString('<p>never built</p>', $html);
+    }
+
+    public function test_a_component_name_that_is_no_component_is_refused_naming_it(): void
+    {
+        $canvas = $this->canvas();
+
+        $this->expectException(PreviewConfigException::class);
+        $this->expectExceptionMessage('Type "job": preview view "card" names the component "Gone", which is neither in the component map nor a class extending Preflow\\Components\\Component. Name an existing component.');
+        $this->inVisit(fn (): string => $canvas->render($this->preview('Gone'), 'card', [], 'de', 'canvas.twig'));
     }
 
     public function test_works_without_folio(): void
