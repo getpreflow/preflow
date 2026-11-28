@@ -355,7 +355,7 @@ final class BlocksServiceProvider extends ServiceProvider
      */
     private static function bootPageLayouts(Container $container): void
     {
-        if (!$container->bound(TypeRegistry::class) && !$container->bound(DataManager::class)) {
+        if (!self::hasTypes($container)) {
             return;
         }
         if (!$container->bound(PageLayouts::class)) {
@@ -446,7 +446,7 @@ final class BlocksServiceProvider extends ServiceProvider
      */
     private static function bootTypePreviews(Container $container): void
     {
-        if (!$container->bound(TypeRegistry::class) && !$container->bound(DataManager::class)) {
+        if (!self::hasTypes($container)) {
             return;
         }
         if (!$container->bound(TypePreviews::class)) {
@@ -490,6 +490,13 @@ final class BlocksServiceProvider extends ServiceProvider
         $map = $c->bound(ComponentMap::class) ? $c->get(ComponentMap::class) : null;
 
         return $map instanceof ComponentMap ? $map : new ComponentMap([]);
+    }
+
+    /** Whether the app has a type registry: Folio's, or a DataManager that has one (none without a models directory). */
+    private static function hasTypes(Container $c): bool
+    {
+        return $c->bound(TypeRegistry::class)
+            || ($c->bound(DataManager::class) && $c->get(DataManager::class)->getTypeRegistry() !== null);
     }
 
     /** The app's type registry: the one Folio binds, else the DataManager's. */
