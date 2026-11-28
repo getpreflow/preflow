@@ -72,7 +72,9 @@ final class TypePreviewTest extends TestCase
             'fields' => ['title' => ['type' => 'string'], 'slug' => ['type' => 'string'], 'status' => ['type' => 'string']],
             'preview' => ['component' => JobCard::class],
         ]);
-        $this->writeModel('marked', ['label' => 'Marked', 'publishing' => false, 'fields' => ['title' => ['type' => 'string']], 'preview' => ['component' => \Preflow\Folio\Tests\Fixtures\Preview\PreviewMarked::class]]);
+        $this->writeModel('marked', ['label' => 'Marked', 'publishing' => false, 'fields' => ['title' => ['type' => 'string'], 'items' => ['type' => 'blocks', 'allowed' => ['logout_label', 'site_label']]], 'preview' => ['component' => \Preflow\Folio\Tests\Fixtures\Preview\PreviewMarked::class]]);
+        $this->write('config/blocks.php', "<?php\nreturn ['classes' => [\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\LogoutLabelBlock\\LogoutLabelBlock::class, \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\SiteLabelBlock\\SiteLabelBlock::class]];\n");
+        $this->write('lang/de/site.php', "<?php return ['types' => ['note' => ['singular' => 'Notiz']], 'blocks' => ['teaser' => 'Teaser-Baustein']];");
         $this->writeModel('broken', [
             'label' => 'Broken', 'publishing' => false,
             'fields' => ['title' => ['type' => 'string']],
@@ -159,7 +161,6 @@ final class TypePreviewTest extends TestCase
     #[RunInSeparateProcess]
     public function test_mark_labels_use_the_admins_language(): void
     {
-        $this->write('lang/de/site.php', "<?php return ['types' => ['note' => ['singular' => 'Notiz']]];");
         $this->signIn('admin@site.test');
         $this->session->container()->get(\Preflow\Folio\Users\UserPreferences::class)->setLocale('admin@site.test', 'de');
 
@@ -168,6 +169,24 @@ final class TypePreviewTest extends TestCase
         $this->assertSame(200, $response->getStatusCode(), $response->getStatusCode() . ' ' . $response->getHeaderLine('Location'));
 
         $this->assertStringContainsString('data-folio-record="note" data-folio-record-id="n1" data-folio-label="Notiz"', $body, 'the editor\'s language, the page\'s is English');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_block_mark_labels_use_the_admins_language_in_the_type_preview(): void
+    {
+        $this->signIn('admin@site.test');
+        $this->session->container()->get(\Preflow\Folio\Users\UserPreferences::class)->setLocale('admin@site.test', 'de');
+
+        $response = $this->preview('/folio/marked/k1/preview', ['_locale' => 'en', 'title' => 'K', 'items' => [
+            '_order' => ['aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb'],
+            'aaaaaaaaaaaaaaaa' => ['_block' => 'logout_label'],
+            'bbbbbbbbbbbbbbbb' => ['_block' => 'site_label'],
+        ]]);
+        $body = (string) $response->getBody();
+
+        $this->assertSame(200, $response->getStatusCode(), $body);
+        $this->assertStringContainsString('data-folio-block="aaaaaaaaaaaaaaaa" data-folio-label="Abmelden"', $body, 'a Folio key');
+        $this->assertStringContainsString('data-folio-block="bbbbbbbbbbbbbbbb" data-folio-label="Teaser-Baustein"', $body, 'a site key');
     }
 
     #[RunInSeparateProcess]

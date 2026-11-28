@@ -95,6 +95,44 @@ final class LinkedRecordPreviewTest extends TestCase
         $this->assertStringContainsString('<aside class="teaser" ' . $german . '>', (string) $page->getBody(), 'the whole-page preview');
     }
 
+    /** Blocks labelled by a key of Folio's group and of the site's own, on the post's blocks field. */
+    private function blocksWithKeyLabels(): void
+    {
+        $post = json_decode((string) file_get_contents($this->dir . '/config/models/post.json'), true);
+        $post['fields']['sections'] = ['type' => 'blocks', 'allowed' => ['logout_label', 'site_label']];
+        $this->write('config/models/post.json', (string) json_encode($post));
+        $this->write('config/blocks.php', "<?php\nreturn ['classes' => [\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\LogoutLabelBlock\\LogoutLabelBlock::class, \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\SiteLabelBlock\\SiteLabelBlock::class]];\n");
+        $this->write('resources/folio/frontend/post.twig', '<html><head></head><body><h1>{{ record.title }}</h1>{{ blocks(record.sections, true) }}</body></html>');
+        $this->write('lang/de/site.php', "<?php return ['blocks' => ['teaser' => 'Teaser-Baustein']];");
+        $this->write('lang/en/site.php', "<?php return ['blocks' => ['teaser' => 'Teaser block']];");
+    }
+
+    #[RunInSeparateProcess]
+    public function test_block_mark_labels_use_the_admins_language_in_the_live_and_the_whole_page_preview(): void
+    {
+        $this->blocksWithKeyLabels();
+        $this->signIn('admin');
+        $this->session->container()->get(\Preflow\Folio\Users\UserPreferences::class)->setLocale('admin@site.test', 'de');
+        $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello'], 'sections' => [
+            ['_uid' => 'aaaaaaaaaaaaaaaa', '_block' => 'logout_label'],
+            ['_uid' => 'bbbbbbbbbbbbbbbb', '_block' => 'site_label'],
+        ]]);
+        $folio = 'data-folio-block="aaaaaaaaaaaaaaaa" data-folio-label="Abmelden"';
+        $site = 'data-folio-block="bbbbbbbbbbbbbbbb" data-folio-label="Teaser-Baustein"';
+
+        $live = (string) $this->send('POST', '/folio/post/p1/preview', ['title' => 'Hello', 'slug' => 'hello', '_locale' => 'en', 'sections' => [
+            '_order' => ['aaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbb'],
+            'aaaaaaaaaaaaaaaa' => ['_block' => 'logout_label'],
+            'bbbbbbbbbbbbbbbb' => ['_block' => 'site_label'],
+        ]])->getBody();
+        $this->assertStringContainsString($folio, $live, 'a Folio key, live preview');
+        $this->assertStringContainsString($site, $live, 'a site key, live preview');
+
+        $page = (string) $this->send('GET', '/folio/preview/page/post/p1')->getBody();
+        $this->assertStringContainsString($folio, $page, 'a Folio key, whole-page preview');
+        $this->assertStringContainsString($site, $page, 'a site key, whole-page preview');
+    }
+
     #[RunInSeparateProcess]
     public function test_mark_labels_after_the_render_are_reset(): void
     {
@@ -115,7 +153,7 @@ final class LinkedRecordPreviewTest extends TestCase
         $def = new \Preflow\Blocks\BlockDefinition('x', 'folio.layout.log_out', 'g', null, null, 'X', false, []);
         $this->assertSame('Log out', $block->attributes($def, ['_uid' => 'u'])['data-folio-label']);
         $language->set('de');
-        $this->assertNotSame('Log out', $block->attributes($def, ['_uid' => 'u'])['data-folio-label'], 'a block label in the admin\'s language');
+        $this->assertSame('Abmelden', $block->attributes($def, ['_uid' => 'u'])['data-folio-label'], 'a block label in the admin\'s language');
         $language->set(null);
     }
 
