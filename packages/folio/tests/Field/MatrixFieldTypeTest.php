@@ -20,6 +20,8 @@ use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\MatrixFieldType;
+use Preflow\Folio\Field\Types\MatrixRequired;
+use Preflow\Validation\ValidationContext;
 use Preflow\Folio\Field\Types\StringFieldType;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\View\TemplateFunctionDefinition;
@@ -169,6 +171,30 @@ final class MatrixFieldTypeTest extends TestCase
         $this->assertMatchesRegularExpression('~<button type="button" class="folio-matrix-add-row" data-matrix-add><svg[^>]*>.*?</svg>Add row</button>~s', $html);
         $this->assertStringContainsString('<template data-matrix-template>', $html, 'the row admin.js copies');
         $this->assertStringContainsString('data-folio-matrix-list', $html);
+    }
+
+    public function test_required_matrix_refuses_no_references(): void
+    {
+        $rule = new MatrixRequired();
+        $context = new ValidationContext('f', []);
+
+        foreach ([[], '[]', '', null, [['_type' => '', 'id' => 'x']], 'not json'] as $empty) {
+            $this->assertSame('This field is required.', (string) $rule->validate($empty, $context), var_export($empty, true));
+        }
+        $this->assertTrue($rule->validate([['_type' => 'note', 'id' => 'n1']], $context));
+        $this->assertTrue($rule->validate('[{"_type":"note","id":"n1"}]', $context));
+    }
+
+    public function test_the_rules_carry_the_required_check_only_for_a_required_field(): void
+    {
+        $type = $this->type();
+        $optional = new \Preflow\Data\TypeFieldDefinition('f', 'matrix', config: $this->config(['note']));
+        $required = new \Preflow\Data\TypeFieldDefinition('f', 'matrix', validate: ['required'], config: $this->config(['note']));
+
+        $this->assertSame([], $type->fieldRules($optional));
+        $this->assertCount(1, $type->fieldRules($required));
+        $this->assertInstanceOf(MatrixRequired::class, $type->fieldRules($required)[0]);
+        $this->assertSame([], $type->rules($this->config(['note'])), 'rules() by config alone has no required flag');
     }
 
     public function test_normalize_filters_disallowed_and_reindexes(): void

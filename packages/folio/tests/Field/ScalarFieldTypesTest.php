@@ -68,7 +68,11 @@ final class ScalarFieldTypesTest extends TestCase
         $this->assertSame([], $check($any, ''));
         $this->assertSame([], $check($any, '2.3'));
         $this->assertSame(['Must be a number.'], $check($any, 'abc'));
-        $this->assertSame([], $type->rules([]));
+        // Without a step the numeric check still stands (0.94: text is refused without relying on the browser).
+        $plain = $type->rules([]);
+        $this->assertSame([], $check($plain, '2.3'));
+        $this->assertSame([], $check($plain, ''));
+        $this->assertSame(['Must be a number.'], $check($plain, 'abc'));
 
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('Number field option "step" must be a positive number or "any".');

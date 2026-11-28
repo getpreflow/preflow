@@ -15,6 +15,8 @@ use Preflow\Data\Values\Core\RichTextValue;
 use Preflow\Data\Values\Core\SelectValue;
 use Preflow\Data\Values\Core\TagsValue;
 use Preflow\Data\Values\Core\TextValue;
+use Preflow\Validation\Rules\Numeric;
+use Preflow\Validation\Rules\WhenFilled;
 
 /**
  * The core field types' values (0.93): string, text, number, boolean, date, select, tags,
@@ -25,7 +27,7 @@ use Preflow\Data\Values\Core\TextValue;
  * replacing a core one where they bring the type (FieldKinds::value()).
  *
  * register() also makes tags a list kind (FieldKinds::list()), and gives date its stored rule (StoredDate, on FieldKinds::rules()): every write
- * refuses a date the type cannot read, with or without Folio.
+ * refuses a date the type cannot read, with or without Folio. Since 0.94 number has its rule too: every write refuses text in a number field.
  *
  * @since 0.93.0
  */
@@ -76,6 +78,11 @@ final class CoreValues
         // The stored shapes date reads (0.92.1's rule, the core's since 0.93): Folio leaves a kind
         // with rules in place (FieldKinds::hasRules()), and its form runs its narrower input rule.
         $kinds->rules('date', static fn (array $config): array => $date->storedRules($config));
+        // A number field refuses text on every write path (0.94), with or without Folio; a filled
+        // value only, so an optional field may stay empty. Stored values are unchanged: text an
+        // older write kept reads as no number (NumberValue::toOutput()) and is refused on the next save.
+        // Folio's number type replaces this with the same check plus its "step" (CoreFieldRules).
+        $kinds->rules('number', static fn (array $config): array => [new WhenFilled(new Numeric())]);
     }
 
     /**

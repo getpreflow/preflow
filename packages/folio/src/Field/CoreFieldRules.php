@@ -29,13 +29,20 @@ use Preflow\Data\TypeFieldDefinition;
  *
  * Select options are the core's own (SelectRules). FolioServiceProvider calls register() once at
  * boot; code that builds Folio's pieces by hand (a test) calls it itself, once per DataManager. A
- * kind is told only while no core package registered it (FieldKinds::hasRules()), so calling it
+ * kind is told only while no core package registered it (FieldKinds::hasRules()), except number
+ * (the core's numeric check is replaced by Folio's, which adds "step"), so calling it
  * again adds no rule twice; a RecordRules or BlockValueChecks given twice gets its rules twice.
  *
  * @since 0.92.0
  */
 final class CoreFieldRules
 {
+    /**
+     * Kinds whose core rules Folio's type replaces rather than leaves in place: Folio's rules are
+     * the core's plus its own (number: the core's numeric check plus "step").
+     */
+    private const SUPERSEDING = ['number'];
+
     public static function register(FieldTypeRegistry $types, FieldKinds $kinds, ?RecordRules $records = null, ?BlockValueChecks $blocks = null): void
     {
         foreach ($types->all() as $type) {
@@ -83,22 +90,28 @@ final class CoreFieldRules
 
     private static function registerKind(string $key, FieldType $type, FieldTypeRegistry $types, FieldKinds $kinds): void
     {
-        if (self::readsOthers($type) || $kinds->hasRules($key)) {
+        if (self::readsOthers($type) || ($kinds->hasRules($key) && !in_array($key, self::SUPERSEDING, true))) {
             return;
         }
         // The registry's type when the rules run: a type registered later under the key replaces it.
-        $kinds->rules($key, static fn (array $config): array => self::kindRules($types->get($key), $config));
+        $kinds->rules($key, static fn (array $config, ?TypeFieldDefinition $field = null): array => self::kindRules($types->get($key), $config, $field));
     }
 
     /**
      * The checks every write runs for a field of the type: storedRules() for a type whose form
      * takes fewer shapes than it stores (HasStoredRules), else its rules().
      *
+     * A type that knows the field (HasFieldRules) gives its fieldRules() instead of its rules().
+     *
      * @param array<string, mixed> $config
      * @return list<string|\Preflow\Validation\ValidationRule>
      */
-    private static function kindRules(FieldType $type, array $config): array
+    private static function kindRules(FieldType $type, array $config, ?TypeFieldDefinition $field = null): array
     {
+        if ($type instanceof HasFieldRules && $field !== null) {
+            return $type->fieldRules($field);
+        }
+
         return $type instanceof HasStoredRules ? $type->storedRules($config) : $type->rules($config);
     }
 
