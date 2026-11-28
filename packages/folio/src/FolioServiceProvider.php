@@ -179,7 +179,7 @@ final class FolioServiceProvider extends ServiceProvider
                 // model (preflow/blocks' own boot check remembers its result by the model files and
                 // classes, which do not include extension models).
                 \Preflow\Blocks\Layouts\TypeLayouts::fromSchema($schema['key'], $types->schema($schema['key']));
-            } catch (\RuntimeException $e) {
+            } catch (\RuntimeException | \InvalidArgumentException $e) {
                 throw new \Preflow\Folio\Extension\ExtensionException("{$what} \"{$schema['key']}\": {$e->getMessage()}", 0, $e);
             }
         }

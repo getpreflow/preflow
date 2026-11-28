@@ -40,6 +40,35 @@ final class ParsesOnRunningPhpGuardTest extends TestCase
         $this->assertSame([], $failures, 'These files do not parse on PHP ' . PHP_VERSION . ":\n" . implode("\n", $failures));
     }
 
+    public function test_a_symlinked_folder_is_not_read_as_a_file(): void
+    {
+        $root = sys_get_temp_dir() . '/preflow-guard-' . bin2hex(random_bytes(4));
+        mkdir($root . '/real', 0777, true);
+        file_put_contents($root . '/real/a.php', "<?php\n");
+        symlink($root . '/real', $root . '/link');
+
+        try {
+            $notices = [];
+            set_error_handler(static function (int $no, string $msg) use (&$notices): bool {
+                $notices[] = $msg;
+
+                return true;
+            });
+            try {
+                $files = (new \ReflectionMethod($this, 'files'))->invoke($this, $root);
+            } finally {
+                restore_error_handler();
+            }
+            $this->assertSame([], $notices);
+            $this->assertSame([$root . '/real/a.php'], $files);
+        } finally {
+            @unlink($root . '/link');
+            @unlink($root . '/real/a.php');
+            @rmdir($root . '/real');
+            @rmdir($root);
+        }
+    }
+
     /** An extensionless script (bin/…, preflow) that starts with `#!… php`. */
     private static function hasPhpShebang(string $path): bool
     {
@@ -63,6 +92,9 @@ final class ParsesOnRunningPhpGuardTest extends TestCase
 
         $files = [];
         foreach (new \RecursiveIteratorIterator($filter) as $f) {
+            if (!$f->isFile()) {
+                continue;
+            }
             if ($f->getExtension() === 'php' || ($f->getExtension() === '' && self::hasPhpShebang($f->getPathname()))) {
                 $files[] = $f->getPathname();
             }
