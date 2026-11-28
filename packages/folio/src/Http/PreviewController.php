@@ -58,8 +58,6 @@ final class PreviewController
         private readonly ?TypePreviews $previews = null,
         private readonly ?PreviewCanvas $canvas = null,
         ?\Preflow\Folio\Content\DisplayLabels $labels = null,
-        // The admin's language for the marks' labels while the preview renders (since 0.94.0).
-        private readonly ?\Preflow\Folio\Content\PreviewLabelLanguage $labelLanguage = null,
     ) {
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
         $this->labels = $labels ?? new \Preflow\Folio\Content\DisplayLabels($catalog, $registry);
@@ -87,9 +85,10 @@ final class PreviewController
         // (Purpose::Preview): the data writes it would make are skipped and what it would send
         // (mail, cookies) is captured, never sent with the admin's request (since 0.81.0). Only
         // for this stretch: the admin's own locale, identity and texts are back afterwards.
-        $adminLanguage = \Preflow\Folio\FolioText::locale();
+        // The marks' labels in the admin's language (read on the admin surface, carried by the context).
         $preview = Contexts::current()->asVisitor()->public()->in($locale)->workingCopies()
-            ->capturing()->skippingWrites()->because(Purpose::Preview);
+            ->capturing()->skippingWrites()->because(Purpose::Preview)
+            ->with(new \Preflow\Folio\Content\PreviewLabelLanguage(\Preflow\Folio\FolioText::locale()));
 
         // A view of the type's preview: its component on the canvas, in the same context.
         $view = self::chosenView($request, $typePreview, $route !== null);
@@ -97,14 +96,14 @@ final class PreviewController
             // The type's label in the admin's language, before the visitor's context.
             $label = $this->labels->type($type);
             $canvas = $this->canvas;
-            $html = $this->inLabelLanguage($adminLanguage, fn (): string => Contexts::within($preview, fn (): string => $canvas->render(
+            $html = Contexts::within($preview, fn (): string => $canvas->render(
                 $typePreview,
                 $view,
                 $this->records->values($draft, $locale),
                 $locale,
                 self::CANVAS,
                 ['label' => $label],
-            )));
+            ));
 
             return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], self::withEditorBridge($html, $this->assetUrls));
         }
@@ -115,7 +114,7 @@ final class PreviewController
 
         // The draft's layout (0.92): the one chosen in the form, with its areas as posted.
         $layout = $this->records->layoutFor($draft);
-        $html = $this->inLabelLanguage($adminLanguage, fn (): string => Contexts::within($preview, fn (): string => $this->engine->render(FrontendController::template($this->engine, $route, $layout?->template()), [
+        $html = Contexts::within($preview, fn (): string => $this->engine->render(FrontendController::template($this->engine, $route, $layout?->template()), [
             'record' => $this->records->values($draft, $locale),
             'rendered' => $this->records->renderedMap($draft, $locale),
             'type' => $type,
@@ -123,17 +122,11 @@ final class PreviewController
             'locale' => $locale,
             'alternates' => [],
             ...($layout?->context() ?? []),
-        ])));
+        ]));
 
         $html = $this->assets?->injectInto($html) ?? $html;
 
         return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], self::withEditorBridge($html, $this->assetUrls));
-    }
-
-    /** @param \Closure(): string $render */
-    private function inLabelLanguage(string $language, \Closure $render): string
-    {
-        return $this->labelLanguage !== null ? $this->labelLanguage->during($language, $render) : $render();
     }
 
     /** The canvas a type preview renders on; a site overrides it at resources/folio/frontend/preview-canvas.twig. @since 0.94.0 */

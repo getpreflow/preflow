@@ -4,50 +4,37 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Content;
 
+use Preflow\Core\Context\Facet;
+
 /**
  * The admin's language while one of Folio's previews renders, so the marks' labels
  * (data-folio-label of a block, of a linked record) read in the editor's language although the
  * preview renders as a visitor, whose texts are English (FolioText::translator()).
  *
- * Folio's three preview renders (the live page preview and the type preview, PreviewController;
- * the whole-page preview's first render, PagePreviewController) set it from FolioText::locale()
- * while still on the admin surface, and reset it in a finally. FolioBlockPreviewMarks and
- * FolioRecordPreviewMarks translate in it when it is set, and as before when it is not.
+ * A facet of the preview's render context: Folio's three preview renders (the live page preview
+ * and the type preview, PreviewController; the whole-page preview, PagePreviewController) add it
+ * with RenderContext::with() from FolioText::locale() while still on the admin surface.
+ * FolioBlockPreviewMarks and FolioRecordPreviewMarks read it from the current context
+ * (Contexts::current()->get(PreviewLabelLanguage::class)) and translate in it when it is there, and
+ * as before when it is not. It ends with the preview's context, so there is nothing to reset.
  *
- * Request-scoped: fragments loaded later through a preview token (a component action, a lazy
- * part) are separate requests without the admin surface and keep the English label.
+ * Fragments loaded later through a preview token (a component action, a lazy part) are separate
+ * requests without the admin surface and keep the English label.
  *
  * @since 0.94.0
  */
-final class PreviewLabelLanguage
+final readonly class PreviewLabelLanguage implements Facet
 {
-    private ?string $locale = null;
+    public function __construct(public string $locale) {}
 
-    /** The language of the labels for the render that follows; null: as before (Folio's own texts). */
-    public function set(?string $locale): void
+    /** Only Folio's previews carry it: never what an anonymous visitor gets. */
+    public function isPublicDefault(): bool
     {
-        $this->locale = $locale;
+        return false;
     }
 
-    public function get(): ?string
+    public function memoKey(): string
     {
-        return $this->locale;
-    }
-
-    /**
-     * Runs $render with $locale set, and unsets it afterwards (also when the render throws).
-     *
-     * @template T
-     * @param \Closure(): T $render
-     * @return T
-     */
-    public function during(?string $locale, \Closure $render): mixed
-    {
-        $this->set($locale);
-        try {
-            return $render();
-        } finally {
-            $this->set(null);
-        }
+        return 'folio-labels:' . $this->locale;
     }
 }

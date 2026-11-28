@@ -8,6 +8,7 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
+use Preflow\Core\Context\Contexts;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
 use Preflow\Testing\ChecksFrameBalance;
@@ -143,18 +144,18 @@ final class LinkedRecordPreviewTest extends TestCase
         $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello']]);
 
         $this->send('POST', '/folio/post/p1/preview', ['title' => 'Hello', 'slug' => 'hello', '_locale' => 'en']);
-        $language = $this->session->container()->get(\Preflow\Folio\Content\PreviewLabelLanguage::class);
-        $this->assertNull($language->get(), 'unset when the render is over');
+        // The language is a facet of the preview's context: it ends with that context.
+        $this->assertNull(Contexts::peek()?->get(\Preflow\Folio\Content\PreviewLabelLanguage::class), 'gone when the render is over');
 
         // Outside a preview the marks translate as before (Folio's English texts in a visitor's render).
         $marks = $this->session->container()->get(\Preflow\Blocks\RecordPreviewMarks::class);
-        $this->assertSame('Note', $marks->attributes('note', 'n1')['data-folio-label']);
-        $block = new \Preflow\Folio\Content\FolioBlockPreviewMarks(fn () => $this->session->container()->get(\Preflow\I18n\Translator::class), $language);
+        $visitor = \Preflow\Testing\ContextFactory::forTest();
+        $this->assertSame('Note', Contexts::run($visitor, fn (): string => $marks->attributes('note', 'n1')['data-folio-label']));
+        $block = new \Preflow\Folio\Content\FolioBlockPreviewMarks(fn () => $this->session->container()->get(\Preflow\I18n\Translator::class));
         $def = new \Preflow\Blocks\BlockDefinition('x', 'folio.layout.log_out', 'g', null, null, 'X', false, []);
-        $this->assertSame('Log out', $block->attributes($def, ['_uid' => 'u'])['data-folio-label']);
-        $language->set('de');
-        $this->assertSame('Abmelden', $block->attributes($def, ['_uid' => 'u'])['data-folio-label'], 'a block label in the admin\'s language');
-        $language->set(null);
+        $this->assertSame('Log out', Contexts::run($visitor, fn (): string => $block->attributes($def, ['_uid' => 'u'])['data-folio-label']));
+        $german = $visitor->with(new \Preflow\Folio\Content\PreviewLabelLanguage('de'));
+        $this->assertSame('Abmelden', Contexts::run($german, fn (): string => $block->attributes($def, ['_uid' => 'u'])['data-folio-label']), 'a block label in the admin\'s language');
     }
 
     #[RunInSeparateProcess]

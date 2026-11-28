@@ -77,8 +77,6 @@ final class PagePreviewController
         private readonly ?HypermediaProtocols $hypermedia = null,
         /** The prefixes that are no public page (the admin's, APIs'): never an address to preview. @since 0.83.0 */
         private readonly ?NonPublicPaths $nonPublic = null,
-        /** The admin's language for the marks' labels while the page renders (since 0.94.0). */
-        private readonly ?\Preflow\Folio\Content\PreviewLabelLanguage $labelLanguage = null,
     ) {}
 
     public function show(ServerRequestInterface $request): ResponseInterface
@@ -198,10 +196,10 @@ final class PagePreviewController
             $role = $role->by(Contexts::current()->viewer->primaryGuardName());
             $requires[] = ViewAs::PERMISSION;
         }
-        // The marks' labels in the editor's language (FolioText::locale() on the admin surface, before the preview's context).
-        $admin = FolioText::locale();
-        $preview = fn () => $this->app->preview(Contexts::current(), self::encodedPath($path), $locale, $role, $request, array_values(array_unique($requires)));
-        $result = $this->labelLanguage !== null ? $this->labelLanguage->during($admin, $preview) : $preview();
+        // The marks' labels in the editor's language (FolioText::locale() on the admin surface), carried
+        // by the context the preview builds on (since 0.94.0).
+        $from = Contexts::current()->with(new \Preflow\Folio\Content\PreviewLabelLanguage(FolioText::locale()));
+        $result = $this->app->preview($from, self::encodedPath($path), $locale, $role, $request, array_values(array_unique($requires)));
 
         return $this->answer($result, $request, $path);
     }

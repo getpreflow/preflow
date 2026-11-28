@@ -23,6 +23,7 @@ use Preflow\Notify\Email;
 use Preflow\Notify\Notifier;
 use Preflow\Notify\TransportFactory;
 use Preflow\Rbac\RoleStore;
+use Preflow\Testing\ChecksFrameBalance;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\View\TemplateFunctionDefinition;
 use Psr\Http\Message\ResponseInterface;
@@ -42,6 +43,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class TypePreviewTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private ?Application $session = null;

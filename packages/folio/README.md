@@ -1521,8 +1521,9 @@ changes its own controllers, not Folio's pane.
 
 **Labels on preview marks** (`data-folio-label` of blocks and linked records) are in the admin's
 language since 0.94, in the live preview, the type preview and the whole-page preview's first render
-(`Content\PreviewLabelLanguage`). Fragments loaded later through a preview token keep the label they
-had.
+(`Content\PreviewLabelLanguage`, a facet these renders add to their context; the marks read it with
+`Contexts::current()->get(PreviewLabelLanguage::class)`). Fragments loaded later through a preview
+token keep the label they had.
 
 ## Blocks, matrix or relation?
 
