@@ -181,6 +181,14 @@ and the checks a field type brings (`FieldKinds::rules()`, such as preflow/field
 not checked: a field its `show_when` hides, blocks in an area the page's layout does not show, a
 block whose class is gone, and a field the caller gives no rules (`$rules[$field] = []`).
 
+**How many blocks (0.94).** A blocks field's `min` and `max` are checked by the core too, for a
+field of the type and for a blocks field inside a block: `Preflow\Blocks\Rules\BlockCount`
+(`BlockCount::of($config)`), with the messages `validation.blocks.min` and `validation.blocks.max`.
+A stored value outside its limits reads as before, but its record cannot be saved until it is fixed.
+Folio's form gives the same rule (the old `Preflow\Folio\Field\Types\BlockCount` is an alias for one
+release), and the message shows once. A `_uid` used twice anywhere in one field value, nested lists
+included, is refused (`uid_twice`).
+
 You write none of this: `BlocksServiceProvider` runs `Preflow\Blocks\BlockValueChecks` for you. An
 adapter adds rules for block fields with `BlockValueChecks::extraRules()`; `BlockLists` is the one
 place that knows which field types hold blocks.
@@ -365,6 +373,12 @@ keeps its version 1 output byte for byte.
 not 16 hex digits, a value of the wrong shape), naming the key. You then save the result with
 `DataManager::saveType()`, and the rules above decide the rest.
 
+**Hidden block fields (0.94).** A block field declared `"hidden": true` stays out of the API, as a
+type's own hidden field does since 0.93: it is not in the read output (blocks, `areas` fields,
+`_areas`, `_unplaced`), not in the description, and a write that sends it is refused as
+`unknown_field` at `<field>.<uid>.<leaf>`. A write that leaves it out keeps its stored value. Folio's
+form still edits it (it merges with `LayoutInput::merge(…, hiddenFields: true)`).
+
 The keys start with an underscore, as they are stored: an underscore key is a system value, never
 a field of your type. So a type with layouts can still have its own field called `layout` (a
 "wide" or "narrow" select, say). Your controller reads and writes that field by its name, and
@@ -396,6 +410,90 @@ share link and outside every render it prints nothing, so no markup changes for 
   Folio ignores any other id.
 - **Your own marks:** bind a `RecordPreviewMarks` (`attributes(string $type, string $id): array`).
   A name that is not a lower-case `data-…` name (`data-` and lower-case letters, digits and `-`) is refused with an exception.
+
+## Type preview (0.94)
+
+### The problem it solves
+
+A page has an address, so an editor can see it while writing it. A job ad, a team member or a
+testimonial has none: it shows up as a card in a list or as a teaser on another page. Without a
+way to show one record as the site shows it, its editor types blind and checks the result on the
+site after publishing.
+
+### The idea: a type names the component that shows one record
+
+A type's `"preview"` option names the component (or components) that render one of its records.
+Each is a **view**. One component is one view:
+
+```json
+"preview": {"component": "Teaser"}
+```
+
+Several are several views, in this order; the first is the default:
+
+```json
+"preview": {
+    "views": {
+        "card": {"label": "Card", "component": "JobPreview"},
+        "row": {"label": "List row", "component": "JobPreview"}
+    }
+}
+```
+
+| Key | Means |
+|---|---|
+| `component` | one view, key `default`, no label |
+| `views` | several views (one of `component` and `views`, not both) |
+| a view's `component` | a name in the component map, or a class extending `Preflow\Components\Component` (required) |
+| a view's `label` | text, or a translation key (optional) |
+| a view's key | `^[a-z][a-z0-9_-]*$`; `page` is reserved (Folio's name for the route's own preview) |
+
+A class-backed type declares the same in code: `#[Entity(type: 'job', preview: ['component' => 'Teaser'])]`
+(preflow/data). An admin file may not set `"preview"` for such a class too; the boot stops, naming both.
+
+Nothing is found by name: the type file names its components. The boot checks the option
+(`blocks.type_previews`, kept in the boot manifest beside `blocks.type_layouts`) and stops with the
+type's name and what to do for a malformed option or a component that does not exist:
+
+```text
+Type "job": preview view "card" names the component "JobCrd", which does not exist. Create app/Components/JobCrd/JobCrd.php, or name an existing component.
+```
+
+A type without `"preview"` is unchanged.
+
+### Rendering one record: `PreviewCanvas`
+
+`Preflow\Blocks\Preview\PreviewCanvas` renders a record through one view, as a whole HTML page:
+
+1. the view's component gets exactly these props: `record` (the record's values in one language,
+   as a page template reads them), `type`, `view` (the view's key), `locale` and `preview` (true);
+2. the **canvas** template gets `preview` (the component's HTML, printed as it is), `record`,
+   `type`, `view`, `locale`, and whatever more you hand it in `$canvasContext`. It is any template
+   name your engine resolves; you choose it on purpose;
+3. the CSS and JS the component collected are put into the page (`AssetCollector::injectInto()`).
+
+A component that fails to build or render shows its error boundary inside the canvas. A component
+that needs more than the record (a related company, say) reads it itself.
+
+`PreviewCanvas` opens no [render context](../core/README.md): you render inside your own preview
+context, so nothing is sent and nothing is written. In a controller that has `TypePreviews $previews`,
+`PreviewCanvas $canvas` and `RecordOutput $output`:
+
+```php
+$preview = $this->previews->forType('job');          // null for a type without "preview"
+$values = $this->output->toArray($record, new ReadOptions(locale: $locale));
+$ctx = Contexts::current()->asVisitor()->public()->in($locale)->workingCopies()
+    ->capturing()->skippingWrites()->because(Purpose::Preview);
+
+$html = Contexts::run($ctx, fn () => $this->canvas->render($preview, $view, $values, $locale, 'preview/canvas.twig'));
+```
+
+`$view` is a view key; an unknown key, `''` or `null` is the first view. `TypePreview::keys()`
+lists them, `view($key)` gives a `PreviewView` (`key`, `label`, `component`). `BlocksServiceProvider`
+binds `TypePreviews` and `PreviewCanvas` only when they are unbound, so a site may bind its own.
+
+Folio's form uses the same classes for its live preview of such types, with its own canvas
+(see preflow/folio, "Type preview").
 
 ## Configuration
 

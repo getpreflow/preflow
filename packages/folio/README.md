@@ -771,7 +771,8 @@ holds however the value was stored (admin save, import, app code), so `|raw` is 
 Routes are tried most specific first. Two types claiming the same route, or two types
 declaring `home`, stop the app at boot with a message naming both. Without any `frontend`
 block, a `page` type is served at `/{slug}` exactly as before. The live preview is
-available for every type that has a route.
+available for every type that has a route, and since 0.94 for every type with `"preview"`
+(see [Type preview](#type-preview-094)).
 
 ### `list`: the admin list
 
@@ -1164,7 +1165,10 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   (`POST {prefix}/assets`) answers `{items, errors}` (200, or 422 with what it refused): each item is
   a card `{id, thumb, label, meta, warn, focal}` (`Preflow\Folio\Media\AssetCard`).
 - `matrix`: a table with a header row, rows with a grip (drag, or focus it and press ↑ / ↓) and
-  a trash button, and "+ Add row".
+  a trash button, and "+ Add row". Since 0.94 a required matrix (`"validate": ["required"]`) with no rows is
+  refused on every write path where Folio is installed, the API included (`MatrixRequired`, through
+  the optional `Field\HasFieldRules`). The matrix is Folio's field type, so a site without Folio
+  has no such check.
 - `env`: the variable's name and "set" or "not set"; never its value.
 - `tags` (0.77): a list of short texts ("Folio", "members"), shown as chips with ✕ and an inline
   "Add…" input. Enter or a comma adds what was typed (so does leaving the input, and a save or
@@ -1363,6 +1367,9 @@ sanitized on the way to the template, and in the live preview each block's root 
   `extra.folio.blocks` (now `extra.preflow.blocks`) and the cache key `folio.blocks` (now `blocks`).
 
 **On a content type:** `"sections": {"type": "blocks", "allowed": ["hero", "text"], "min": 1, "max": 10}`.
+`min` and `max` are checked by the core since 0.94 (`Preflow\Blocks\Rules\BlockCount`), on every
+write path and for blocks fields inside blocks; `Preflow\Folio\Field\Types\BlockCount` is an alias of
+it for one release.
 The editor saves at most `config/blocks.php` `'max_depth'` levels of blocks in all (default 4).
 
 **Storage:** an ordered list inside the record, so nothing extra to migrate.
@@ -1453,6 +1460,69 @@ drawer (`{admin}/{type}/{id}/edit?_drawer=1`, which needs the type's edit permis
 there refreshes the preview. Only a type and an id that look as Folio writes them are opened
 (the id must match `^[A-Za-z0-9_-]{1,64}$`). In Blade write a space before the directive:
 `<a @preview_mark('member', $m)>`.
+
+## Type preview (0.94)
+
+The live preview used to need a route: a job ad, a team member or a testimonial has no page of
+its own, so its editor typed blind. A type with `"preview"` (the option, the boot check and
+`PreviewCanvas` are in [preflow/blocks](../blocks/README.md#type-preview-094) and work without
+Folio) now gets the split view and the Preview view too:
+
+```json
+"preview": {
+    "views": {
+        "card": {"label": "Card", "component": "JobPreview"},
+        "row": {"label": "List row", "component": "JobPreview"}
+    }
+}
+```
+
+**What the editor sees:**
+- **The draft through a view's component,** beside the form, updated while typing. It renders in
+  the live preview's context: as a visitor, working copies of linked records, writes skipped,
+  mail captured.
+- **A view switch** beside the width switch, from two choices on: **Page** (only for a type with a
+  route; its default there) and each view, with its label (a translation key is translated; the
+  `default` view of the short form `{"component": "Teaser"}` shows the type's singular label). A
+  click renders the preview in full; later edits keep the chosen view.
+- **No whole-page tab and no share link** for a type without a route: those stay route-only.
+
+Permissions are the page preview's: `{type}.edit`, or `{type}.create` for a new record. There is no
+new route: the form posts to `POST {admin}/{type}/preview` and `{admin}/{type}/{id}/preview` with
+`_preview_view` (a view key, or `page`); an unknown or empty one is `page` for a type with a route,
+else the first view.
+
+**The canvas.** Folio puts the component on `@folio/frontend/preview-canvas.twig`, a bare HTML5
+page (`lang` from the locale, `<title>` the type's label, `<body class="folio-preview-canvas">` with
+`padding: 1rem`). It gets `preview` (the component's HTML), `record`, `type`, `view`, `locale` and
+`label`. Your site's CSS is not on it. To make a card look as it does on the site, override it at
+`resources/folio/frontend/preview-canvas.twig` and load your base CSS there, as starter-folio does:
+
+```twig
+<!doctype html>
+<html lang="{{ locale }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ label }}</title>
+</head>
+<body>
+<main class="site-main">
+{{ preview }}
+</main>
+{% include "_site-css.twig" %}
+</body>
+</html>
+```
+
+The canvas template is the override point. Folio builds its own `PreviewCanvas` over its template
+engine (so `@folio/…` resolves on any app engine): a site that binds its own `PreviewCanvas` service
+changes its own controllers, not Folio's pane.
+
+**Labels on preview marks** (`data-folio-label` of blocks and linked records) are in the admin's
+language since 0.94, in the live preview, the type preview and the whole-page preview's first render
+(`Content\PreviewLabelLanguage`). Fragments loaded later through a preview token keep the label they
+had.
 
 ## Blocks, matrix or relation?
 

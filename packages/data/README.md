@@ -28,6 +28,23 @@ Models are annotated with PHP attributes. `DataManager` is the single entry poin
 | `#[Seed(debugOnly: true)]` | Class | Marks a seeder in `app/Seeds/` as demo data: `preflow db:seed` skips it while `app.debug` is off (since 0.80.0); see `db:seed` in `preflow/devtools`. |
 | `#[Timestamps]` | Class or property | `save()`, `insert()` and `update()` of a plain model set `createdAt` or `created_at` (the first the model has) when it is empty and `updatedAt` or `updated_at` on every write, matching the migration's `$t->timestamps()`. A `?string` property gets `Y-m-d H:i:s` text, an `?int` one the Unix time; a `?\DateTimeImmutable` one is stored as that text. Other types (a mutable `\DateTime` too) are not stamped. A class-backed type (`#[Entity(type: …)]`) is not stamped: it stores what its type definition says, so it sets these values itself or declares them as type fields. |
 
+**Type options in code: `layouts` (0.93) and `preview` (0.94).** A class-backed type
+(`#[Entity(type: …)]`) can declare two options of a model file in its attribute, with the same keys:
+`layouts` (its page layouts, see preflow/blocks) and `preview` (the component or components that
+show one of its records, for an editor's live preview, see "Type preview" in preflow/blocks):
+
+```php
+#[Entity(table: 'jobs', type: 'job', preview: ['views' => [
+    'card' => ['label' => 'Card', 'component' => 'JobPreview'],
+    'row' => ['label' => 'List row', 'component' => 'JobPreview'],
+]])]
+final class Job extends Model
+```
+
+`ModelSchema::of()` writes it into the type's schema as `"preview"`, unread; preflow/blocks checks it
+at boot. An admin file (`config/models/job.json`) may set `"preview"` only when the class does not:
+setting it in both stops the boot, naming the file and the class ("keep one").
+
 ### `Model`
 
 ```php
@@ -1091,6 +1108,11 @@ $this->data->saveType($record);                   // the core's rules, then the 
   is ever dropped silently.
 - Everything else (required, a select's options, a link's address, a layout's limits) is the
   core's, on save: there is no second set of rules.
+- A `"readonly": true` field sent back exactly as it was read is accepted (since 0.94): the value
+  is compared with the stored value's output first, as canonical JSON, then in its stored form.
+- Since 0.94 the core refuses text in a `number` field (`validation.numeric`, "Must be a number.")
+  on every write path, also without Folio. Stored values are not changed: an old record holding text
+  there reads as `null` and cannot be saved until the value is fixed. The refusal names the field.
 - `create()` and `update()` ask the type first (`TypeDefinition::assertAllows()`): a
   `"creatable": false` type throws `TypeActionRefused` on create, a `"readonly": true` one on every
   write. Who may write is your controller's question (preflow/rbac's `TypePermissions`).
