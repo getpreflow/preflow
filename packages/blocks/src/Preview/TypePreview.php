@@ -64,7 +64,7 @@ final readonly class TypePreview
             }
         }
         if (array_key_exists('component', $config) === array_key_exists('views', $config)) {
-            throw $refuse('"preview" must set one of "component" (one view, such as {"component": "Teaser"}) and "views" (several, such as {"views": {"card": {"label": "Card", "component": "TeaserCard"}}}), not both.');
+            throw $refuse('"preview" must set exactly one of "component" (one view, such as {"component": "Teaser"}) or "views" (several, such as {"views": {"card": {"label": "Card", "component": "TeaserCard"}}}).');
         }
 
         if (array_key_exists('component', $config)) {

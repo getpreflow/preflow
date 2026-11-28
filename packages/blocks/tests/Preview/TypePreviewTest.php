@@ -77,7 +77,7 @@ final class TypePreviewTest extends TestCase
     public static function refusals(): array
     {
         $object = 'Type "job": "preview" must be an object such as {"component": "Teaser"} or {"views": {"card": {"label": "Card", "component": "TeaserCard"}}}.';
-        $oneOf = 'Type "job": "preview" must set one of "component" (one view, such as {"component": "Teaser"}) and "views" (several, such as {"views": {"card": {"label": "Card", "component": "TeaserCard"}}}), not both.';
+        $oneOf = 'Type "job": "preview" must set exactly one of "component" (one view, such as {"component": "Teaser"}) or "views" (several, such as {"views": {"card": {"label": "Card", "component": "TeaserCard"}}}).';
         $views = 'Type "job": "preview.views" must be a non-empty object of views, such as {"card": {"label": "Card", "component": "TeaserCard"}}.';
         $badKey = static fn (string $key): string => sprintf('Type "job": the preview view "%s" has a key that is not allowed; use lowercase letters, digits, "_" and "-", starting with a letter, such as "card".', $key);
 
